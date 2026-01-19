@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use chrono::Local;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
-use std::process::{Command, ExitStatus, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 

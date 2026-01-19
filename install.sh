@@ -44,11 +44,23 @@ if ! command -v asciinema &>/dev/null; then
 fi
 echo "asciinema: $(command -v asciinema)"
 
-# Build if needed
-if [ ! -f "dist/asr" ]; then
-    echo
-    echo "Building binary..."
+# Build binary
+echo
+echo "Building binary..."
+
+# Try native build first (if cargo available)
+if command -v cargo &>/dev/null; then
+    echo "Using native Rust build..."
+    cargo build --release
+    mkdir -p dist
+    cp target/release/asr dist/asr
+# Fallback to Docker for Linux binary
+elif command -v docker &>/dev/null; then
+    echo "Using Docker build (produces Linux binary)..."
     ./build.sh
+else
+    echo "Error: Neither cargo nor docker found. Please install one of them."
+    exit 1
 fi
 
 # Install binary

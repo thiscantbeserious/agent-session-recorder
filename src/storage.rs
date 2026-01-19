@@ -1,12 +1,11 @@
 //! Storage management for recorded sessions
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{DateTime, Local};
 use humansize::{format_size, BINARY};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::path::PathBuf;
 
 use crate::config::Config;
 
@@ -200,31 +199,11 @@ impl StorageManager {
     }
 
     /// Calculate what percentage of disk the storage uses
-    fn calculate_disk_percentage(&self, total_size: u64) -> f64 {
-        // Try to get disk space info
-        // On failure, return 0.0
-        #[cfg(unix)]
-        {
-            use std::mem::MaybeUninit;
-            use std::os::unix::ffi::OsStrExt;
-
-            let storage_dir = self.storage_dir();
-            let path_cstr = std::ffi::CString::new(storage_dir.as_os_str().as_bytes()).ok();
-
-            if let Some(path) = path_cstr {
-                unsafe {
-                    let mut stat: MaybeUninit<libc::statvfs> = MaybeUninit::uninit();
-                    if libc::statvfs(path.as_ptr(), stat.as_mut_ptr()) == 0 {
-                        let stat = stat.assume_init();
-                        let total_disk = stat.f_blocks as u64 * stat.f_frsize as u64;
-                        if total_disk > 0 {
-                            return (total_size as f64 / total_disk as f64) * 100.0;
-                        }
-                    }
-                }
-            }
-        }
-
+    /// Note: Currently returns 0.0 as placeholder.
+    /// Could use sysinfo crate for proper disk space detection.
+    fn calculate_disk_percentage(&self, _total_size: u64) -> f64 {
+        // TODO: Add proper disk space detection
+        // For now, return 0.0 as we don't want to add libc dependency
         0.0
     }
 
