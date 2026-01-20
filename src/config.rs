@@ -52,7 +52,9 @@ pub struct RecordingConfig {
 
 impl Default for RecordingConfig {
     fn default() -> Self {
-        Self { auto_analyze: false }
+        Self {
+            auto_analyze: false,
+        }
     }
 }
 
