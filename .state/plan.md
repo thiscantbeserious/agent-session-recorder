@@ -26,7 +26,7 @@ The coordinator session (this session) NEVER writes code directly. Instead it:
 5. **Gates merges** - Only merges PRs after verification passes
 6. **Handles conflicts** - Resolves issues between agents
 
-### Workflow Diagram (Sequential - One Task at a Time)
+### Workflow Diagram (Sequential with Feedback Loop)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -34,44 +34,65 @@ The coordinator session (this session) NEVER writes code directly. Instead it:
 │  (Plans, spawns agents, verifies, never implements directly)     │
 └─────────────────────────────────────────────────────────────────┘
                               │
-                              ▼
-                    ┌─────────────────┐
-                    │  IMPL AGENT     │  ◄── Fresh session
-                    │  (Task N)       │
-                    │  feature/...    │
-                    └────────┬────────┘
-                              │ PR created
-                              ▼
-                    ┌─────────────────┐
-                    │  VERIFY AGENT   │  ◄── Different fresh session
-                    │  cargo test     │
-                    │  e2e tests      │
-                    │  PR review      │
-                    └────────┬────────┘
-                              │
-                    ┌─────────┴─────────┐
-                    │                   │
-                    ▼                   ▼
-              ┌──────────┐        ┌──────────┐
-              │  PASS    │        │  FAIL    │
-              └────┬─────┘        └────┬─────┘
-                   │                   │
-                   ▼                   ▼
-              Merge PR           Spawn new Impl Agent
-                   │             with fix instructions
-                   │                   │
-                   │                   └──────┐
-                   ▼                          │
-         ┌─────────────────┐                  │
-         │  Task N+1       │ ◄────────────────┘
-         │  (repeat cycle) │
-         └─────────────────┘
+         ┌────────────────────┼────────────────────┐
+         │                    ▼                    │
+         │          ┌─────────────────┐            │
+         │          │  IMPL AGENT     │  ◄── Fresh session
+         │          │  (Task N)       │            │
+         │          │  feature/...    │            │
+         │          └────────┬────────┘            │
+         │                   │ PR created          │
+         │                   ▼                     │
+         │          ┌─────────────────┐            │
+         │          │  VERIFY AGENT   │  ◄── Different fresh session
+         │          │  cargo test     │            │
+         │          │  e2e tests      │            │
+         │          │  PR review      │            │
+         │          └────────┬────────┘            │
+         │                   │                     │
+         │                   ▼                     │
+         │  ┌─────────────────────────────────┐    │
+         │  │      COORDINATOR FEEDBACK       │    │
+         │  │  - Review verify agent results  │    │
+         │  │  - Update decisions.md          │    │
+         │  │  - Adjust future task approach  │    │
+         │  │  - Document lessons learned     │    │
+         │  └────────────────┬────────────────┘    │
+         │                   │                     │
+         │         ┌─────────┴─────────┐           │
+         │         │                   │           │
+         │         ▼                   ▼           │
+         │   ┌──────────┐        ┌──────────┐      │
+         │   │  PASS    │        │  FAIL    │      │
+         │   └────┬─────┘        └────┬─────┘      │
+         │        │                   │            │
+         │        ▼                   ▼            │
+         │   Merge PR            Iterate:          │
+         │        │              - Document issue  │
+         │        │              - Update approach │
+         │        │              - Spawn new Impl  │
+         │        │                   │            │
+         │        │                   └────────────┘
+         │        ▼                   (feedback informs retry)
+         │  ┌─────────────┐
+         └──│  Task N+1   │
+            │  (informed  │
+            │  by prior   │
+            │  learnings) │
+            └─────────────┘
 ```
+
+**Agile iteration principles:**
+- Every verification produces feedback (pass OR fail)
+- Coordinator documents learnings in `.state/decisions.md`
+- Future tasks are informed by prior iteration results
+- Failures trigger reflection, not just mechanical fixes
+- Continuous improvement through each cycle
 
 **Sequential execution rules:**
 - Only ONE impl agent active at a time
-- Wait for verification before starting next task
-- Each task builds on merged main branch
+- Wait for verification AND feedback before next task
+- Each task builds on merged main + accumulated learnings
 - No parallel task execution (avoids merge conflicts)
 
 ### Task Agent Prompts
