@@ -51,13 +51,31 @@ cargo test         # Run all tests
 - Run verification command (see table below)
 - Log results to `.state/phase-N/test-results.md`
 
-#### 5. Deployment
+#### 5. Pull Request & CI
+**MANDATORY: Wait for CI to pass before merging!**
+
+1. Create PR: `gh pr create --title "feat(scope): description"`
+2. Wait for all CI checks to pass:
+   ```bash
+   gh pr checks <PR_NUMBER>   # Check status
+   ```
+3. CI Pipeline stages:
+   - **Build** - compilation on ubuntu + macos
+   - **Unit Tests** - cargo test on both OS
+   - **E2E Tests** - integration tests (macOS only)
+   - **Lint** - cargo fmt + clippy
+   - **CodeRabbit** - AI code review
+4. **NEVER merge until ALL checks show `pass`**
+5. If checks fail, fix issues and push again
+6. Merge only after: `gh pr checks` shows all green
+
+#### 6. Deployment
 - Build release: `cargo build --release`
 - Run e2e tests: `./tests/e2e_test.sh`
 - If all tests pass: mark `[x]` in `progress.md`
 - Update `.state/current-phase.md` with next task
 
-#### 6. Feedback
+#### 7. Feedback
 - Document blockers in `.state/phase-N/blockers.md`
 - Note lessons learned in `.state/decisions.md`
 - If blocked: move to next task
