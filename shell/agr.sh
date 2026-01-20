@@ -39,7 +39,7 @@ _agr_record_session() {
 
 # Generate wrapper functions from config
 _agr_setup_wrappers() {
-    local agents
+    local agents agent
 
     # Try to get agent list from agr
     if command -v agr &>/dev/null; then
@@ -51,16 +51,22 @@ _agr_setup_wrappers() {
         agents="claude codex gemini-cli"
     fi
 
-    # Create wrapper for each agent
-    for agent in $agents; do
+    # Create wrapper for each agent using while read to avoid word-splitting issues
+    while IFS= read -r agent; do
+        # Skip empty agent names
+        [[ -z "$agent" ]] && continue
+
+        # Validate agent name (alphanumeric, dash, underscore only)
+        [[ ! "$agent" =~ ^[a-zA-Z0-9_-]+$ ]] && continue
+
         # Skip if a function already exists with a different definition
         if type "$agent" 2>/dev/null | grep -q "_agr_record_session"; then
             continue
         fi
 
-        # Create the wrapper function
-        eval "$agent() { _agr_record_session $agent \"\$@\"; }"
-    done
+        # Create the wrapper function with proper quoting
+        eval "${agent}() { _agr_record_session \"${agent}\" \"\$@\"; }"
+    done <<< "$agents"
 }
 
 # Initialize wrappers

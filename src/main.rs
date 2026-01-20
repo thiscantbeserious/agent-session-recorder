@@ -46,12 +46,16 @@ the recording for easier identification.
 EXAMPLES:
     agr record claude                    Record a Claude Code session
     agr record codex                     Record an OpenAI Codex session
+    agr record claude --name my-session  Record with a specific filename
     agr record claude -- --help          Pass --help flag to claude
     agr record gemini-cli -- chat        Start gemini-cli in chat mode")]
     Record {
         /// Agent name (e.g., claude, codex, gemini-cli)
         #[arg(help = "Agent name (e.g., claude, codex, gemini-cli)")]
         agent: String,
+        /// Optional session name (skips rename prompt)
+        #[arg(long, short, help = "Session name (skips rename prompt)")]
+        name: Option<String>,
         /// Arguments to pass to the agent command
         #[arg(last = true, help = "Arguments to pass to the agent (after --)")]
         args: Vec<String>,
@@ -380,7 +384,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Record { agent, args } => cmd_record(&agent, &args),
+        Commands::Record { agent, name, args } => cmd_record(&agent, name.as_deref(), &args),
         Commands::Status => cmd_status(),
         Commands::Cleanup { agent, older_than } => cmd_cleanup(agent.as_deref(), older_than),
         Commands::List { agent } => cmd_list(agent.as_deref()),
@@ -411,7 +415,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn cmd_record(agent: &str, args: &[String]) -> Result<()> {
+fn cmd_record(agent: &str, name: Option<&str>, args: &[String]) -> Result<()> {
     let config = Config::load()?;
 
     if !config.is_agent_enabled(agent) {
@@ -421,7 +425,7 @@ fn cmd_record(agent: &str, args: &[String]) -> Result<()> {
     }
 
     let mut recorder = Recorder::new(config);
-    recorder.record(agent, args)
+    recorder.record(agent, name, args)
 }
 
 fn cmd_status() -> Result<()> {

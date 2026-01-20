@@ -75,14 +75,22 @@ impl Recorder {
     }
 
     /// Record an agent session
-    pub fn record(&mut self, agent: &str, args: &[String]) -> Result<()> {
+    pub fn record(
+        &mut self,
+        agent: &str,
+        session_name: Option<&str>,
+        args: &[String],
+    ) -> Result<()> {
         Self::check_asciinema()?;
 
         // Ensure agent directory exists
         let agent_dir = self.storage.ensure_agent_dir(agent)?;
 
-        // Generate filename
-        let filename = Self::generate_filename();
+        // Generate filename - use provided name or timestamp-based
+        let filename = match session_name {
+            Some(name) => Self::sanitize_filename(name),
+            None => Self::generate_filename(),
+        };
         let filepath = agent_dir.join(&filename);
 
         // Build the command to run
@@ -124,8 +132,14 @@ impl Recorder {
             println!("Session interrupted. Saved as: {}", filename);
             filepath.clone()
         } else if status.success() {
-            // Prompt for rename on normal exit
-            self.prompt_rename(&filepath, &filename)?
+            // Skip rename prompt if name was explicitly provided
+            if session_name.is_some() {
+                println!("Saved as: {}", filename);
+                filepath.clone()
+            } else {
+                // Prompt for rename on normal exit
+                self.prompt_rename(&filepath, &filename)?
+            }
         } else {
             println!("Session ended with error. Saved as: {}", filename);
             filepath.clone()
@@ -142,6 +156,12 @@ impl Recorder {
 
     /// Prompt user to rename the session file, returns final filepath
     fn prompt_rename(&self, filepath: &PathBuf, original_filename: &str) -> Result<PathBuf> {
+        // Skip prompt if stdin is not a TTY (non-interactive)
+        if !atty::is(atty::Stream::Stdin) {
+            println!("Saved as: {}", original_filename);
+            return Ok(filepath.clone());
+        }
+
         print!(
             "Session complete. Enter a name (or press Enter to keep '{}'): ",
             original_filename

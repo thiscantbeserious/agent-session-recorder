@@ -173,6 +173,17 @@ else
     fail "Second recording not created"
 fi
 
+# Test 11b: Record with --name flag (skips rename prompt)
+echo "--- Test 11b: Record with --name flag ---"
+$AGR record echo --name "my-custom-session" -- "test with name flag" </dev/null
+NAMED_CAST="$HOME/recorded_agent_sessions/echo/my-custom-session.cast"
+if [ -f "$NAMED_CAST" ]; then
+    pass "Recording with --name flag created correct filename"
+else
+    fail "Recording with --name flag did not create expected file"
+    ls "$HOME/recorded_agent_sessions/echo/"
+fi
+
 # Test 12: List filter by agent
 echo "--- Test 12: List filter by agent ---"
 ECHO_LIST=$($AGR list echo)
@@ -186,7 +197,7 @@ fi
 # Test 13: Status shows multiple agents
 echo "--- Test 13: Status with multiple agents ---"
 STATUS=$($AGR status)
-if echo "$STATUS" | /usr/bin/grep -q "2 total" && echo "$STATUS" | /usr/bin/grep -q "echo:" && echo "$STATUS" | /usr/bin/grep -q "ls:"; then
+if echo "$STATUS" | /usr/bin/grep -q "3 total" && echo "$STATUS" | /usr/bin/grep -q "echo:" && echo "$STATUS" | /usr/bin/grep -q "ls:"; then
     pass "Status shows both agents"
 else
     fail "Status not showing both agents: $STATUS"
