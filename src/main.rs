@@ -673,8 +673,13 @@ fn cmd_shell_uninstall() -> Result<()> {
     if removed {
         println!("Removed shell integration from: {}", rc_file.display());
 
-        // Also remove the shell script from config dir
-        if let Some(script_path) = asr::shell::default_script_path() {
+        // Extract the actual script path from RC file, fallback to default
+        let script_path = asr::shell::extract_script_path(&rc_file)
+            .ok()
+            .flatten()
+            .or_else(asr::shell::default_script_path);
+
+        if let Some(script_path) = script_path {
             if script_path.exists() {
                 std::fs::remove_file(&script_path)
                     .map_err(|e| anyhow::anyhow!("Failed to remove shell script: {}", e))?;
