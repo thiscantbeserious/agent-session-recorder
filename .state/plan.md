@@ -44,10 +44,17 @@ The coordinator session (this session) NEVER writes code directly. Instead it:
          │                   │ PR created          │
          │                   ▼                     │
          │          ┌─────────────────┐            │
-         │          │  VERIFY AGENT   │  ◄── Different fresh session
-         │          │  cargo test     │            │
-         │          │  e2e tests      │            │
-         │          │  PR review      │            │
+         │          │  CODERABBIT     │  ◄── External (auto-triggers)
+         │          │  (GitHub App)   │            │
+         │          │  AI code review │            │
+         │          └────────┬────────┘            │
+         │                   │ Review posted       │
+         │                   ▼                     │
+         │          ┌─────────────────┐            │
+         │          │  VERIFY AGENT   │  ◄── Fresh session
+         │          │  - cargo test   │            │
+         │          │  - e2e tests    │            │
+         │          │  - Check CR     │  ◄── Read CodeRabbit feedback
          │          └────────┬────────┘            │
          │                   │                     │
          │                   ▼                     │
@@ -95,6 +102,27 @@ The coordinator session (this session) NEVER writes code directly. Instead it:
 - Each task builds on merged main + accumulated learnings
 - No parallel task execution (avoids merge conflicts)
 
+### CodeRabbit Integration
+
+CodeRabbit is an external AI code review tool that auto-reviews PRs on GitHub.
+
+**How it fits in the workflow:**
+1. Impl Agent creates PR → CodeRabbit automatically triggered
+2. CodeRabbit posts review comments on the PR (async, ~1-2 min)
+3. Verify Agent checks CodeRabbit feedback via `gh pr view --comments`
+4. Coordinator considers both Verify Agent + CodeRabbit results
+
+**CodeRabbit provides:**
+- AI-powered code review (different perspective than our agents)
+- Security vulnerability detection
+- Code quality suggestions
+- Bug detection
+
+**Verify Agent must:**
+- Wait for CodeRabbit review before completing verification
+- Include CodeRabbit findings in report to coordinator
+- Flag any blocking issues CodeRabbit identified
+
 ### Task Agent Prompts
 
 **Impl Agent Prompt Template:**
@@ -129,15 +157,19 @@ Instructions:
 1. git fetch && git checkout [branch]
 2. Run: cargo test
 3. Run: ./tests/e2e_test.sh
-4. Review the PR diff: gh pr diff [NUMBER]
-5. Check for:
+4. Check CodeRabbit feedback: gh pr view [NUMBER] --comments
+   - Wait for CodeRabbit review if not yet posted
+   - Note any issues CodeRabbit identified
+5. Review the PR diff: gh pr diff [NUMBER]
+6. Check for:
    - All tests pass
+   - CodeRabbit has no blocking issues
    - No obvious bugs
    - Follows existing patterns
    - No security issues
-6. Report results to coordinator:
-   - PASS: All checks passed
-   - FAIL: [specific issues found]
+7. Report results to coordinator:
+   - PASS: All checks passed (tests + CodeRabbit)
+   - FAIL: [specific issues found, include CodeRabbit feedback]
 
 DO NOT merge or approve the PR - just report findings.
 ```
