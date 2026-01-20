@@ -26,44 +26,53 @@ The coordinator session (this session) NEVER writes code directly. Instead it:
 5. **Gates merges** - Only merges PRs after verification passes
 6. **Handles conflicts** - Resolves issues between agents
 
-### Workflow Diagram
+### Workflow Diagram (Sequential - One Task at a Time)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     COORDINATOR SESSION                          │
 │  (Plans, spawns agents, verifies, never implements directly)     │
 └─────────────────────────────────────────────────────────────────┘
-         │                    │                    │
-         ▼                    ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│  IMPL AGENT 1   │  │  IMPL AGENT 2   │  │  IMPL AGENT 3   │
-│  (Phase 2 Task) │  │  (Phase 2 Task) │  │  (Phase 2 Task) │
-│  feature/...    │  │  feature/...    │  │  feature/...    │
-└────────┬────────┘  └────────┬────────┘  └────────┬────────┘
-         │                    │                    │
-         ▼                    ▼                    ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   STATE FILES (.state/)                          │
-│  - progress.md updated with results                              │
-│  - locks/ for task claiming                                      │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     VERIFY AGENT (Fresh)                         │
-│  - Runs cargo test                                               │
-│  - Runs ./tests/e2e_test.sh                                      │
-│  - Reviews PR diff                                               │
-│  - Reports pass/fail to coordinator                              │
-└─────────────────────────────────────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     COORDINATOR DECISION                         │
-│  - If verify passes → merge PR                                   │
-│  - If verify fails → spawn new impl agent to fix                 │
-└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │  IMPL AGENT     │  ◄── Fresh session
+                    │  (Task N)       │
+                    │  feature/...    │
+                    └────────┬────────┘
+                              │ PR created
+                              ▼
+                    ┌─────────────────┐
+                    │  VERIFY AGENT   │  ◄── Different fresh session
+                    │  cargo test     │
+                    │  e2e tests      │
+                    │  PR review      │
+                    └────────┬────────┘
+                              │
+                    ┌─────────┴─────────┐
+                    │                   │
+                    ▼                   ▼
+              ┌──────────┐        ┌──────────┐
+              │  PASS    │        │  FAIL    │
+              └────┬─────┘        └────┬─────┘
+                   │                   │
+                   ▼                   ▼
+              Merge PR           Spawn new Impl Agent
+                   │             with fix instructions
+                   │                   │
+                   │                   └──────┐
+                   ▼                          │
+         ┌─────────────────┐                  │
+         │  Task N+1       │ ◄────────────────┘
+         │  (repeat cycle) │
+         └─────────────────┘
 ```
+
+**Sequential execution rules:**
+- Only ONE impl agent active at a time
+- Wait for verification before starting next task
+- Each task builds on merged main branch
+- No parallel task execution (avoids merge conflicts)
 
 ### Task Agent Prompts
 
