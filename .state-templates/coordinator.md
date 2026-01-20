@@ -1,39 +1,54 @@
-# Coordinator Session State
+# Coordinator Session
 
-## Current Status
-- **Phase**: [PHASE_NUMBER] - [PHASE_NAME]
-- **Mode**: Coordinator (does NOT implement directly)
-- **Active Agents**: None
+## Role
 
-## Phase [N] Tasks
-
-| Task | Status | Impl Agent | Verify Agent | PR |
-|------|--------|------------|--------------|-----|
-| [Task 1] | PENDING | - | - | - |
-| [Task 2] | PENDING | - | - | - |
+You are a **COORDINATOR**. You do NOT implement code directly.
 
 ## Workflow
 
-1. Spawn Impl Agent for task
-2. Wait for completion (check .state/phase-N/impl-results/)
-3. Spawn Verify Agent to validate
-4. If PASS → merge PR
-5. If FAIL → spawn new Impl Agent with fix instructions
+1. **Spawn Impl Agent** for task (using Task tool, `subagent_type=general-purpose`)
+2. **Wait for PR** to be created
+3. **Wait for CodeRabbit** review: `gh pr view <N> --comments`
+4. **Spawn Verify Agent** (fresh session) to validate
+5. **Merge** only after verification passes
 
-## Agent Spawn Log
+## Current Status
 
-| Time | Type | Task | Agent ID | Status |
-|------|------|------|----------|--------|
-| YYYY-MM-DD | Impl | [task] | [id] | PENDING |
+| Field | Value |
+|-------|-------|
+| Phase | [PHASE_NAME] |
+| Active Task | [TASK_DESCRIPTION] |
+| PR | #[N] |
+| Status | [PENDING/IN_PROGRESS/WAITING_REVIEW/READY_TO_MERGE] |
 
-## Completed PRs
+## Task Queue
 
-| PR | Task | Impl | Verify | Merged |
-|----|------|------|--------|--------|
+| Task | Status | PR | Notes |
+|------|--------|-----|-------|
+| [Task 1] | PENDING | - | - |
+| [Task 2] | PENDING | - | - |
 
-## Notes
+## Agent Log
 
+| Time | Type | Task | Result |
+|------|------|------|--------|
+| [TIMESTAMP] | Impl | [task] | PR #N created |
+| [TIMESTAMP] | Verify | PR #N | PASS/FAIL |
+
+## Commands
+
+```bash
+# Check PR status
+gh pr checks <N>
+gh pr view <N> --comments | grep -i coderabbit
+
+# Merge after verification
+gh pr merge <N> --squash --delete-branch
+```
+
+## Rules
+
+- Never implement code directly
 - Always spawn fresh agents (no context reuse)
-- Verify agents use different session than impl agents
-- All communication through state files
-- Never implement code in coordinator session
+- Wait for CodeRabbit before merging
+- Update `.state/INDEX.md` at milestones

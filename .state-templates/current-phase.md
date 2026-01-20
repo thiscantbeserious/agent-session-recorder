@@ -1,59 +1,58 @@
-# Current State
+# Current Phase: [N] - [PHASE_NAME]
 
-## Session Mode: [COORDINATOR|IMPL|VERIFY]
+## Goal
 
-This session is a **[role]** that [description].
+[What this phase aims to achieve]
 
-**Key State Files:**
-- `.state/plan.md` - Full project plan (version controlled)
-- `.state/coordinator.md` - Active agent tracking
-- `.state/decisions.md` - Technical decisions log
+## Tasks
 
-## Quick Start for New Session
+| Task | Status | PR |
+|------|--------|-----|
+| [Task 1] | PENDING | - |
+| [Task 2] | PENDING | - |
+| [Task 3] | PENDING | - |
+
+## Quick Start
+
 ```bash
-cd [PROJECT_PATH]
-cargo test && ./tests/e2e_test.sh       # Verify everything works
+# Verify environment
+cargo test && ./tests/e2e_test.sh
+
+# Check state
+cat .state/INDEX.md
+gh pr list
 ```
 
-## Project Info
-- **Location:** [PROJECT_PATH]
-- **Repo:** [REPO_URL]
-- **License:** MIT
-
-## Current Phase: [N] - [PHASE_NAME]
-
-### Status: [IN_PROGRESS|COMPLETE]
-
-### Tasks
-- [ ] Task 1
-- [ ] Task 2
-- [ ] Task 3
-
-### What's Been Done
-[Summary of completed work]
-
-### What's Next
-[Next steps]
-
 ## Git Workflow
+
 ```bash
-# Always create feature branch from main
+# Create feature branch
 git checkout main && git pull
 git checkout -b feature/[phase]-[task-name]
 
-# Work, commit frequently
-cargo test && ./tests/e2e_test.sh  # MUST pass
-git add -A && git commit -m "feat(scope): description"
+# Work with TDD
+cargo test                    # Must pass
+./tests/e2e_test.sh          # Must pass
+cargo fmt && cargo clippy    # Must pass
 
-# Push and create PR
+# Commit and push
+git add -A
+git commit -m "feat(scope): description"
 git push -u origin feature/[phase]-[task-name]
-gh pr create --base main --title "feat: ..."
 
-# After approval, merge
-gh pr merge N --squash
+# Create PR
+gh pr create --title "feat(scope): description"
 ```
 
-## Important Notes
-1. E2E tests: MANDATORY before any merge
-2. Read .state files before starting work
-3. Update decisions.md with technical decisions
+## Definition of Done
+
+- [ ] All tasks complete
+- [ ] All tests pass (`cargo test`)
+- [ ] E2E tests pass (`./tests/e2e_test.sh`)
+- [ ] PR reviewed (CodeRabbit + verification)
+- [ ] PR merged
+- [ ] `.state/INDEX.md` updated
+
+## Notes
+
+[Any relevant notes for this phase]

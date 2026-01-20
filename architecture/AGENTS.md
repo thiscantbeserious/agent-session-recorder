@@ -26,6 +26,9 @@ gh pr view <PR_NUMBER> --comments | grep -i coderabbit
 
 AGR uses a **sequential orchestrator loop** with three distinct agent roles that communicate through state files. This pattern ensures quality through separation of concerns and fresh perspectives at each stage.
 
+**Related docs:**
+- `architecture/SDLC.md` - Agile SDLC phases (Requirement → Design → Code → Test → Deploy → Feedback)
+
 ## Agent Roles
 
 ### 1. Coordinator Agent
@@ -137,6 +140,7 @@ Fresh session that validates implementation without context pollution.
     └── .gitkeep
 
 .state-templates/            # Templates (separate from active state)
+├── INDEX.md
 ├── coordinator.md
 ├── current-phase.md
 ├── phase-progress.md
