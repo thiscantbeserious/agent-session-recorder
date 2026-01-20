@@ -60,6 +60,10 @@ enum Commands {
     /// Manage AI agent skills
     #[command(subcommand)]
     Skills(SkillsCommands),
+
+    /// Manage shell integration
+    #[command(subcommand)]
+    Shell(ShellCommands),
 }
 
 #[derive(Subcommand)]
@@ -114,6 +118,16 @@ enum SkillsCommands {
     Uninstall,
 }
 
+#[derive(Subcommand)]
+enum ShellCommands {
+    /// Show shell integration status
+    Status,
+    /// Install shell integration to .zshrc/.bashrc
+    Install,
+    /// Remove shell integration from .zshrc/.bashrc
+    Uninstall,
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -139,6 +153,11 @@ fn main() -> Result<()> {
             SkillsCommands::List => cmd_skills_list(),
             SkillsCommands::Install => cmd_skills_install(),
             SkillsCommands::Uninstall => cmd_skills_uninstall(),
+        },
+        Commands::Shell(cmd) => match cmd {
+            ShellCommands::Status => cmd_shell_status(),
+            ShellCommands::Install => cmd_shell_install(),
+            ShellCommands::Uninstall => cmd_shell_uninstall(),
         },
     }
 }
@@ -604,6 +623,80 @@ fn cmd_skills_uninstall() -> Result<()> {
     }
 }
 
+fn cmd_shell_status() -> Result<()> {
+    let config = Config::load()?;
+    let status = asr::shell::get_status(config.shell.auto_wrap);
+    println!("{}", status.summary());
+    Ok(())
+}
+
+fn cmd_shell_install() -> Result<()> {
+    // Detect shell RC file
+    let rc_file = asr::shell::detect_shell_rc()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
+
+    // Determine script path (use config dir)
+    let script_path = asr::shell::default_script_path()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
+
+    // Install the shell script to config directory
+    asr::shell::install_script(&script_path)
+        .map_err(|e| anyhow::anyhow!("Failed to install shell script: {}", e))?;
+    println!("Installed shell script: {}", script_path.display());
+
+    // Install shell integration to RC file
+    asr::shell::install(&rc_file, &script_path)
+        .map_err(|e| anyhow::anyhow!("Failed to install shell integration: {}", e))?;
+    println!("Installed shell integration: {}", rc_file.display());
+
+    println!();
+    println!("Shell integration installed successfully.");
+    println!("Restart your shell or run: source {}", rc_file.display());
+
+    Ok(())
+}
+
+fn cmd_shell_uninstall() -> Result<()> {
+    // Find where shell integration is installed
+    let rc_file = match asr::shell::find_installed_rc() {
+        Some(rc) => rc,
+        None => {
+            println!("Shell integration is not installed.");
+            return Ok(());
+        }
+    };
+
+    // Remove from RC file
+    let removed = asr::shell::uninstall(&rc_file)
+        .map_err(|e| anyhow::anyhow!("Failed to remove shell integration: {}", e))?;
+
+    if removed {
+        println!("Removed shell integration from: {}", rc_file.display());
+
+        // Extract the actual script path from RC file, fallback to default
+        let script_path = asr::shell::extract_script_path(&rc_file)
+            .ok()
+            .flatten()
+            .or_else(asr::shell::default_script_path);
+
+        if let Some(script_path) = script_path {
+            if script_path.exists() {
+                std::fs::remove_file(&script_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to remove shell script: {}", e))?;
+                println!("Removed shell script: {}", script_path.display());
+            }
+        }
+
+        println!();
+        println!("Shell integration removed successfully.");
+        println!("Restart your shell to complete the removal.");
+    } else {
+        println!("Shell integration was not found in: {}", rc_file.display());
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -715,6 +808,33 @@ mod tests {
         match cli.command {
             Commands::Skills(SkillsCommands::Uninstall) => {}
             _ => panic!("Expected Skills Uninstall command"),
+        }
+    }
+
+    #[test]
+    fn cli_shell_status_parses() {
+        let cli = Cli::try_parse_from(["asr", "shell", "status"]).unwrap();
+        match cli.command {
+            Commands::Shell(ShellCommands::Status) => {}
+            _ => panic!("Expected Shell Status command"),
+        }
+    }
+
+    #[test]
+    fn cli_shell_install_parses() {
+        let cli = Cli::try_parse_from(["asr", "shell", "install"]).unwrap();
+        match cli.command {
+            Commands::Shell(ShellCommands::Install) => {}
+            _ => panic!("Expected Shell Install command"),
+        }
+    }
+
+    #[test]
+    fn cli_shell_uninstall_parses() {
+        let cli = Cli::try_parse_from(["asr", "shell", "uninstall"]).unwrap();
+        match cli.command {
+            Commands::Shell(ShellCommands::Uninstall) => {}
+            _ => panic!("Expected Shell Uninstall command"),
         }
     }
 }

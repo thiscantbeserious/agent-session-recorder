@@ -81,27 +81,10 @@ CONFIG_DIR="$HOME/.config/asr"
 mkdir -p "$CONFIG_DIR"
 echo "Created config directory: $CONFIG_DIR"
 
-# Setup shell integration
-SHELL_SCRIPT="$(pwd)/shell/asr.sh"
-SHELL_RC=""
-
-if [ -n "$ZSH_VERSION" ] || [ -f "$HOME/.zshrc" ]; then
-    SHELL_RC="$HOME/.zshrc"
-elif [ -n "$BASH_VERSION" ] || [ -f "$HOME/.bashrc" ]; then
-    SHELL_RC="$HOME/.bashrc"
-fi
-
-if [ -n "$SHELL_RC" ]; then
-    SOURCE_LINE="[ -f \"$SHELL_SCRIPT\" ] && source \"$SHELL_SCRIPT\""
-    if ! grep -q "asr.sh" "$SHELL_RC" 2>/dev/null; then
-        echo >> "$SHELL_RC"
-        echo "# Agent Session Recorder" >> "$SHELL_RC"
-        echo "$SOURCE_LINE" >> "$SHELL_RC"
-        echo "Added shell integration to: $SHELL_RC"
-    else
-        echo "Shell integration already present in: $SHELL_RC"
-    fi
-fi
+# Setup shell integration using asr shell install
+echo
+echo "Setting up shell integration..."
+"$INSTALL_DIR/asr" shell install
 
 # Install skills
 echo
@@ -124,6 +107,6 @@ fi
 
 echo
 echo "Next steps:"
-echo "  1. Restart your shell or run: source $SHELL_RC"
+echo "  1. Restart your shell to activate shell integration"
 echo "  2. Test with: asr --help"
 echo "  3. Record a session: asr record claude"

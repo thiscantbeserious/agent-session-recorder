@@ -4,8 +4,54 @@ set -e
 echo "=== Agent Session Recorder Uninstaller ==="
 echo
 
-# Remove binary
 INSTALL_DIR="$HOME/.local/bin"
+
+# Remove skills (before binary removal so asr CLI can run)
+echo "Removing skills..."
+if command -v asr &>/dev/null; then
+    asr skills uninstall
+else
+    # Fallback: manually remove skill files if asr is not available
+    echo "asr not found in PATH, removing skills manually..."
+    for dir in "$HOME/.claude/commands" "$HOME/.codex/commands" "$HOME/.gemini/commands"; do
+        for skill in "asr-analyze.md" "asr-review.md"; do
+            if [ -f "$dir/$skill" ] || [ -L "$dir/$skill" ]; then
+                rm "$dir/$skill"
+                echo "  Removed: $dir/$skill"
+            fi
+        done
+    done
+fi
+
+# Remove shell integration (before binary removal so asr CLI can run)
+echo
+echo "Removing shell integration..."
+if command -v asr &>/dev/null; then
+    asr shell uninstall
+else
+    # Fallback: manually remove shell integration if asr is not available
+    echo "asr not found in PATH, removing shell integration manually..."
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+        if [ -f "$rc" ]; then
+            # Check if ASR markers are present
+            if grep -q ">>> ASR (Agent Session Recorder) >>>" "$rc" 2>/dev/null; then
+                # Remove the marked section using sed
+                sed -i.bak '/# >>> ASR (Agent Session Recorder) >>>/,/# <<< ASR (Agent Session Recorder) <<</d' "$rc"
+                rm -f "$rc.bak"
+                echo "  Removed shell integration from: $rc"
+            fi
+        fi
+    done
+    # Also remove the shell script
+    if [ -f "$HOME/.config/asr/asr.sh" ]; then
+        rm "$HOME/.config/asr/asr.sh"
+        echo "  Removed: $HOME/.config/asr/asr.sh"
+    fi
+fi
+
+# Remove binary (after CLI cleanup so asr commands can run)
+echo
+echo "Removing binary..."
 if [ -f "$INSTALL_DIR/asr" ]; then
     rm "$INSTALL_DIR/asr"
     echo "Removed binary: $INSTALL_DIR/asr"
@@ -38,29 +84,6 @@ if [ -d "$SESSION_DIR" ]; then
         echo "Kept session directory"
     fi
 fi
-
-# Remove skills
-echo
-echo "Removing skills..."
-if command -v asr &>/dev/null; then
-    asr skills uninstall
-else
-    # Fallback: manually remove skill files if asr is not available
-    echo "asr not found in PATH, removing skills manually..."
-    for dir in "$HOME/.claude/commands" "$HOME/.codex/commands" "$HOME/.gemini/commands"; do
-        for skill in "asr-analyze.md" "asr-review.md"; do
-            if [ -f "$dir/$skill" ] || [ -L "$dir/$skill" ]; then
-                rm "$dir/$skill"
-                echo "  Removed: $dir/$skill"
-            fi
-        done
-    done
-fi
-
-# Note about shell integration
-echo
-echo "Note: Shell integration line in .zshrc/.bashrc was NOT removed."
-echo "You can manually remove the 'Agent Session Recorder' section if desired."
 
 echo
 echo "=== Uninstallation Complete ==="
