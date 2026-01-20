@@ -16,8 +16,7 @@ pub fn fixtures_dir() -> PathBuf {
 /// Load a fixture file's contents
 pub fn load_fixture(name: &str) -> String {
     let path = fixtures_dir().join(name);
-    fs::read_to_string(&path)
-        .unwrap_or_else(|_| panic!("Failed to load fixture: {}", name))
+    fs::read_to_string(&path).unwrap_or_else(|_| panic!("Failed to load fixture: {}", name))
 }
 
 /// Create a temporary directory with a copy of a fixture

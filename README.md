@@ -1,9 +1,9 @@
 # Agent Session Recorder (ASR)
 
+[![CI](https://github.com/thiscantbeserious/agent-session-record/actions/workflows/ci.yml/badge.svg)](https://github.com/thiscantbeserious/agent-session-record/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange?logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-102%20passing-brightgreen)](tests/)
-[![CodeRabbit](https://img.shields.io/badge/CodeRabbit-AI%20Review-purple?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0wIDE4Yy00LjQxIDAtOC0zLjU5LTgtOHMzLjU5LTggOC04IDggMy41OSA4IDgtMy41OSA4LTggOHoiLz48L3N2Zz4=)](https://coderabbit.ai)
+[![CodeRabbit](https://img.shields.io/badge/CodeRabbit-AI%20Review-purple)](https://coderabbit.ai)
 [![asciinema](https://img.shields.io/badge/powered%20by-asciinema-d40000)](https://asciinema.org/)
 
 A small command-line tool that uses [asciinema](https://asciinema.org/) to track all AI agent sessions, leveraging the agents themselves to create markers at interesting key points automatically, in addition to keeping track of total usage.
