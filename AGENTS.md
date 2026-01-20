@@ -180,15 +180,15 @@ cargo build --release
 
 ## Development Phases
 
-### Phase 1: MVP (Core Recording) - IN PROGRESS
+### Phase 1: MVP (Core Recording) - COMPLETE
 - [x] Project setup (Cargo.toml, basic structure)
 - [x] Docker build environment
-- [ ] `asr record <agent>` - spawn asciinema
-- [ ] Rename prompt on normal exit
-- [ ] Keep original filename on Ctrl+C
-- [ ] `asr agents list/add`
-- [ ] Shell wrapper
-- [ ] Install script
+- [x] `asr record <agent>` - spawn asciinema
+- [x] Rename prompt on normal exit
+- [x] Keep original filename on Ctrl+C
+- [x] `asr agents list/add`
+- [x] Shell wrapper
+- [x] Install script
 
 ### Phase 2: Storage Management
 - [ ] `asr status`
