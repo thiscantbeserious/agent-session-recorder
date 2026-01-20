@@ -576,7 +576,10 @@ fn cmd_agents_nowrap_add(name: &str) -> Result<()> {
 
     if config.add_no_wrap(name) {
         config.save()?;
-        println!("Added '{}' to no-wrap list. It will not be auto-wrapped.", name);
+        println!(
+            "Added '{}' to no-wrap list. It will not be auto-wrapped.",
+            name
+        );
     } else {
         println!("Agent '{}' is already in the no-wrap list.", name);
     }
@@ -589,7 +592,10 @@ fn cmd_agents_nowrap_remove(name: &str) -> Result<()> {
 
     if config.remove_no_wrap(name) {
         config.save()?;
-        println!("Removed '{}' from no-wrap list. It will now be auto-wrapped.", name);
+        println!(
+            "Removed '{}' from no-wrap list. It will now be auto-wrapped.",
+            name
+        );
     } else {
         println!("Agent '{}' was not in the no-wrap list.", name);
     }
