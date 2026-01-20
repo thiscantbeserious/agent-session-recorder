@@ -1104,50 +1104,53 @@ After completing a task, run its specific test:
 
 Log results to `.state/phase-N/test-results.md`
 
-### Phase 1: MVP (Core Recording)
+### Phase 1: MVP (Core Recording) - COMPLETE
 **Goal:** Replace current shell script with working Rust binary
 
-- [ ] Project setup (Cargo.toml, basic structure)
-- [ ] Docker build environment (Dockerfile, build.sh)
-- [ ] `asr record <agent>` - spawn asciinema, save to session dir
-- [ ] Rename prompt on normal exit
-- [ ] Keep original filename on Ctrl+C
-- [ ] `asr agents list/add` - manage agent config
-- [ ] Shell wrapper (`asr.sh`)
-- [ ] Basic install script
+- [x] Project setup (Cargo.toml, basic structure)
+- [x] Docker build environment (Dockerfile, build.sh)
+- [x] `asr record <agent>` - spawn asciinema, save to session dir
+- [x] Rename prompt on normal exit
+- [x] Keep original filename on Ctrl+C
+- [x] `asr agents list/add` - manage agent config
+- [x] Shell wrapper (`asr.sh`)
+- [x] Basic install script
 
-**Definition of Done:** Can run `./build.sh` to build binary, record a Claude session, rename it, sessions saved to `~/recorded_agent_sessions/`
+**Definition of Done:** ✅ All complete. PR #1 merged.
 
-### Phase 2: Storage Management
-**Goal:** Track and clean up recordings
+### Phase 2: Storage Management - IN PROGRESS
+**Goal:** Improve storage visibility and cleanup UX
 
-- [ ] `asr status` - show size, count, disk %, oldest
-- [ ] `asr cleanup` - interactive deletion with count selection
-- [ ] Storage threshold warnings after sessions
-- [ ] `asr list` - list sessions with details
+- [x] `asr status` - basic implementation exists
+- [x] `asr cleanup` - basic implementation exists
+- [x] `asr list` - basic implementation exists
+- [ ] Improve `asr status` output (breakdown by agent, disk %)
+- [ ] Enhance `asr cleanup` UX (better prompts)
+- [ ] Add storage threshold warnings after recording
 
-**Definition of Done:** Can see storage stats, clean up old sessions interactively
+**Definition of Done:** Polished storage commands with better UX
 
-### Phase 3: Marker Support
+### Phase 3: Marker Support - MOSTLY COMPLETE
 **Goal:** AI-powered session analysis
 
-- [ ] `asr marker add <file> <time> <label>` - inject marker
-- [ ] `asr marker list <file>` - show markers
-- [ ] asciicast v3 parser/writer module
-- [ ] `/asr-analyze` skill for agents
+- [x] `asr marker add <file> <time> <label>` - inject marker
+- [x] `asr marker list <file>` - show markers
+- [x] asciicast v3 parser/writer module
+- [x] `/asr-analyze` skill documentation (in AGENTS.md)
 - [ ] Skill symlink setup in installer
 
 **Definition of Done:** Can run `/asr-analyze session.cast` in Claude, markers appear in file
 
-### Phase 4: Polish & Multi-Agent
+### Phase 4: Polish & Multi-Agent - MOSTLY COMPLETE
 **Goal:** Production-ready tool
 
-- [ ] AGENTS.md, CLAUDE.md, GEMINI.md setup
-- [ ] Config file support (~/.config/asr/config.toml)
-- [ ] Uninstall script
-- [ ] README documentation
+- [x] AGENTS.md, CLAUDE.md, GEMINI.md setup
+- [x] Config file support (~/.config/asr/config.toml)
+- [x] Uninstall script
+- [x] README documentation
 - [ ] Test on Linux
 - [ ] Cross-compilation setup
+- [ ] Homebrew formula finalization
 
 **Definition of Done:** Complete, documented, installable project
 
