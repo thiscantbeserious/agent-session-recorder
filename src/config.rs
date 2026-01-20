@@ -6,8 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Main configuration structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub storage: StorageConfig,
@@ -70,7 +69,6 @@ impl Default for AgentsConfig {
         }
     }
 }
-
 
 impl Config {
     /// Get the config file path (~/.config/asr/config.toml)
