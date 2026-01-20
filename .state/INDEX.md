@@ -30,6 +30,6 @@ git log --oneline -5
 
 <!-- Keep this minimal - just what's currently being worked on -->
 
-**Current focus:** Auto-analyze feature (PR #15)
+**Current focus:** None (phase complete)
 
-**Blocked on:** Nothing
+**Recently completed:** Auto-analyze feature (PR #15 merged)

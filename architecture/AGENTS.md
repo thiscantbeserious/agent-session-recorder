@@ -211,38 +211,41 @@ Track progress via GitHub PRs:
 
 ## State Maintenance
 
-### Before Starting New Features
+### After Completing a Phase
 
-**CRITICAL:** Before implementing any new feature, the agent MUST:
+**CRITICAL:** After merging PRs and completing a phase, the coordinator MUST:
 
-1. **Check current state:**
-   ```bash
-   cat .state/INDEX.md           # Entry point
-   cat .state/decisions.md       # Technical decisions
-   gh pr list --state merged     # Completed work
-   gh pr list                    # In-progress work
-   ```
+1. **Update `.state/INDEX.md`:**
+   - Mark current focus as complete
+   - Update "Recently completed" section
+   - Clear any stale "Blocked on" entries
 
-2. **Update stale files** if they reference outdated information:
-   - Update CLI command examples if commands changed
-   - Update decisions.md with new technical decisions
-   - Clean up old lock files in `.state/locks/`
+2. **Clean up state files:**
+   - Remove old lock files from `.state/locks/`
+   - Update `.state/decisions.md` with learnings from the phase
+   - Remove stale references to removed features
 
-3. **Archive old state** when cleaning up:
+3. **Archive old state** if needed:
    ```bash
    TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
    mkdir -p .archive/state/$TIMESTAMP
    mv .state/old-file.md .archive/state/$TIMESTAMP/
    ```
 
-### State Hygiene Checklist
+4. **Commit state updates:**
+   ```bash
+   git add .state/
+   git commit -m "chore(state): update after phase completion"
+   git push
+   ```
 
-Before creating a PR:
+### State Hygiene Checklist (End of Phase)
 
-- [ ] `.state/INDEX.md` reflects current focus
-- [ ] `.state/decisions.md` updated with new technical decisions
+- [ ] `.state/INDEX.md` shows phase complete
+- [ ] `.state/decisions.md` updated with new learnings
 - [ ] Old lock files removed from `.state/locks/`
 - [ ] No stale references to removed features
+- [ ] State changes committed and pushed
 
 ### Why This Matters
 
