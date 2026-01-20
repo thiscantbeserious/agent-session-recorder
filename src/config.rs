@@ -12,6 +12,32 @@ pub struct Config {
     pub storage: StorageConfig,
     #[serde(default)]
     pub agents: AgentsConfig,
+    #[serde(default)]
+    pub shell: ShellConfig,
+}
+
+/// Shell integration configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShellConfig {
+    /// Global toggle for auto-wrapping agents
+    #[serde(default = "default_auto_wrap")]
+    pub auto_wrap: bool,
+    /// Path to the shell script (computed, not stored in config)
+    #[serde(skip)]
+    pub script_path: Option<PathBuf>,
+}
+
+fn default_auto_wrap() -> bool {
+    true
+}
+
+impl Default for ShellConfig {
+    fn default() -> Self {
+        Self {
+            auto_wrap: default_auto_wrap(),
+            script_path: None,
+        }
+    }
 }
 
 /// Storage configuration
@@ -163,6 +189,9 @@ mod tests {
         assert!(config.agents.enabled.contains(&"claude".to_string()));
         assert!(config.agents.enabled.contains(&"codex".to_string()));
         assert!(config.agents.enabled.contains(&"gemini-cli".to_string()));
+        // Shell config defaults
+        assert!(config.shell.auto_wrap);
+        assert!(config.shell.script_path.is_none());
     }
 
     #[test]
@@ -172,6 +201,28 @@ mod tests {
         let parsed: Config = toml::from_str(&toml_str).unwrap();
         assert_eq!(parsed.storage.directory, config.storage.directory);
         assert_eq!(parsed.agents.enabled, config.agents.enabled);
+        assert_eq!(parsed.shell.auto_wrap, config.shell.auto_wrap);
+    }
+
+    #[test]
+    fn shell_config_parses_from_toml() {
+        let toml_str = r#"
+[shell]
+auto_wrap = false
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(!config.shell.auto_wrap);
+    }
+
+    #[test]
+    fn shell_config_defaults_when_missing() {
+        let toml_str = r#"
+[storage]
+directory = "~/custom"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        // Shell config should have default values
+        assert!(config.shell.auto_wrap);
     }
 
     #[test]

@@ -57,10 +57,31 @@ else
     done
 fi
 
-# Note about shell integration
+# Remove shell integration
 echo
-echo "Note: Shell integration line in .zshrc/.bashrc was NOT removed."
-echo "You can manually remove the 'Agent Session Recorder' section if desired."
+echo "Removing shell integration..."
+if command -v asr &>/dev/null; then
+    asr shell uninstall
+else
+    # Fallback: manually remove shell integration if asr is not available
+    echo "asr not found in PATH, removing shell integration manually..."
+    for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+        if [ -f "$rc" ]; then
+            # Check if ASR markers are present
+            if grep -q ">>> ASR (Agent Session Recorder) >>>" "$rc" 2>/dev/null; then
+                # Remove the marked section using sed
+                sed -i.bak '/# >>> ASR (Agent Session Recorder) >>>/,/# <<< ASR (Agent Session Recorder) <<</d' "$rc"
+                rm -f "$rc.bak"
+                echo "  Removed shell integration from: $rc"
+            fi
+        fi
+    done
+    # Also remove the shell script
+    if [ -f "$HOME/.config/asr/asr.sh" ]; then
+        rm "$HOME/.config/asr/asr.sh"
+        echo "  Removed: $HOME/.config/asr/asr.sh"
+    fi
+fi
 
 echo
 echo "=== Uninstallation Complete ==="
