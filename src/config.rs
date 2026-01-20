@@ -6,7 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Main configuration structure
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub storage: StorageConfig,
@@ -70,15 +70,6 @@ impl Default for AgentsConfig {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            storage: StorageConfig::default(),
-            agents: AgentsConfig::default(),
-        }
-    }
-}
-
 impl Config {
     /// Get the config file path (~/.config/asr/config.toml)
     pub fn config_path() -> Result<PathBuf> {
@@ -88,8 +79,7 @@ impl Config {
 
     /// Get the config directory path (~/.config/asr)
     pub fn config_dir() -> Result<PathBuf> {
-        let home = dirs::home_dir()
-            .context("Could not determine home directory")?;
+        let home = dirs::home_dir().context("Could not determine home directory")?;
         Ok(home.join(".config").join("asr"))
     }
 
@@ -118,8 +108,7 @@ impl Config {
                 .with_context(|| format!("Failed to create config directory: {:?}", parent))?;
         }
 
-        let contents = toml::to_string_pretty(self)
-            .context("Failed to serialize config")?;
+        let contents = toml::to_string_pretty(self).context("Failed to serialize config")?;
         fs::write(&config_path, contents)
             .with_context(|| format!("Failed to write config file: {:?}", config_path))?;
 
@@ -129,9 +118,9 @@ impl Config {
     /// Expand ~ in storage directory path
     pub fn storage_directory(&self) -> PathBuf {
         let dir = &self.storage.directory;
-        if dir.starts_with("~/") {
+        if let Some(stripped) = dir.strip_prefix("~/") {
             if let Some(home) = dirs::home_dir() {
-                return home.join(&dir[2..]);
+                return home.join(stripped);
             }
         }
         PathBuf::from(dir)
@@ -197,7 +186,12 @@ mod tests {
         let mut config = Config::default();
         assert!(!config.add_agent("claude"));
         assert_eq!(
-            config.agents.enabled.iter().filter(|a| *a == "claude").count(),
+            config
+                .agents
+                .enabled
+                .iter()
+                .filter(|a| *a == "claude")
+                .count(),
             1
         );
     }

@@ -56,15 +56,15 @@ pub struct EnvInfo {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventType {
     /// Output (data written to terminal)
-    Output,      // "o"
+    Output, // "o"
     /// Input (data read from terminal)
-    Input,       // "i"
+    Input, // "i"
     /// Marker (annotation)
-    Marker,      // "m"
+    Marker, // "m"
     /// Resize (terminal resize)
-    Resize,      // "r"
+    Resize, // "r"
     /// Exit (process exit code)
-    Exit,        // "x"
+    Exit, // "x"
 }
 
 impl EventType {
@@ -128,30 +128,32 @@ impl Event {
 
     /// Parse an event from a JSON line
     pub fn from_json(line: &str) -> Result<Self> {
-        let value: serde_json::Value = serde_json::from_str(line)
-            .context("Failed to parse event JSON")?;
+        let value: serde_json::Value =
+            serde_json::from_str(line).context("Failed to parse event JSON")?;
 
-        let arr = value.as_array()
-            .context("Event must be a JSON array")?;
+        let arr = value.as_array().context("Event must be a JSON array")?;
 
         if arr.len() < 3 {
             bail!("Event array must have at least 3 elements");
         }
 
-        let time = arr[0].as_f64()
-            .context("Event time must be a number")?;
+        let time = arr[0].as_f64().context("Event time must be a number")?;
 
-        let code = arr[1].as_str()
-            .context("Event type must be a string")?;
+        let code = arr[1].as_str().context("Event type must be a string")?;
 
-        let event_type = EventType::from_code(code)
-            .with_context(|| format!("Unknown event type: {}", code))?;
+        let event_type =
+            EventType::from_code(code).with_context(|| format!("Unknown event type: {}", code))?;
 
-        let data = arr[2].as_str()
+        let data = arr[2]
+            .as_str()
             .context("Event data must be a string")?
             .to_string();
 
-        Ok(Event { time, event_type, data })
+        Ok(Event {
+            time,
+            event_type,
+            data,
+        })
     }
 
     /// Convert event to JSON string
@@ -160,7 +162,8 @@ impl Event {
             self.time,
             self.event_type.to_code(),
             self.data
-        ])).unwrap()
+        ]))
+        .unwrap()
     }
 }
 
@@ -183,8 +186,8 @@ impl AsciicastFile {
     /// Parse an asciicast v3 file from a path
     pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
-        let file = fs::File::open(path)
-            .with_context(|| format!("Failed to open file: {:?}", path))?;
+        let file =
+            fs::File::open(path).with_context(|| format!("Failed to open file: {:?}", path))?;
         let reader = BufReader::new(file);
 
         Self::parse_reader(reader)
@@ -200,18 +203,21 @@ impl AsciicastFile {
             .context("File is empty")?
             .context("Failed to read header line")?;
 
-        let header: Header = serde_json::from_str(&header_line)
-            .context("Failed to parse header")?;
+        let header: Header =
+            serde_json::from_str(&header_line).context("Failed to parse header")?;
 
         if header.version != 3 {
-            bail!("Only asciicast v3 format is supported (got version {})", header.version);
+            bail!(
+                "Only asciicast v3 format is supported (got version {})",
+                header.version
+            );
         }
 
         // Remaining lines are events
         let mut events = Vec::new();
         for (line_num, line_result) in lines.enumerate() {
-            let line = line_result
-                .with_context(|| format!("Failed to read line {}", line_num + 2))?;
+            let line =
+                line_result.with_context(|| format!("Failed to read line {}", line_num + 2))?;
 
             if line.trim().is_empty() {
                 continue;
@@ -234,8 +240,8 @@ impl AsciicastFile {
     /// Write the asciicast file to a path
     pub fn write<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-        let mut file = fs::File::create(path)
-            .with_context(|| format!("Failed to create file: {:?}", path))?;
+        let mut file =
+            fs::File::create(path).with_context(|| format!("Failed to create file: {:?}", path))?;
 
         self.write_to(&mut file)
     }
@@ -243,8 +249,8 @@ impl AsciicastFile {
     /// Write the asciicast file to a writer
     pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<()> {
         // Write header
-        let header_json = serde_json::to_string(&self.header)
-            .context("Failed to serialize header")?;
+        let header_json =
+            serde_json::to_string(&self.header).context("Failed to serialize header")?;
         writeln!(writer, "{}", header_json)?;
 
         // Write events

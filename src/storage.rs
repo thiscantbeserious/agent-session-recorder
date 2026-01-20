@@ -154,7 +154,7 @@ impl StorageManager {
                 let entry = entry?;
                 let path = entry.path();
 
-                if path.extension().map_or(false, |ext| ext == "cast") {
+                if path.extension().is_some_and(|ext| ext == "cast") {
                     let metadata = fs::metadata(&path)?;
                     let modified: DateTime<Local> = metadata.modified()?.into();
                     let age_days = (now - modified).num_days();
@@ -260,7 +260,8 @@ impl StorageManager {
     /// Check if storage exceeds threshold
     pub fn exceeds_threshold(&self) -> Result<bool> {
         let stats = self.get_stats()?;
-        let threshold_bytes = (self.config.storage.size_threshold_gb * 1024.0 * 1024.0 * 1024.0) as u64;
+        let threshold_bytes =
+            (self.config.storage.size_threshold_gb * 1024.0 * 1024.0 * 1024.0) as u64;
         Ok(stats.total_size > threshold_bytes)
     }
 
@@ -437,8 +438,16 @@ mod tests {
         let summary = stats.summary();
 
         // Should show breakdown by agent
-        assert!(summary.contains("claude: 2"), "Summary should show claude: 2, got: {}", summary);
-        assert!(summary.contains("codex: 1"), "Summary should show codex: 1, got: {}", summary);
+        assert!(
+            summary.contains("claude: 2"),
+            "Summary should show claude: 2, got: {}",
+            summary
+        );
+        assert!(
+            summary.contains("codex: 1"),
+            "Summary should show codex: 1, got: {}",
+            summary
+        );
     }
 
     #[test]
@@ -453,7 +462,11 @@ mod tests {
         let summary = stats.summary();
 
         // Should show disk percentage (even if small/zero for test)
-        assert!(summary.contains("% of disk"), "Summary should show disk percentage, got: {}", summary);
+        assert!(
+            summary.contains("% of disk"),
+            "Summary should show disk percentage, got: {}",
+            summary
+        );
     }
 
     #[test]
@@ -468,9 +481,16 @@ mod tests {
         let summary = stats.summary();
 
         // Should show oldest session info
-        assert!(summary.contains("Oldest:"), "Summary should show oldest session, got: {}", summary);
-        assert!(summary.contains("days ago") || summary.contains("0 days"),
-            "Summary should show age in days, got: {}", summary);
+        assert!(
+            summary.contains("Oldest:"),
+            "Summary should show oldest session, got: {}",
+            summary
+        );
+        assert!(
+            summary.contains("days ago") || summary.contains("0 days"),
+            "Summary should show age in days, got: {}",
+            summary
+        );
     }
 
     #[test]
@@ -487,8 +507,11 @@ mod tests {
         let summary = stats.summary();
 
         // Should use human-readable size format (KiB, MiB, etc.)
-        assert!(summary.contains("KiB") || summary.contains("KB") || summary.contains("B"),
-            "Summary should use human-readable size, got: {}", summary);
+        assert!(
+            summary.contains("KiB") || summary.contains("KB") || summary.contains("B"),
+            "Summary should use human-readable size, got: {}",
+            summary
+        );
     }
 
     #[test]
@@ -505,7 +528,11 @@ mod tests {
         let summary = stats.summary();
 
         // Should show total count
-        assert!(summary.contains("3 total"), "Summary should show '3 total', got: {}", summary);
+        assert!(
+            summary.contains("3 total"),
+            "Summary should show '3 total', got: {}",
+            summary
+        );
     }
 
     #[test]
@@ -520,6 +547,9 @@ mod tests {
         let stats = manager.get_stats().unwrap();
 
         // Disk percentage should be >= 0 (might be 0 for tiny files on large disk)
-        assert!(stats.disk_percentage >= 0.0, "Disk percentage should be non-negative");
+        assert!(
+            stats.disk_percentage >= 0.0,
+            "Disk percentage should be non-negative"
+        );
     }
 }

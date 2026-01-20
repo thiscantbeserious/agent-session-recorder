@@ -33,7 +33,16 @@ cat .state/decisions.md          # Prior decisions
 3. Write minimal code to pass
 4. Run test → must pass
 5. Refactor if needed
-6. Commit
+6. **Format code:** `cargo fmt`
+7. **Lint code:** `cargo clippy`
+8. Commit
+
+**Code Quality Checks (MANDATORY before commit):**
+```bash
+cargo fmt          # Format code
+cargo clippy       # Lint for common issues
+cargo test         # Run all tests
+```
 
 #### 4. Testing / QA
 - All unit tests must pass: `cargo test`

@@ -13,6 +13,7 @@ use crate::storage::StorageManager;
 
 /// Session recorder that wraps asciinema
 pub struct Recorder {
+    #[allow(dead_code)]
     config: Config,
     storage: StorageManager,
     interrupted: Arc<AtomicBool>,
@@ -135,7 +136,10 @@ impl Recorder {
 
     /// Prompt user to rename the session file
     fn prompt_rename(&self, filepath: &PathBuf, original_filename: &str) -> Result<()> {
-        print!("Session complete. Enter a name (or press Enter to keep '{}'): ", original_filename);
+        print!(
+            "Session complete. Enter a name (or press Enter to keep '{}'): ",
+            original_filename
+        );
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -151,8 +155,7 @@ impl Recorder {
             if new_filepath.exists() {
                 println!("File '{}' already exists. Keeping original.", new_filename);
             } else {
-                std::fs::rename(filepath, &new_filepath)
-                    .context("Failed to rename file")?;
+                std::fs::rename(filepath, &new_filepath).context("Failed to rename file")?;
                 println!("Saved as: {}", new_filename);
             }
         }
@@ -166,7 +169,11 @@ impl Recorder {
             let stats = self.storage.get_stats()?;
             eprintln!();
             eprintln!("⚠️  Storage threshold exceeded!");
-            eprintln!("   Current: {} ({} sessions)", stats.size_human(), stats.session_count);
+            eprintln!(
+                "   Current: {} ({} sessions)",
+                stats.size_human(),
+                stats.session_count
+            );
             eprintln!("   Run 'asr cleanup' to free space.");
         }
         Ok(())

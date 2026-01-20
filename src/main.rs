@@ -189,11 +189,18 @@ fn cmd_cleanup(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()
     let stats = storage.get_stats()?;
 
     // Count old sessions (older than configured threshold)
-    let old_count = sessions.iter().filter(|s| s.age_days > age_threshold as i64).count();
+    let old_count = sessions
+        .iter()
+        .filter(|s| s.age_days > age_threshold as i64)
+        .count();
 
     // Print header with breakdown by agent
     println!("=== Agent Session Cleanup ===");
-    println!("Storage: {} ({:.1}% of disk)", stats.size_human(), stats.disk_percentage);
+    println!(
+        "Storage: {} ({:.1}% of disk)",
+        stats.size_human(),
+        stats.disk_percentage
+    );
 
     // Show agent breakdown
     let agents_summary: Vec<String> = stats
@@ -202,7 +209,11 @@ fn cmd_cleanup(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()
         .map(|(agent, count)| format!("{}: {}", agent, count))
         .collect();
     if !agents_summary.is_empty() {
-        println!("   Sessions: {} total ({})", stats.session_count, agents_summary.join(", "));
+        println!(
+            "   Sessions: {} total ({})",
+            stats.session_count,
+            agents_summary.join(", ")
+        );
     }
     println!();
 
@@ -237,7 +248,11 @@ fn cmd_cleanup(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()
 
     // Display up to 15 sessions in a formatted table
     for (i, session) in sessions.iter().take(15).enumerate() {
-        let age_marker = if session.age_days > age_threshold as i64 { "*" } else { " " };
+        let age_marker = if session.age_days > age_threshold as i64 {
+            "*"
+        } else {
+            " "
+        };
         println!(
             "{:>3}  | {:>3}d{} | {:11} | {:>10} | {}",
             i + 1,
@@ -262,7 +277,7 @@ fn cmd_cleanup(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()
             old_count, age_threshold
         )
     } else {
-        format!("Delete: [number], 'all', or 0 to cancel: ")
+        "Delete: [number], 'all', or 0 to cancel: ".to_string()
     };
     print!("{}", prompt);
     io::stdout().flush()?;
@@ -303,7 +318,11 @@ fn cmd_cleanup(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()
     let total_size: u64 = to_delete.iter().map(|s| s.size).sum();
 
     println!();
-    println!("Will delete {} sessions ({}):", to_delete.len(), humansize::format_size(total_size, humansize::BINARY));
+    println!(
+        "Will delete {} sessions ({}):",
+        to_delete.len(),
+        humansize::format_size(total_size, humansize::BINARY)
+    );
     for session in to_delete.iter().take(10) {
         println!("  - {} ({})", session.filename, session.agent);
     }
@@ -364,7 +383,14 @@ fn cmd_list(agent: Option<&str>) -> Result<()> {
     sessions.reverse();
 
     // Print summary header
-    if agent.is_none() {
+    if let Some(agent_name) = &agent {
+        // Just show count for filtered view
+        println!(
+            "Sessions: {} (filtered by agent: {})",
+            sessions.len(),
+            agent_name
+        );
+    } else {
         // Show full summary with agent breakdown
         let stats = storage.get_stats()?;
         let mut agents: Vec<_> = stats.sessions_by_agent.iter().collect();
@@ -376,11 +402,12 @@ fn cmd_list(agent: Option<&str>) -> Result<()> {
         if agents_summary.is_empty() {
             println!("Sessions: {} total", stats.session_count);
         } else {
-            println!("Sessions: {} total ({})", stats.session_count, agents_summary.join(", "));
+            println!(
+                "Sessions: {} total ({})",
+                stats.session_count,
+                agents_summary.join(", ")
+            );
         }
-    } else {
-        // Just show count for filtered view
-        println!("Sessions: {} (filtered by agent: {})", sessions.len(), agent.unwrap());
     }
     println!();
 
@@ -525,9 +552,7 @@ fn cmd_skills_list() -> Result<()> {
     let dirs = asr::skills::skill_directories();
     let missing: Vec<_> = dirs
         .iter()
-        .filter(|dir| {
-            !installed.iter().any(|s| s.path.starts_with(dir))
-        })
+        .filter(|dir| !installed.iter().any(|s| s.path.starts_with(dir)))
         .collect();
 
     if !missing.is_empty() {
@@ -555,9 +580,7 @@ fn cmd_skills_install() -> Result<()> {
             println!("Installed {} skill files.", installed.len());
             Ok(())
         }
-        Err(e) => {
-            Err(anyhow::anyhow!("Failed to install skills: {}", e))
-        }
+        Err(e) => Err(anyhow::anyhow!("Failed to install skills: {}", e)),
     }
 }
 
@@ -577,9 +600,7 @@ fn cmd_skills_uninstall() -> Result<()> {
             }
             Ok(())
         }
-        Err(e) => {
-            Err(anyhow::anyhow!("Failed to remove skills: {}", e))
-        }
+        Err(e) => Err(anyhow::anyhow!("Failed to remove skills: {}", e)),
     }
 }
 
@@ -659,9 +680,8 @@ mod tests {
 
     #[test]
     fn cli_cleanup_parses_with_both_flags() {
-        let cli = Cli::try_parse_from([
-            "asr", "cleanup", "--agent", "codex", "--older-than", "60"
-        ]).unwrap();
+        let cli = Cli::try_parse_from(["asr", "cleanup", "--agent", "codex", "--older-than", "60"])
+            .unwrap();
         match cli.command {
             Commands::Cleanup { agent, older_than } => {
                 assert_eq!(agent, Some("codex".to_string()));

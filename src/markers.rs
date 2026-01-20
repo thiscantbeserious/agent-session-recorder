@@ -9,11 +9,7 @@ pub struct MarkerManager;
 
 impl MarkerManager {
     /// Add a marker to an asciicast file at the specified timestamp
-    pub fn add_marker<P: AsRef<Path>>(
-        path: P,
-        timestamp: f64,
-        label: &str,
-    ) -> Result<()> {
+    pub fn add_marker<P: AsRef<Path>>(path: P, timestamp: f64, label: &str) -> Result<()> {
         let path = path.as_ref();
 
         if timestamp < 0.0 {
@@ -32,11 +28,7 @@ impl MarkerManager {
     }
 
     /// Add a marker to an asciicast file in memory
-    pub fn add_marker_to_cast(
-        cast: &mut AsciicastFile,
-        timestamp: f64,
-        label: &str,
-    ) -> Result<()> {
+    pub fn add_marker_to_cast(cast: &mut AsciicastFile, timestamp: f64, label: &str) -> Result<()> {
         let index = cast.find_insertion_index(timestamp);
         let relative_time = cast.calculate_relative_time(index, timestamp);
 
@@ -117,8 +109,8 @@ impl std::fmt::Display for MarkerInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     fn sample_cast() -> &'static str {
         r#"{"version":3,"term":{"cols":80,"rows":24}}
@@ -188,7 +180,11 @@ mod tests {
         assert_eq!(modified_cast.events.len(), original_event_count + 1);
 
         // Check that original output events are still present
-        let outputs: Vec<_> = modified_cast.events.iter().filter(|e| e.is_output()).collect();
+        let outputs: Vec<_> = modified_cast
+            .events
+            .iter()
+            .filter(|e| e.is_output())
+            .collect();
         assert_eq!(outputs.len(), 3);
     }
 
