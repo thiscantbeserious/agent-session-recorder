@@ -30,9 +30,8 @@ git log --oneline -5
 
 <!-- Keep this minimal - just what's currently being worked on -->
 
-**Current focus:** E2E test refactor (PR 2 of bugfix)
+**Current focus:** None (phase complete)
 
-**Recently completed:** Shell wrapper & prompt fixes (PR #16 merged)
-
-**Remaining:**
-- E2E test refactor to catch shell wrapper bugs
+**Recently completed:**
+- E2E test refactor into category files (PR #17 merged)
+- Shell wrapper & prompt fixes (PR #16 merged)
