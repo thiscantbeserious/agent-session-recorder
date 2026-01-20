@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::io::{self, BufRead, Write};
 
-use agr::{Config, MarkerManager, Recorder, StorageManager};
+use agr::{Analyzer, Config, MarkerManager, Recorder, StorageManager};
 
 #[derive(Parser)]
 #[command(name = "agr")]
@@ -118,6 +118,33 @@ EXAMPLES:
     List {
         /// Filter by agent name
         #[arg(help = "Filter sessions by agent name")]
+        agent: Option<String>,
+    },
+
+    /// Analyze a recording with AI
+    #[command(long_about = "Analyze a recording file using an AI agent.
+
+The analyzer reads the cast file, identifies key moments (errors, decisions,
+milestones), and adds markers using 'agr marker add'. This is the same
+analysis that runs automatically when auto_analyze is enabled.
+
+The default agent is configured in ~/.config/agr/config.toml under
+[recording].analysis_agent. Use --agent to override for a single run.
+
+EXAMPLES:
+    agr analyze session.cast              Analyze with default agent
+    agr analyze session.cast --agent codex    Override agent for this run
+
+SUPPORTED AGENTS:
+    claude      Claude Code CLI
+    codex       OpenAI Codex CLI
+    gemini-cli  Google Gemini CLI")]
+    Analyze {
+        /// Path to the .cast file to analyze
+        #[arg(help = "Path to the .cast recording file")]
+        file: String,
+        /// Override the configured analysis agent
+        #[arg(long, short, help = "Agent to use (overrides config)")]
         agent: Option<String>,
     },
 
@@ -388,6 +415,7 @@ fn main() -> Result<()> {
         Commands::Status => cmd_status(),
         Commands::Cleanup { agent, older_than } => cmd_cleanup(agent.as_deref(), older_than),
         Commands::List { agent } => cmd_list(agent.as_deref()),
+        Commands::Analyze { file, agent } => cmd_analyze(&file, agent.as_deref()),
         Commands::Marker(cmd) => match cmd {
             MarkerCommands::Add { file, time, label } => cmd_marker_add(&file, time, &label),
             MarkerCommands::List { file } => cmd_marker_list(&file),
@@ -426,6 +454,38 @@ fn cmd_record(agent: &str, name: Option<&str>, args: &[String]) -> Result<()> {
 
     let mut recorder = Recorder::new(config);
     recorder.record(agent, name, args)
+}
+
+fn cmd_analyze(file: &str, agent_override: Option<&str>) -> Result<()> {
+    use std::path::PathBuf;
+
+    let config = Config::load()?;
+    let agent = agent_override.unwrap_or(&config.recording.analysis_agent);
+
+    // Check file exists
+    let filepath = PathBuf::from(file);
+    if !filepath.exists() {
+        anyhow::bail!("File not found: {}", file);
+    }
+
+    // Check file has .cast extension
+    if filepath.extension().and_then(|e| e.to_str()) != Some("cast") {
+        eprintln!("Warning: File does not have .cast extension");
+    }
+
+    // Check agent is installed
+    if !Analyzer::is_agent_installed(agent) {
+        anyhow::bail!(
+            "Analysis agent '{}' is not installed. Install it or use --agent to specify another.",
+            agent
+        );
+    }
+
+    println!("Analyzing {} with {}...", file, agent);
+    let analyzer = Analyzer::new(agent);
+    analyzer.analyze(&filepath)?;
+    println!("Analysis complete.");
+    Ok(())
 }
 
 fn cmd_status() -> Result<()> {
@@ -1039,6 +1099,55 @@ mod tests {
         match cli.command {
             Commands::Shell(ShellCommands::Uninstall) => {}
             _ => panic!("Expected Shell Uninstall command"),
+        }
+    }
+
+    #[test]
+    fn cli_analyze_parses_with_file_only() {
+        let cli = Cli::try_parse_from(["agr", "analyze", "session.cast"]).unwrap();
+        match cli.command {
+            Commands::Analyze { file, agent } => {
+                assert_eq!(file, "session.cast");
+                assert!(agent.is_none());
+            }
+            _ => panic!("Expected Analyze command"),
+        }
+    }
+
+    #[test]
+    fn cli_analyze_parses_with_agent_flag() {
+        let cli =
+            Cli::try_parse_from(["agr", "analyze", "session.cast", "--agent", "codex"]).unwrap();
+        match cli.command {
+            Commands::Analyze { file, agent } => {
+                assert_eq!(file, "session.cast");
+                assert_eq!(agent, Some("codex".to_string()));
+            }
+            _ => panic!("Expected Analyze command"),
+        }
+    }
+
+    #[test]
+    fn cli_analyze_parses_with_short_agent_flag() {
+        let cli = Cli::try_parse_from(["agr", "analyze", "session.cast", "-a", "claude"]).unwrap();
+        match cli.command {
+            Commands::Analyze { file, agent } => {
+                assert_eq!(file, "session.cast");
+                assert_eq!(agent, Some("claude".to_string()));
+            }
+            _ => panic!("Expected Analyze command"),
+        }
+    }
+
+    #[test]
+    fn cli_analyze_parses_with_path() {
+        let cli = Cli::try_parse_from(["agr", "analyze", "/path/to/session.cast"]).unwrap();
+        match cli.command {
+            Commands::Analyze { file, agent } => {
+                assert_eq!(file, "/path/to/session.cast");
+                assert!(agent.is_none());
+            }
+            _ => panic!("Expected Analyze command"),
         }
     }
 }

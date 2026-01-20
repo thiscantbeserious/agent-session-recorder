@@ -93,9 +93,15 @@ analysis_agent = "claude"  # or "codex" or "gemini-cli"
 
 When enabled, AGR spawns the configured agent after recording to analyze the session and add markers at interesting points (errors, decisions, milestones).
 
-**Manual analysis** (if you prefer):
+**Manual analysis** (if auto_analyze is disabled):
 ```bash
-# Read the cast file and identify interesting moments, then add markers:
+# Run AI analysis on an existing recording
+agr analyze session.cast
+
+# Or use a different agent than configured
+agr analyze session.cast --agent codex
+
+# Or add markers manually
 agr marker add session.cast 45.2 "Build failed: missing dependency"
 agr marker add session.cast 120.5 "Deployment completed successfully"
 ```
@@ -227,10 +233,13 @@ agr agents no-wrap remove codex  # Re-enable auto-wrap for an agent
 | Command | Description |
 |---------|-------------|
 | `agr record <agent> [-- args]` | Record a session. Args after `--` are passed to the agent. |
+| `agr analyze <file> [--agent <name>]` | Analyze a recording with AI and add markers |
 
-**Example:**
+**Examples:**
 ```bash
 agr record claude -- --model opus
+agr analyze ~/recorded_agent_sessions/claude/session.cast
+agr analyze session.cast --agent codex
 ```
 
 ### Session Management
