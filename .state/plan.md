@@ -1202,16 +1202,16 @@ The shell integration should use clear markers for easy updates/removal:
 ```
 
 #### Tasks
-- [ ] **Global auto-wrap toggle** - Config option `[shell] auto_wrap = true/false`
-- [ ] **Shell management CLI:**
+- [x] **Global auto-wrap toggle** - Config option `[shell] auto_wrap = true/false` - PR #10
+- [x] **Shell management CLI:** - PR #10
   - `asr shell status` - Show if shell integration is active, which RC file
   - `asr shell install` - Add marked section to .zshrc/.bashrc
   - `asr shell uninstall` - Remove marked section cleanly
 - [ ] **Auto-analyze hook** - Option to run `/asr-analyze` automatically after session ends
   - Config: `[recording] auto_analyze = true/false`
   - Calls the AI agent to analyze and add markers
-- [ ] **Update install.sh** - Use marked sections instead of simple append
-- [ ] **Update uninstall.sh** - Properly remove marked sections from RC files
+- [x] **Update install.sh** - Use marked sections instead of simple append - PR #10
+- [x] **Update uninstall.sh** - Properly remove marked sections from RC files - PR #10
 - [ ] **Per-agent wrap control** - Optional: disable wrapping for specific agents
 
 **Definition of Done:**
