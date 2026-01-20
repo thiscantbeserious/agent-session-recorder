@@ -141,7 +141,6 @@ Fresh session that validates implementation without context pollution.
 
 .state-templates/            # Templates (separate from active state)
 ├── INDEX.md
-├── coordinator.md
 ├── current-phase.md
 ├── phase-progress.md
 └── decisions.md
