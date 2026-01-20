@@ -211,6 +211,18 @@ Track progress via GitHub PRs:
 
 ## State Maintenance
 
+### During Active Work
+
+Keep `.state/INDEX.md` current as you work:
+- Update "Current focus" when starting a new task
+- Update "Blocked on" if you hit blockers
+- This helps agents joining mid-session understand context
+
+```bash
+# Example: Starting work on a task
+sed -i '' 's/Current focus:.*/Current focus: Implementing feature X (PR #N)/' .state/INDEX.md
+```
+
 ### After Completing a Phase
 
 **CRITICAL:** After merging PRs and completing a phase, the coordinator MUST:
