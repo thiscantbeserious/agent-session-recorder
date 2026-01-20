@@ -130,7 +130,7 @@ rm .state/locks/task-name.lock
 
 - Records sessions to `~/recorded_agent_sessions/<agent>/`
 - Uses asciicast v3 format with native marker support
-- AI agents analyze recordings and add markers via `/agr-analyze` skill
+- AI agents can analyze recordings via `agr analyze <file>` command
 
 ## Key Source Files
 
@@ -148,6 +148,7 @@ rm .state/locks/task-name.lock
 
 ```
 agr record <agent> [-- args...]   # Start recording session
+agr analyze <file> [--agent <name>]  # Analyze recording with AI
 agr status                        # Show storage stats
 agr cleanup                       # Interactive cleanup
 agr list [agent]                  # List sessions
@@ -177,7 +178,13 @@ analysis_agent = "claude"  # or "codex" or "gemini-cli"
 
 **Manual analysis** (if auto_analyze is disabled):
 ```bash
-# Read the cast file and identify interesting moments, then:
+# Run AI analysis on an existing recording
+agr analyze session.cast
+
+# Or use a different agent
+agr analyze session.cast --agent codex
+
+# Or add markers manually
 agr marker add session.cast 45.2 "Build failed: missing dependency"
 agr marker add session.cast 120.5 "Deployment completed successfully"
 ```
