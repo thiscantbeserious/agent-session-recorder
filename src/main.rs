@@ -98,6 +98,31 @@ enum AgentCommands {
         /// Agent name
         name: String,
     },
+    /// Check if an agent should be wrapped (for shell integration)
+    #[command(name = "is-wrapped")]
+    IsWrapped {
+        /// Agent name
+        name: String,
+    },
+    /// Manage agents that should not be auto-wrapped
+    #[command(subcommand)]
+    NoWrap(NoWrapCommands),
+}
+
+#[derive(Subcommand)]
+enum NoWrapCommands {
+    /// List agents that are not auto-wrapped
+    List,
+    /// Add an agent to the no-wrap list
+    Add {
+        /// Agent name
+        name: String,
+    },
+    /// Remove an agent from the no-wrap list
+    Remove {
+        /// Agent name
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -144,6 +169,12 @@ fn main() -> Result<()> {
             AgentCommands::List => cmd_agents_list(),
             AgentCommands::Add { name } => cmd_agents_add(&name),
             AgentCommands::Remove { name } => cmd_agents_remove(&name),
+            AgentCommands::IsWrapped { name } => cmd_agents_is_wrapped(&name),
+            AgentCommands::NoWrap(nowrap_cmd) => match nowrap_cmd {
+                NoWrapCommands::List => cmd_agents_nowrap_list(),
+                NoWrapCommands::Add { name } => cmd_agents_nowrap_add(&name),
+                NoWrapCommands::Remove { name } => cmd_agents_nowrap_remove(&name),
+            },
         },
         Commands::Config(cmd) => match cmd {
             ConfigCommands::Show => cmd_config_show(),
@@ -508,6 +539,59 @@ fn cmd_agents_remove(name: &str) -> Result<()> {
         println!("Removed agent: {}", name);
     } else {
         println!("Agent '{}' was not configured.", name);
+    }
+
+    Ok(())
+}
+
+fn cmd_agents_is_wrapped(name: &str) -> Result<()> {
+    let config = Config::load()?;
+
+    if config.should_wrap_agent(name) {
+        // Exit code 0 = should wrap
+        std::process::exit(0);
+    } else {
+        // Exit code 1 = should not wrap
+        std::process::exit(1);
+    }
+}
+
+fn cmd_agents_nowrap_list() -> Result<()> {
+    let config = Config::load()?;
+
+    if config.agents.no_wrap.is_empty() {
+        println!("No agents in no-wrap list. All enabled agents will be auto-wrapped.");
+    } else {
+        println!("Agents not auto-wrapped:");
+        for agent in &config.agents.no_wrap {
+            println!("  {}", agent);
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_agents_nowrap_add(name: &str) -> Result<()> {
+    let mut config = Config::load()?;
+
+    if config.add_no_wrap(name) {
+        config.save()?;
+        println!("Added '{}' to no-wrap list. It will not be auto-wrapped.", name);
+    } else {
+        println!("Agent '{}' is already in the no-wrap list.", name);
+    }
+
+    Ok(())
+}
+
+fn cmd_agents_nowrap_remove(name: &str) -> Result<()> {
+    let mut config = Config::load()?;
+
+    if config.remove_no_wrap(name) {
+        config.save()?;
+        println!("Removed '{}' from no-wrap list. It will now be auto-wrapped.", name);
+    } else {
+        println!("Agent '{}' was not in the no-wrap list.", name);
     }
 
     Ok(())

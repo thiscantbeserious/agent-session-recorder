@@ -118,15 +118,20 @@ impl Recorder {
 
         println!();
 
-        // Handle exit
-        if self.interrupted.load(Ordering::SeqCst) {
+        // Handle exit and get final filepath (may have been renamed)
+        let final_filepath = if self.interrupted.load(Ordering::SeqCst) {
             println!("Session interrupted. Saved as: {}", filename);
+            filepath.clone()
         } else if status.success() {
             // Prompt for rename on normal exit
-            self.prompt_rename(&filepath, &filename)?;
+            self.prompt_rename(&filepath, &filename)?
         } else {
             println!("Session ended with error. Saved as: {}", filename);
-        }
+            filepath.clone()
+        };
+
+        // Show auto-analyze hint if enabled
+        self.show_auto_analyze_hint(&final_filepath);
 
         // Show storage warning if threshold exceeded
         self.show_storage_warning()?;
@@ -134,8 +139,8 @@ impl Recorder {
         Ok(())
     }
 
-    /// Prompt user to rename the session file
-    fn prompt_rename(&self, filepath: &PathBuf, original_filename: &str) -> Result<()> {
+    /// Prompt user to rename the session file, returns final filepath
+    fn prompt_rename(&self, filepath: &PathBuf, original_filename: &str) -> Result<PathBuf> {
         print!(
             "Session complete. Enter a name (or press Enter to keep '{}'): ",
             original_filename
@@ -148,19 +153,20 @@ impl Recorder {
 
         if input.is_empty() {
             println!("Keeping filename: {}", original_filename);
+            Ok(filepath.clone())
         } else {
             let new_filename = Self::sanitize_filename(input);
             let new_filepath = filepath.parent().unwrap().join(&new_filename);
 
             if new_filepath.exists() {
                 println!("File '{}' already exists. Keeping original.", new_filename);
+                Ok(filepath.clone())
             } else {
                 std::fs::rename(filepath, &new_filepath).context("Failed to rename file")?;
                 println!("Saved as: {}", new_filename);
+                Ok(new_filepath)
             }
         }
-
-        Ok(())
     }
 
     /// Show storage warning if threshold exceeded
@@ -177,6 +183,15 @@ impl Recorder {
             eprintln!("   Run 'asr cleanup' to free space.");
         }
         Ok(())
+    }
+
+    /// Show auto-analyze hint if enabled in config
+    fn show_auto_analyze_hint(&self, filepath: &PathBuf) {
+        if self.config.recording.auto_analyze {
+            println!();
+            println!("💡 Tip: Analyze this session with your AI agent:");
+            println!("   /asr-analyze {}", filepath.display());
+        }
     }
 }
 

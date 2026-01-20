@@ -324,6 +324,70 @@ else
     cat "$HOME/.zshrc"
 fi
 
+# Test 26: Agents no-wrap list (empty by default)
+echo "--- Test 26: Agents no-wrap list (empty) ---"
+NOWRAP_OUTPUT=$($ASR agents no-wrap list 2>&1)
+if echo "$NOWRAP_OUTPUT" | /usr/bin/grep -q "No agents in no-wrap list"; then
+    pass "No-wrap list empty by default"
+else
+    fail "No-wrap list not empty: $NOWRAP_OUTPUT"
+fi
+
+# Test 27: Agents no-wrap add
+echo "--- Test 27: Agents no-wrap add ---"
+$ASR agents no-wrap add test-nowrap-agent
+NOWRAP_OUTPUT=$($ASR agents no-wrap list 2>&1)
+if echo "$NOWRAP_OUTPUT" | /usr/bin/grep -q "test-nowrap-agent"; then
+    pass "Agent added to no-wrap list"
+else
+    fail "Agent not in no-wrap list: $NOWRAP_OUTPUT"
+fi
+
+# Test 28: Agents is-wrapped (agent in no-wrap should return exit 1)
+echo "--- Test 28: Agents is-wrapped respects no-wrap list ---"
+if $ASR agents is-wrapped test-nowrap-agent 2>/dev/null; then
+    fail "is-wrapped returned 0 for agent in no-wrap list"
+else
+    pass "is-wrapped correctly returns 1 for agent in no-wrap list"
+fi
+
+# Test 29: Agents is-wrapped (enabled agent should return exit 0)
+echo "--- Test 29: Agents is-wrapped for enabled agent ---"
+$ASR agents add wrap-test-agent
+if $ASR agents is-wrapped wrap-test-agent 2>/dev/null; then
+    pass "is-wrapped returns 0 for enabled agent"
+else
+    fail "is-wrapped returned 1 for enabled agent"
+fi
+
+# Test 30: Agents no-wrap remove
+echo "--- Test 30: Agents no-wrap remove ---"
+$ASR agents no-wrap remove test-nowrap-agent
+NOWRAP_OUTPUT=$($ASR agents no-wrap list 2>&1)
+if echo "$NOWRAP_OUTPUT" | /usr/bin/grep -q "No agents in no-wrap list"; then
+    pass "Agent removed from no-wrap list"
+else
+    fail "Agent still in no-wrap list: $NOWRAP_OUTPUT"
+fi
+
+# Test 31: Config shows recording.auto_analyze
+echo "--- Test 31: Config shows recording options ---"
+CONFIG=$($ASR config show)
+if echo "$CONFIG" | /usr/bin/grep -q "auto_analyze"; then
+    pass "Config shows auto_analyze option"
+else
+    fail "Config missing auto_analyze: $CONFIG"
+fi
+
+# Test 32: Config shows agents.no_wrap
+echo "--- Test 32: Config shows no_wrap option ---"
+CONFIG=$($ASR config show)
+if echo "$CONFIG" | /usr/bin/grep -q "no_wrap"; then
+    pass "Config shows no_wrap option"
+else
+    fail "Config missing no_wrap: $CONFIG"
+fi
+
 echo
 echo "=== Test Summary ==="
 echo "Passed: $PASS"

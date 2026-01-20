@@ -14,6 +14,8 @@ pub struct Config {
     pub agents: AgentsConfig,
     #[serde(default)]
     pub shell: ShellConfig,
+    #[serde(default)]
+    pub recording: RecordingConfig,
 }
 
 /// Shell integration configuration
@@ -40,6 +42,20 @@ impl Default for ShellConfig {
     }
 }
 
+/// Recording configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecordingConfig {
+    /// Whether to show auto-analyze hint after recording
+    #[serde(default)]
+    pub auto_analyze: bool,
+}
+
+impl Default for RecordingConfig {
+    fn default() -> Self {
+        Self { auto_analyze: false }
+    }
+}
+
 /// Storage configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageConfig {
@@ -56,6 +72,9 @@ pub struct StorageConfig {
 pub struct AgentsConfig {
     #[serde(default = "default_agents")]
     pub enabled: Vec<String>,
+    /// Agents that should not be auto-wrapped (even if in enabled list)
+    #[serde(default)]
+    pub no_wrap: Vec<String>,
 }
 
 fn default_directory() -> String {
@@ -92,6 +111,7 @@ impl Default for AgentsConfig {
     fn default() -> Self {
         Self {
             enabled: default_agents(),
+            no_wrap: Vec::new(),
         }
     }
 }
@@ -174,6 +194,31 @@ impl Config {
     pub fn is_agent_enabled(&self, name: &str) -> bool {
         self.agents.enabled.contains(&name.to_string())
     }
+
+    /// Check if an agent should be wrapped (enabled and not in no_wrap list)
+    pub fn should_wrap_agent(&self, name: &str) -> bool {
+        self.shell.auto_wrap
+            && self.is_agent_enabled(name)
+            && !self.agents.no_wrap.contains(&name.to_string())
+    }
+
+    /// Add an agent to the no_wrap list
+    pub fn add_no_wrap(&mut self, name: &str) -> bool {
+        let name = name.to_string();
+        if !self.agents.no_wrap.contains(&name) {
+            self.agents.no_wrap.push(name);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Remove an agent from the no_wrap list
+    pub fn remove_no_wrap(&mut self, name: &str) -> bool {
+        let initial_len = self.agents.no_wrap.len();
+        self.agents.no_wrap.retain(|a| a != name);
+        self.agents.no_wrap.len() < initial_len
+    }
 }
 
 #[cfg(test)]
@@ -192,6 +237,10 @@ mod tests {
         // Shell config defaults
         assert!(config.shell.auto_wrap);
         assert!(config.shell.script_path.is_none());
+        // Recording config defaults
+        assert!(!config.recording.auto_analyze);
+        // Agents no_wrap defaults
+        assert!(config.agents.no_wrap.is_empty());
     }
 
     #[test]
@@ -266,5 +315,97 @@ directory = "~/custom"
         let path = config.storage_directory();
         assert!(!path.to_string_lossy().contains('~'));
         assert!(path.to_string_lossy().contains("recorded_agent_sessions"));
+    }
+
+    #[test]
+    fn should_wrap_agent_respects_enabled_list() {
+        let config = Config::default();
+        assert!(config.should_wrap_agent("claude"));
+        assert!(!config.should_wrap_agent("unknown-agent"));
+    }
+
+    #[test]
+    fn should_wrap_agent_respects_no_wrap_list() {
+        let mut config = Config::default();
+        assert!(config.should_wrap_agent("claude"));
+        config.add_no_wrap("claude");
+        assert!(!config.should_wrap_agent("claude"));
+    }
+
+    #[test]
+    fn should_wrap_agent_respects_auto_wrap_toggle() {
+        let mut config = Config::default();
+        assert!(config.should_wrap_agent("claude"));
+        config.shell.auto_wrap = false;
+        assert!(!config.should_wrap_agent("claude"));
+    }
+
+    #[test]
+    fn add_no_wrap_adds_new_agent() {
+        let mut config = Config::default();
+        assert!(config.add_no_wrap("test-agent"));
+        assert!(config.agents.no_wrap.contains(&"test-agent".to_string()));
+    }
+
+    #[test]
+    fn add_no_wrap_does_not_duplicate() {
+        let mut config = Config::default();
+        config.add_no_wrap("test-agent");
+        assert!(!config.add_no_wrap("test-agent"));
+        assert_eq!(
+            config
+                .agents
+                .no_wrap
+                .iter()
+                .filter(|a| *a == "test-agent")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn remove_no_wrap_removes_existing() {
+        let mut config = Config::default();
+        config.add_no_wrap("test-agent");
+        assert!(config.remove_no_wrap("test-agent"));
+        assert!(!config.agents.no_wrap.contains(&"test-agent".to_string()));
+    }
+
+    #[test]
+    fn remove_no_wrap_returns_false_for_nonexistent() {
+        let mut config = Config::default();
+        assert!(!config.remove_no_wrap("nonexistent"));
+    }
+
+    #[test]
+    fn recording_config_parses_from_toml() {
+        let toml_str = r#"
+[recording]
+auto_analyze = true
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.recording.auto_analyze);
+    }
+
+    #[test]
+    fn recording_config_defaults_when_missing() {
+        let toml_str = r#"
+[storage]
+directory = "~/custom"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(!config.recording.auto_analyze);
+    }
+
+    #[test]
+    fn no_wrap_config_parses_from_toml() {
+        let toml_str = r#"
+[agents]
+enabled = ["claude", "codex"]
+no_wrap = ["codex"]
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.should_wrap_agent("claude"));
+        assert!(!config.should_wrap_agent("codex"));
     }
 }

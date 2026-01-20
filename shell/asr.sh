@@ -1,6 +1,9 @@
 # Agent Session Recorder - Shell Integration
 # Source this file from your .zshrc or .bashrc
 
+# Mark that ASR shell integration is loaded
+export _ASR_LOADED=1
+
 # Only set up if asciinema is available and we're not already recording
 _asr_record_session() {
     local agent="$1"
@@ -20,6 +23,12 @@ _asr_record_session() {
 
     # Don't wrap if asr isn't available
     if ! command -v asr &>/dev/null; then
+        command "$agent" "$@"
+        return
+    fi
+
+    # Check if this agent should be wrapped (respects no_wrap list and auto_wrap toggle)
+    if ! asr agents is-wrapped "$agent" 2>/dev/null; then
         command "$agent" "$@"
         return
     fi
