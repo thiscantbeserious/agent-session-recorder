@@ -1139,7 +1139,7 @@ Log results to `.state/phase-N/test-results.md`
 
 **Definition of Done:** ✅ All complete. PR #1 merged.
 
-### Phase 2: Storage Management - IN PROGRESS
+### Phase 2: Storage Management - COMPLETE ✅
 **Goal:** Improve storage visibility and cleanup UX
 
 - [x] `asr status` - basic implementation exists
@@ -1147,9 +1147,10 @@ Log results to `.state/phase-N/test-results.md`
 - [x] `asr list` - basic implementation exists
 - [x] Improve `asr status` output (breakdown by agent, disk %) - PR #4
 - [x] Enhance `asr cleanup` UX (filtering, formatting, UTF-8 safe) - PR #5
-- [ ] Add storage threshold warnings after recording
+- [x] Add storage threshold warnings after recording (already implemented in Phase 1)
+- [x] Improve `asr list` output (table formatting, summary) - PR #6
 
-**Definition of Done:** Polished storage commands with better UX
+**Definition of Done:** ✅ All complete. Polished storage commands with better UX.
 
 ### Phase 3: Marker Support - MOSTLY COMPLETE
 **Goal:** AI-powered session analysis
