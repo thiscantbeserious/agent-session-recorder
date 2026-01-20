@@ -1,0 +1,4 @@
+{"version":3,"term":{"cols":80,"rows":24}}
+[0.5,"o","$ echo hello\r\n"]
+[0.1,"o","hello\r\n"]
+[0.2,"o","$ "]
