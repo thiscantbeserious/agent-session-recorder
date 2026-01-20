@@ -174,6 +174,93 @@ else
     fail "Recording took too long ($ELAPSED seconds), possible unintended analysis"
 fi
 
+# ============================================
+# agr analyze Command Tests
+# ============================================
+
+section "agr analyze Command Tests"
+
+# Test: agr analyze --help shows usage
+test_header "agr analyze --help shows usage"
+HELP_OUTPUT=$($AGR analyze --help 2>&1)
+if echo "$HELP_OUTPUT" | /usr/bin/grep -q "Analyze a recording" && \
+   echo "$HELP_OUTPUT" | /usr/bin/grep -q "\-\-agent"; then
+    pass "agr analyze --help shows usage with --agent option"
+else
+    fail "agr analyze --help missing expected content: $HELP_OUTPUT"
+fi
+
+# Test: agr analyze with nonexistent file fails gracefully
+test_header "agr analyze nonexistent.cast fails gracefully"
+reset_config
+OUTPUT=$($AGR analyze /nonexistent/path/to/file.cast 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
+if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "not found\|no such file"; then
+    pass "agr analyze fails gracefully with nonexistent file"
+else
+    fail "agr analyze should fail with nonexistent file (exit=$EXIT_CODE): $OUTPUT"
+fi
+
+# Test: agr analyze with missing agent fails gracefully
+test_header "agr analyze with missing agent fails gracefully"
+reset_config
+# First create a valid cast file
+$AGR record echo -- "test" </dev/null 2>&1
+CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
+if [ -f "$CAST_FILE" ]; then
+    OUTPUT=$($AGR analyze "$CAST_FILE" --agent definitely-not-a-real-agent-12345 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
+    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "not installed"; then
+        pass "agr analyze fails gracefully when agent not installed"
+    else
+        fail "agr analyze should fail with missing agent (exit=$EXIT_CODE): $OUTPUT"
+    fi
+else
+    skip "Could not create test cast file for analyze test"
+fi
+
+# Test: agr analyze uses default agent from config
+test_header "agr analyze uses default agent from config"
+reset_config
+create_config << 'TOMLEOF'
+[recording]
+auto_analyze = false
+analysis_agent = "fake-default-agent-xyz"
+TOMLEOF
+# Create a valid cast file if not already present
+$AGR record echo -- "test default agent" </dev/null 2>&1
+CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
+if [ -f "$CAST_FILE" ]; then
+    OUTPUT=$($AGR analyze "$CAST_FILE" 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
+    # Should fail because fake-default-agent-xyz is not installed
+    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "fake-default-agent-xyz.*not installed"; then
+        pass "agr analyze uses default agent from config"
+    else
+        fail "agr analyze should use config's analysis_agent (exit=$EXIT_CODE): $OUTPUT"
+    fi
+else
+    skip "Could not create test cast file for default agent test"
+fi
+
+# Test: agr analyze --agent overrides config
+test_header "agr analyze --agent overrides config"
+reset_config
+create_config << 'TOMLEOF'
+[recording]
+auto_analyze = false
+analysis_agent = "claude"
+TOMLEOF
+CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
+if [ -f "$CAST_FILE" ]; then
+    OUTPUT=$($AGR analyze "$CAST_FILE" --agent override-agent-test 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
+    # Should fail because override-agent-test is not installed, confirming it used the override
+    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "override-agent-test.*not installed"; then
+        pass "agr analyze --agent successfully overrides config"
+    else
+        fail "agr analyze --agent should override config (exit=$EXIT_CODE): $OUTPUT"
+    fi
+else
+    skip "Could not create test cast file for agent override test"
+fi
+
 # Clean up test config
 reset_config
 
