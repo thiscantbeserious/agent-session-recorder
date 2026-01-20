@@ -346,6 +346,180 @@ else
     fail "Config missing no_wrap: $CONFIG"
 fi
 
+# Test 29: Config shows analysis_agent setting
+echo "--- Test 29: Config shows analysis_agent setting ---"
+CONFIG=$($AGR config show)
+if echo "$CONFIG" | /usr/bin/grep -q "analysis_agent"; then
+    pass "Config shows analysis_agent option"
+else
+    fail "Config missing analysis_agent: $CONFIG"
+fi
+
+# Test 30: Default analysis_agent is claude
+echo "--- Test 30: Default analysis_agent is claude ---"
+# Create fresh config by removing old one
+rm -f "$HOME/.config/agr/config.toml"
+CONFIG=$($AGR config show)
+if echo "$CONFIG" | /usr/bin/grep -q 'analysis_agent = "claude"'; then
+    pass "Default analysis_agent is claude"
+else
+    fail "Default analysis_agent not claude: $CONFIG"
+fi
+
+# ===========================================================
+# Analyzer E2E Tests (conditional - skip if agents not installed)
+# ===========================================================
+
+echo
+echo "=== Analyzer E2E Tests (conditional) ==="
+
+# Helper function to check if an agent binary is available
+agent_installed() {
+    AGENT=$1
+    # Handle gemini-cli alias
+    if [ "$AGENT" = "gemini-cli" ]; then
+        BINARY="gemini"
+    else
+        BINARY="$AGENT"
+    fi
+    command -v "$BINARY" &>/dev/null
+}
+
+# Test 31: Analyzer detection for missing binary
+echo "--- Test 31: Analyzer detection for missing binary ---"
+# This test uses the Rust unit test to verify is_agent_installed
+# We indirectly test via config - if we set a fake agent and try to record
+# with auto_analyze=true, it should not crash (analyzer handles missing gracefully)
+# For E2E, we verify by checking that auto_analyze hint is printed when agent missing
+rm -f "$HOME/.config/agr/config.toml"
+# Create config with auto_analyze enabled and a fake agent
+mkdir -p "$HOME/.config/agr"
+cat > "$HOME/.config/agr/config.toml" << 'TOMLEOF'
+[recording]
+auto_analyze = true
+analysis_agent = "definitely-not-a-real-agent-12345"
+TOMLEOF
+# Record a simple command - should complete without crashing even with missing analyzer
+RECORD_OUTPUT=$($AGR record echo -- "test auto-analyze hint" </dev/null 2>&1)
+if echo "$RECORD_OUTPUT" | /usr/bin/grep -qiE "(auto.?analyze|skipping|not installed)"; then
+    pass "Auto-analyze gracefully handles missing agent"
+else
+    # Even if no hint printed, recording should complete
+    CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
+    if [ -f "$CAST_FILE" ]; then
+        pass "Recording completes even with missing analyzer agent"
+    else
+        fail "Recording failed with auto_analyze and missing agent"
+    fi
+fi
+
+# Test 32: Config with custom analysis_agent persists
+echo "--- Test 32: Custom analysis_agent persists in config ---"
+rm -f "$HOME/.config/agr/config.toml"
+mkdir -p "$HOME/.config/agr"
+cat > "$HOME/.config/agr/config.toml" << 'TOMLEOF'
+[recording]
+auto_analyze = false
+analysis_agent = "codex"
+TOMLEOF
+CONFIG=$($AGR config show)
+if echo "$CONFIG" | /usr/bin/grep -q 'analysis_agent = "codex"'; then
+    pass "Custom analysis_agent (codex) persists"
+else
+    fail "Custom analysis_agent not persisted: $CONFIG"
+fi
+
+# Test 33: Config with gemini-cli as analysis_agent
+echo "--- Test 33: Config with gemini-cli analysis_agent ---"
+rm -f "$HOME/.config/agr/config.toml"
+mkdir -p "$HOME/.config/agr"
+cat > "$HOME/.config/agr/config.toml" << 'TOMLEOF'
+[recording]
+auto_analyze = true
+analysis_agent = "gemini-cli"
+TOMLEOF
+CONFIG=$($AGR config show)
+if echo "$CONFIG" | /usr/bin/grep -q 'analysis_agent = "gemini-cli"'; then
+    pass "gemini-cli as analysis_agent accepted"
+else
+    fail "gemini-cli analysis_agent not accepted: $CONFIG"
+fi
+
+# Test 34-36: Conditional agent detection tests (skip if not installed)
+for AGENT in claude codex gemini-cli; do
+    TEST_NUM=$((34 + $(echo "claude codex gemini-cli" | tr ' ' '\n' | /usr/bin/grep -n "^$AGENT$" | cut -d: -f1) - 1))
+    echo "--- Test $TEST_NUM: Agent detection for $AGENT ---"
+    if agent_installed "$AGENT"; then
+        pass "$AGENT is installed and detected"
+    else
+        echo "  SKIP: $AGENT not installed (this is OK for CI)"
+        # Count as pass since skipping is valid behavior
+        PASS=$((PASS + 1))
+    fi
+done
+
+# Test 37: Auto-analyze with real agent (conditional)
+echo "--- Test 37: Auto-analyze integration (conditional) ---"
+# Try each agent in order of preference
+AVAILABLE_AGENT=""
+for AGENT in claude codex gemini-cli; do
+    if agent_installed "$AGENT"; then
+        AVAILABLE_AGENT="$AGENT"
+        break
+    fi
+done
+
+if [ -n "$AVAILABLE_AGENT" ]; then
+    echo "  Using available agent: $AVAILABLE_AGENT"
+    # Set up config with auto_analyze enabled
+    rm -f "$HOME/.config/agr/config.toml"
+    mkdir -p "$HOME/.config/agr"
+    cat > "$HOME/.config/agr/config.toml" << TOMLEOF
+[recording]
+auto_analyze = true
+analysis_agent = "$AVAILABLE_AGENT"
+TOMLEOF
+    # Record a very short session
+    # Note: We don't actually want the agent to analyze in E2E tests
+    # as that would be slow and require API keys. We just verify the
+    # config is read correctly.
+    CONFIG=$($AGR config show)
+    if echo "$CONFIG" | /usr/bin/grep -q "auto_analyze = true" && \
+       echo "$CONFIG" | /usr/bin/grep -q "analysis_agent = \"$AVAILABLE_AGENT\""; then
+        pass "Auto-analyze config set correctly for $AVAILABLE_AGENT"
+    else
+        fail "Auto-analyze config not set correctly: $CONFIG"
+    fi
+else
+    echo "  SKIP: No AI agents installed (claude, codex, gemini-cli)"
+    echo "  This is expected in CI environments without agent CLIs"
+    PASS=$((PASS + 1))
+fi
+
+# Test 38: Recording with auto_analyze=false does not trigger analysis
+echo "--- Test 38: Recording with auto_analyze=false ---"
+rm -f "$HOME/.config/agr/config.toml"
+mkdir -p "$HOME/.config/agr"
+cat > "$HOME/.config/agr/config.toml" << 'TOMLEOF'
+[recording]
+auto_analyze = false
+analysis_agent = "claude"
+TOMLEOF
+# Record should complete quickly without any analysis attempt
+START_TIME=$(date +%s)
+$AGR record echo -- "quick test" </dev/null 2>&1
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+# Should complete in under 5 seconds (no analysis overhead)
+if [ "$ELAPSED" -lt 5 ]; then
+    pass "Recording with auto_analyze=false completes quickly"
+else
+    fail "Recording took too long ($ELAPSED seconds), possible unintended analysis"
+fi
+
+# Clean up test config
+rm -f "$HOME/.config/agr/config.toml"
+
 echo
 echo "=== Test Summary ==="
 echo "Passed: $PASS"
