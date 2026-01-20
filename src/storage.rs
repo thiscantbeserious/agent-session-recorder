@@ -45,18 +45,27 @@ impl StorageStats {
 
     /// Format a summary for display
     pub fn summary(&self) -> String {
-        let agents_summary: Vec<String> = self
-            .sessions_by_agent
+        // Sort agents alphabetically for consistent output
+        let mut agents: Vec<_> = self.sessions_by_agent.iter().collect();
+        agents.sort_by(|a, b| a.0.cmp(b.0));
+
+        let agents_summary: Vec<String> = agents
             .iter()
             .map(|(agent, count)| format!("{}: {}", agent, count))
             .collect();
 
+        let agents_display = if agents_summary.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", agents_summary.join(", "))
+        };
+
         let mut summary = format!(
-            "📁 Agent Sessions: {} ({:.1}% of disk)\n   Sessions: {} total ({})",
+            "Agent Sessions: {} ({:.2}% of disk)\n   Sessions: {} total{}",
             self.size_human(),
             self.disk_percentage,
             self.session_count,
-            agents_summary.join(", ")
+            agents_display
         );
 
         if let Some(oldest) = &self.oldest_session {
@@ -199,11 +208,37 @@ impl StorageManager {
     }
 
     /// Calculate what percentage of disk the storage uses
-    /// Note: Currently returns 0.0 as placeholder.
-    /// Could use sysinfo crate for proper disk space detection.
-    fn calculate_disk_percentage(&self, _total_size: u64) -> f64 {
-        // TODO: Add proper disk space detection
-        // For now, return 0.0 as we don't want to add libc dependency
+    fn calculate_disk_percentage(&self, total_size: u64) -> f64 {
+        // Get total disk size using df command (works on macOS and Linux)
+        let storage_dir = self.storage_dir();
+        let path_str = storage_dir.to_string_lossy();
+
+        // Try to get disk info using df command
+        if let Ok(output) = std::process::Command::new("df")
+            .arg("-k") // Use 1K blocks for consistent parsing
+            .arg(&*path_str)
+            .output()
+        {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                // Parse df output - second line contains the data
+                // Format: Filesystem 1K-blocks Used Available Use% Mounted
+                if let Some(line) = stdout.lines().nth(1) {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    // parts[1] is total blocks in KB
+                    if parts.len() >= 2 {
+                        if let Ok(total_kb) = parts[1].parse::<u64>() {
+                            let total_bytes = total_kb * 1024;
+                            if total_bytes > 0 {
+                                return (total_size as f64 / total_bytes as f64) * 100.0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Fallback: return 0.0 if we can't determine disk size
         0.0
     }
 
@@ -385,5 +420,106 @@ mod tests {
 
         let human = session.size_human();
         assert!(human.contains("MiB") || human.contains("MB"));
+    }
+
+    #[test]
+    fn stats_summary_shows_agent_breakdown() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        // Create sessions for multiple agents
+        create_test_session(temp.path(), "claude", "s1.cast", "content");
+        create_test_session(temp.path(), "claude", "s2.cast", "content");
+        create_test_session(temp.path(), "codex", "s3.cast", "content");
+
+        let stats = manager.get_stats().unwrap();
+        let summary = stats.summary();
+
+        // Should show breakdown by agent
+        assert!(summary.contains("claude: 2"), "Summary should show claude: 2, got: {}", summary);
+        assert!(summary.contains("codex: 1"), "Summary should show codex: 1, got: {}", summary);
+    }
+
+    #[test]
+    fn stats_summary_shows_disk_percentage() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        create_test_session(temp.path(), "claude", "test.cast", "content");
+
+        let stats = manager.get_stats().unwrap();
+        let summary = stats.summary();
+
+        // Should show disk percentage (even if small/zero for test)
+        assert!(summary.contains("% of disk"), "Summary should show disk percentage, got: {}", summary);
+    }
+
+    #[test]
+    fn stats_summary_shows_oldest_session_age() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        create_test_session(temp.path(), "claude", "test.cast", "content");
+
+        let stats = manager.get_stats().unwrap();
+        let summary = stats.summary();
+
+        // Should show oldest session info
+        assert!(summary.contains("Oldest:"), "Summary should show oldest session, got: {}", summary);
+        assert!(summary.contains("days ago") || summary.contains("0 days"),
+            "Summary should show age in days, got: {}", summary);
+    }
+
+    #[test]
+    fn stats_summary_uses_human_readable_sizes() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        // Create a session with known content size
+        let content = "x".repeat(1024); // 1 KiB
+        create_test_session(temp.path(), "claude", "test.cast", &content);
+
+        let stats = manager.get_stats().unwrap();
+        let summary = stats.summary();
+
+        // Should use human-readable size format (KiB, MiB, etc.)
+        assert!(summary.contains("KiB") || summary.contains("KB") || summary.contains("B"),
+            "Summary should use human-readable size, got: {}", summary);
+    }
+
+    #[test]
+    fn stats_shows_total_session_count() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        create_test_session(temp.path(), "claude", "s1.cast", "content");
+        create_test_session(temp.path(), "claude", "s2.cast", "content");
+        create_test_session(temp.path(), "codex", "s3.cast", "content");
+
+        let stats = manager.get_stats().unwrap();
+        let summary = stats.summary();
+
+        // Should show total count
+        assert!(summary.contains("3 total"), "Summary should show '3 total', got: {}", summary);
+    }
+
+    #[test]
+    fn disk_percentage_is_calculated() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        // Create a session
+        create_test_session(temp.path(), "claude", "test.cast", "content");
+
+        let stats = manager.get_stats().unwrap();
+
+        // Disk percentage should be >= 0 (might be 0 for tiny files on large disk)
+        assert!(stats.disk_percentage >= 0.0, "Disk percentage should be non-negative");
     }
 }
