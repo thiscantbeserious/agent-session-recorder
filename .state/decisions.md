@@ -22,6 +22,13 @@
 - `.state/phase-N/impl-results/` - Impl agent outputs
 - `.state/phase-N/verify-results/` - Verify agent outputs
 
+### Orchestrator Test (PR #2) - Learnings:
+- **Workflow works:** Impl Agent → Verify Agent → Coordinator merge
+- **CodeRabbit skips markdown:** Expected (path_filters exclude `*.md`)
+- **Verify Agent thoroughness:** Went beyond tests - validated each checkbox against actual code
+- **Fresh sessions work:** No context pollution between impl and verify
+- **Agent IDs tracked:** Can resume if needed (a1dc796, ae1c323)
+
 ---
 
 ## 2025-01-19: Project Initialization
