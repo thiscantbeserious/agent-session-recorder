@@ -85,20 +85,6 @@ source /path/to/agent-session-recorder/shell/asr.sh
 
 This creates wrapper functions for configured agents that automatically record sessions.
 
-## AI Skills
-
-### `/asr-analyze <file.cast>`
-
-Analyze a recording and add markers for:
-- Errors and failures
-- Important commands
-- Decision points
-- Significant output
-
-### `/asr-review <pr-number>`
-
-Review a pull request for code quality.
-
 ## asciicast v3 Format
 
 ASR uses the native [asciicast v3](https://docs.asciinema.org/manual/asciicast/v3/) marker format:

@@ -98,6 +98,51 @@ asr config show                   # Show current config
 asr config edit                   # Open config in editor
 ```
 
+## AI Agent Skills
+
+These skills are for AI agents (Claude, Codex, Gemini) to use, not CLI commands.
+
+### `/asr-analyze <file.cast>`
+
+Analyze a session recording and add markers for interesting moments.
+
+**How to use:**
+1. Read the .cast file content
+2. Parse JSON lines - extract output events (type "o")
+3. Identify key moments:
+   - Errors, exceptions, stack traces
+   - Important commands being executed
+   - Decision points or turning points
+   - Significant output or results
+4. For each moment, call:
+   ```bash
+   asr marker add <file.cast> <timestamp_seconds> "description"
+   ```
+
+**Example:**
+```bash
+# Found error at 45.2 seconds
+asr marker add session.cast 45.2 "Build failed: missing dependency"
+
+# Found successful deployment at 120.5 seconds
+asr marker add session.cast 120.5 "Deployment completed successfully"
+```
+
+### `/asr-review <pr-number>`
+
+Review a pull request for this project.
+
+**How to use:**
+1. Fetch PR details: `gh pr view <number>`
+2. Get diff: `gh pr diff <number>`
+3. Check CI status: `gh pr checks <number>`
+4. Review for:
+   - Code correctness
+   - Error handling
+   - Test coverage
+   - Security issues
+5. Post review: `gh pr review <number> --approve` or `--request-changes`
+
 ## Verification Commands
 
 **MANDATORY: Run these before every PR/commit:**
