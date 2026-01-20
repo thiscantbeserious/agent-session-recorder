@@ -213,15 +213,14 @@ Track progress via GitHub PRs:
 
 ### During Active Work
 
-Keep `.state/INDEX.md` current as you work:
-- Update "Current focus" when starting a new task
-- Update "Blocked on" if you hit blockers
-- This helps agents joining mid-session understand context
+Keep `.state/INDEX.md` current as you work. Update state at these milestones:
+- **Starting a task** - Update "Current focus"
+- **Hitting a blocker** - Update "Blocked on"
+- **Completing a subtask** - Note progress
+- **Making a key decision** - Log in `decisions.md`
+- **Creating a PR** - Update with PR number
 
-```bash
-# Example: Starting work on a task
-sed -i '' 's/Current focus:.*/Current focus: Implementing feature X (PR #N)/' .state/INDEX.md
-```
+This helps agents joining mid-session understand context and prevents lost progress if a session ends unexpectedly.
 
 ### After Completing a Phase
 
