@@ -8,6 +8,7 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::analyzer::Analyzer;
 use crate::config::Config;
 use crate::storage::StorageManager;
 
@@ -130,8 +131,8 @@ impl Recorder {
             filepath.clone()
         };
 
-        // Show auto-analyze hint if enabled
-        self.show_auto_analyze_hint(&final_filepath);
+        // Run auto-analyze if enabled
+        self.maybe_auto_analyze(&final_filepath);
 
         // Show storage warning if threshold exceeded
         self.show_storage_warning()?;
@@ -185,12 +186,36 @@ impl Recorder {
         Ok(())
     }
 
-    /// Show auto-analyze hint if enabled in config
-    fn show_auto_analyze_hint(&self, filepath: &Path) {
-        if self.config.recording.auto_analyze {
+    /// Run auto-analysis if enabled in config
+    fn maybe_auto_analyze(&self, filepath: &Path) {
+        if !self.config.recording.auto_analyze {
+            return;
+        }
+
+        let agent = &self.config.recording.analysis_agent;
+
+        // Check if agent is installed
+        if !Analyzer::is_agent_installed(agent) {
             println!();
-            println!("💡 Tip: Analyze this session with your AI agent:");
-            println!("   /asr-analyze {}", filepath.display());
+            println!(
+                "Auto-analyze skipped: '{}' not installed. Install it or change analysis_agent in config.",
+                agent
+            );
+            println!(
+                "Tip: Run 'agr list' to see recordings, then use your agent's CLI to analyze."
+            );
+            return;
+        }
+
+        println!();
+        println!("Analyzing session with {}...", agent);
+
+        let analyzer = Analyzer::new(agent);
+        if let Err(e) = analyzer.analyze(filepath) {
+            eprintln!("Auto-analyze failed: {}", e);
+            println!(
+                "Tip: Run 'agr list' to see recordings, then use your agent's CLI to analyze."
+            );
         }
     }
 }

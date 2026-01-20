@@ -43,11 +43,27 @@ impl Default for ShellConfig {
 }
 
 /// Recording configuration
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecordingConfig {
-    /// Whether to show auto-analyze hint after recording
+    /// Whether to automatically analyze the recording after session ends
     #[serde(default)]
     pub auto_analyze: bool,
+    /// Which agent to use for analysis ("claude", "codex", "gemini-cli")
+    #[serde(default = "default_analysis_agent")]
+    pub analysis_agent: String,
+}
+
+fn default_analysis_agent() -> String {
+    "claude".to_string()
+}
+
+impl Default for RecordingConfig {
+    fn default() -> Self {
+        Self {
+            auto_analyze: false,
+            analysis_agent: default_analysis_agent(),
+        }
+    }
 }
 
 /// Storage configuration
@@ -379,6 +395,28 @@ auto_analyze = true
 "#;
         let config: Config = toml::from_str(toml_str).unwrap();
         assert!(config.recording.auto_analyze);
+    }
+
+    #[test]
+    fn recording_config_with_analysis_agent() {
+        let toml_str = r#"
+[recording]
+auto_analyze = true
+analysis_agent = "codex"
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert!(config.recording.auto_analyze);
+        assert_eq!(config.recording.analysis_agent, "codex");
+    }
+
+    #[test]
+    fn recording_config_defaults_analysis_agent_to_claude() {
+        let toml_str = r#"
+[recording]
+auto_analyze = true
+"#;
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.recording.analysis_agent, "claude");
     }
 
     #[test]

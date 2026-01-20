@@ -14,7 +14,7 @@ use agr::{Config, MarkerManager, Recorder, StorageManager};
 
 AGR automatically records your AI coding agent sessions (Claude, Codex, Gemini, etc.)
 to ~/recorded_agent_sessions/ in asciicast v3 format. Recordings can be played back
-with asciinema, analyzed with AI-powered skills, and annotated with markers.
+with asciinema, auto-analyzed by AI agents, and annotated with markers.
 
 QUICK START:
     agr record claude              Record a Claude session
@@ -163,25 +163,6 @@ EXAMPLES:
     agr config edit          Open config in $EDITOR"
     )]
     Config(ConfigCommands),
-
-    /// Manage AI agent skills
-    #[command(
-        subcommand,
-        long_about = "Manage AI agent skills (slash commands) for session analysis.
-
-Skills are markdown files installed to ~/.claude/commands/ (and similar
-directories for other agents) that provide AI-powered session analysis.
-
-AVAILABLE SKILLS:
-    /agr-analyze    Analyze a recording and add markers for key moments
-    /agr-review     Review a pull request
-
-EXAMPLES:
-    agr skills list          Show installed skills
-    agr skills install       Install skills to all agent directories
-    agr skills uninstall     Remove installed skills"
-    )]
-    Skills(SkillsCommands),
 
     /// Manage shell integration
     #[command(
@@ -359,39 +340,6 @@ EXAMPLE:
 }
 
 #[derive(Subcommand)]
-enum SkillsCommands {
-    /// List installed skills and their status
-    #[command(long_about = "List all AGR skills and their installation status.
-
-Shows which skills are installed and in which agent directories.
-
-EXAMPLE:
-    agr skills list")]
-    List,
-    /// Install skills to agent command directories
-    #[command(long_about = "Install AGR skills to all supported agent directories.
-
-Installs skills to:
-    ~/.claude/commands/
-    ~/.codex/commands/
-    ~/.gemini/commands/
-
-Skills provide AI-powered session analysis via slash commands.
-
-EXAMPLE:
-    agr skills install")]
-    Install,
-    /// Remove skills from agent command directories
-    #[command(long_about = "Remove AGR skills from all agent directories.
-
-Removes previously installed skill files.
-
-EXAMPLE:
-    agr skills uninstall")]
-    Uninstall,
-}
-
-#[derive(Subcommand)]
 enum ShellCommands {
     /// Show shell integration status
     #[command(long_about = "Show the current status of shell integration.
@@ -454,11 +402,6 @@ fn main() -> Result<()> {
         Commands::Config(cmd) => match cmd {
             ConfigCommands::Show => cmd_config_show(),
             ConfigCommands::Edit => cmd_config_edit(),
-        },
-        Commands::Skills(cmd) => match cmd {
-            SkillsCommands::List => cmd_skills_list(),
-            SkillsCommands::Install => cmd_skills_install(),
-            SkillsCommands::Uninstall => cmd_skills_uninstall(),
         },
         Commands::Shell(cmd) => match cmd {
             ShellCommands::Status => cmd_shell_status(),
@@ -907,87 +850,6 @@ fn cmd_config_edit() -> Result<()> {
     Ok(())
 }
 
-fn cmd_skills_list() -> Result<()> {
-    let installed = agr::skills::list_installed_skills();
-
-    if installed.is_empty() {
-        println!("No skills installed.");
-        println!();
-        println!("Available skills:");
-        for (name, _) in agr::skills::SKILLS {
-            println!("  {}", name);
-        }
-        println!();
-        println!("Run 'agr skills install' to install skills.");
-        return Ok(());
-    }
-
-    println!("Installed skills:");
-    for skill in &installed {
-        let status = if skill.matches_embedded {
-            "current"
-        } else {
-            "modified"
-        };
-        println!("  {} [{}]", skill.path.display(), status);
-    }
-
-    // Check for any directories without skills
-    let dirs = agr::skills::skill_directories();
-    let missing: Vec<_> = dirs
-        .iter()
-        .filter(|dir| !installed.iter().any(|s| s.path.starts_with(dir)))
-        .collect();
-
-    if !missing.is_empty() {
-        println!();
-        println!("Skills not installed in:");
-        for dir in missing {
-            println!("  {}", dir.display());
-        }
-        println!();
-        println!("Run 'agr skills install' to install to all directories.");
-    }
-
-    Ok(())
-}
-
-fn cmd_skills_install() -> Result<()> {
-    println!("Installing skills...");
-
-    match agr::skills::install_skills() {
-        Ok(installed) => {
-            for path in &installed {
-                println!("  Installed: {}", path.display());
-            }
-            println!();
-            println!("Installed {} skill files.", installed.len());
-            Ok(())
-        }
-        Err(e) => Err(anyhow::anyhow!("Failed to install skills: {}", e)),
-    }
-}
-
-fn cmd_skills_uninstall() -> Result<()> {
-    println!("Removing skills...");
-
-    match agr::skills::uninstall_skills() {
-        Ok(removed) => {
-            if removed.is_empty() {
-                println!("No skills were installed.");
-            } else {
-                for path in &removed {
-                    println!("  Removed: {}", path.display());
-                }
-                println!();
-                println!("Removed {} skill files.", removed.len());
-            }
-            Ok(())
-        }
-        Err(e) => Err(anyhow::anyhow!("Failed to remove skills: {}", e)),
-    }
-}
-
 fn cmd_shell_status() -> Result<()> {
     let config = Config::load()?;
     let status = agr::shell::get_status(config.shell.auto_wrap);
@@ -1146,33 +1008,6 @@ mod tests {
                 assert_eq!(older_than, Some(60));
             }
             _ => panic!("Expected Cleanup command"),
-        }
-    }
-
-    #[test]
-    fn cli_skills_list_parses() {
-        let cli = Cli::try_parse_from(["agr", "skills", "list"]).unwrap();
-        match cli.command {
-            Commands::Skills(SkillsCommands::List) => {}
-            _ => panic!("Expected Skills List command"),
-        }
-    }
-
-    #[test]
-    fn cli_skills_install_parses() {
-        let cli = Cli::try_parse_from(["agr", "skills", "install"]).unwrap();
-        match cli.command {
-            Commands::Skills(SkillsCommands::Install) => {}
-            _ => panic!("Expected Skills Install command"),
-        }
-    }
-
-    #[test]
-    fn cli_skills_uninstall_parses() {
-        let cli = Cli::try_parse_from(["agr", "skills", "uninstall"]).unwrap();
-        match cli.command {
-            Commands::Skills(SkillsCommands::Uninstall) => {}
-            _ => panic!("Expected Skills Uninstall command"),
         }
     }
 

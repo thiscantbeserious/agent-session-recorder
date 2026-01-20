@@ -2,22 +2,38 @@
 
 A Rust CLI tool for recording AI agent terminal sessions with asciinema.
 
-## IMPORTANT: Agile SDLC Workflow
+## IMPORTANT: Read Before Any Implementation
 
-**Before doing anything, read the state files** to understand context.
+**You are a COORDINATOR.** Before implementing anything, read `architecture/AGENTS.md`.
 
-### Key State Files
-- `.state/plan.md` - **Master plan** with phase status and all tasks
-- `.state/current-phase.md` - Current session context
-- `.state/coordinator.md` - Agent tracking (if coordinator session)
-- `.state/decisions.md` - Technical decisions log
+You MUST spawn sub-agents for implementation work - never implement directly.
+
+## Documentation
+
+| Doc | Purpose |
+|-----|---------|
+| `architecture/AGENTS.md` | **READ FIRST** - Orchestrator pattern, coordinator rules |
+| `.state/INDEX.md` | Current state, where to find things |
+| `.state/decisions.md` | Technical decisions log |
+| `.state-templates/` | Templates for state files |
+
+## Before Starting Work
+
+```bash
+# 1. Check current state
+cat .state/INDEX.md
+gh pr list                       # Open PRs
+gh pr list --state merged -L 10  # Recent completed work
+
+# 2. Check decisions
+cat .state/decisions.md
+```
 
 ### For Each Task, Follow These Steps:
 
 #### 1. Requirement Gathering
 ```bash
-cat .state/plan.md               # Master plan with phase tasks
-cat .state/current-phase.md      # Current context
+gh pr list --state merged        # What's been done
 cat .state/decisions.md          # Prior decisions
 ```
 
@@ -68,6 +84,10 @@ cargo test         # Run all tests
 4. **CodeRabbit Review** (must complete):
    - Wait for CodeRabbit to post actual review (not just "processing")
    - Review any issues CodeRabbit identifies
+   - **VERIFY SUGGESTIONS LOCALLY** before implementing:
+     - For CLI tool syntax: run `<tool> --help` to check actual interface
+     - For API changes: check actual code/docs, not just CodeRabbit's claim
+     - CodeRabbit may have outdated info about third-party tools
    - **When fixing issues:** Look for the **🤖 Prompt for AI Agents** section in CodeRabbit's comments - it contains ready-to-use code snippets and instructions for implementing the suggested fix
    - Fix blocking issues before merge
 5. **NEVER merge until:**
@@ -139,50 +159,28 @@ agr config show                   # Show current config
 agr config edit                   # Open config in editor
 ```
 
-## AI Agent Skills
+## Auto-Analysis
 
-These skills are for AI agents (Claude, Codex, Gemini) to use, not CLI commands.
+When `auto_analyze = true` in config, AGR automatically spawns an AI agent after each recording to analyze the session and add markers.
 
-### `/agr-analyze <file.cast>`
-
-Analyze a session recording and add markers for interesting moments.
-
-**How to use:**
-1. Read the .cast file content
-2. Parse JSON lines - extract output events (type "o")
-3. Identify key moments:
-   - Errors, exceptions, stack traces
-   - Important commands being executed
-   - Decision points or turning points
-   - Significant output or results
-4. For each moment, call:
-   ```bash
-   agr marker add <file.cast> <timestamp_seconds> "description"
-   ```
-
-**Example:**
-```bash
-# Found error at 45.2 seconds
-agr marker add session.cast 45.2 "Build failed: missing dependency"
-
-# Found successful deployment at 120.5 seconds
-agr marker add session.cast 120.5 "Deployment completed successfully"
+**Config:**
+```toml
+[recording]
+auto_analyze = true
+analysis_agent = "claude"  # or "codex" or "gemini-cli"
 ```
 
-### `/agr-review <pr-number>`
+**What the analyzer does:**
+1. Reads the .cast file
+2. Identifies key moments (errors, commands, decisions, results)
+3. Adds markers via `agr marker add <file> <time> "description"`
 
-Review a pull request for this project.
-
-**How to use:**
-1. Fetch PR details: `gh pr view <number>`
-2. Get diff: `gh pr diff <number>`
-3. Check CI status: `gh pr checks <number>`
-4. Review for:
-   - Code correctness
-   - Error handling
-   - Test coverage
-   - Security issues
-5. Post review: `gh pr review <number> --approve` or `--request-changes`
+**Manual analysis** (if auto_analyze is disabled):
+```bash
+# Read the cast file and identify interesting moments, then:
+agr marker add session.cast 45.2 "Build failed: missing dependency"
+agr marker add session.cast 120.5 "Deployment completed successfully"
+```
 
 ## Verification Commands
 
@@ -218,16 +216,6 @@ cargo build --release
 ./install.sh          # Install to system
 ./uninstall.sh        # Remove from system
 ```
-
-## Development Phases
-
-**See `.state/plan.md` for current phase status and task lists.**
-
-Summary:
-- **Phase 1:** COMPLETE - Core recording functionality
-- **Phase 2:** IN PROGRESS - Storage UX improvements
-- **Phase 3:** MOSTLY COMPLETE - Marker support
-- **Phase 4:** MOSTLY COMPLETE - Polish & distribution
 
 ## Git Workflow
 
