@@ -1,4 +1,4 @@
-//! Shell integration management for ASR
+//! Shell integration management for AGR
 //!
 //! This module handles installing and uninstalling shell integration
 //! to .zshrc and .bashrc files using marked sections.
@@ -8,12 +8,12 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 /// Marker comments for shell integration sections
-const MARKER_START: &str = "# >>> ASR (Agent Session Recorder) >>>";
-const MARKER_END: &str = "# <<< ASR (Agent Session Recorder) <<<";
-const MARKER_WARNING: &str = "# DO NOT EDIT - managed by 'asr shell install/uninstall'";
+const MARKER_START: &str = "# >>> AGR (Agent Session Recorder) >>>";
+const MARKER_END: &str = "# <<< AGR (Agent Session Recorder) <<<";
+const MARKER_WARNING: &str = "# DO NOT EDIT - managed by 'agr shell install/uninstall'";
 
 /// The embedded shell script content
-pub const SHELL_SCRIPT: &str = include_str!("../shell/asr.sh");
+pub const SHELL_SCRIPT: &str = include_str!("../shell/agr.sh");
 
 /// Information about shell integration status
 #[derive(Debug, Clone)]
@@ -125,8 +125,8 @@ pub fn extract_script_path(rc_file: &Path) -> io::Result<Option<PathBuf>> {
         .find(|line| line.contains("source") || line.contains(". "));
 
     if let Some(line) = in_section {
-        // Extract path from: [ -f "/path/to/asr.sh" ] && source "/path/to/asr.sh"
-        // or: source "/path/to/asr.sh"
+        // Extract path from: [ -f "/path/to/agr.sh" ] && source "/path/to/agr.sh"
+        // or: source "/path/to/agr.sh"
         if let Some(start) = line.find('"') {
             if let Some(end) = line[start + 1..].find('"') {
                 let path = &line[start + 1..start + 1 + end];
@@ -230,8 +230,8 @@ pub fn get_status(auto_wrap_enabled: bool) -> ShellStatus {
         .as_ref()
         .and_then(|rc| extract_script_path(rc).ok().flatten());
 
-    // Check if integration is active by looking for ASR env var
-    let is_active = std::env::var("_ASR_LOADED").is_ok();
+    // Check if integration is active by looking for AGR env var
+    let is_active = std::env::var("_AGR_LOADED").is_ok();
 
     ShellStatus {
         rc_file,
@@ -244,7 +244,7 @@ pub fn get_status(auto_wrap_enabled: bool) -> ShellStatus {
 /// Get the default script path (in the config directory)
 pub fn default_script_path() -> Option<PathBuf> {
     let home = dirs::home_dir()?;
-    Some(home.join(".config").join("asr").join("asr.sh"))
+    Some(home.join(".config").join("agr").join("agr.sh"))
 }
 
 /// Install the shell script to the config directory
@@ -262,20 +262,20 @@ mod tests {
 
     #[test]
     fn test_generate_section_contains_markers() {
-        let script_path = PathBuf::from("/path/to/asr.sh");
+        let script_path = PathBuf::from("/path/to/agr.sh");
         let section = generate_section(&script_path);
 
         assert!(section.contains(MARKER_START));
         assert!(section.contains(MARKER_END));
         assert!(section.contains(MARKER_WARNING));
-        assert!(section.contains("/path/to/asr.sh"));
+        assert!(section.contains("/path/to/agr.sh"));
     }
 
     #[test]
     fn test_install_creates_section_in_rc() -> io::Result<()> {
         let temp = TempDir::new()?;
         let rc_file = temp.path().join(".zshrc");
-        let script_path = PathBuf::from("/path/to/asr.sh");
+        let script_path = PathBuf::from("/path/to/agr.sh");
 
         // Create empty RC file
         fs::write(&rc_file, "")?;
@@ -287,7 +287,7 @@ mod tests {
         let content = fs::read_to_string(&rc_file)?;
         assert!(content.contains(MARKER_START));
         assert!(content.contains(MARKER_END));
-        assert!(content.contains("/path/to/asr.sh"));
+        assert!(content.contains("/path/to/agr.sh"));
 
         Ok(())
     }
@@ -296,7 +296,7 @@ mod tests {
     fn test_install_appends_to_existing_content() -> io::Result<()> {
         let temp = TempDir::new()?;
         let rc_file = temp.path().join(".zshrc");
-        let script_path = PathBuf::from("/path/to/asr.sh");
+        let script_path = PathBuf::from("/path/to/agr.sh");
 
         // Create RC file with existing content
         fs::write(&rc_file, "# My shell config\nexport FOO=bar\n")?;
@@ -317,7 +317,7 @@ mod tests {
     fn test_uninstall_removes_section() -> io::Result<()> {
         let temp = TempDir::new()?;
         let rc_file = temp.path().join(".zshrc");
-        let script_path = PathBuf::from("/path/to/asr.sh");
+        let script_path = PathBuf::from("/path/to/agr.sh");
 
         // Create RC file with existing content
         fs::write(&rc_file, "# My shell config\nexport FOO=bar\n")?;
@@ -359,7 +359,7 @@ mod tests {
         assert!(!is_installed_in(&rc_file)?);
 
         // With markers
-        let script_path = PathBuf::from("/path/to/asr.sh");
+        let script_path = PathBuf::from("/path/to/agr.sh");
         install(&rc_file, &script_path)?;
         assert!(is_installed_in(&rc_file)?);
 
@@ -370,7 +370,7 @@ mod tests {
     fn test_extract_script_path() -> io::Result<()> {
         let temp = TempDir::new()?;
         let rc_file = temp.path().join(".zshrc");
-        let script_path = PathBuf::from("/custom/path/to/asr.sh");
+        let script_path = PathBuf::from("/custom/path/to/agr.sh");
 
         install(&rc_file, &script_path)?;
 
@@ -386,11 +386,11 @@ mod tests {
         let rc_file = temp.path().join(".zshrc");
 
         // Install with old path
-        let old_path = PathBuf::from("/old/path/asr.sh");
+        let old_path = PathBuf::from("/old/path/agr.sh");
         install(&rc_file, &old_path)?;
 
         // Install with new path
-        let new_path = PathBuf::from("/new/path/asr.sh");
+        let new_path = PathBuf::from("/new/path/agr.sh");
         install(&rc_file, &new_path)?;
 
         // Verify only new path present
@@ -409,7 +409,7 @@ mod tests {
     fn test_status_summary() {
         let status = ShellStatus {
             rc_file: Some(PathBuf::from("/home/user/.zshrc")),
-            script_path: Some(PathBuf::from("/home/user/.config/asr/asr.sh")),
+            script_path: Some(PathBuf::from("/home/user/.config/asr/agr.sh")),
             auto_wrap_enabled: true,
             is_active: false,
         };
@@ -423,13 +423,13 @@ mod tests {
     #[test]
     fn test_shell_script_is_embedded() {
         assert!(!SHELL_SCRIPT.is_empty());
-        assert!(SHELL_SCRIPT.contains("_asr_record_session"));
+        assert!(SHELL_SCRIPT.contains("_agr_record_session"));
     }
 
     #[test]
     fn test_install_script_writes_file() -> io::Result<()> {
         let temp = TempDir::new()?;
-        let script_path = temp.path().join("asr.sh");
+        let script_path = temp.path().join("agr.sh");
 
         install_script(&script_path)?;
 

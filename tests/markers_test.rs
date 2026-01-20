@@ -2,7 +2,7 @@
 
 mod helpers;
 
-use asr::{AsciicastFile, MarkerManager};
+use agr::{AsciicastFile, MarkerManager};
 use helpers::temp_fixture;
 
 #[test]

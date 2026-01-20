@@ -1,14 +1,33 @@
-//! Agent Session Recorder (ASR) - CLI entry point
+//! Agent Session Recorder (AGR) - CLI entry point
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::io::{self, BufRead, Write};
 
-use asr::{Config, MarkerManager, Recorder, StorageManager};
+use agr::{Config, MarkerManager, Recorder, StorageManager};
 
 #[derive(Parser)]
-#[command(name = "asr")]
+#[command(name = "agr")]
 #[command(about = "Agent Session Recorder - Record AI agent terminal sessions")]
+#[command(
+    long_about = "Agent Session Recorder (AGR) - Record AI agent terminal sessions with asciinema.
+
+AGR automatically records your AI coding agent sessions (Claude, Codex, Gemini, etc.)
+to ~/recorded_agent_sessions/ in asciicast v3 format. Recordings can be played back
+with asciinema, analyzed with AI-powered skills, and annotated with markers.
+
+QUICK START:
+    agr record claude              Record a Claude session
+    agr status                     Check storage usage
+    agr list                       List all recordings
+    agr cleanup                    Clean up old recordings
+
+SHELL INTEGRATION:
+    agr shell install              Auto-record configured agents
+    agr agents add claude          Add agent to auto-record list
+
+For more information, see: https://github.com/thiscantbeserious/agent-session-recorder"
+)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -18,138 +37,394 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Start recording a session
+    #[command(long_about = "Start recording an AI agent session with asciinema.
+
+The recording is saved to ~/recorded_agent_sessions/<agent>/<timestamp>.cast
+in asciicast v3 format. When the session ends, you can optionally rename
+the recording for easier identification.
+
+EXAMPLES:
+    agr record claude                    Record a Claude Code session
+    agr record codex                     Record an OpenAI Codex session
+    agr record claude -- --help          Pass --help flag to claude
+    agr record gemini-cli -- chat        Start gemini-cli in chat mode")]
     Record {
         /// Agent name (e.g., claude, codex, gemini-cli)
+        #[arg(help = "Agent name (e.g., claude, codex, gemini-cli)")]
         agent: String,
-        /// Arguments to pass to the agent
-        #[arg(last = true)]
+        /// Arguments to pass to the agent command
+        #[arg(last = true, help = "Arguments to pass to the agent (after --)")]
         args: Vec<String>,
     },
 
     /// Show storage statistics
+    #[command(long_about = "Display storage statistics for recorded sessions.
+
+Shows total size, disk usage percentage, session count by agent,
+and age of the oldest recording.
+
+EXAMPLE:
+    agr status
+
+OUTPUT:
+    Agent Sessions: 1.2 GB (0.5% of disk)
+       Sessions: 23 total (claude: 15, codex: 8)
+       Oldest: 2025-01-01 (20 days ago)")]
     Status,
 
     /// Interactive cleanup of old sessions
+    #[command(
+        long_about = "Interactively delete old session recordings to free up disk space.
+
+Displays a list of sessions sorted by age and lets you choose how many
+to delete. Supports filtering by agent and age. Sessions older than
+the configured threshold (default: 30 days) are marked with *.
+
+EXAMPLES:
+    agr cleanup                          Interactive cleanup of all sessions
+    agr cleanup --agent claude           Only show Claude sessions
+    agr cleanup --older-than 60          Only show sessions older than 60 days
+    agr cleanup --agent codex --older-than 30
+
+INTERACTIVE OPTIONS:
+    [number]    Delete the N oldest sessions
+    'old'       Delete all sessions older than threshold
+    'all'       Delete all matching sessions
+    0           Cancel without deleting"
+    )]
     Cleanup {
-        /// Filter by agent name
-        #[arg(long)]
+        /// Filter sessions by agent name
+        #[arg(long, help = "Only show sessions from this agent")]
         agent: Option<String>,
         /// Only show sessions older than N days
-        #[arg(long)]
+        #[arg(long, help = "Only show sessions older than N days")]
         older_than: Option<u32>,
     },
 
     /// List recorded sessions
+    #[command(long_about = "List all recorded sessions with details.
+
+Shows sessions sorted by date (newest first) with agent name,
+age, file size, and filename.
+
+EXAMPLES:
+    agr list                List all sessions
+    agr list claude         List only Claude sessions
+    agr list codex          List only Codex sessions")]
     List {
         /// Filter by agent name
+        #[arg(help = "Filter sessions by agent name")]
         agent: Option<String>,
     },
 
     /// Manage markers in cast files
-    #[command(subcommand)]
+    #[command(
+        subcommand,
+        long_about = "Add and list markers in asciicast recording files.
+
+Markers are annotations at specific timestamps in a recording,
+useful for highlighting key moments like errors, decisions, or
+milestones. Markers use the native asciicast v3 marker format.
+
+EXAMPLES:
+    agr marker add session.cast 45.2 \"Build failed\"
+    agr marker add session.cast 120.5 \"Deployment complete\"
+    agr marker list session.cast"
+    )]
     Marker(MarkerCommands),
 
     /// Manage configured agents
-    #[command(subcommand)]
+    #[command(
+        subcommand,
+        long_about = "Manage the list of AI agents that AGR knows about.
+
+Configured agents are used by shell integration to automatically
+record sessions. You can also control which agents are auto-wrapped
+using the no-wrap subcommand.
+
+EXAMPLES:
+    agr agents list                  Show configured agents
+    agr agents add claude            Add claude to the list
+    agr agents remove codex          Remove codex from the list
+    agr agents no-wrap add claude    Disable auto-wrap for claude"
+    )]
     Agents(AgentCommands),
 
     /// Configuration management
-    #[command(subcommand)]
+    #[command(
+        subcommand,
+        long_about = "View and edit the AGR configuration file.
+
+Configuration is stored in ~/.config/agr/config.toml and includes
+storage settings, agent list, shell integration options, and more.
+
+EXAMPLES:
+    agr config show          Display current configuration
+    agr config edit          Open config in $EDITOR"
+    )]
     Config(ConfigCommands),
 
     /// Manage AI agent skills
-    #[command(subcommand)]
+    #[command(
+        subcommand,
+        long_about = "Manage AI agent skills (slash commands) for session analysis.
+
+Skills are markdown files installed to ~/.claude/commands/ (and similar
+directories for other agents) that provide AI-powered session analysis.
+
+AVAILABLE SKILLS:
+    /agr-analyze    Analyze a recording and add markers for key moments
+    /agr-review     Review a pull request
+
+EXAMPLES:
+    agr skills list          Show installed skills
+    agr skills install       Install skills to all agent directories
+    agr skills uninstall     Remove installed skills"
+    )]
     Skills(SkillsCommands),
 
     /// Manage shell integration
-    #[command(subcommand)]
+    #[command(
+        subcommand,
+        long_about = "Manage automatic session recording via shell integration.
+
+Shell integration adds wrapper functions to your shell that automatically
+record sessions when you run configured agents. It modifies your .zshrc
+or .bashrc with a clearly marked section.
+
+EXAMPLES:
+    agr shell status         Check if shell integration is installed
+    agr shell install        Install shell integration
+    agr shell uninstall      Remove shell integration
+
+After installing, restart your shell or run: source ~/.zshrc"
+    )]
     Shell(ShellCommands),
 }
 
 #[derive(Subcommand)]
 enum MarkerCommands {
-    /// Add a marker to a cast file
+    /// Add a marker to a cast file at a specific timestamp
+    #[command(long_about = "Add a marker to a cast file at a specific timestamp.
+
+Markers are injected into the asciicast file using the native v3 marker
+format. The timestamp is cumulative seconds from the start of the recording.
+
+EXAMPLE:
+    agr marker add ~/recorded_agent_sessions/claude/session.cast 45.2 \"Build error\"")]
     Add {
         /// Path to the .cast file
+        #[arg(help = "Path to the .cast recording file")]
         file: String,
-        /// Timestamp in seconds
+        /// Timestamp in seconds from start of recording
+        #[arg(help = "Timestamp in seconds (e.g., 45.2)")]
         time: f64,
-        /// Marker label
+        /// Marker label/description
+        #[arg(help = "Description of the marker (e.g., \"Build failed\")")]
         label: String,
     },
-    /// List markers in a cast file
+    /// List all markers in a cast file
+    #[command(
+        long_about = "List all markers in a cast file with their timestamps and labels.
+
+EXAMPLE:
+    agr marker list ~/recorded_agent_sessions/claude/session.cast
+
+OUTPUT:
+    Markers:
+      [45.2s] Build error
+      [120.5s] Deployment complete"
+    )]
     List {
         /// Path to the .cast file
+        #[arg(help = "Path to the .cast recording file")]
         file: String,
     },
 }
 
 #[derive(Subcommand)]
 enum AgentCommands {
-    /// List configured agents
+    /// List all configured agents
+    #[command(long_about = "List all agents configured for recording.
+
+These agents can be auto-recorded when shell integration is enabled.")]
     List,
     /// Add an agent to the configuration
+    #[command(long_about = "Add an agent to the configured list.
+
+Once added, the agent can be auto-recorded via shell integration.
+
+EXAMPLE:
+    agr agents add claude
+    agr agents add my-custom-agent")]
     Add {
-        /// Agent name
+        /// Agent name to add
+        #[arg(help = "Name of the agent (e.g., claude, codex)")]
         name: String,
     },
     /// Remove an agent from the configuration
+    #[command(long_about = "Remove an agent from the configured list.
+
+The agent will no longer be auto-recorded via shell integration.
+
+EXAMPLE:
+    agr agents remove codex")]
     Remove {
-        /// Agent name
+        /// Agent name to remove
+        #[arg(help = "Name of the agent to remove")]
         name: String,
     },
-    /// Check if an agent should be wrapped (for shell integration)
-    #[command(name = "is-wrapped")]
+    /// Check if an agent should be wrapped (used by shell integration)
+    #[command(
+        name = "is-wrapped",
+        long_about = "Check if an agent should be auto-wrapped by shell integration.
+
+Returns exit code 0 if the agent should be wrapped, 1 if not.
+Used internally by the shell integration script.
+
+EXAMPLE:
+    agr agents is-wrapped claude && echo \"Should wrap\""
+    )]
     IsWrapped {
-        /// Agent name
+        /// Agent name to check
+        #[arg(help = "Name of the agent to check")]
         name: String,
     },
     /// Manage agents that should not be auto-wrapped
-    #[command(subcommand)]
+    #[command(
+        subcommand,
+        long_about = "Manage the no-wrap list for agents that should not be auto-recorded.
+
+Agents on this list will not be automatically wrapped by shell integration,
+even if they are in the configured agents list. Useful for temporarily
+disabling recording for specific agents."
+    )]
     NoWrap(NoWrapCommands),
 }
 
 #[derive(Subcommand)]
 enum NoWrapCommands {
-    /// List agents that are not auto-wrapped
+    /// List agents that are excluded from auto-wrapping
+    #[command(long_about = "List all agents on the no-wrap list.
+
+These agents will not be auto-recorded even with shell integration enabled.")]
     List,
-    /// Add an agent to the no-wrap list
+    /// Add an agent to the no-wrap list (disable auto-recording)
+    #[command(long_about = "Add an agent to the no-wrap list.
+
+The agent will not be auto-recorded by shell integration.
+
+EXAMPLE:
+    agr agents no-wrap add claude")]
     Add {
-        /// Agent name
+        /// Agent name to exclude from auto-wrapping
+        #[arg(help = "Name of the agent to exclude")]
         name: String,
     },
-    /// Remove an agent from the no-wrap list
+    /// Remove an agent from the no-wrap list (re-enable auto-recording)
+    #[command(long_about = "Remove an agent from the no-wrap list.
+
+The agent will be auto-recorded again by shell integration.
+
+EXAMPLE:
+    agr agents no-wrap remove claude")]
     Remove {
-        /// Agent name
+        /// Agent name to re-enable for auto-wrapping
+        #[arg(help = "Name of the agent to re-enable")]
         name: String,
     },
 }
 
 #[derive(Subcommand)]
 enum ConfigCommands {
-    /// Show current configuration
+    /// Show current configuration as TOML
+    #[command(long_about = "Display the current configuration in TOML format.
+
+Shows all settings including storage paths, agent list, shell options,
+and recording preferences.
+
+EXAMPLE:
+    agr config show")]
     Show,
-    /// Open configuration in editor
+    /// Open configuration file in your default editor
+    #[command(long_about = "Open the configuration file in your default editor.
+
+Uses the $EDITOR environment variable (defaults to 'vi').
+Config file location: ~/.config/agr/config.toml
+
+EXAMPLE:
+    agr config edit
+    EDITOR=nano agr config edit")]
     Edit,
 }
 
 #[derive(Subcommand)]
 enum SkillsCommands {
-    /// List installed skills
+    /// List installed skills and their status
+    #[command(long_about = "List all AGR skills and their installation status.
+
+Shows which skills are installed and in which agent directories.
+
+EXAMPLE:
+    agr skills list")]
     List,
     /// Install skills to agent command directories
+    #[command(long_about = "Install AGR skills to all supported agent directories.
+
+Installs skills to:
+    ~/.claude/commands/
+    ~/.codex/commands/
+    ~/.gemini/commands/
+
+Skills provide AI-powered session analysis via slash commands.
+
+EXAMPLE:
+    agr skills install")]
     Install,
     /// Remove skills from agent command directories
+    #[command(long_about = "Remove AGR skills from all agent directories.
+
+Removes previously installed skill files.
+
+EXAMPLE:
+    agr skills uninstall")]
     Uninstall,
 }
 
 #[derive(Subcommand)]
 enum ShellCommands {
     /// Show shell integration status
+    #[command(long_about = "Show the current status of shell integration.
+
+Displays whether shell integration is installed, which RC file
+is configured, and whether auto-wrap is enabled.
+
+EXAMPLE:
+    agr shell status")]
     Status,
     /// Install shell integration to .zshrc/.bashrc
+    #[command(
+        long_about = "Install shell integration for automatic session recording.
+
+Adds a clearly marked section to your .zshrc (or .bashrc) that
+sources the AGR shell script. This creates wrapper functions for
+configured agents that automatically record sessions.
+
+After installation, restart your shell or run:
+    source ~/.zshrc
+
+EXAMPLE:
+    agr shell install"
+    )]
     Install,
     /// Remove shell integration from .zshrc/.bashrc
+    #[command(long_about = "Remove shell integration from your shell configuration.
+
+Removes the AGR section from your .zshrc/.bashrc and deletes
+the shell script. Restart your shell after uninstalling.
+
+EXAMPLE:
+    agr shell uninstall")]
     Uninstall,
 }
 
@@ -198,7 +473,7 @@ fn cmd_record(agent: &str, args: &[String]) -> Result<()> {
 
     if !config.is_agent_enabled(agent) {
         eprintln!("Warning: Agent '{}' is not in the configured list.", agent);
-        eprintln!("Add it with: asr agents add {}", agent);
+        eprintln!("Add it with: agr agents add {}", agent);
         eprintln!();
     }
 
@@ -633,17 +908,17 @@ fn cmd_config_edit() -> Result<()> {
 }
 
 fn cmd_skills_list() -> Result<()> {
-    let installed = asr::skills::list_installed_skills();
+    let installed = agr::skills::list_installed_skills();
 
     if installed.is_empty() {
         println!("No skills installed.");
         println!();
         println!("Available skills:");
-        for (name, _) in asr::skills::SKILLS {
+        for (name, _) in agr::skills::SKILLS {
             println!("  {}", name);
         }
         println!();
-        println!("Run 'asr skills install' to install skills.");
+        println!("Run 'agr skills install' to install skills.");
         return Ok(());
     }
 
@@ -658,7 +933,7 @@ fn cmd_skills_list() -> Result<()> {
     }
 
     // Check for any directories without skills
-    let dirs = asr::skills::skill_directories();
+    let dirs = agr::skills::skill_directories();
     let missing: Vec<_> = dirs
         .iter()
         .filter(|dir| !installed.iter().any(|s| s.path.starts_with(dir)))
@@ -671,7 +946,7 @@ fn cmd_skills_list() -> Result<()> {
             println!("  {}", dir.display());
         }
         println!();
-        println!("Run 'asr skills install' to install to all directories.");
+        println!("Run 'agr skills install' to install to all directories.");
     }
 
     Ok(())
@@ -680,7 +955,7 @@ fn cmd_skills_list() -> Result<()> {
 fn cmd_skills_install() -> Result<()> {
     println!("Installing skills...");
 
-    match asr::skills::install_skills() {
+    match agr::skills::install_skills() {
         Ok(installed) => {
             for path in &installed {
                 println!("  Installed: {}", path.display());
@@ -696,7 +971,7 @@ fn cmd_skills_install() -> Result<()> {
 fn cmd_skills_uninstall() -> Result<()> {
     println!("Removing skills...");
 
-    match asr::skills::uninstall_skills() {
+    match agr::skills::uninstall_skills() {
         Ok(removed) => {
             if removed.is_empty() {
                 println!("No skills were installed.");
@@ -715,27 +990,27 @@ fn cmd_skills_uninstall() -> Result<()> {
 
 fn cmd_shell_status() -> Result<()> {
     let config = Config::load()?;
-    let status = asr::shell::get_status(config.shell.auto_wrap);
+    let status = agr::shell::get_status(config.shell.auto_wrap);
     println!("{}", status.summary());
     Ok(())
 }
 
 fn cmd_shell_install() -> Result<()> {
     // Detect shell RC file
-    let rc_file = asr::shell::detect_shell_rc()
+    let rc_file = agr::shell::detect_shell_rc()
         .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
 
     // Determine script path (use config dir)
-    let script_path = asr::shell::default_script_path()
+    let script_path = agr::shell::default_script_path()
         .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
 
     // Install the shell script to config directory
-    asr::shell::install_script(&script_path)
+    agr::shell::install_script(&script_path)
         .map_err(|e| anyhow::anyhow!("Failed to install shell script: {}", e))?;
     println!("Installed shell script: {}", script_path.display());
 
     // Install shell integration to RC file
-    asr::shell::install(&rc_file, &script_path)
+    agr::shell::install(&rc_file, &script_path)
         .map_err(|e| anyhow::anyhow!("Failed to install shell integration: {}", e))?;
     println!("Installed shell integration: {}", rc_file.display());
 
@@ -748,7 +1023,7 @@ fn cmd_shell_install() -> Result<()> {
 
 fn cmd_shell_uninstall() -> Result<()> {
     // Find where shell integration is installed
-    let rc_file = match asr::shell::find_installed_rc() {
+    let rc_file = match agr::shell::find_installed_rc() {
         Some(rc) => rc,
         None => {
             println!("Shell integration is not installed.");
@@ -757,17 +1032,17 @@ fn cmd_shell_uninstall() -> Result<()> {
     };
 
     // Remove from RC file
-    let removed = asr::shell::uninstall(&rc_file)
+    let removed = agr::shell::uninstall(&rc_file)
         .map_err(|e| anyhow::anyhow!("Failed to remove shell integration: {}", e))?;
 
     if removed {
         println!("Removed shell integration from: {}", rc_file.display());
 
         // Extract the actual script path from RC file, fallback to default
-        let script_path = asr::shell::extract_script_path(&rc_file)
+        let script_path = agr::shell::extract_script_path(&rc_file)
             .ok()
             .flatten()
-            .or_else(asr::shell::default_script_path);
+            .or_else(agr::shell::default_script_path);
 
         if let Some(script_path) = script_path {
             if script_path.exists() {
@@ -827,7 +1102,7 @@ mod tests {
 
     #[test]
     fn cli_cleanup_parses_with_no_args() {
-        let cli = Cli::try_parse_from(["asr", "cleanup"]).unwrap();
+        let cli = Cli::try_parse_from(["agr", "cleanup"]).unwrap();
         match cli.command {
             Commands::Cleanup { agent, older_than } => {
                 assert!(agent.is_none());
@@ -839,7 +1114,7 @@ mod tests {
 
     #[test]
     fn cli_cleanup_parses_with_agent_flag() {
-        let cli = Cli::try_parse_from(["asr", "cleanup", "--agent", "claude"]).unwrap();
+        let cli = Cli::try_parse_from(["agr", "cleanup", "--agent", "claude"]).unwrap();
         match cli.command {
             Commands::Cleanup { agent, older_than } => {
                 assert_eq!(agent, Some("claude".to_string()));
@@ -851,7 +1126,7 @@ mod tests {
 
     #[test]
     fn cli_cleanup_parses_with_older_than_flag() {
-        let cli = Cli::try_parse_from(["asr", "cleanup", "--older-than", "30"]).unwrap();
+        let cli = Cli::try_parse_from(["agr", "cleanup", "--older-than", "30"]).unwrap();
         match cli.command {
             Commands::Cleanup { agent, older_than } => {
                 assert!(agent.is_none());
@@ -863,7 +1138,7 @@ mod tests {
 
     #[test]
     fn cli_cleanup_parses_with_both_flags() {
-        let cli = Cli::try_parse_from(["asr", "cleanup", "--agent", "codex", "--older-than", "60"])
+        let cli = Cli::try_parse_from(["agr", "cleanup", "--agent", "codex", "--older-than", "60"])
             .unwrap();
         match cli.command {
             Commands::Cleanup { agent, older_than } => {
@@ -876,7 +1151,7 @@ mod tests {
 
     #[test]
     fn cli_skills_list_parses() {
-        let cli = Cli::try_parse_from(["asr", "skills", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["agr", "skills", "list"]).unwrap();
         match cli.command {
             Commands::Skills(SkillsCommands::List) => {}
             _ => panic!("Expected Skills List command"),
@@ -885,7 +1160,7 @@ mod tests {
 
     #[test]
     fn cli_skills_install_parses() {
-        let cli = Cli::try_parse_from(["asr", "skills", "install"]).unwrap();
+        let cli = Cli::try_parse_from(["agr", "skills", "install"]).unwrap();
         match cli.command {
             Commands::Skills(SkillsCommands::Install) => {}
             _ => panic!("Expected Skills Install command"),
@@ -894,7 +1169,7 @@ mod tests {
 
     #[test]
     fn cli_skills_uninstall_parses() {
-        let cli = Cli::try_parse_from(["asr", "skills", "uninstall"]).unwrap();
+        let cli = Cli::try_parse_from(["agr", "skills", "uninstall"]).unwrap();
         match cli.command {
             Commands::Skills(SkillsCommands::Uninstall) => {}
             _ => panic!("Expected Skills Uninstall command"),
@@ -903,7 +1178,7 @@ mod tests {
 
     #[test]
     fn cli_shell_status_parses() {
-        let cli = Cli::try_parse_from(["asr", "shell", "status"]).unwrap();
+        let cli = Cli::try_parse_from(["agr", "shell", "status"]).unwrap();
         match cli.command {
             Commands::Shell(ShellCommands::Status) => {}
             _ => panic!("Expected Shell Status command"),
@@ -912,7 +1187,7 @@ mod tests {
 
     #[test]
     fn cli_shell_install_parses() {
-        let cli = Cli::try_parse_from(["asr", "shell", "install"]).unwrap();
+        let cli = Cli::try_parse_from(["agr", "shell", "install"]).unwrap();
         match cli.command {
             Commands::Shell(ShellCommands::Install) => {}
             _ => panic!("Expected Shell Install command"),
@@ -921,7 +1196,7 @@ mod tests {
 
     #[test]
     fn cli_shell_uninstall_parses() {
-        let cli = Cli::try_parse_from(["asr", "shell", "uninstall"]).unwrap();
+        let cli = Cli::try_parse_from(["agr", "shell", "uninstall"]).unwrap();
         match cli.command {
             Commands::Shell(ShellCommands::Uninstall) => {}
             _ => panic!("Expected Shell Uninstall command"),

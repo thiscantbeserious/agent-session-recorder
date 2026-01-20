@@ -3,7 +3,7 @@ set -e
 
 cd "$(dirname "$0")"
 
-echo "=== Agent Session Recorder Installer ==="
+echo "=== Agent Session Recorder (AGR) Installer ==="
 echo
 
 # Detect OS
@@ -53,7 +53,7 @@ if command -v cargo &>/dev/null; then
     echo "Using native Rust build..."
     cargo build --release
     mkdir -p dist
-    cp target/release/asr dist/asr
+    cp target/release/agr dist/agr
 # Fallback to Docker for Linux binary
 elif command -v docker &>/dev/null; then
     echo "Using Docker build (produces Linux binary)..."
@@ -66,10 +66,10 @@ fi
 # Install binary
 INSTALL_DIR="$HOME/.local/bin"
 mkdir -p "$INSTALL_DIR"
-cp dist/asr "$INSTALL_DIR/asr"
-chmod +x "$INSTALL_DIR/asr"
+cp dist/agr "$INSTALL_DIR/agr"
+chmod +x "$INSTALL_DIR/agr"
 echo
-echo "Installed binary to: $INSTALL_DIR/asr"
+echo "Installed binary to: $INSTALL_DIR/agr"
 
 # Create session directory
 SESSION_DIR="$HOME/recorded_agent_sessions"
@@ -77,29 +77,29 @@ mkdir -p "$SESSION_DIR"
 echo "Created session directory: $SESSION_DIR"
 
 # Create config directory
-CONFIG_DIR="$HOME/.config/asr"
+CONFIG_DIR="$HOME/.config/agr"
 mkdir -p "$CONFIG_DIR"
 echo "Created config directory: $CONFIG_DIR"
 
-# Setup shell integration using asr shell install
+# Setup shell integration using agr shell install
 echo
 echo "Setting up shell integration..."
-"$INSTALL_DIR/asr" shell install
+"$INSTALL_DIR/agr" shell install
 
 # Install skills
 echo
 echo "Installing skills..."
-"$INSTALL_DIR/asr" skills install
+"$INSTALL_DIR/agr" skills install
 
 # Verify installation
 echo
 echo "=== Installation Complete ==="
 echo
 
-# Check if asr is in PATH
-if command -v asr &>/dev/null; then
-    echo "✓ asr is available in PATH"
-    asr --version
+# Check if agr is in PATH
+if command -v agr &>/dev/null; then
+    echo "✓ agr is available in PATH"
+    agr --version
 else
     echo "Note: Add $INSTALL_DIR to your PATH:"
     echo "  export PATH=\"\$PATH:$INSTALL_DIR\""
@@ -108,5 +108,5 @@ fi
 echo
 echo "Next steps:"
 echo "  1. Restart your shell to activate shell integration"
-echo "  2. Test with: asr --help"
-echo "  3. Record a session: asr record claude"
+echo "  2. Test with: agr --help"
+echo "  3. Record a session: agr record claude"

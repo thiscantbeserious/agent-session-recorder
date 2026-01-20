@@ -1,5 +1,5 @@
 [package]
-name = "asr"
+name = "agr"
 version = "0.1.0"
 edition = "2021"
 description = "Agent Session Recorder - CLI tool for recording AI agent sessions with asciinema"
@@ -10,11 +10,11 @@ keywords = ["cli", "asciinema", "recording", "ai", "agent"]
 categories = ["command-line-utilities"]
 
 [[bin]]
-name = "asr"
+name = "agr"
 path = "src/main.rs"
 
 [lib]
-name = "asr"
+name = "agr"
 path = "src/lib.rs"
 
 [dependencies]

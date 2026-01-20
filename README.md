@@ -1,102 +1,316 @@
-# Agent Session Recorder (ASR)
+# Agent Session Recorder (AGR)
 
 [![CI](https://github.com/thiscantbeserious/agent-session-record/actions/workflows/ci.yml/badge.svg)](https://github.com/thiscantbeserious/agent-session-record/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange?logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![CodeRabbit](https://img.shields.io/badge/CodeRabbit-AI%20Review-purple)](https://coderabbit.ai)
 [![asciinema](https://img.shields.io/badge/powered%20by-asciinema-d40000)](https://asciinema.org/)
 
-A small command-line tool that uses [asciinema](https://asciinema.org/) to track all AI agent sessions, leveraging the agents themselves to create markers at interesting key points automatically, in addition to keeping track of total usage.
+**Record, review, and understand your AI agent sessions.**
+
+AGR is a lightweight CLI tool that automatically records your terminal sessions with AI coding assistants like Claude Code, Codex, and Gemini CLI. It uses [asciinema](https://asciinema.org/) under the hood to capture everything - commands, output, timing - so you can replay sessions, analyze what happened, and learn from your AI-assisted coding workflows.
+
+## Why AGR?
+
+When working with AI coding assistants, sessions can be long and complex. You might want to:
+
+- **Review what happened** - Replay a session to understand how a problem was solved
+- **Track usage** - See how much you're using different AI tools and manage storage
+- **Mark key moments** - Add markers at important points (errors, breakthroughs, decisions)
+- **Learn and improve** - Study successful sessions to refine your prompting techniques
+
+AGR handles the recording automatically and transparently - just use your AI tools as normal.
 
 ## Features
 
-- **Automatic session recording**: Transparent shell wrappers record Claude, Codex, Gemini CLI sessions without changing your workflow
-- **AI-powered markers**: Agents analyze their own recordings and mark interesting moments (errors, decisions, milestones)
-- **Native asciicast v3 format**: Markers stored directly in `.cast` files, compatible with asciinema player
-- **Storage management**: Track usage, view stats by agent, clean up old sessions interactively
-- **Configurable**: Enable/disable agents, set storage thresholds, customize behavior via TOML config
+- **Transparent recording** - Shell wrappers automatically record sessions without changing your workflow
+- **AI-powered analysis** - Agents can analyze their own recordings and mark interesting moments
+- **Native asciicast v3** - Markers stored directly in `.cast` files, playable in any asciinema player
+- **Storage management** - Track usage by agent, get warnings when storage is high, clean up old sessions
+- **Flexible configuration** - Control which agents are recorded, storage thresholds, and behavior
 
 ## Installation
+
+### Prerequisites
+
+- [asciinema](https://asciinema.org/) must be installed (`brew install asciinema` or `apt install asciinema`)
 
 ### From Source
 
 ```bash
 git clone https://github.com/thiscantbeserious/agent-session-record.git
-cd agent-session-record
+cd agent-session-recorder
 ./install.sh
 ```
 
-### With Homebrew (coming soon)
+The installer will:
+1. Build the `agr` binary and install it to `~/.local/bin/`
+2. Create the config directory at `~/.config/agr/`
+3. Create the recordings directory at `~/recorded_agent_sessions/`
+4. Install AI agent skills (for `/agr-analyze` command)
+5. Set up shell integration in your `.zshrc` or `.bashrc`
+
+### Manual Installation
 
 ```bash
-brew tap thiscantbeserious/tap
-brew install asr
+cargo build --release
+cp target/release/agr ~/.local/bin/
+agr skills install
+agr shell install
 ```
 
 ## Quick Start
 
+After installation, restart your shell or run `source ~/.zshrc`.
+
 ```bash
-# Record a Claude session
-asr record claude
+# Your AI tools now auto-record! Just use them normally:
+claude "help me refactor this function"
 
-# List recorded sessions
-asr list
+# Or record manually:
+agr record claude
 
-# Check storage usage
-asr status
+# List your recorded sessions:
+agr list
 
-# Add a marker to a recording
-asr marker add session.cast 45.2 "Build failed here"
+# Check storage usage:
+agr status
 
-# Analyze a session (in Claude/Codex/Gemini)
-/asr-analyze ~/recorded_agent_sessions/claude/session.cast
+# Play back a recording:
+asciinema play ~/recorded_agent_sessions/claude/20250120-143052.cast
+
+# Add a marker to highlight an important moment:
+agr marker add session.cast 45.2 "Build failed - missing dependency"
 ```
 
-## Commands
+### AI-Powered Analysis
 
-| Command | Description |
-|---------|-------------|
-| `asr record <agent> [-- args]` | Start recording a session |
-| `asr list [agent]` | List recorded sessions |
-| `asr status` | Show storage statistics |
-| `asr cleanup` | Interactive cleanup of old sessions |
-| `asr marker add <file> <time> <label>` | Add a marker at timestamp |
-| `asr marker list <file>` | List markers in a file |
-| `asr agents list` | List configured agents |
-| `asr agents add <name>` | Add an agent to config |
-| `asr config show` | Display current configuration |
-| `asr config edit` | Edit configuration file |
-| `asr skills list` | Show installed AI agent skills |
-| `asr skills install` | Install skills to agent directories |
-| `asr skills uninstall` | Remove skills from agent directories |
+In a Claude/Codex/Gemini session, use the built-in skill to analyze recordings:
+
+```
+/agr-analyze ~/recorded_agent_sessions/claude/session.cast
+```
+
+The AI will read through the session and add markers at interesting points (errors, decisions, milestones).
 
 ## Configuration
 
-Configuration file: `~/.config/asr/config.toml`
+AGR uses a TOML configuration file at `~/.config/agr/config.toml`. All settings have sensible defaults - you only need to configure what you want to change.
+
+### Full Configuration Reference
 
 ```toml
 [storage]
+# Where recordings are stored (supports ~ expansion)
 directory = "~/recorded_agent_sessions"
-size_threshold_gb = 5
+
+# Warn when total storage exceeds this size (in GB)
+size_threshold_gb = 5.0
+
+# Used by cleanup to identify old sessions (in days)
 age_threshold_days = 30
 
 [agents]
+# Which agents to track and offer for auto-wrapping
 enabled = ["claude", "codex", "gemini-cli"]
+
+# Agents that should NOT be auto-wrapped (record manually with `agr record`)
+no_wrap = []
+
+[shell]
+# Master switch: set to false to disable all auto-wrapping
+auto_wrap = true
+
+[recording]
+# Show a hint after recording suggesting to run /agr-analyze
+auto_analyze = false
 ```
+
+### Configuration Options Explained
+
+#### `[storage]` Section
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `directory` | `~/recorded_agent_sessions` | Base directory for all recordings. Each agent gets a subdirectory (e.g., `~/recorded_agent_sessions/claude/`). |
+| `size_threshold_gb` | `5.0` | When total storage exceeds this, AGR shows a warning after each recording suggesting cleanup. |
+| `age_threshold_days` | `30` | Sessions older than this are shown first in `agr cleanup` for easy removal. |
+
+#### `[agents]` Section
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `enabled` | `["claude", "codex", "gemini-cli"]` | List of agent commands to track. Add any CLI tool you want to record. |
+| `no_wrap` | `[]` | Agents in this list won't be auto-wrapped even if in `enabled`. Use this to disable auto-recording for specific tools while keeping them in the enabled list. |
+
+#### `[shell]` Section
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `auto_wrap` | `true` | Master switch for shell auto-wrapping. Set to `false` to disable all automatic recording - you can still record manually with `agr record <agent>`. |
+
+#### `[recording]` Section
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `auto_analyze` | `false` | When `true`, shows a hint after each recording suggesting the `/agr-analyze` command. Useful as a reminder to analyze your sessions. |
+
+### Example Configurations
+
+**Minimal - just change storage location:**
+```toml
+[storage]
+directory = "~/my-ai-recordings"
+```
+
+**Add a custom agent:**
+```toml
+[agents]
+enabled = ["claude", "codex", "gemini-cli", "aider", "cursor"]
+```
+
+**Disable auto-wrap for one agent:**
+```toml
+[agents]
+enabled = ["claude", "codex", "gemini-cli"]
+no_wrap = ["codex"]  # codex won't auto-record, but you can still use `agr record codex`
+```
+
+**Disable all auto-wrapping (manual recording only):**
+```toml
+[shell]
+auto_wrap = false
+```
+
+**Lower storage threshold for aggressive cleanup reminders:**
+```toml
+[storage]
+size_threshold_gb = 2.0
+age_threshold_days = 14
+```
+
+### Managing Configuration
+
+```bash
+# View current configuration
+agr config show
+
+# Edit configuration in your default editor
+agr config edit
+
+# Manage agents via CLI
+agr agents list              # Show enabled agents
+agr agents add aider         # Add an agent
+agr agents remove codex      # Remove an agent
+
+# Manage no-wrap list
+agr agents no-wrap list      # Show agents excluded from auto-wrap
+agr agents no-wrap add codex # Exclude an agent from auto-wrap
+agr agents no-wrap remove codex  # Re-enable auto-wrap for an agent
+```
+
+## Commands Reference
+
+### Recording
+
+| Command | Description |
+|---------|-------------|
+| `agr record <agent> [-- args]` | Record a session. Args after `--` are passed to the agent. |
+
+**Example:**
+```bash
+agr record claude -- --model opus
+```
+
+### Session Management
+
+| Command | Description |
+|---------|-------------|
+| `agr list [agent]` | List all recordings, optionally filtered by agent |
+| `agr status` | Show storage statistics with breakdown by agent |
+| `agr cleanup` | Interactive cleanup - select how many old sessions to delete |
+
+### Markers
+
+| Command | Description |
+|---------|-------------|
+| `agr marker add <file> <time> <label>` | Add a marker at the given timestamp (seconds) |
+| `agr marker list <file>` | List all markers in a recording |
+
+**Example:**
+```bash
+agr marker add session.cast 120.5 "Found the bug!"
+agr marker list session.cast
+```
+
+### Agent Configuration
+
+| Command | Description |
+|---------|-------------|
+| `agr agents list` | Show configured agents |
+| `agr agents add <name>` | Add an agent to the enabled list |
+| `agr agents remove <name>` | Remove an agent from the enabled list |
+| `agr agents is-wrapped <name>` | Check if an agent will be auto-wrapped (exit 0=yes, 1=no) |
+| `agr agents no-wrap list` | Show agents excluded from auto-wrapping |
+| `agr agents no-wrap add <name>` | Exclude an agent from auto-wrapping |
+| `agr agents no-wrap remove <name>` | Re-enable auto-wrapping for an agent |
+
+### Skills (AI Agent Integration)
+
+| Command | Description |
+|---------|-------------|
+| `agr skills list` | Show available skills and their installation status |
+| `agr skills install` | Install skills to `~/.claude/commands/`, etc. |
+| `agr skills uninstall` | Remove installed skills |
+
+### Shell Integration
+
+| Command | Description |
+|---------|-------------|
+| `agr shell status` | Show if shell integration is installed and where |
+| `agr shell install` | Add shell integration to your RC file |
+| `agr shell uninstall` | Remove shell integration from your RC file |
+
+### Configuration
+
+| Command | Description |
+|---------|-------------|
+| `agr config show` | Display current configuration |
+| `agr config edit` | Open config file in your default editor |
 
 ## Shell Integration
 
-Add to your `.zshrc` or `.bashrc`:
+AGR's shell integration creates wrapper functions for your configured agents. When you run `claude`, the wrapper:
+
+1. Checks if auto-wrap is enabled (globally and for this agent)
+2. Checks if already inside a recording (to avoid nesting)
+3. If both pass, runs `agr record claude` instead of `claude` directly
+
+### Manual Setup
+
+If you prefer manual setup instead of `agr shell install`:
 
 ```bash
-source /path/to/agent-session-recorder/shell/asr.sh
+# Add to ~/.zshrc or ~/.bashrc
+source ~/.config/agr/agr.sh
 ```
 
-This creates wrapper functions for configured agents that automatically record sessions.
+### How It Works
+
+The shell integration adds a marked section to your RC file:
+
+```bash
+# >>> AGR (Agent Session Recorder) >>>
+# DO NOT EDIT - managed by 'agr shell install/uninstall'
+export _AGR_LOADED=1
+[ -f "$HOME/.config/agr/agr.sh" ] && source "$HOME/.config/agr/agr.sh"
+# <<< AGR (Agent Session Recorder) <<<
+```
+
+This makes it easy to update or remove with `agr shell uninstall`.
 
 ## asciicast v3 Format
 
-ASR uses the native [asciicast v3](https://docs.asciinema.org/manual/asciicast/v3/) marker format:
+AGR uses the native [asciicast v3](https://docs.asciinema.org/manual/asciicast/v3/) format with marker support:
 
 ```json
 {"version":3,"term":{"cols":80,"rows":24}}
@@ -105,75 +319,68 @@ ASR uses the native [asciicast v3](https://docs.asciinema.org/manual/asciicast/v
 [0.1,"o","hello\r\n"]
 ```
 
-Marker events use type `"m"` with the label as data.
+- Output events use type `"o"` with terminal data
+- Marker events use type `"m"` with a label string
+- Timestamps are relative intervals (time since previous event)
+
+Recordings are fully compatible with asciinema's player and tools.
 
 ## Development
 
 ### Building
 
 ```bash
-# Build with Docker (produces Linux binary, runs tests)
-./build.sh
-# Output: dist/asr (Linux x86_64 binary)
-
-# Build locally (native binary)
+# Build locally
 cargo build --release
-# Output: target/release/asr
-```
 
-### Cross-Compilation
-
-The project includes `.cargo/config.toml` with cross-compilation targets.
-
-**Install targets:**
-```bash
-# macOS targets
-rustup target add x86_64-apple-darwin
-rustup target add aarch64-apple-darwin
-
-# Linux targets (requires cross-compiler toolchain)
-rustup target add x86_64-unknown-linux-gnu
-rustup target add aarch64-unknown-linux-gnu
-rustup target add x86_64-unknown-linux-musl
-```
-
-**Build for target:**
-```bash
-cargo build --release --target aarch64-apple-darwin
-cargo build --release --target x86_64-unknown-linux-gnu
-```
-
-**Linux cross-compilation from macOS:**
-```bash
-# Install musl cross-compiler
-brew install FiloSottile/musl-cross/musl-cross
-
-# Build static Linux binary
-cargo build --release --target x86_64-unknown-linux-musl
-```
-
-### Testing
-
-```bash
-# Unit tests
+# Run tests
 cargo test
 
-# E2E tests (requires asciinema installed)
+# Run E2E tests (requires asciinema)
 ./tests/e2e_test.sh
+
+# Build with Docker (Linux binary)
+./build.sh
 ```
 
 ### Project Structure
 
 ```
 src/
-├── main.rs       # CLI entry point
+├── main.rs       # CLI entry point (clap)
 ├── lib.rs        # Library root
-├── config.rs     # Configuration
+├── config.rs     # TOML configuration
 ├── asciicast.rs  # v3 parser/writer
 ├── markers.rs    # Marker injection
 ├── storage.rs    # Storage management
-├── recording.rs  # Recording logic
-└── skills.rs     # Embedded AI agent skills
+├── recording.rs  # asciinema wrapper
+└── skills.rs     # Embedded AI skills
+```
+
+### Cross-Compilation
+
+```bash
+# macOS targets
+rustup target add x86_64-apple-darwin aarch64-apple-darwin
+cargo build --release --target aarch64-apple-darwin
+
+# Linux (requires cross-compiler or use Docker)
+cargo build --release --target x86_64-unknown-linux-musl
+```
+
+## Uninstalling
+
+```bash
+./uninstall.sh
+```
+
+Or manually:
+```bash
+agr shell uninstall
+agr skills uninstall
+rm ~/.local/bin/agr
+rm -rf ~/.config/agr
+rm -rf ~/recorded_agent_sessions  # if you want to delete recordings
 ```
 
 ## License

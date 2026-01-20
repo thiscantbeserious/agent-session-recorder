@@ -2,7 +2,7 @@
 
 mod helpers;
 
-use asr::{Config, StorageManager};
+use agr::{Config, StorageManager};
 use helpers::setup_test_sessions;
 use tempfile::TempDir;
 

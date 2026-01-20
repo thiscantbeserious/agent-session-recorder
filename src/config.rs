@@ -111,16 +111,16 @@ impl Default for AgentsConfig {
 }
 
 impl Config {
-    /// Get the config file path (~/.config/asr/config.toml)
+    /// Get the config file path (~/.config/agr/config.toml)
     pub fn config_path() -> Result<PathBuf> {
         let config_dir = Self::config_dir()?;
         Ok(config_dir.join("config.toml"))
     }
 
-    /// Get the config directory path (~/.config/asr)
+    /// Get the config directory path (~/.config/agr)
     pub fn config_dir() -> Result<PathBuf> {
         let home = dirs::home_dir().context("Could not determine home directory")?;
-        Ok(home.join(".config").join("asr"))
+        Ok(home.join(".config").join("agr"))
     }
 
     /// Load configuration from file, or return defaults if not found

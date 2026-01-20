@@ -1,11 +1,11 @@
 # Agent Session Recorder - Shell Integration
 # Source this file from your .zshrc or .bashrc
 
-# Mark that ASR shell integration is loaded
-export _ASR_LOADED=1
+# Mark that AGR shell integration is loaded
+export _AGR_LOADED=1
 
 # Only set up if asciinema is available and we're not already recording
-_asr_record_session() {
+_agr_record_session() {
     local agent="$1"
     shift
 
@@ -21,32 +21,32 @@ _asr_record_session() {
         return
     fi
 
-    # Don't wrap if asr isn't available
-    if ! command -v asr &>/dev/null; then
+    # Don't wrap if agr isn't available
+    if ! command -v agr &>/dev/null; then
         command "$agent" "$@"
         return
     fi
 
     # Check if this agent should be wrapped (respects no_wrap list and auto_wrap toggle)
-    if ! asr agents is-wrapped "$agent" 2>/dev/null; then
+    if ! agr agents is-wrapped "$agent" 2>/dev/null; then
         command "$agent" "$@"
         return
     fi
 
     # Record the session
-    asr record "$agent" -- "$@"
+    agr record "$agent" -- "$@"
 }
 
 # Generate wrapper functions from config
-_asr_setup_wrappers() {
+_agr_setup_wrappers() {
     local agents
 
-    # Try to get agent list from asr
-    if command -v asr &>/dev/null; then
-        agents=$(asr agents list 2>/dev/null | grep -v "^Configured" | grep -v "^No agents" | sed 's/^  //')
+    # Try to get agent list from agr
+    if command -v agr &>/dev/null; then
+        agents=$(agr agents list 2>/dev/null | grep -v "^Configured" | grep -v "^No agents" | sed 's/^  //')
     fi
 
-    # Fallback to default agents if asr not available
+    # Fallback to default agents if agr not available
     if [[ -z "$agents" ]]; then
         agents="claude codex gemini-cli"
     fi
@@ -54,14 +54,14 @@ _asr_setup_wrappers() {
     # Create wrapper for each agent
     for agent in $agents; do
         # Skip if a function already exists with a different definition
-        if type "$agent" 2>/dev/null | grep -q "_asr_record_session"; then
+        if type "$agent" 2>/dev/null | grep -q "_agr_record_session"; then
             continue
         fi
 
         # Create the wrapper function
-        eval "$agent() { _asr_record_session $agent \"\$@\"; }"
+        eval "$agent() { _agr_record_session $agent \"\$@\"; }"
     done
 }
 
 # Initialize wrappers
-_asr_setup_wrappers
+_agr_setup_wrappers

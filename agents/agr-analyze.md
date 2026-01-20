@@ -3,7 +3,7 @@
 Analyze the specified .cast file and add markers for interesting moments.
 
 ## Usage
-/asr-analyze <path-to-file.cast>
+/agr-analyze <path-to-file.cast>
 
 ## Process
 1. Read the .cast file using the Read tool
@@ -15,7 +15,7 @@ Analyze the specified .cast file and add markers for interesting moments.
    - Significant output or results
 4. For each key moment, run:
    ```
-   asr marker add <file.cast> <timestamp_seconds> "description"
+   agr marker add <file.cast> <timestamp_seconds> "description"
    ```
 
 ## Understanding the Format
@@ -33,12 +33,12 @@ To calculate absolute timestamps, sum up the times from the start.
 
 If you find a build error at cumulative timestamp 45.2s:
 ```bash
-asr marker add session.cast 45.2 "Build failed: missing dependency"
+agr marker add session.cast 45.2 "Build failed: missing dependency"
 ```
 
 If you find a successful test completion at 120.5s:
 ```bash
-asr marker add session.cast 120.5 "All tests passed"
+agr marker add session.cast 120.5 "All tests passed"
 ```
 
 ## What to Look For

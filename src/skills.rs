@@ -5,16 +5,16 @@
 
 use std::path::PathBuf;
 
-/// Embedded skill: asr-analyze.md
-pub const SKILL_ANALYZE: &str = include_str!("../agents/asr-analyze.md");
+/// Embedded skill: agr-analyze.md
+pub const SKILL_ANALYZE: &str = include_str!("../agents/agr-analyze.md");
 
-/// Embedded skill: asr-review.md
-pub const SKILL_REVIEW: &str = include_str!("../agents/asr-review.md");
+/// Embedded skill: agr-review.md
+pub const SKILL_REVIEW: &str = include_str!("../agents/agr-review.md");
 
 /// All available skills as (filename, content) pairs
 pub const SKILLS: &[(&str, &str)] = &[
-    ("asr-analyze.md", SKILL_ANALYZE),
-    ("asr-review.md", SKILL_REVIEW),
+    ("agr-analyze.md", SKILL_ANALYZE),
+    ("agr-review.md", SKILL_REVIEW),
 ];
 
 /// Get skill directories for different AI agents
@@ -81,7 +81,7 @@ pub fn install_skills() -> std::io::Result<Vec<PathBuf>> {
     Ok(installed)
 }
 
-/// Uninstall asr skills from all agent command directories
+/// Uninstall agr skills from all agent command directories
 /// Returns a list of paths where skills were removed
 pub fn uninstall_skills() -> std::io::Result<Vec<PathBuf>> {
     let mut removed = Vec::new();
@@ -112,15 +112,15 @@ mod tests {
         assert!(!SKILL_REVIEW.is_empty());
 
         // Verify skills contain expected content
-        assert!(SKILL_ANALYZE.contains("asr-analyze"));
-        assert!(SKILL_REVIEW.contains("asr-review"));
+        assert!(SKILL_ANALYZE.contains("agr-analyze"));
+        assert!(SKILL_REVIEW.contains("agr-review"));
     }
 
     #[test]
     fn test_skills_array() {
         assert_eq!(SKILLS.len(), 2);
-        assert_eq!(SKILLS[0].0, "asr-analyze.md");
-        assert_eq!(SKILLS[1].0, "asr-review.md");
+        assert_eq!(SKILLS[0].0, "agr-analyze.md");
+        assert_eq!(SKILLS[1].0, "agr-review.md");
     }
 
     #[test]
@@ -149,7 +149,7 @@ mod tests {
         std::fs::create_dir_all(&codex_dir)?;
 
         // Write a skill file
-        let skill_path = claude_dir.join("asr-analyze.md");
+        let skill_path = claude_dir.join("agr-analyze.md");
         std::fs::write(&skill_path, SKILL_ANALYZE)?;
 
         // Verify it exists

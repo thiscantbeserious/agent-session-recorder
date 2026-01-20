@@ -3,7 +3,7 @@
 Review the specified PR for quality and correctness.
 
 ## Usage
-/asr-review <pr-number>
+/agr-review <pr-number>
 
 ## Process
 1. Fetch PR information: `gh pr view <pr-number>`

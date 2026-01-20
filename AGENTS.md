@@ -1,4 +1,4 @@
-# Agent Session Recorder (ASR)
+# Agent Session Recorder (AGR)
 
 A Rust CLI tool for recording AI agent terminal sessions with asciinema.
 
@@ -110,7 +110,7 @@ rm .state/locks/task-name.lock
 
 - Records sessions to `~/recorded_agent_sessions/<agent>/`
 - Uses asciicast v3 format with native marker support
-- AI agents analyze recordings and add markers via `/asr-analyze` skill
+- AI agents analyze recordings and add markers via `/agr-analyze` skill
 
 ## Key Source Files
 
@@ -127,23 +127,23 @@ rm .state/locks/task-name.lock
 ## CLI Commands
 
 ```
-asr record <agent> [-- args...]   # Start recording session
-asr status                        # Show storage stats
-asr cleanup                       # Interactive cleanup
-asr list [agent]                  # List sessions
-asr marker add <file> <time> <label>  # Add marker
-asr marker list <file>            # List markers
-asr agents list                   # List configured agents
-asr agents add <name>             # Add agent to config
-asr config show                   # Show current config
-asr config edit                   # Open config in editor
+agr record <agent> [-- args...]   # Start recording session
+agr status                        # Show storage stats
+agr cleanup                       # Interactive cleanup
+agr list [agent]                  # List sessions
+agr marker add <file> <time> <label>  # Add marker
+agr marker list <file>            # List markers
+agr agents list                   # List configured agents
+agr agents add <name>             # Add agent to config
+agr config show                   # Show current config
+agr config edit                   # Open config in editor
 ```
 
 ## AI Agent Skills
 
 These skills are for AI agents (Claude, Codex, Gemini) to use, not CLI commands.
 
-### `/asr-analyze <file.cast>`
+### `/agr-analyze <file.cast>`
 
 Analyze a session recording and add markers for interesting moments.
 
@@ -157,19 +157,19 @@ Analyze a session recording and add markers for interesting moments.
    - Significant output or results
 4. For each moment, call:
    ```bash
-   asr marker add <file.cast> <timestamp_seconds> "description"
+   agr marker add <file.cast> <timestamp_seconds> "description"
    ```
 
 **Example:**
 ```bash
 # Found error at 45.2 seconds
-asr marker add session.cast 45.2 "Build failed: missing dependency"
+agr marker add session.cast 45.2 "Build failed: missing dependency"
 
 # Found successful deployment at 120.5 seconds
-asr marker add session.cast 120.5 "Deployment completed successfully"
+agr marker add session.cast 120.5 "Deployment completed successfully"
 ```
 
-### `/asr-review <pr-number>`
+### `/agr-review <pr-number>`
 
 Review a pull request for this project.
 
