@@ -1,9 +1,15 @@
 # Current State
 
+## Session Mode: COORDINATOR
+
+This session is a **coordinator** that manages sub-agents. It does NOT implement code directly.
+
+See `.state/coordinator.md` for active agent tracking.
+
 ## Quick Start for New Session
 ```bash
 cd ~/git/simon/agent-session-recorder
-. "$HOME/.cargo/env"                    # Load Rust
+export PATH="$HOME/.cargo/bin:$PATH"    # Load Rust
 cargo test && ./tests/e2e_test.sh       # Verify everything works
 ```
 

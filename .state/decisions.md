@@ -1,5 +1,29 @@
 # Key Decisions Log
 
+## 2026-01-20: Multi-Agent Coordination Architecture
+
+### Decision: Coordinator session manages sub-agents
+**Context:** Need better separation of concerns and verification
+**Choice:** Main session acts as coordinator, spawns impl/verify agents
+**Rationale:**
+- Coordinator never implements directly - only orchestrates
+- Fresh agents for each task prevent context pollution
+- Separate verify agents ensure clean validation
+- State files enable communication between agents
+- Enables parallel task execution with proper verification
+
+### Agent Types:
+1. **Coordinator** - Plans, spawns, monitors, gates merges
+2. **Impl Agent** - Implements features on feature branches
+3. **Verify Agent** - Fresh session to run tests, review PRs
+
+### State Files:
+- `.state/coordinator.md` - Coordinator's active tracking
+- `.state/phase-N/impl-results/` - Impl agent outputs
+- `.state/phase-N/verify-results/` - Verify agent outputs
+
+---
+
 ## 2025-01-19: Project Initialization
 
 ### Decision: Use Rust with specified dependencies
