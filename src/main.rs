@@ -30,7 +30,14 @@ enum Commands {
     Status,
 
     /// Interactive cleanup of old sessions
-    Cleanup,
+    Cleanup {
+        /// Filter by agent name
+        #[arg(long)]
+        agent: Option<String>,
+        /// Only show sessions older than N days
+        #[arg(long)]
+        older_than: Option<u32>,
+    },
 
     /// List recorded sessions
     List {
@@ -99,7 +106,7 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Record { agent, args } => cmd_record(&agent, &args),
         Commands::Status => cmd_status(),
-        Commands::Cleanup => cmd_cleanup(),
+        Commands::Cleanup { agent, older_than } => cmd_cleanup(agent.as_deref(), older_than),
         Commands::List { agent } => cmd_list(agent.as_deref()),
         Commands::Marker(cmd) => match cmd {
             MarkerCommands::Add { file, time, label } => cmd_marker_add(&file, time, &label),
@@ -138,53 +145,151 @@ fn cmd_status() -> Result<()> {
     Ok(())
 }
 
-fn cmd_cleanup() -> Result<()> {
+fn cmd_cleanup(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()> {
     let config = Config::load()?;
+    let age_threshold = config.storage.age_threshold_days;
     let storage = StorageManager::new(config);
-    let sessions = storage.list_sessions(None)?;
+
+    // Get sessions, optionally filtered by agent
+    let mut sessions = storage.list_sessions(agent_filter)?;
+
+    // Apply older_than filter if specified
+    if let Some(days) = older_than {
+        sessions.retain(|s| s.age_days > days as i64);
+    }
 
     if sessions.is_empty() {
-        println!("No sessions to clean up.");
+        if agent_filter.is_some() || older_than.is_some() {
+            println!("No sessions match the specified filters.");
+        } else {
+            println!("No sessions to clean up.");
+        }
         return Ok(());
     }
 
     let stats = storage.get_stats()?;
 
+    // Count old sessions (older than configured threshold)
+    let old_count = sessions.iter().filter(|s| s.age_days > age_threshold as i64).count();
+
+    // Print header with breakdown by agent
     println!("=== Agent Session Cleanup ===");
     println!("Storage: {} ({:.1}% of disk)", stats.size_human(), stats.disk_percentage);
-    println!();
-    println!("Found {} sessions. Oldest 10:", sessions.len());
 
-    for (i, session) in sessions.iter().take(10).enumerate() {
+    // Show agent breakdown
+    let agents_summary: Vec<String> = stats
+        .sessions_by_agent
+        .iter()
+        .map(|(agent, count)| format!("{}: {}", agent, count))
+        .collect();
+    if !agents_summary.is_empty() {
+        println!("   Sessions: {} total ({})", stats.session_count, agents_summary.join(", "));
+    }
+    println!();
+
+    // Show filter info if applicable
+    if let Some(agent) = agent_filter {
+        println!("Filtered by agent: {}", agent);
+    }
+    if let Some(days) = older_than {
+        println!("Filtered by age: > {} days", days);
+    }
+    if agent_filter.is_some() || older_than.is_some() {
+        println!();
+    }
+
+    // Build session summary message
+    let session_msg = if old_count > 0 {
+        format!(
+            "Found {} sessions ({} older than {} days - marked with *)",
+            sessions.len(),
+            old_count,
+            age_threshold
+        )
+    } else {
+        format!("Found {} sessions", sessions.len())
+    };
+    println!("{}", session_msg);
+    println!();
+
+    // Print formatted table header
+    println!("  #  | Age   | Agent       | Size       | Filename");
+    println!("-----+-------+-------------+------------+---------------------------");
+
+    // Display up to 15 sessions in a formatted table
+    for (i, session) in sessions.iter().take(15).enumerate() {
+        let age_marker = if session.age_days > age_threshold as i64 { "*" } else { " " };
         println!(
-            "  {}) {} ({}, {}, {} days)",
+            "{:>3}  | {:>3}d{} | {:11} | {:>10} | {}",
             i + 1,
-            session.filename,
-            session.agent,
+            session.age_days,
+            age_marker,
+            truncate_string(&session.agent, 11),
             session.size_human(),
-            session.age_days
+            session.filename
         );
     }
 
+    if sessions.len() > 15 {
+        println!("... and {} more sessions", sessions.len() - 15);
+    }
+
     println!();
-    print!("How many oldest to delete? [0-{}]: ", sessions.len());
+
+    // Build prompt with quick delete options
+    let prompt = if old_count > 0 {
+        format!(
+            "Delete: [number], 'old' ({} sessions > {}d), 'all', or 0 to cancel: ",
+            old_count, age_threshold
+        )
+    } else {
+        format!("Delete: [number], 'all', or 0 to cancel: ")
+    };
+    print!("{}", prompt);
     io::stdout().flush()?;
 
     let mut input = String::new();
     io::stdin().lock().read_line(&mut input)?;
-    let count: usize = input.trim().parse().unwrap_or(0);
+    let input = input.trim().to_lowercase();
 
-    if count == 0 {
+    // Parse input - could be number, 'old', or 'all'
+    let to_delete: Vec<_> = if input == "0" || input.is_empty() {
         println!("No sessions deleted.");
+        return Ok(());
+    } else if input == "all" {
+        sessions.clone()
+    } else if input == "old" && old_count > 0 {
+        sessions
+            .iter()
+            .filter(|s| s.age_days > age_threshold as i64)
+            .cloned()
+            .collect()
+    } else if let Ok(count) = input.parse::<usize>() {
+        if count > sessions.len() {
+            println!("Invalid number. Maximum is {}.", sessions.len());
+            return Ok(());
+        }
+        sessions.into_iter().take(count).collect()
+    } else {
+        println!("Invalid input. Use a number, 'old', 'all', or 0 to cancel.");
+        return Ok(());
+    };
+
+    if to_delete.is_empty() {
+        println!("No sessions to delete.");
         return Ok(());
     }
 
-    let to_delete: Vec<_> = sessions.into_iter().take(count).collect();
+    // Calculate total size to be freed
+    let total_size: u64 = to_delete.iter().map(|s| s.size).sum();
 
     println!();
-    println!("Will delete:");
-    for session in &to_delete {
-        println!("  - {}", session.filename);
+    println!("Will delete {} sessions ({}):", to_delete.len(), humansize::format_size(total_size, humansize::BINARY));
+    for session in to_delete.iter().take(10) {
+        println!("  - {} ({})", session.filename, session.agent);
+    }
+    if to_delete.len() > 10 {
+        println!("  ... and {} more", to_delete.len() - 10);
     }
 
     print!("\nConfirm? [y/N]: ");
@@ -207,6 +312,19 @@ fn cmd_cleanup() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Truncate a string to a maximum length, adding ellipsis if needed
+fn truncate_string(s: &str, max_len: usize) -> String {
+    let char_count = s.chars().count();
+    if char_count <= max_len {
+        s.to_string()
+    } else if max_len > 3 {
+        let truncated: String = s.chars().take(max_len - 3).collect();
+        format!("{}...", truncated)
+    } else {
+        s.chars().take(max_len).collect()
+    }
 }
 
 fn cmd_list(agent: Option<&str>) -> Result<()> {
@@ -328,4 +446,93 @@ fn cmd_config_edit() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to open editor: {}", e))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_string_short_string_unchanged() {
+        assert_eq!(truncate_string("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_string_exact_length_unchanged() {
+        assert_eq!(truncate_string("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_string_long_string_with_ellipsis() {
+        assert_eq!(truncate_string("hello world", 8), "hello...");
+    }
+
+    #[test]
+    fn truncate_string_very_short_max_len() {
+        // When max_len <= 3, just truncate without ellipsis
+        assert_eq!(truncate_string("hello", 3), "hel");
+    }
+
+    #[test]
+    fn truncate_string_empty_string() {
+        assert_eq!(truncate_string("", 10), "");
+    }
+
+    #[test]
+    fn truncate_string_handles_multibyte_characters() {
+        // Should not panic and should truncate by characters, not bytes
+        assert_eq!(truncate_string("日本語テスト", 5), "日本...");
+        assert_eq!(truncate_string("café", 10), "café");
+        assert_eq!(truncate_string("emoji🎉test", 8), "emoji...");
+    }
+
+    #[test]
+    fn cli_cleanup_parses_with_no_args() {
+        let cli = Cli::try_parse_from(["asr", "cleanup"]).unwrap();
+        match cli.command {
+            Commands::Cleanup { agent, older_than } => {
+                assert!(agent.is_none());
+                assert!(older_than.is_none());
+            }
+            _ => panic!("Expected Cleanup command"),
+        }
+    }
+
+    #[test]
+    fn cli_cleanup_parses_with_agent_flag() {
+        let cli = Cli::try_parse_from(["asr", "cleanup", "--agent", "claude"]).unwrap();
+        match cli.command {
+            Commands::Cleanup { agent, older_than } => {
+                assert_eq!(agent, Some("claude".to_string()));
+                assert!(older_than.is_none());
+            }
+            _ => panic!("Expected Cleanup command"),
+        }
+    }
+
+    #[test]
+    fn cli_cleanup_parses_with_older_than_flag() {
+        let cli = Cli::try_parse_from(["asr", "cleanup", "--older-than", "30"]).unwrap();
+        match cli.command {
+            Commands::Cleanup { agent, older_than } => {
+                assert!(agent.is_none());
+                assert_eq!(older_than, Some(30));
+            }
+            _ => panic!("Expected Cleanup command"),
+        }
+    }
+
+    #[test]
+    fn cli_cleanup_parses_with_both_flags() {
+        let cli = Cli::try_parse_from([
+            "asr", "cleanup", "--agent", "codex", "--older-than", "60"
+        ]).unwrap();
+        match cli.command {
+            Commands::Cleanup { agent, older_than } => {
+                assert_eq!(agent, Some("codex".to_string()));
+                assert_eq!(older_than, Some(60));
+            }
+            _ => panic!("Expected Cleanup command"),
+        }
+    }
 }
