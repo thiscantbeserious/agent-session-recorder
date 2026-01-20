@@ -4,14 +4,20 @@ A Rust CLI tool for recording AI agent terminal sessions with asciinema.
 
 ## IMPORTANT: Agile SDLC Workflow
 
-**Before doing anything, read `.state/current-phase.md`** to understand context.
+**Before doing anything, read the state files** to understand context.
+
+### Key State Files
+- `.state/plan.md` - **Master plan** with phase status and all tasks
+- `.state/current-phase.md` - Current session context
+- `.state/coordinator.md` - Agent tracking (if coordinator session)
+- `.state/decisions.md` - Technical decisions log
 
 ### For Each Task, Follow These Steps:
 
 #### 1. Requirement Gathering
 ```bash
+cat .state/plan.md               # Master plan with phase tasks
 cat .state/current-phase.md      # Current context
-cat .state/phase-N/progress.md   # Find next task
 cat .state/decisions.md          # Prior decisions
 ```
 
@@ -180,32 +186,13 @@ cargo build --release
 
 ## Development Phases
 
-### Phase 1: MVP (Core Recording) - COMPLETE
-- [x] Project setup (Cargo.toml, basic structure)
-- [x] Docker build environment
-- [x] `asr record <agent>` - spawn asciinema
-- [x] Rename prompt on normal exit
-- [x] Keep original filename on Ctrl+C
-- [x] `asr agents list/add`
-- [x] Shell wrapper
-- [x] Install script
+**See `.state/plan.md` for current phase status and task lists.**
 
-### Phase 2: Storage Management
-- [ ] `asr status`
-- [ ] `asr cleanup`
-- [ ] Storage threshold warnings
-- [ ] `asr list`
-
-### Phase 3: Marker Support
-- [ ] `asr marker add`
-- [ ] `asr marker list`
-- [ ] `/asr-analyze` skill
-
-### Phase 4: Polish
-- [ ] Config file support
-- [ ] README documentation
-- [ ] Cross-compilation
-- [ ] Homebrew formula
+Summary:
+- **Phase 1:** COMPLETE - Core recording functionality
+- **Phase 2:** IN PROGRESS - Storage UX improvements
+- **Phase 3:** MOSTLY COMPLETE - Marker support
+- **Phase 4:** MOSTLY COMPLETE - Polish & distribution
 
 ## Git Workflow
 
