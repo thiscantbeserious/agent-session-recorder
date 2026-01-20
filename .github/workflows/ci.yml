@@ -10,55 +10,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Quick checks that fail fast
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run clippy
-        run: cargo clippy -- -D warnings
-
-  # Unit and integration tests
-  test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Run unit tests
-        run: cargo test --verbose
-
-  # Build release binary
+  # 1. Build - ensure it compiles
   build:
-    name: Build (${{ matrix.os }})
-    needs: [lint, test]
+    name: Build
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -89,16 +43,55 @@ jobs:
           name: asr-${{ matrix.os }}
           path: target/release/asr
 
-  # E2E tests require asciinema with v3 support
-  e2e:
-    name: E2E Tests
+  # 2. Unit Tests - verify logic
+  unit-tests:
+    name: Unit Tests
     needs: build
-    runs-on: macos-latest  # macOS brew has newer asciinema with v3 support
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run unit tests
+        run: cargo test --verbose
+
+  # 3. E2E Tests - verify integration (macOS only for asciinema v3)
+  e2e-tests:
+    name: E2E Tests
+    needs: unit-tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install asciinema
         run: brew install asciinema
@@ -112,10 +105,28 @@ jobs:
       - name: Run e2e tests
         run: ./tests/e2e_test.sh
 
-  # Build release artifacts for multiple platforms (only on main)
-  release-artifacts:
-    name: Release Artifacts
-    needs: [lint, test, build, e2e]
+  # Lint - runs in parallel, fast-fail for style issues
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+  # Release artifacts - only on main push, after all checks pass
+  release:
+    name: Release (${{ matrix.artifact }})
+    needs: [build, unit-tests, e2e-tests, lint]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -123,13 +134,13 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: asr-linux-x86_64
+            artifact: linux-x86_64
           - os: macos-latest
             target: x86_64-apple-darwin
-            artifact: asr-macos-x86_64
+            artifact: macos-x86_64
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact: asr-macos-arm64
+            artifact: macos-arm64
     steps:
       - uses: actions/checkout@v4
 
@@ -144,5 +155,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: asr-${{ matrix.artifact }}
           path: target/${{ matrix.target }}/release/asr
