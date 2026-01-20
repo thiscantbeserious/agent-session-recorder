@@ -46,15 +46,13 @@ The installer will:
 1. Build the `agr` binary and install it to `~/.local/bin/`
 2. Create the config directory at `~/.config/agr/`
 3. Create the recordings directory at `~/recorded_agent_sessions/`
-4. Install AI agent skills (for `/agr-analyze` command)
-5. Set up shell integration in your `.zshrc` or `.bashrc`
+4. Set up shell integration in your `.zshrc` or `.bashrc`
 
 ### Manual Installation
 
 ```bash
 cargo build --release
 cp target/release/agr ~/.local/bin/
-agr skills install
 agr shell install
 ```
 
@@ -84,13 +82,23 @@ agr marker add session.cast 45.2 "Build failed - missing dependency"
 
 ### AI-Powered Analysis
 
-In a Claude/Codex/Gemini session, use the built-in skill to analyze recordings:
+Enable auto-analyze to have an AI agent automatically analyze recordings after each session:
 
-```
-/agr-analyze ~/recorded_agent_sessions/claude/session.cast
+```toml
+# In ~/.config/agr/config.toml
+[recording]
+auto_analyze = true
+analysis_agent = "claude"  # or "codex" or "gemini-cli"
 ```
 
-The AI will read through the session and add markers at interesting points (errors, decisions, milestones).
+When enabled, AGR spawns the configured agent after recording to analyze the session and add markers at interesting points (errors, decisions, milestones).
+
+**Manual analysis** (if you prefer):
+```bash
+# Read the cast file and identify interesting moments, then add markers:
+agr marker add session.cast 45.2 "Build failed: missing dependency"
+agr marker add session.cast 120.5 "Deployment completed successfully"
+```
 
 ## Configuration
 
@@ -121,8 +129,11 @@ no_wrap = []
 auto_wrap = true
 
 [recording]
-# Show a hint after recording suggesting to run /agr-analyze
+# Automatically spawn an AI agent to analyze recordings after each session
 auto_analyze = false
+
+# Which agent CLI to use for analysis (must be installed)
+analysis_agent = "claude"  # or "codex" or "gemini-cli"
 ```
 
 ### Configuration Options Explained
@@ -152,7 +163,8 @@ auto_analyze = false
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `auto_analyze` | `false` | When `true`, shows a hint after each recording suggesting the `/agr-analyze` command. Useful as a reminder to analyze your sessions. |
+| `auto_analyze` | `false` | When `true`, automatically spawns an AI agent to analyze the recording after each session. The agent reads the session and adds markers at key moments. |
+| `analysis_agent` | `"claude"` | Which agent CLI to use for auto-analysis. Options: `claude`, `codex`, `gemini-cli`. The agent must be installed on your system. |
 
 ### Example Configurations
 
@@ -254,14 +266,6 @@ agr marker list session.cast
 | `agr agents no-wrap add <name>` | Exclude an agent from auto-wrapping |
 | `agr agents no-wrap remove <name>` | Re-enable auto-wrapping for an agent |
 
-### Skills (AI Agent Integration)
-
-| Command | Description |
-|---------|-------------|
-| `agr skills list` | Show available skills and their installation status |
-| `agr skills install` | Install skills to `~/.claude/commands/`, etc. |
-| `agr skills uninstall` | Remove installed skills |
-
 ### Shell Integration
 
 | Command | Description |
@@ -354,7 +358,7 @@ src/
 ├── markers.rs    # Marker injection
 ├── storage.rs    # Storage management
 ├── recording.rs  # asciinema wrapper
-└── skills.rs     # Embedded AI skills
+└── analyzer.rs   # Auto-analysis with AI agents
 ```
 
 ### Cross-Compilation
@@ -377,7 +381,6 @@ cargo build --release --target x86_64-unknown-linux-musl
 Or manually:
 ```bash
 agr shell uninstall
-agr skills uninstall
 rm ~/.local/bin/agr
 rm -rf ~/.config/agr
 rm -rf ~/recorded_agent_sessions  # if you want to delete recordings
