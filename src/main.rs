@@ -330,7 +330,7 @@ fn truncate_string(s: &str, max_len: usize) -> String {
 fn cmd_list(agent: Option<&str>) -> Result<()> {
     let config = Config::load()?;
     let storage = StorageManager::new(config);
-    let sessions = storage.list_sessions(agent)?;
+    let mut sessions = storage.list_sessions(agent)?;
 
     if sessions.is_empty() {
         if let Some(agent_name) = agent {
@@ -341,14 +341,43 @@ fn cmd_list(agent: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    println!("Sessions:");
-    for session in sessions {
+    // Reverse to show newest first
+    sessions.reverse();
+
+    // Print summary header
+    if agent.is_none() {
+        // Show full summary with agent breakdown
+        let stats = storage.get_stats()?;
+        let mut agents: Vec<_> = stats.sessions_by_agent.iter().collect();
+        agents.sort_by(|a, b| a.0.cmp(b.0));
+        let agents_summary: Vec<String> = agents
+            .iter()
+            .map(|(agent, count)| format!("{}: {}", agent, count))
+            .collect();
+        if agents_summary.is_empty() {
+            println!("Sessions: {} total", stats.session_count);
+        } else {
+            println!("Sessions: {} total ({})", stats.session_count, agents_summary.join(", "));
+        }
+    } else {
+        // Just show count for filtered view
+        println!("Sessions: {} (filtered by agent: {})", sessions.len(), agent.unwrap());
+    }
+    println!();
+
+    // Print table header
+    println!("  #  | Age  | Agent       | Size       | Filename");
+    println!("-----+------+-------------+------------+---------------------------");
+
+    // Display sessions in formatted table
+    for (i, session) in sessions.iter().enumerate() {
         println!(
-            "  {} ({}, {}, {} days old)",
-            session.filename,
-            session.agent,
+            "{:>3}  | {:>3}d | {:11} | {:>10} | {}",
+            i + 1,
+            session.age_days,
+            truncate_string(&session.agent, 11),
             session.size_human(),
-            session.age_days
+            session.filename
         );
     }
 
