@@ -1,16 +1,32 @@
-# CodeRabbit Configuration - only non-default values
-# Defaults: https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit Configuration
+# Schema: https://coderabbit.ai/integrations/schema.v2.json
 
 reviews:
   auto_review:
-    # Only review on PR open, not every push (default: true)
+    # Only review on PR open, not every push
     auto_incremental_review: false
 
-  # Skip non-code files
+  # Include AI-friendly prompts in review comments
+  enable_prompt_for_ai_agents: true
+
+  # Skip non-code files from review
   path_filters:
     - "!.state/**"
     - "!*.md"
 
+  # Review guidance
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        AI agents working on this codebase should read AGENTS.md for workflow instructions.
+        Key points: TDD, cargo fmt/clippy before commit, wait for CI + CodeRabbit before merge.
+    - path: "src/**/*.rs"
+      instructions: |
+        Rust CLI using anyhow for errors, clap for CLI, serde for config.
+        Run `cargo clippy -- -D warnings` - no warnings allowed.
+    - path: "tests/**/*.rs"
+      instructions: |
+        Behavior-focused tests. Use tempfile for isolation.
+
 chat:
-  # Don't auto-reply to comments (default: true)
   auto_reply: false
