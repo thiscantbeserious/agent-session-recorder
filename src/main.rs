@@ -9,7 +9,8 @@ use agr::{Config, MarkerManager, Recorder, StorageManager};
 #[derive(Parser)]
 #[command(name = "agr")]
 #[command(about = "Agent Session Recorder - Record AI agent terminal sessions")]
-#[command(long_about = "Agent Session Recorder (AGR) - Record AI agent terminal sessions with asciinema.
+#[command(
+    long_about = "Agent Session Recorder (AGR) - Record AI agent terminal sessions with asciinema.
 
 AGR automatically records your AI coding agent sessions (Claude, Codex, Gemini, etc.)
 to ~/recorded_agent_sessions/ in asciicast v3 format. Recordings can be played back
@@ -25,7 +26,8 @@ SHELL INTEGRATION:
     agr shell install              Auto-record configured agents
     agr agents add claude          Add agent to auto-record list
 
-For more information, see: https://github.com/thiscantbeserious/agent-session-recorder")]
+For more information, see: https://github.com/thiscantbeserious/agent-session-recorder"
+)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -71,7 +73,8 @@ OUTPUT:
     Status,
 
     /// Interactive cleanup of old sessions
-    #[command(long_about = "Interactively delete old session recordings to free up disk space.
+    #[command(
+        long_about = "Interactively delete old session recordings to free up disk space.
 
 Displays a list of sessions sorted by age and lets you choose how many
 to delete. Supports filtering by agent and age. Sessions older than
@@ -87,7 +90,8 @@ INTERACTIVE OPTIONS:
     [number]    Delete the N oldest sessions
     'old'       Delete all sessions older than threshold
     'all'       Delete all matching sessions
-    0           Cancel without deleting")]
+    0           Cancel without deleting"
+    )]
     Cleanup {
         /// Filter sessions by agent name
         #[arg(long, help = "Only show sessions from this agent")]
@@ -114,7 +118,9 @@ EXAMPLES:
     },
 
     /// Manage markers in cast files
-    #[command(subcommand, long_about = "Add and list markers in asciicast recording files.
+    #[command(
+        subcommand,
+        long_about = "Add and list markers in asciicast recording files.
 
 Markers are annotations at specific timestamps in a recording,
 useful for highlighting key moments like errors, decisions, or
@@ -123,11 +129,14 @@ milestones. Markers use the native asciicast v3 marker format.
 EXAMPLES:
     agr marker add session.cast 45.2 \"Build failed\"
     agr marker add session.cast 120.5 \"Deployment complete\"
-    agr marker list session.cast")]
+    agr marker list session.cast"
+    )]
     Marker(MarkerCommands),
 
     /// Manage configured agents
-    #[command(subcommand, long_about = "Manage the list of AI agents that AGR knows about.
+    #[command(
+        subcommand,
+        long_about = "Manage the list of AI agents that AGR knows about.
 
 Configured agents are used by shell integration to automatically
 record sessions. You can also control which agents are auto-wrapped
@@ -137,22 +146,28 @@ EXAMPLES:
     agr agents list                  Show configured agents
     agr agents add claude            Add claude to the list
     agr agents remove codex          Remove codex from the list
-    agr agents no-wrap add claude    Disable auto-wrap for claude")]
+    agr agents no-wrap add claude    Disable auto-wrap for claude"
+    )]
     Agents(AgentCommands),
 
     /// Configuration management
-    #[command(subcommand, long_about = "View and edit the AGR configuration file.
+    #[command(
+        subcommand,
+        long_about = "View and edit the AGR configuration file.
 
 Configuration is stored in ~/.config/agr/config.toml and includes
 storage settings, agent list, shell integration options, and more.
 
 EXAMPLES:
     agr config show          Display current configuration
-    agr config edit          Open config in $EDITOR")]
+    agr config edit          Open config in $EDITOR"
+    )]
     Config(ConfigCommands),
 
     /// Manage AI agent skills
-    #[command(subcommand, long_about = "Manage AI agent skills (slash commands) for session analysis.
+    #[command(
+        subcommand,
+        long_about = "Manage AI agent skills (slash commands) for session analysis.
 
 Skills are markdown files installed to ~/.claude/commands/ (and similar
 directories for other agents) that provide AI-powered session analysis.
@@ -164,11 +179,14 @@ AVAILABLE SKILLS:
 EXAMPLES:
     agr skills list          Show installed skills
     agr skills install       Install skills to all agent directories
-    agr skills uninstall     Remove installed skills")]
+    agr skills uninstall     Remove installed skills"
+    )]
     Skills(SkillsCommands),
 
     /// Manage shell integration
-    #[command(subcommand, long_about = "Manage automatic session recording via shell integration.
+    #[command(
+        subcommand,
+        long_about = "Manage automatic session recording via shell integration.
 
 Shell integration adds wrapper functions to your shell that automatically
 record sessions when you run configured agents. It modifies your .zshrc
@@ -179,7 +197,8 @@ EXAMPLES:
     agr shell install        Install shell integration
     agr shell uninstall      Remove shell integration
 
-After installing, restart your shell or run: source ~/.zshrc")]
+After installing, restart your shell or run: source ~/.zshrc"
+    )]
     Shell(ShellCommands),
 }
 
@@ -205,7 +224,8 @@ EXAMPLE:
         label: String,
     },
     /// List all markers in a cast file
-    #[command(long_about = "List all markers in a cast file with their timestamps and labels.
+    #[command(
+        long_about = "List all markers in a cast file with their timestamps and labels.
 
 EXAMPLE:
     agr marker list ~/recorded_agent_sessions/claude/session.cast
@@ -213,7 +233,8 @@ EXAMPLE:
 OUTPUT:
     Markers:
       [45.2s] Build error
-      [120.5s] Deployment complete")]
+      [120.5s] Deployment complete"
+    )]
     List {
         /// Path to the .cast file
         #[arg(help = "Path to the .cast recording file")]
@@ -254,24 +275,30 @@ EXAMPLE:
         name: String,
     },
     /// Check if an agent should be wrapped (used by shell integration)
-    #[command(name = "is-wrapped", long_about = "Check if an agent should be auto-wrapped by shell integration.
+    #[command(
+        name = "is-wrapped",
+        long_about = "Check if an agent should be auto-wrapped by shell integration.
 
 Returns exit code 0 if the agent should be wrapped, 1 if not.
 Used internally by the shell integration script.
 
 EXAMPLE:
-    agr agents is-wrapped claude && echo \"Should wrap\"")]
+    agr agents is-wrapped claude && echo \"Should wrap\""
+    )]
     IsWrapped {
         /// Agent name to check
         #[arg(help = "Name of the agent to check")]
         name: String,
     },
     /// Manage agents that should not be auto-wrapped
-    #[command(subcommand, long_about = "Manage the no-wrap list for agents that should not be auto-recorded.
+    #[command(
+        subcommand,
+        long_about = "Manage the no-wrap list for agents that should not be auto-recorded.
 
 Agents on this list will not be automatically wrapped by shell integration,
 even if they are in the configured agents list. Useful for temporarily
-disabling recording for specific agents.")]
+disabling recording for specific agents."
+    )]
     NoWrap(NoWrapCommands),
 }
 
@@ -376,7 +403,8 @@ EXAMPLE:
     agr shell status")]
     Status,
     /// Install shell integration to .zshrc/.bashrc
-    #[command(long_about = "Install shell integration for automatic session recording.
+    #[command(
+        long_about = "Install shell integration for automatic session recording.
 
 Adds a clearly marked section to your .zshrc (or .bashrc) that
 sources the AGR shell script. This creates wrapper functions for
@@ -386,7 +414,8 @@ After installation, restart your shell or run:
     source ~/.zshrc
 
 EXAMPLE:
-    agr shell install")]
+    agr shell install"
+    )]
     Install,
     /// Remove shell integration from .zshrc/.bashrc
     #[command(long_about = "Remove shell integration from your shell configuration.
