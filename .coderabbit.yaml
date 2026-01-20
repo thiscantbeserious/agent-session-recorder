@@ -1,27 +1,16 @@
-# CodeRabbit Configuration
-# https://docs.coderabbit.ai/reference/configuration
-
-language: "en-US"
+# CodeRabbit Configuration - only non-default values
+# Defaults: https://coderabbit.ai/integrations/schema.v2.json
 
 reviews:
-  profile: "chill"
-
   auto_review:
-    enabled: true
-    drafts: false
+    # Only review on PR open, not every push (default: true)
     auto_incremental_review: false
 
   # Skip non-code files
   path_filters:
     - "!.state/**"
     - "!*.md"
-    - "!.github/**"
-
-  tools:
-    clippy:
-      enabled: true
-    semgrep:
-      enabled: true
 
 chat:
+  # Don't auto-reply to comments (default: true)
   auto_reply: false
