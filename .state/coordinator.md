@@ -9,7 +9,7 @@
 
 | Task | Status | Impl Agent | Verify Agent | PR |
 |------|--------|------------|--------------|-----|
-| Improve `asr status` output | pending | - | - | - |
+| Improve `asr status` output | DONE | (PR #3 reverted) | via PR #4 | #4 ✅ |
 | Enhance `asr cleanup` UX | pending | - | - | - |
 | Add storage threshold warnings | pending | - | - | - |
 | Improve `asr list` output | pending | - | - | - |
@@ -34,6 +34,7 @@
 | PR | Task | Impl | Verify | Merged |
 |----|------|------|--------|--------|
 | #2 | Mark Phase 1 complete | PASS | PASS | YES |
+| #4 | Improve asr status output | PASS | PASS (CodeRabbit + tests) | YES |
 
 ## Notes
 

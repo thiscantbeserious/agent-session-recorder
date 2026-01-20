@@ -167,21 +167,32 @@ Instructions:
 1. git fetch && git checkout [branch]
 2. Run: cargo test
 3. Run: ./tests/e2e_test.sh
-4. Check CodeRabbit feedback: gh pr view [NUMBER] --comments
-   - Wait for CodeRabbit review if not yet posted
-   - Note any issues CodeRabbit identified
+4. **CodeRabbit Verification (MANDATORY):**
+   a. Check CodeRabbit status: gh pr view [NUMBER] --comments
+   b. Look for CodeRabbit's review comment (NOT just "processing")
+   c. If CodeRabbit shows "processing" or "analyzing" → WAIT and re-check
+   d. If CodeRabbit completed:
+      - Note all issues/suggestions it identified
+      - Verify each suggestion against the actual code
+   e. If CodeRabbit skipped (e.g., docs-only PR due to path_filters):
+      - This is OK for documentation-only changes
+      - Report "CodeRabbit: skipped (docs-only)" in your verification
+      - Perform extra careful manual review for docs changes
 5. Review the PR diff: gh pr diff [NUMBER]
 6. Check for:
    - All tests pass
-   - CodeRabbit has no blocking issues
+   - CodeRabbit has no blocking issues (or was appropriately skipped)
    - No obvious bugs
    - Follows existing patterns
    - No security issues
+   - Documentation changes are accurate and helpful (if applicable)
 7. Report results to coordinator:
-   - PASS: All checks passed (tests + CodeRabbit)
+   - PASS: All checks passed (tests + CodeRabbit reviewed/skipped appropriately)
+   - PENDING: CodeRabbit still processing (DO NOT proceed)
    - FAIL: [specific issues found, include CodeRabbit feedback]
 
 DO NOT merge or approve the PR - just report findings.
+CRITICAL: Never report PASS if CodeRabbit is still "processing"!
 ```
 
 ### Fresh Session Policy
@@ -1134,7 +1145,7 @@ Log results to `.state/phase-N/test-results.md`
 - [x] `asr status` - basic implementation exists
 - [x] `asr cleanup` - basic implementation exists
 - [x] `asr list` - basic implementation exists
-- [ ] Improve `asr status` output (breakdown by agent, disk %)
+- [x] Improve `asr status` output (breakdown by agent, disk %) - PR #4
 - [ ] Enhance `asr cleanup` UX (better prompts)
 - [ ] Add storage threshold warnings after recording
 
