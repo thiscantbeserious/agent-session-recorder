@@ -4,36 +4,18 @@
 language: "en-US"
 
 reviews:
-  # "chill" = less nitpicky, focus on important issues
   profile: "chill"
 
   auto_review:
     enabled: true
     drafts: false
-    # Only review on PR open, NOT on every push
     auto_incremental_review: false
 
-  # Only review actual code, skip docs/state files
+  # Skip non-code files
   path_filters:
     - "!.state/**"
     - "!*.md"
     - "!.github/**"
-
-  path_instructions:
-    - path: "src/**/*.rs"
-      instructions: |
-        This is a Rust CLI tool for recording terminal sessions.
-        Focus on:
-        - Error handling with anyhow/thiserror
-        - Safe file operations
-        - Proper use of clap for CLI args
-        - asciicast v3 format compliance
-
-    - path: "tests/**/*.rs"
-      instructions: |
-        Integration and unit tests.
-        Ensure tests are behavior-focused, not implementation-focused.
-        Check for proper use of tempfile for test isolation.
 
   tools:
     clippy:
