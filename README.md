@@ -1,14 +1,14 @@
 # Agent Session Recorder (ASR)
 
-A Rust-based CLI tool for recording AI agent terminal sessions with [asciinema](https://asciinema.org/).
+A small command-line tool that uses [asciinema](https://asciinema.org/) to track all AI agent sessions, leveraging the agents themselves to create markers at interesting key points automatically, in addition to keeping track of total usage.
 
 ## Features
 
-- **Record AI sessions**: Automatically record Claude, Codex, Gemini CLI, and other AI agent sessions
-- **Native marker support**: Add annotations to recordings using asciicast v3 markers
-- **AI-powered analysis**: Use `/asr-analyze` skill to automatically identify interesting moments
-- **Storage management**: Track storage usage, clean up old sessions
-- **Shell integration**: Transparent wrapper functions for configured agents
+- **Automatic session recording**: Transparent shell wrappers record Claude, Codex, Gemini CLI sessions without changing your workflow
+- **AI-powered markers**: Agents analyze their own recordings and mark interesting moments (errors, decisions, milestones)
+- **Native asciicast v3 format**: Markers stored directly in `.cast` files, compatible with asciinema player
+- **Storage management**: Track usage, view stats by agent, clean up old sessions interactively
+- **Configurable**: Enable/disable agents, set storage thresholds, customize behavior via TOML config
 
 ## Installation
 

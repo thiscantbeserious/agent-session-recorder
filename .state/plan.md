@@ -1,7 +1,13 @@
 # Agent Session Recorder (ASR)
 
 ## Overview
-A Rust-based CLI tool for recording AI agent sessions with asciinema. Single binary, no runtime dependencies. Intelligent analysis delegated to AI agents via skills.
+A small command-line tool that uses asciinema to track all AI agent sessions, leveraging the agents themselves to create markers at interesting key points automatically, in addition to keeping track of total usage.
+
+**Key design principles:**
+- Single binary, no runtime dependencies
+- Transparent shell wrappers - doesn't change your workflow
+- AI agents analyze their own recordings and add markers
+- Native asciicast v3 format for compatibility
 
 ---
 
@@ -1176,9 +1182,49 @@ Log results to `.state/phase-N/test-results.md`
 
 **Definition of Done:** Complete, documented, installable project
 
+### Phase 5: Shell Integration & Automation
+**Goal:** Seamless auto-recording with proper install/uninstall and auto-analysis
+
+#### Shell Section Markers
+The shell integration should use clear markers for easy updates/removal:
+```bash
+# >>> ASR (Agent Session Recorder) >>>
+# DO NOT EDIT - managed by 'asr shell install/uninstall'
+[ -f "/path/to/asr.sh" ] && source "/path/to/asr.sh"
+# <<< ASR (Agent Session Recorder) <<<
+```
+
+#### Tasks
+- [ ] **Global auto-wrap toggle** - Config option `[shell] auto_wrap = true/false`
+- [ ] **Shell management CLI:**
+  - `asr shell status` - Show if shell integration is active, which RC file
+  - `asr shell install` - Add marked section to .zshrc/.bashrc
+  - `asr shell uninstall` - Remove marked section cleanly
+- [ ] **Auto-analyze hook** - Option to run `/asr-analyze` automatically after session ends
+  - Config: `[recording] auto_analyze = true/false`
+  - Calls the AI agent to analyze and add markers
+- [ ] **Update install.sh** - Use marked sections instead of simple append
+- [ ] **Update uninstall.sh** - Properly remove marked sections from RC files
+- [ ] **Per-agent wrap control** - Optional: disable wrapping for specific agents
+
+**Definition of Done:**
+- `asr shell install` adds clean marked section
+- `asr shell uninstall` removes it completely
+- Global toggle to disable all wrapping without uninstalling
+- Optional auto-analyze after each session
+
+---
+
 ### Backlog (Future)
-- Web playback with marker navigation
-- Session search/filtering
-- Auto-analyze on session end (optional)
+
+#### Enhanced Web Browser (extends asciinema-server)
+- **Scrollable terminal view** - Browse session like a real terminal, scroll past sections
+- **Auto-collapse long outputs** - Collapse verbose output (build logs, test results) into single expandable lines
+- **Marker navigation** - Jump between marked points, filter by marker type
+- **Session timeline** - Visual timeline showing markers, duration, key events
+
+#### Other Ideas
+- Session search/filtering by content
 - Session tagging/categories
 - Export/share functionality
+- Usage analytics dashboard
