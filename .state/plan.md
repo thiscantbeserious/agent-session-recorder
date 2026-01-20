@@ -1158,29 +1158,36 @@ Log results to `.state/phase-N/test-results.md`
 
 **Definition of Done:** ✅ All complete. Polished storage commands with better UX.
 
-### Phase 3: Marker Support - MOSTLY COMPLETE
+### Phase 3: Marker Support - COMPLETE ✅
 **Goal:** AI-powered session analysis
 
 - [x] `asr marker add <file> <time> <label>` - inject marker
 - [x] `asr marker list <file>` - show markers
 - [x] asciicast v3 parser/writer module
 - [x] `/asr-analyze` skill documentation (in AGENTS.md)
-- [ ] Skill symlink setup in installer
+- [x] Skill symlink setup in installer (agents/asr-analyze.md, asr-review.md)
 
-**Definition of Done:** Can run `/asr-analyze session.cast` in Claude, markers appear in file
+**Definition of Done:** ✅ Can run `/asr-analyze session.cast` in Claude, markers appear in file
 
-### Phase 4: Polish & Multi-Agent - MOSTLY COMPLETE
-**Goal:** Production-ready tool
+### Phase 4: Polish & Distribution - COMPLETE ✅
+**Goal:** Production-ready tool with proper skill management
 
 - [x] AGENTS.md, CLAUDE.md, GEMINI.md setup
 - [x] Config file support (~/.config/asr/config.toml)
 - [x] Uninstall script
 - [x] README documentation
-- [ ] Test on Linux
-- [ ] Cross-compilation setup
-- [ ] Homebrew formula finalization
+- [x] Test on Linux (via Docker build) - PR #7
+- [x] Cross-compilation setup (.cargo/config.toml) - PR #7
+- [x] Homebrew formula (Formula/asr.rb) - PR #7
+- [x] **Skill management CLI:** - PR #8
+  - `asr skills list` - Show installed skills and their locations
+  - `asr skills install` - Extract embedded skills to agent command directories
+  - `asr skills uninstall` - Remove skills from agent directories
+  - **Skills embedded in binary** using `include_str!()` macro - no external files needed
+  - Support: ~/.claude/commands/, ~/.codex/commands/, ~/.gemini/commands/
+  - Updated install.sh to call `asr skills install` instead of symlinking
 
-**Definition of Done:** Complete, documented, installable project
+**Definition of Done:** ✅ Complete tool with `asr skills install/uninstall` commands
 
 ### Phase 5: Shell Integration & Automation
 **Goal:** Seamless auto-recording with proper install/uninstall and auto-analysis

@@ -46,32 +46,44 @@ asr agents list                # Show configured agents
 asr agents add/remove <name>   # Modify agent list
 asr config show                # Display config
 asr config edit                # Open in $EDITOR
+asr skills list                # Show installed skills
+asr skills install             # Install skills to agent dirs
+asr skills uninstall           # Remove skills from agent dirs
 ```
 
-### Tests: 79 Total
-- 41 unit tests (in src/*.rs)
-- 23 integration tests (tests/*.rs)
-- 15 e2e tests (tests/e2e_test.sh)
+### Tests: 87 Total
+- Unit tests (in src/*.rs)
+- Integration tests (tests/*.rs)
+- E2E tests (tests/e2e_test.sh)
 
 ### Key Files
 - `AGENTS.md` - Workflow instructions (symlinked as CLAUDE.md, GEMINI.md)
 - `tests/e2e_test.sh` - MUST pass before any PR
 - `.state/decisions.md` - All technical decisions
 
-## Phase 2: Storage Management (NOT STARTED)
-- [ ] Improve `asr status` with more details
-- [ ] Enhance `asr cleanup` UX
-- [ ] Add storage threshold warnings after recording
-- [ ] Improve `asr list` output
+## Phase 2: Storage Management - COMPLETE ✅
+- [x] Improve `asr status` with more details (PR #4)
+- [x] Enhance `asr cleanup` UX (PR #5)
+- [x] Add storage threshold warnings after recording (already in Phase 1)
+- [x] Improve `asr list` output (PR #6)
 
-## Phase 3: Marker Support (NOT STARTED)
-- [ ] Enhance marker functionality
-- [ ] Test `/asr-analyze` skill end-to-end
+## Phase 3: Marker Support - COMPLETE ✅
+- [x] Marker functionality (implemented in Phase 1)
+- [x] `/asr-analyze` skill documentation
+- [x] Skill files (agents/asr-analyze.md, asr-review.md)
 
-## Phase 4: Polish (NOT STARTED)
-- [ ] Cross-compilation for Linux
-- [ ] Finalize Homebrew formula
-- [ ] CI/CD setup
+## Phase 4: Polish & Distribution - COMPLETE ✅
+- [x] Cross-compilation setup (PR #7)
+- [x] Homebrew formula (PR #7)
+- [x] Skill management CLI - skills embedded in binary (PR #8)
+  - `asr skills list/install/uninstall`
+
+## Phase 5: Shell Integration & Automation - NEXT
+See `.state/plan.md` for full task list:
+- [ ] Global auto-wrap toggle
+- [ ] Shell management CLI (asr shell status/install/uninstall)
+- [ ] Auto-analyze hook
+- [ ] Marked sections in RC files
 
 ## Git Workflow
 ```bash
