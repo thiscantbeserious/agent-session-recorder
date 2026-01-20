@@ -1189,7 +1189,7 @@ Log results to `.state/phase-N/test-results.md`
 
 **Definition of Done:** ✅ Complete tool with `asr skills install/uninstall` commands
 
-### Phase 5: Shell Integration & Automation
+### Phase 5: Shell Integration & Automation - COMPLETE ✅
 **Goal:** Seamless auto-recording with proper install/uninstall and auto-analysis
 
 #### Shell Section Markers
@@ -1207,18 +1207,22 @@ The shell integration should use clear markers for easy updates/removal:
   - `asr shell status` - Show if shell integration is active, which RC file
   - `asr shell install` - Add marked section to .zshrc/.bashrc
   - `asr shell uninstall` - Remove marked section cleanly
-- [ ] **Auto-analyze hook** - Option to run `/asr-analyze` automatically after session ends
+- [x] **Auto-analyze hook** - Option to show analyze hint after session ends - PR #12
   - Config: `[recording] auto_analyze = true/false`
-  - Calls the AI agent to analyze and add markers
+  - Shows `/asr-analyze <file>` hint after recording completes
 - [x] **Update install.sh** - Use marked sections instead of simple append - PR #10
 - [x] **Update uninstall.sh** - Properly remove marked sections from RC files - PR #10
-- [ ] **Per-agent wrap control** - Optional: disable wrapping for specific agents
+- [x] **Per-agent wrap control** - Disable wrapping for specific agents - PR #12
+  - Config: `[agents] no_wrap = ["agent1", "agent2"]`
+  - `asr agents is-wrapped <name>` - Check if agent should be wrapped (exit 0/1)
+  - `asr agents no-wrap list/add/remove` - Manage no-wrap list
 
-**Definition of Done:**
+**Definition of Done:** ✅ All complete
 - `asr shell install` adds clean marked section
 - `asr shell uninstall` removes it completely
 - Global toggle to disable all wrapping without uninstalling
-- Optional auto-analyze after each session
+- Auto-analyze hint after each session (when enabled)
+- Per-agent wrap control via no_wrap list
 
 ---
 
