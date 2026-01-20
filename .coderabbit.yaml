@@ -4,46 +4,31 @@
 language: "en-US"
 
 reviews:
-  # "chill" = constructive feedback, "assertive" = stricter
-  profile: "assertive"
+  # "chill" = less nitpicky, focus on important issues
+  profile: "chill"
 
   auto_review:
     enabled: true
-    # Review drafts too (we use PRs for all changes)
     drafts: false
+    # Only review on PR open, NOT on every push
+    auto_incremental_review: false
 
-  # Focus areas for this Rust CLI project
+  # Only review actual code, skip docs/state files
+  path_filters:
+    - "!.state/**"
+    - "!*.md"
+    - "!.github/**"
+
+  # Minimal guidance - let CodeRabbit do its thing
   path_instructions:
     - path: "src/**/*.rs"
-      instructions: |
-        This is a Rust CLI tool for recording terminal sessions.
-        Focus on:
-        - Error handling with anyhow/thiserror
-        - Safe file operations
-        - Proper use of clap for CLI args
-        - asciicast v3 format compliance
+      instructions: "Rust CLI tool. Focus on error handling and safety."
 
-    - path: "tests/**/*.rs"
-      instructions: |
-        Integration and unit tests.
-        Ensure tests are behavior-focused, not implementation-focused.
-        Check for proper use of tempfile for test isolation.
-
-    - path: ".state/**/*.md"
-      instructions: |
-        Project state and coordination files.
-        These track multi-agent workflow progress.
-        Light review - focus on clarity and consistency.
-
-  # Tools to run
   tools:
-    # Rust-specific
     clippy:
       enabled: true
-
-    # Security scanning
     semgrep:
       enabled: true
 
 chat:
-  auto_reply: true
+  auto_reply: false
