@@ -54,7 +54,10 @@ fn build_version() -> &'static str {
 
 #[derive(Parser)]
 #[command(name = "agr")]
-#[command(about = "Agent Session Recorder - Record AI agent terminal sessions")]
+#[command(before_help = include_str!("../assets/logo.txt"))]
+#[command(
+    about = "[ Agent Session Recorder ] - auto-record agent sessions and handle the recordings with AI!"
+)]
 #[command(
     long_about = "Agent Session Recorder (AGR) - Record AI agent terminal sessions with asciinema.
 
