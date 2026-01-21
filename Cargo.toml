@@ -9,6 +9,10 @@ repository = "https://github.com/simon/agent-session-recorder"
 keywords = ["cli", "asciinema", "recording", "ai", "agent"]
 categories = ["command-line-utilities"]
 
+[features]
+default = []
+release = []  # CI sets this for official builds (clean version without git hash)
+
 [[bin]]
 name = "agr"
 path = "src/main.rs"
@@ -41,3 +45,6 @@ strip = true
 lto = true
 codegen-units = 1
 opt-level = "z"
+
+[build-dependencies]
+vergen-gitcl = { version = "1", features = ["build"] }

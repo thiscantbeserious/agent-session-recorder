@@ -7,6 +7,44 @@ use std::io::{self, BufRead, Write};
 
 use agr::{Analyzer, Config, MarkerManager, Recorder, StorageManager};
 
+/// Build version string.
+///
+/// For dev builds (default): "0.1.0-dev+abc1234" (with git hash)
+/// For release builds (--features release): "0.1.0" (clean)
+fn build_version() -> &'static str {
+    #[cfg(not(feature = "release"))]
+    {
+        // Dev build: include git hash
+        // VERGEN_GIT_SHA is set by build.rs via vergen
+        const GIT_SHA: &str = env!("VERGEN_GIT_SHA");
+        const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+        // Use a static string with the full version
+        // We need to use concat! for compile-time string concatenation
+        // but that doesn't work with env! directly, so we use lazy_static pattern
+        static VERSION_STRING: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        VERSION_STRING.get_or_init(|| {
+            if GIT_SHA.is_empty() || GIT_SHA == "unknown" {
+                format!("{}-dev", VERSION)
+            } else {
+                // Take first 7 characters of SHA for short hash
+                let short_sha = if GIT_SHA.len() > 7 {
+                    &GIT_SHA[..7]
+                } else {
+                    GIT_SHA
+                };
+                format!("{}-dev+{}", VERSION, short_sha)
+            }
+        })
+    }
+
+    #[cfg(feature = "release")]
+    {
+        // Release build: clean version only
+        env!("CARGO_PKG_VERSION")
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "agr")]
 #[command(about = "Agent Session Recorder - Record AI agent terminal sessions")]
@@ -29,7 +67,7 @@ SHELL INTEGRATION:
 
 For more information, see: https://github.com/thiscantbeserious/agent-session-recorder"
 )]
-#[command(version)]
+#[command(version = build_version())]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

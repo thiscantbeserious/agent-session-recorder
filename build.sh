@@ -22,16 +22,16 @@ docker build -f docker/Dockerfile --target final -t asr-build .
 # Extract binary
 mkdir -p dist
 CONTAINER_ID=$(docker create asr-build)
-docker cp "$CONTAINER_ID:/asr" dist/asr
+docker cp "$CONTAINER_ID:/agr" dist/agr
 docker rm "$CONTAINER_ID" > /dev/null
 
-chmod +x dist/asr
+chmod +x dist/agr
 
-if [ -f "dist/asr" ]; then
+if [ -f "dist/agr" ]; then
     echo
     echo "Build successful!"
-    echo "Binary: dist/asr"
-    ls -lh dist/asr
+    echo "Binary: dist/agr"
+    ls -lh dist/agr
 else
     echo "Build failed - binary not found"
     exit 1
