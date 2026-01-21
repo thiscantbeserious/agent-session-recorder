@@ -18,13 +18,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -38,7 +38,7 @@ jobs:
         run: cargo build --release
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: asr-${{ matrix.os }}
           path: target/release/asr
@@ -52,13 +52,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -76,25 +76,53 @@ jobs:
     name: Coverage
     needs: build
     runs-on: ubuntu-latest
+    env:
+      TARPAULIN_VERSION: 0.32.7
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - name: Cache cargo registry
+        id: cache-registry
+        uses: actions/cache@v5
         with:
           path: |
-            ~/.cargo/bin/
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache build artifacts
+        id: cache-target
+        uses: actions/cache@v5
+        with:
+          path: target/
+          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-target-
+
+      - name: Cache cargo-tarpaulin
+        id: cache-tarpaulin
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/cargo-tarpaulin
+          key: ${{ runner.os }}-tarpaulin-${{ env.TARPAULIN_VERSION }}
 
       - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
+        if: steps.cache-tarpaulin.outputs.cache-hit != 'true'
+        run: cargo install cargo-tarpaulin --version ${{ env.TARPAULIN_VERSION }}
+
+      - name: Fetch dependencies
+        if: steps.cache-registry.outputs.cache-hit != 'true'
+        run: cargo fetch
+
+      - name: Build dependencies
+        if: steps.cache-target.outputs.cache-hit != 'true'
+        run: cargo build --release
 
       - name: Generate coverage
         run: cargo tarpaulin --out xml --output-dir coverage
@@ -107,6 +135,8 @@ jobs:
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: true
+          version: v11.2.6
+          skip_validation: true
 
   # 4. E2E Tests - verify integration (macOS only for asciinema v3)
   e2e-tests:
@@ -114,13 +144,13 @@ jobs:
     needs: unit-tests
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -147,7 +177,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -179,7 +209,7 @@ jobs:
             target: aarch64-apple-darwin
             artifact: macos-arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -190,7 +220,7 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: asr-${{ matrix.artifact }}
           path: target/${{ matrix.target }}/release/asr

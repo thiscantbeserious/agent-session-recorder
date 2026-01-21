@@ -1,6 +1,9 @@
 # Agent Session Recorder (AGR)
 A Rust CLI tool for recording AI agent terminal sessions with asciinema.
 
+## File Structure Note
+`CLAUDE.md` is a symlink to `AGENTS.md`. Similarly, `.claude/` is a symlink to `agents/`. When committing changes, use the real paths (`AGENTS.md`, `agents/`) not the symlinks.
+
 ## Source of Truth
 This file is the single source of truth for all AI agents (Claude, Codex, Gemini).
 
@@ -35,18 +38,25 @@ gh pr list --state merged -L 10  # Recent completed work
 ```
 
 ### Task Steps (SDLC)
-Before each step, **READ the relevant knowledge file**:
 
-| Step | Action | READ First |
-|------|--------|------------|
-| 1. Requirement | Check state and decisions | - |
-| 2. Design | Identify files, edge cases | `knowledge/references/project.md` |
-| 3. Code | TDD, format, lint | `knowledge/references/tdd.md` |
-| 4. Test | Run tests | `knowledge/references/verification.md` |
-| 5. Deploy | Create PR, wait for CI | `knowledge/references/git.md` |
-| 6. Feedback | Document learnings | - |
+## ⚠️ MANDATORY: Read Knowledge Files Before Actions
 
-**Example:** Before writing code, READ `agents/skills/knowledge/references/tdd.md` for TDD workflow.
+**You MUST actually READ the knowledge file BEFORE taking any action in that phase.**
+Do NOT skip this step. Do NOT assume you know the rules. Project-specific rules override defaults.
+
+| Phase | Action | MUST READ FIRST |
+|-------|--------|-----------------|
+| Design | Identify files, edge cases | `project.md` |
+| Code | TDD, format, lint | `tdd.md` |
+| Test | Run tests | `verification.md` |
+| Deploy | Create PR, **merge PR** | `git.md` |
+| Feedback | Document learnings | `.state/decisions.md` |
+
+Use the `knowledge` skill to load these files.
+
+**This applies to ALL agents** (orchestrator, impl, verify). Fresh sessions must read the relevant file before acting.
+
+**Why:** Project-specific rules (e.g., "never delete branches") are in these files. Skipping causes mistakes.
 
 ### Verification Commands
 ```bash
