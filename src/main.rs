@@ -663,8 +663,10 @@ fn cmd_cleanup(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()
     println!();
 
     // Print formatted table header
-    println!("  #  | Age   | Agent       | Size       | Filename");
-    println!("-----+-------+-------------+------------+---------------------------");
+    println!("  #  |  Age   | DateTime         | Agent       | Size       | Filename");
+    println!(
+        "-----+--------+------------------+-------------+------------+---------------------------"
+    );
 
     // Display up to 15 sessions in a formatted table
     for (i, session) in sessions.iter().take(15).enumerate() {
@@ -674,10 +676,11 @@ fn cmd_cleanup(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()
             " "
         };
         println!(
-            "{:>3}  | {:>3}d{} | {:11} | {:>10} | {}",
+            "{:>3}  | {:>5}{} | {} | {:11} | {:>10} | {}",
             i + 1,
-            session.age_days,
+            session.format_age(),
             age_marker,
+            session.modified.format("%Y-%m-%d %H:%M"),
             truncate_string(&session.agent, 11),
             session.size_human(),
             session.filename
@@ -833,15 +836,18 @@ fn cmd_list(agent: Option<&str>) -> Result<()> {
     println!();
 
     // Print table header
-    println!("  #  | Age  | Agent       | Size       | Filename");
-    println!("-----+------+-------------+------------+---------------------------");
+    println!("  #  |  Age  | DateTime         | Agent       | Size       | Filename");
+    println!(
+        "-----+-------+------------------+-------------+------------+---------------------------"
+    );
 
     // Display sessions in formatted table
     for (i, session) in sessions.iter().enumerate() {
         println!(
-            "{:>3}  | {:>3}d | {:11} | {:>10} | {}",
+            "{:>3}  | {:>5} | {} | {:11} | {:>10} | {}",
             i + 1,
-            session.age_days,
+            session.format_age(),
+            session.modified.format("%Y-%m-%d %H:%M"),
             truncate_string(&session.agent, 11),
             session.size_human(),
             session.filename

@@ -18,12 +18,31 @@ pub struct SessionInfo {
     pub size: u64,
     pub modified: DateTime<Local>,
     pub age_days: i64,
+    pub age_hours: i64,
+    pub age_minutes: i64,
 }
 
 impl SessionInfo {
     /// Get human-readable size
     pub fn size_human(&self) -> String {
         format_size(self.size, BINARY)
+    }
+
+    /// Format age for display - smart format based on age
+    /// - <1 hour: "  45m" (minutes only)
+    /// - <1 day:  "   5h" (hours only)
+    /// - >=1 day: "   3d" (days only)
+    pub fn format_age(&self) -> String {
+        if self.age_hours == 0 {
+            // Less than 1 hour: show minutes
+            format!("{:>4}m", self.age_minutes)
+        } else if self.age_days == 0 {
+            // Same day: show hours only
+            format!("{:>4}h", self.age_hours)
+        } else {
+            // Older: show days only
+            format!("{:>4}d", self.age_days)
+        }
     }
 }
 
@@ -157,7 +176,10 @@ impl StorageManager {
                 if path.extension().is_some_and(|ext| ext == "cast") {
                     let metadata = fs::metadata(&path)?;
                     let modified: DateTime<Local> = metadata.modified()?.into();
-                    let age_days = (now - modified).num_days();
+                    let duration = now - modified;
+                    let age_days = duration.num_days();
+                    let age_hours = duration.num_hours();
+                    let age_minutes = duration.num_minutes();
 
                     sessions.push(SessionInfo {
                         filename: path
@@ -169,6 +191,8 @@ impl StorageManager {
                         size: metadata.len(),
                         modified,
                         age_days,
+                        age_hours,
+                        age_minutes,
                         path,
                     });
                 }
@@ -497,10 +521,76 @@ mod tests {
             size: 1024 * 1024, // 1 MiB
             modified: Local::now(),
             age_days: 0,
+            age_hours: 0,
+            age_minutes: 0,
         };
 
         let human = session.size_human();
         assert!(human.contains("MiB") || human.contains("MB"));
+    }
+
+    #[test]
+    fn session_info_format_age_minutes_only() {
+        // Less than 1 hour: show minutes only "  45m"
+        let session = SessionInfo {
+            path: PathBuf::from("/test"),
+            agent: "test".to_string(),
+            filename: "test.cast".to_string(),
+            size: 1024,
+            modified: Local::now(),
+            age_days: 0,
+            age_hours: 0,
+            age_minutes: 45,
+        };
+        assert_eq!(session.format_age(), "  45m");
+    }
+
+    #[test]
+    fn session_info_format_age_same_day_shows_hours() {
+        // Same day, more than 1 hour: show hours only
+        let session = SessionInfo {
+            path: PathBuf::from("/test"),
+            agent: "test".to_string(),
+            filename: "test.cast".to_string(),
+            size: 1024,
+            modified: Local::now(),
+            age_days: 0,
+            age_hours: 5,
+            age_minutes: 300,
+        };
+        assert_eq!(session.format_age(), "   5h");
+    }
+
+    #[test]
+    fn session_info_format_age_older_shows_days_only() {
+        // Older than 1 day: show days only
+        let session = SessionInfo {
+            path: PathBuf::from("/test"),
+            agent: "test".to_string(),
+            filename: "test.cast".to_string(),
+            size: 1024,
+            modified: Local::now(),
+            age_days: 3,
+            age_hours: 75,
+            age_minutes: 4500,
+        };
+        assert_eq!(session.format_age(), "   3d");
+    }
+
+    #[test]
+    fn session_info_format_age_just_created() {
+        // Just created (0 minutes)
+        let session = SessionInfo {
+            path: PathBuf::from("/test"),
+            agent: "test".to_string(),
+            filename: "test.cast".to_string(),
+            size: 1024,
+            modified: Local::now(),
+            age_days: 0,
+            age_hours: 0,
+            age_minutes: 0,
+        };
+        assert_eq!(session.format_age(), "   0m");
     }
 
     #[test]
