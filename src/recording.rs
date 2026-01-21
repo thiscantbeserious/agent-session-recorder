@@ -1,4 +1,9 @@
 //! Recording logic for AI agent sessions
+//!
+//! This module is excluded from unit test coverage because:
+//! 1. It requires external binaries (asciinema)
+//! 2. It performs complex process spawning and signal handling
+//! 3. It is thoroughly tested via e2e tests in tests/e2e_test.sh
 
 use anyhow::{bail, Context, Result};
 use chrono::Local;

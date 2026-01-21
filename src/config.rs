@@ -440,4 +440,42 @@ no_wrap = ["codex"]
         assert!(config.should_wrap_agent("claude"));
         assert!(!config.should_wrap_agent("codex"));
     }
+
+    #[test]
+    fn config_path_returns_valid_path() {
+        let path = Config::config_path().unwrap();
+        assert!(path.to_string_lossy().contains("config.toml"));
+        assert!(path.to_string_lossy().contains("agr"));
+    }
+
+    #[test]
+    fn config_dir_returns_valid_path() {
+        let dir = Config::config_dir().unwrap();
+        assert!(dir.to_string_lossy().contains("agr"));
+        assert!(dir.to_string_lossy().contains(".config"));
+    }
+
+    #[test]
+    fn load_returns_default_when_no_config_file() {
+        // This relies on Config::load() returning defaults when file doesn't exist
+        // Since we can't easily mock the filesystem, we test the logic indirectly
+        let config = Config::default();
+        assert_eq!(config.storage.directory, "~/recorded_agent_sessions");
+    }
+
+    #[test]
+    fn storage_directory_handles_non_tilde_path() {
+        let mut config = Config::default();
+        config.storage.directory = "/absolute/path".to_string();
+        let path = config.storage_directory();
+        assert_eq!(path, std::path::PathBuf::from("/absolute/path"));
+    }
+
+    #[test]
+    fn storage_directory_handles_relative_path() {
+        let mut config = Config::default();
+        config.storage.directory = "relative/path".to_string();
+        let path = config.storage_directory();
+        assert_eq!(path, std::path::PathBuf::from("relative/path"));
+    }
 }

@@ -9,6 +9,11 @@ repository = "https://github.com/simon/agent-session-recorder"
 keywords = ["cli", "asciinema", "recording", "ai", "agent"]
 categories = ["command-line-utilities"]
 
+# Allow tarpaulin_include cfg for coverage exclusion
+# See: https://github.com/xd009642/tarpaulin#ignoring-code-in-files
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+
 [features]
 default = []
 release = []  # CI sets this for official builds (clean version without git hash)

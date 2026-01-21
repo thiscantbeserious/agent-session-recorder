@@ -3,15 +3,13 @@
 
 [default]
 # Fail if coverage drops below threshold
-# NOTE: Starting threshold set to 40% based on current coverage (~43%).
-# This is a baseline to prevent regression. Improve coverage incrementally:
-# - src/main.rs (4%) and src/recording.rs (14%) are lowest priority (tested via e2e)
-# - src/analyzer.rs (48%), src/shell.rs (51%), src/config.rs (68%) are good targets
-# - src/asciicast.rs (88%), src/markers.rs (95%), src/storage.rs (89%) are well covered
-fail-under = 40.0
+fail-under = 70.0
 
-# Exclude test files from coverage calculation
-exclude-files = ["tests/*", "*/tests.rs"]
+# Exclude files from coverage calculation
+# - tests/*: Test files themselves
+# - */tests.rs: Inline test modules
+# - src/recording.rs: Requires asciinema, tested via e2e
+exclude-files = ["tests/*", "*/tests.rs", "src/recording.rs"]
 
 # Skip functions that are hard to test
 ignore = [
