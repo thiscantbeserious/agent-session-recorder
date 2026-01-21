@@ -102,7 +102,10 @@ jobs:
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/cobertura.xml
+          flags: unittests
+          name: codecov-umbrella
           fail_ci_if_error: true
 
   # 4. E2E Tests - verify integration (macOS only for asciinema v3)
