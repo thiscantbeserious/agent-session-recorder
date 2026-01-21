@@ -68,6 +68,13 @@ INSTALL_DIR="$HOME/.local/bin"
 mkdir -p "$INSTALL_DIR"
 cp dist/agr "$INSTALL_DIR/agr"
 chmod +x "$INSTALL_DIR/agr"
+
+# On macOS, re-sign the binary to avoid security issues
+if [ "$OS" = "Darwin" ]; then
+    echo "Signing binary for macOS..."
+    codesign -s - -f "$INSTALL_DIR/agr" 2>/dev/null || true
+fi
+
 echo
 echo "Installed binary to: $INSTALL_DIR/agr"
 
