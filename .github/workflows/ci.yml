@@ -71,7 +71,41 @@ jobs:
       - name: Run unit tests
         run: cargo test --verbose
 
-  # 3. E2E Tests - verify integration (macOS only for asciinema v3)
+  # 3. Coverage - generate test coverage and upload to Codecov
+  coverage:
+    name: Coverage
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Generate coverage
+        run: cargo tarpaulin --out xml --output-dir coverage
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage/cobertura.xml
+          fail_ci_if_error: true
+
+  # 4. E2E Tests - verify integration (macOS only for asciinema v3)
   e2e-tests:
     name: E2E Tests
     needs: unit-tests
@@ -126,7 +160,7 @@ jobs:
   # Release artifacts - only on main push, after all checks pass
   release:
     name: Release (${{ matrix.artifact }})
-    needs: [build, unit-tests, e2e-tests, lint]
+    needs: [build, unit-tests, coverage, e2e-tests, lint]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     strategy:
