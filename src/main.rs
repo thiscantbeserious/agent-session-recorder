@@ -24,17 +24,18 @@ fn build_version() -> &'static str {
         // Use OnceLock for lazy initialization of the version string
         static VERSION_STRING: std::sync::OnceLock<String> = std::sync::OnceLock::new();
         VERSION_STRING.get_or_init(|| {
-            let version_part = if GIT_SHA.is_empty() || GIT_SHA == "unknown" {
-                format!("{}-dev", VERSION)
-            } else {
-                // Take first 7 characters of SHA for short hash
-                let short_sha = if GIT_SHA.len() > 7 {
-                    &GIT_SHA[..7]
+            let version_part =
+                if GIT_SHA.is_empty() || GIT_SHA == "unknown" || GIT_SHA.starts_with("VERGEN_") {
+                    format!("{}-dev", VERSION)
                 } else {
-                    GIT_SHA
+                    // Take first 7 characters of SHA for short hash
+                    let short_sha = if GIT_SHA.len() > 7 {
+                        &GIT_SHA[..7]
+                    } else {
+                        GIT_SHA
+                    };
+                    format!("{}-dev+{}", VERSION, short_sha)
                 };
-                format!("{}-dev+{}", VERSION, short_sha)
-            };
             format!("{} ({}, built {})", version_part, REPO_NAME, BUILD_DATE)
         })
     }
