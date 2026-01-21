@@ -68,6 +68,7 @@ _agr_record_session() {
 }
 
 # Generate wrapper functions from config
+# Each wrapper is self-contained to survive shell snapshots (e.g., Claude Code's shell-snapshots)
 _agr_setup_wrappers() {
     local agents agent
 
@@ -78,7 +79,7 @@ _agr_setup_wrappers() {
 
     # Fallback to default agents if agr not available
     if [[ -z "$agents" ]]; then
-        agents="claude codex gemini-cli"
+        agents="claude codex gemini"
     fi
 
     # Create wrapper for each agent using while read to avoid word-splitting issues
@@ -89,13 +90,33 @@ _agr_setup_wrappers() {
         # Validate agent name (alphanumeric, dash, underscore only)
         [[ ! "$agent" =~ ^[a-zA-Z0-9_-]+$ ]] && continue
 
-        # Skip if a function already exists with a different definition
-        if type "$agent" 2>/dev/null | grep -q "_agr_record_session"; then
+        # Skip if a self-contained AGR wrapper already exists for this agent
+        if declare -f "$agent" 2>/dev/null | grep -q "_AGR_WRAPPER"; then
             continue
         fi
 
-        # Create the wrapper function with proper quoting
-        eval "${agent}() { _agr_record_session \"${agent}\" \"\$@\"; }"
+        # Create self-contained wrapper function
+        # The wrapper is self-contained so it survives shell snapshots that might not include helper functions
+        eval "${agent}() {
+            local _AGR_WRAPPER=1
+            # Don't wrap if already in a recording session
+            if [[ -n \"\${ASCIINEMA_REC:-}\" ]]; then
+                command ${agent} \"\$@\"
+                return
+            fi
+            # Don't wrap if asciinema or agr aren't available
+            if ! command -v asciinema &>/dev/null || ! command -v agr &>/dev/null; then
+                command ${agent} \"\$@\"
+                return
+            fi
+            # Check if this agent should be wrapped
+            if ! agr agents is-wrapped \"${agent}\" 2>/dev/null; then
+                command ${agent} \"\$@\"
+                return
+            fi
+            # Record the session
+            agr record \"${agent}\" -- \"\$@\"
+        }"
     done <<< "$agents"
 }
 

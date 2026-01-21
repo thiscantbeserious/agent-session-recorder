@@ -41,6 +41,53 @@ else
     fail "Shell install did not create agr.sh"
 fi
 
+# Test: Config.toml created during shell install
+test_header "Config.toml created during shell install"
+if [ -f "$HOME/.config/agr/config.toml" ]; then
+    pass "Shell install created config.toml"
+else
+    fail "Shell install did not create config.toml"
+fi
+
+# Test: Default agents in config.toml
+test_header "Default agents in config.toml"
+if /usr/bin/grep -q '"claude"' "$HOME/.config/agr/config.toml" && \
+   /usr/bin/grep -q '"codex"' "$HOME/.config/agr/config.toml" && \
+   /usr/bin/grep -q '"gemini"' "$HOME/.config/agr/config.toml"; then
+    pass "Config.toml contains default agents (claude, codex, gemini)"
+else
+    fail "Config.toml missing expected default agents"
+    cat "$HOME/.config/agr/config.toml"
+fi
+
+# Test: Config.toml does NOT contain gemini-cli (old name)
+test_header "Config.toml uses gemini not gemini-cli"
+if ! /usr/bin/grep -q 'gemini-cli' "$HOME/.config/agr/config.toml"; then
+    pass "Config.toml correctly uses 'gemini' not 'gemini-cli'"
+else
+    fail "Config.toml contains deprecated 'gemini-cli'"
+    cat "$HOME/.config/agr/config.toml"
+fi
+
+# Test: agr agents list shows correct defaults
+test_header "agr agents list shows correct defaults"
+AGENTS_OUTPUT=$($AGR agents list 2>&1)
+if echo "$AGENTS_OUTPUT" | /usr/bin/grep -q "claude" && \
+   echo "$AGENTS_OUTPUT" | /usr/bin/grep -q "codex" && \
+   echo "$AGENTS_OUTPUT" | /usr/bin/grep -q "gemini"; then
+    pass "agr agents list shows claude, codex, gemini"
+else
+    fail "agr agents list missing expected agents: $AGENTS_OUTPUT"
+fi
+
+# Test: agr agents list does NOT show gemini-cli
+test_header "agr agents list uses gemini not gemini-cli"
+if ! echo "$AGENTS_OUTPUT" | /usr/bin/grep -q "gemini-cli"; then
+    pass "agr agents list correctly shows 'gemini' not 'gemini-cli'"
+else
+    fail "agr agents list shows deprecated 'gemini-cli': $AGENTS_OUTPUT"
+fi
+
 # Test: Shell status (after install)
 test_header "Shell status (after install)"
 SHELL_OUTPUT=$($AGR shell status 2>&1)
@@ -151,15 +198,66 @@ fi
 test_header "Wrapper function created for configured agent"
 # Add a test agent first
 $AGR agents add test-wrapper-agent
-if test_agr_sh 'type test-wrapper-agent 2>/dev/null | grep -q "_agr_record_session"'; then
+# Wrappers are now self-contained with _AGR_WRAPPER variable marker
+if test_agr_sh 'declare -f test-wrapper-agent 2>/dev/null | grep -q "_AGR_WRAPPER"'; then
     pass "Wrapper function created for test-wrapper-agent"
 else
     # Might need to re-setup wrappers
-    if test_agr_sh '_agr_setup_wrappers && type test-wrapper-agent 2>/dev/null | grep -q "_agr_record_session"'; then
+    if test_agr_sh '_agr_setup_wrappers && declare -f test-wrapper-agent 2>/dev/null | grep -q "_AGR_WRAPPER"'; then
         pass "Wrapper function created for test-wrapper-agent (after setup)"
     else
         fail "Wrapper function not created for test-wrapper-agent"
     fi
+fi
+
+# Test: Default agents have wrappers in fresh shell (conditional - agents may not be installed)
+test_header "Default agents have wrappers in fresh shell"
+WRAPPER_AGENT_FOUND=""
+for AGENT in claude codex gemini; do
+    if test_agr_sh "declare -f $AGENT 2>/dev/null | grep -q '_AGR_WRAPPER'"; then
+        pass "Wrapper created for default agent: $AGENT"
+        # Remember the first agent with a wrapper for later tests
+        if [ -z "$WRAPPER_AGENT_FOUND" ]; then
+            WRAPPER_AGENT_FOUND="$AGENT"
+        fi
+    else
+        # Only skip if the agent CLI is not installed
+        # If CLI IS installed, wrapper MUST be created - this is a real failure
+        if agent_installed "$AGENT"; then
+            fail "Wrapper NOT created for $AGENT (but CLI is installed!)"
+        else
+            skip "Wrapper not created for $AGENT (CLI not installed - OK in CI)"
+        fi
+    fi
+done
+
+# Test: Wrapper function structure is self-contained (uses first available agent)
+test_header "Wrapper function is self-contained (survives shell snapshots)"
+if [ -n "$WRAPPER_AGENT_FOUND" ]; then
+    # The wrapper should contain all logic inline, not call external helper functions
+    WRAPPER_DEF=$(test_agr_sh "declare -f $WRAPPER_AGENT_FOUND 2>/dev/null")
+    # Check for key components that make wrapper self-contained
+    if echo "$WRAPPER_DEF" | /usr/bin/grep -q "ASCIINEMA_REC" && \
+       echo "$WRAPPER_DEF" | /usr/bin/grep -q "agr record" && \
+       echo "$WRAPPER_DEF" | /usr/bin/grep -q "agr agents is-wrapped"; then
+        pass "Wrapper function contains all required self-contained logic"
+    else
+        fail "Wrapper function missing self-contained components"
+        echo "Wrapper definition:"
+        echo "$WRAPPER_DEF"
+    fi
+
+    # Test: Wrapper does NOT call _agr_record_session (old pattern)
+    test_header "Wrapper uses new self-contained pattern"
+    if ! echo "$WRAPPER_DEF" | /usr/bin/grep -q "_agr_record_session"; then
+        pass "Wrapper does not depend on external _agr_record_session function"
+    else
+        fail "Wrapper still uses old _agr_record_session pattern"
+    fi
+else
+    skip "No default agent wrappers found - cannot test wrapper structure (OK in CI without agents)"
+    test_header "Wrapper uses new self-contained pattern"
+    skip "No default agent wrappers found - cannot test wrapper pattern (OK in CI without agents)"
 fi
 
 # Test: Wrapper invokes agr record (with mock agent)
@@ -243,7 +341,7 @@ test_header "Default agents are wrapped when no config"
 # Test that default agent names result in wrapper functions
 # Note: we can't easily test this in isolation without removing config
 # Instead, check that the agr.sh script has fallback logic
-if /usr/bin/grep -q 'agents="claude codex gemini-cli"' "$HOME/.config/agr/agr.sh"; then
+if /usr/bin/grep -q 'agents="claude codex gemini"' "$HOME/.config/agr/agr.sh"; then
     pass "agr.sh has default agent fallback"
 else
     fail "agr.sh missing default agent fallback"

@@ -145,14 +145,10 @@ mod tests {
     }
 
     #[test]
-    fn gemini_cli_maps_to_gemini_binary() {
-        // gemini-cli should check for "gemini" binary
-        // We can't easily test the actual mapping without mocking,
-        // but we can verify the analyzer accepts both names
-        let analyzer1 = Analyzer::new("gemini-cli");
-        let analyzer2 = Analyzer::new("gemini");
-        assert_eq!(analyzer1.agent, "gemini-cli");
-        assert_eq!(analyzer2.agent, "gemini");
+    fn gemini_agent_name_is_preserved() {
+        // Verify the analyzer stores the agent name as provided
+        let analyzer = Analyzer::new("gemini");
+        assert_eq!(analyzer.agent, "gemini");
     }
 
     #[test]

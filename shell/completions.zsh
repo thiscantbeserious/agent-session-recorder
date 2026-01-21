@@ -23,11 +23,11 @@ _agr_agents() {
     if (( $+commands[agr] )); then
         agents=(${(f)"$(agr agents list 2>/dev/null | grep -v '^Configured' | grep -v '^No agents' | sed 's/^  //')"})
         if [[ -z "$agents" ]]; then
-            agents=(claude codex gemini-cli)
+            agents=(claude codex gemini)
         fi
         _describe -t agents 'agents' agents
     else
-        _values 'agents' claude codex gemini-cli
+        _values 'agents' claude codex gemini
     fi
 }
 

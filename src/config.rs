@@ -48,7 +48,7 @@ pub struct RecordingConfig {
     /// Whether to automatically analyze the recording after session ends
     #[serde(default)]
     pub auto_analyze: bool,
-    /// Which agent to use for analysis ("claude", "codex", "gemini-cli")
+    /// Which agent to use for analysis ("claude", "codex", "gemini")
     #[serde(default = "default_analysis_agent")]
     pub analysis_agent: String,
 }
@@ -103,7 +103,7 @@ fn default_agents() -> Vec<String> {
     vec![
         "claude".to_string(),
         "codex".to_string(),
-        "gemini-cli".to_string(),
+        "gemini".to_string(),
     ]
 }
 
@@ -243,7 +243,7 @@ mod tests {
         assert_eq!(config.storage.age_threshold_days, 30);
         assert!(config.agents.enabled.contains(&"claude".to_string()));
         assert!(config.agents.enabled.contains(&"codex".to_string()));
-        assert!(config.agents.enabled.contains(&"gemini-cli".to_string()));
+        assert!(config.agents.enabled.contains(&"gemini".to_string()));
         // Shell config defaults
         assert!(config.shell.auto_wrap);
         assert!(config.shell.script_path.is_none());

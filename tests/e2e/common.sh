@@ -82,14 +82,7 @@ check_prerequisites() {
 # Helper to check if an agent binary is available
 agent_installed() {
     local AGENT=$1
-    local BINARY
-    # Handle gemini-cli alias
-    if [ "$AGENT" = "gemini-cli" ]; then
-        BINARY="gemini"
-    else
-        BINARY="$AGENT"
-    fi
-    command -v "$BINARY" &>/dev/null
+    command -v "$AGENT" &>/dev/null
 }
 
 # Reset config for clean test state

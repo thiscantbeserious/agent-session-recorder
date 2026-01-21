@@ -89,7 +89,7 @@ Enable auto-analyze to have an AI agent automatically analyze recordings after e
 # In ~/.config/agr/config.toml
 [recording]
 auto_analyze = true
-analysis_agent = "claude"  # or "codex" or "gemini-cli"
+analysis_agent = "claude"  # or "codex" or "gemini"
 ```
 
 When enabled, AGR spawns the configured agent after recording to analyze the session and add markers at interesting points (errors, decisions, milestones).
@@ -126,7 +126,7 @@ age_threshold_days = 30
 
 [agents]
 # Which agents to track and offer for auto-wrapping
-enabled = ["claude", "codex", "gemini-cli"]
+enabled = ["claude", "codex", "gemini"]
 
 # Agents that should NOT be auto-wrapped (record manually with `agr record`)
 no_wrap = []
@@ -140,7 +140,7 @@ auto_wrap = true
 auto_analyze = false
 
 # Which agent CLI to use for analysis (must be installed)
-analysis_agent = "claude"  # or "codex" or "gemini-cli"
+analysis_agent = "claude"  # or "codex" or "gemini"
 ```
 
 ### Configuration Options Explained
@@ -157,7 +157,7 @@ analysis_agent = "claude"  # or "codex" or "gemini-cli"
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `enabled` | `["claude", "codex", "gemini-cli"]` | List of agent commands to track. Add any CLI tool you want to record. |
+| `enabled` | `["claude", "codex", "gemini"]` | List of agent commands to track. Add any CLI tool you want to record. |
 | `no_wrap` | `[]` | Agents in this list won't be auto-wrapped even if in `enabled`. Use this to disable auto-recording for specific tools while keeping them in the enabled list. |
 
 #### `[shell]` Section
@@ -171,7 +171,7 @@ analysis_agent = "claude"  # or "codex" or "gemini-cli"
 | Option | Default | Description |
 |--------|---------|-------------|
 | `auto_analyze` | `false` | When `true`, automatically spawns an AI agent to analyze the recording after each session. The agent reads the session and adds markers at key moments. |
-| `analysis_agent` | `"claude"` | Which agent CLI to use for auto-analysis. Options: `claude`, `codex`, `gemini-cli`. The agent must be installed on your system. |
+| `analysis_agent` | `"claude"` | Which agent CLI to use for auto-analysis. Options: `claude`, `codex`, `gemini`. The agent must be installed on your system. |
 
 ### Example Configurations
 
@@ -184,13 +184,13 @@ directory = "~/my-ai-recordings"
 **Add a custom agent:**
 ```toml
 [agents]
-enabled = ["claude", "codex", "gemini-cli", "aider", "cursor"]
+enabled = ["claude", "codex", "gemini", "aider", "cursor"]
 ```
 
 **Disable auto-wrap for one agent:**
 ```toml
 [agents]
-enabled = ["claude", "codex", "gemini-cli"]
+enabled = ["claude", "codex", "gemini"]
 no_wrap = ["codex"]  # codex won't auto-record, but you can still use `agr record codex`
 ```
 

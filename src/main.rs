@@ -94,10 +94,10 @@ EXAMPLES:
     agr record codex                     Record an OpenAI Codex session
     agr record claude --name my-session  Record with a specific filename
     agr record claude -- --help          Pass --help flag to claude
-    agr record gemini-cli -- chat        Start gemini-cli in chat mode")]
+    agr record gemini -- chat        Start gemini in chat mode")]
     Record {
-        /// Agent name (e.g., claude, codex, gemini-cli)
-        #[arg(help = "Agent name (e.g., claude, codex, gemini-cli)")]
+        /// Agent name (e.g., claude, codex, gemini)
+        #[arg(help = "Agent name (e.g., claude, codex, gemini)")]
         agent: String,
         /// Optional session name (skips rename prompt)
         #[arg(long, short, help = "Session name (skips rename prompt)")]
@@ -188,7 +188,7 @@ EXAMPLES:
 SUPPORTED AGENTS:
     claude      Claude Code CLI
     codex       OpenAI Codex CLI
-    gemini-cli  Google Gemini CLI")]
+    gemini  Google Gemini CLI")]
     Analyze {
         /// Path to the .cast file to analyze
         #[arg(help = "Path to the .cast recording file")]
@@ -1027,6 +1027,14 @@ fn cmd_shell_status() -> Result<()> {
 
 #[cfg(not(tarpaulin_include))]
 fn cmd_shell_install() -> Result<()> {
+    // Create config.toml with defaults if it doesn't exist
+    let config_path = Config::config_path()?;
+    if !config_path.exists() {
+        let config = Config::default();
+        config.save()?;
+        println!("Created config file: {}", config_path.display());
+    }
+
     // Detect shell RC file
     let rc_file = agr::shell::detect_shell_rc()
         .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;

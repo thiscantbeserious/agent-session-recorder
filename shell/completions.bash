@@ -50,7 +50,7 @@ _agr_completions() {
                     # Complete with known agents
                     local agents
                     agents=$(agr agents list 2>/dev/null | grep -v "^Configured" | grep -v "^No agents" | sed 's/^  //')
-                    COMPREPLY=( $(compgen -W "$agents claude codex gemini-cli" -- "$cur") )
+                    COMPREPLY=( $(compgen -W "$agents claude codex gemini" -- "$cur") )
                     ;;
                 *)
                     # If we haven't specified a file yet, offer files and flags
@@ -78,7 +78,7 @@ _agr_completions() {
                     # After 'record', complete with agents
                     local agents
                     agents=$(agr agents list 2>/dev/null | grep -v "^Configured" | grep -v "^No agents" | sed 's/^  //')
-                    COMPREPLY=( $(compgen -W "$agents claude codex gemini-cli" -- "$cur") )
+                    COMPREPLY=( $(compgen -W "$agents claude codex gemini" -- "$cur") )
                     ;;
                 *)
                     # Offer --name flag
@@ -121,7 +121,7 @@ _agr_completions() {
                 add|remove|is-wrapped)
                     local agents
                     agents=$(agr agents list 2>/dev/null | grep -v "^Configured" | grep -v "^No agents" | sed 's/^  //')
-                    COMPREPLY=( $(compgen -W "$agents claude codex gemini-cli" -- "$cur") )
+                    COMPREPLY=( $(compgen -W "$agents claude codex gemini" -- "$cur") )
                     ;;
                 no-wrap)
                     COMPREPLY=( $(compgen -W "list add remove" -- "$cur") )

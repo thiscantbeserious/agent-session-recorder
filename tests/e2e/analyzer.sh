@@ -111,7 +111,7 @@ else
 fi
 
 # Test: Conditional agent detection tests (skip if not installed)
-for AGENT in claude codex gemini-cli; do
+for AGENT in claude codex gemini; do
     test_header "Agent detection for $AGENT"
     if agent_installed "$AGENT"; then
         pass "$AGENT is installed and detected"
@@ -124,7 +124,7 @@ done
 test_header "Auto-analyze integration (conditional)"
 # Try each agent in order of preference
 AVAILABLE_AGENT=""
-for AGENT in claude codex gemini-cli; do
+for AGENT in claude codex gemini; do
     if agent_installed "$AGENT"; then
         AVAILABLE_AGENT="$AGENT"
         break
@@ -151,7 +151,7 @@ TOMLEOF
         fail "Auto-analyze config not set correctly: $CONFIG"
     fi
 else
-    skip "No AI agents installed (claude, codex, gemini-cli) - expected in CI"
+    skip "No AI agents installed (claude, codex, gemini) - expected in CI"
 fi
 
 # Test: Recording with auto_analyze=false does not trigger analysis

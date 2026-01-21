@@ -25,8 +25,10 @@ When `auto_analyze = true` in config, AGR spawns an AI agent after recording to 
 ```toml
 [recording]
 auto_analyze = true
-analysis_agent = "claude"  # or "codex" or "gemini-cli"
+analysis_agent = "claude"
 ```
+
+See `src/analyzer.rs` for supported analysis agents.
 
 ## References
 
