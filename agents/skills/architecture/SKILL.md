@@ -1,21 +1,25 @@
 ---
 name: architecture
-description: Agent roles and orchestration patterns for multi-agent development. Defines coordinator, implementation, verification, and planning agent responsibilities.
+description: Agent roles and orchestration patterns. You MUST READ the role file for your assigned role before doing any work.
 ---
 
 # Agent Architecture
 
-This skill defines the multi-agent orchestration pattern for AGR development.
+**IMPORTANT:** You MUST use your Read tool to actually read the role file. Don't just acknowledge it exists.
 
-## Foundation
+## Your Role
 
-**SDLC (Software Development Life Cycle)** is the underlying methodology used in this project. All agents operate within this framework:
+1. **READ** `references/orchestrator.md` if you are the coordinator (default role)
+2. **READ** the specific role file if assigned a different role by the coordinator
 
+## SDLC Framework
+
+All agents operate within this cycle:
 ```
 Requirement -> Design -> Code -> Test -> Deploy -> Feedback -> (repeat)
 ```
 
-Load `references/sdlc.md` first to understand the development cycle before assuming any role.
+READ `references/sdlc.md` to understand this framework.
 
 ## Agent Roles
 
@@ -37,6 +41,6 @@ State file templates are in `templates/` folder:
 
 ## Usage
 
-1. Load `sdlc.md` to understand the development framework
-2. Load the reference matching the role assigned to you by the coordinator
-3. Load `state.md` when working with `.state/` files
+1. **READ** `references/sdlc.md` to understand the development framework
+2. **READ** the reference file matching your assigned role
+3. **READ** `references/state.md` when working with `.state/` files

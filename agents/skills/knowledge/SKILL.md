@@ -1,11 +1,13 @@
 ---
 name: knowledge
-description: Project-specific technical knowledge for AGR development. Dynamically load references from this skill as required for your current task - don't load everything upfront.
+description: Project-specific technical knowledge for AGR development. You MUST actually READ the reference files (not just acknowledge them) before doing related tasks.
 ---
 
 # AGR Development Knowledge
 
-Load only what you need for your current task. See the guide below to determine which references to load.
+**IMPORTANT:** "Load" means use your Read tool to actually read the file contents. Don't just acknowledge the file - READ it and follow its instructions.
+
+READ only what you need for your current task. See the guide below.
 
 ## Available References
 
