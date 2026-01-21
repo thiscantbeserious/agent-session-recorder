@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::analyzer::Analyzer;
+use crate::branding;
 use crate::config::Config;
 use crate::storage::StorageManager;
 
@@ -112,8 +113,9 @@ impl Recorder {
         })
         .ok(); // Ignore if handler already set
 
-        println!("Recording session to: {}", filepath.display());
-        println!("Running: {}", command);
+        branding::print_start_banner();
+        branding::print_box_line(&format!("  ⏺ {}/{}", agent, filename));
+        branding::print_box_bottom();
         println!();
 
         // Run asciinema rec
@@ -131,22 +133,26 @@ impl Recorder {
             .context("Failed to start asciinema")?;
 
         println!();
+        branding::print_done_banner();
 
         // Handle exit and get final filepath (may have been renamed)
         let final_filepath = if self.interrupted.load(Ordering::SeqCst) {
-            println!("Session interrupted. Saved as: {}", filename);
+            branding::print_box_line(&format!("  ⏹ {}", filename));
+            branding::print_box_bottom();
             filepath.clone()
         } else if status.success() {
             // Skip rename prompt if name was explicitly provided
             if session_name.is_some() {
-                println!("Saved as: {}", filename);
+                branding::print_box_line(&format!("  ⏹ {}", filename));
+                branding::print_box_bottom();
                 filepath.clone()
             } else {
                 // Prompt for rename on normal exit
                 self.prompt_rename(&filepath, &filename)?
             }
         } else {
-            println!("Session ended with error. Saved as: {}", filename);
+            branding::print_box_line(&format!("  ⏹ {} (error)", filename));
+            branding::print_box_bottom();
             filepath.clone()
         };
 
@@ -163,14 +169,14 @@ impl Recorder {
     fn prompt_rename(&self, filepath: &PathBuf, original_filename: &str) -> Result<PathBuf> {
         // Skip prompt if stdin is not a TTY (non-interactive)
         if !atty::is(atty::Stream::Stdin) {
-            println!("Saved as: {}", original_filename);
+            branding::print_box_line(&format!("  ⏹ {}", original_filename));
+            branding::print_box_bottom();
             return Ok(filepath.clone());
         }
 
-        print!(
-            "Session complete. Enter a name (or press Enter to keep '{}'): ",
-            original_filename
-        );
+        branding::print_box_line(&format!("  ⏹ {}", original_filename));
+        branding::print_box_bottom();
+        print!("  ⏎ Rename: ");
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -178,18 +184,17 @@ impl Recorder {
         let input = input.trim();
 
         if input.is_empty() {
-            println!("Keeping filename: {}", original_filename);
             Ok(filepath.clone())
         } else {
             let new_filename = Self::sanitize_filename(input);
             let new_filepath = filepath.parent().unwrap().join(&new_filename);
 
             if new_filepath.exists() {
-                println!("File '{}' already exists. Keeping original.", new_filename);
+                println!("  ⚠ Exists, kept original");
                 Ok(filepath.clone())
             } else {
                 std::fs::rename(filepath, &new_filepath).context("Failed to rename file")?;
-                println!("Saved as: {}", new_filename);
+                println!("  ✓ {}", new_filename);
                 Ok(new_filepath)
             }
         }

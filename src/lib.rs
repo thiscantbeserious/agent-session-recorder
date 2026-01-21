@@ -4,6 +4,7 @@
 
 pub mod analyzer;
 pub mod asciicast;
+pub mod branding;
 pub mod config;
 pub mod markers;
 pub mod recording;
