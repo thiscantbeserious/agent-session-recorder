@@ -44,6 +44,18 @@
 - **Added multi-byte test:** Japanese, accented chars, emoji
 - **Lesson:** CodeRabbit provides different perspective than our agents - catches edge cases impl agents miss
 
+### PR #24 - CRITICAL: Always Read Knowledge Files Before Actions
+- **Mistake:** Orchestrator used `gh pr merge --squash --delete-branch` without reading `knowledge/references/git.md` first
+- **Result:** Branch was deleted despite explicit rule "do NOT delete branches" in git.md
+- **Root cause:** Skipped the SDLC step "READ First" before Deploy phase
+- **Fix:** Restored branch from commit SHA
+- **Lesson:** ALWAYS follow SDLC steps - read the relevant knowledge file BEFORE each phase:
+  - Design → read `knowledge/references/project.md`
+  - Code → read `knowledge/references/tdd.md`
+  - Test → read `knowledge/references/verification.md`
+  - Deploy → read `knowledge/references/git.md`
+- **Never assume** default behaviors - project-specific rules override general practices
+
 ---
 
 ## 2025-01-19: Project Initialization

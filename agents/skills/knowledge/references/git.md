@@ -1,5 +1,9 @@
 # Git Workflow
 
+## Branch Protection
+
+**`main` is protected** - you cannot push directly to main. All changes must go through a PR.
+
 ## Feature Branch Workflow
 
 ```bash
