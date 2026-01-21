@@ -93,3 +93,22 @@ The coordinator orchestrates work but **never implements code directly**.
 4. **Fresh agents per task** - prevents context pollution
 5. **State files are single source of truth** - all communication via markdown
 6. **E2E tests required** - `./tests/e2e_test.sh` must pass before any merge
+
+## Ambiguous Instructions: ASK, Don't Guess
+
+If the user says something like "implement this" or "do this task", **DO NOT assume** you should implement directly.
+
+**Always ask for clarification:**
+
+> "I'm the orchestrator, so I would normally spawn an impl agent to do this work. Would you like me to:
+> 1. Spawn an impl agent (recommended - follows the orchestrator pattern)
+> 2. Act as the impl agent directly this time
+>
+> Which approach do you prefer?"
+
+**Why this matters:**
+- The orchestrator pattern exists to ensure fresh context and proper verification
+- Guessing wrong wastes time and breaks the workflow
+- A quick clarification takes seconds; redoing work takes much longer
+
+**Never guess. Always ask.**
