@@ -23,3 +23,6 @@ Thumbs.db
 
 # Task locks (ephemeral)
 .state/locks/*.lock
+
+# Local agent settings (not to be committed)
+agents/settings.local.json

@@ -1,0 +1,52 @@
+---
+name: knowledge
+description: Project-specific technical knowledge for AGR development. Dynamically load references from this skill as required for your current task - don't load everything upfront.
+---
+
+# AGR Development Knowledge
+
+Load only what you need for your current task. See the guide below to determine which references to load.
+
+## Available References
+
+| File | Load When |
+|------|-----------|
+| `project.md` | Understanding codebase structure, source files |
+| `commands.md` | Running AGR CLI, cargo commands, build scripts |
+| `tdd.md` | Writing code with tests, TDD workflow |
+| `verification.md` | Before committing or creating PR |
+| `git.md` | Creating branches, PRs, handling CI/CodeRabbit |
+
+## Dynamic Loading Guide
+
+### By SDLC Step
+
+| Step | Load These |
+|------|------------|
+| 1. Requirement | (none - check `.state/` files directly) |
+| 2. Design | `project.md` |
+| 3. Code | `tdd.md`, `commands.md` |
+| 4. Test | `verification.md`, `commands.md` |
+| 5. Deploy | `git.md`, `verification.md` |
+| 6. Feedback | (none - update `.state/` files directly) |
+
+### By Task Type
+
+| Task | Load These |
+|------|------------|
+| Writing new code | `tdd.md`, `project.md` |
+| Fixing a bug | `tdd.md`, `project.md`, `commands.md` |
+| Running tests | `verification.md`, `commands.md` |
+| Creating a PR | `git.md`, `verification.md` |
+| Understanding codebase | `project.md`, `commands.md` |
+
+### When Unsure
+
+Load all references:
+```
+references/project.md
+references/commands.md
+references/tdd.md
+references/verification.md
+references/git.md
+```

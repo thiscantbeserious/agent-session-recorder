@@ -67,7 +67,7 @@ Release increments frequently.
 1. Create PR: `gh pr create`
 2. Wait for CI (build, test, lint)
 3. Wait for CodeRabbit review
-4. Merge after verification: `gh pr merge --squash --delete-branch`
+4. Merge after verification: `gh pr merge --squash`
 
 ### 6. Feedback
 
@@ -83,9 +83,9 @@ Gather input to refine and improve.
 These phases work cyclically:
 
 ```
-Requirement → Design → Code → Test → Deploy → Feedback
-     ↑                                           │
-     └───────────────────────────────────────────┘
+Requirement -> Design -> Code -> Test -> Deploy -> Feedback
+     ^                                           |
+     +-------------------------------------------+
 ```
 
 Each cycle delivers incremental value while remaining responsive to change.
