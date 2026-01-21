@@ -1,6 +1,6 @@
 ---
 name: knowledge
-description: Project-specific technical knowledge for AGR development. You MUST actually READ the reference files (not just acknowledge them) before doing related tasks.
+description: Project-specific technical knowledge for AGR development. You MUST actually READ the reference files (not just acknowledge them) before doing related tasks. Before using any tool or command, check if a reference file matches by name (e.g., git → git.md) or by similarity (e.g., cargo build → commands.md) and READ it first.
 ---
 
 # AGR Development Knowledge
