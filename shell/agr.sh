@@ -4,6 +4,36 @@
 # Mark that AGR shell integration is loaded
 export _AGR_LOADED=1
 
+# Source completions based on shell type
+_agr_setup_completions() {
+    local completion_dir
+
+    if [[ -n "$ZSH_VERSION" ]]; then
+        # Zsh: Add completion directory to fpath if it exists
+        completion_dir="${HOME}/.zsh/completions"
+        if [[ -d "$completion_dir" ]]; then
+            # Add to fpath if not already there
+            if [[ ! " ${fpath[*]} " =~ " ${completion_dir} " ]]; then
+                fpath=("$completion_dir" $fpath)
+            fi
+            # Reinitialize completions if compinit is available
+            if command -v compinit &>/dev/null && [[ -f "$completion_dir/_agr" ]]; then
+                autoload -Uz compinit
+                compinit -i 2>/dev/null
+            fi
+        fi
+    elif [[ -n "$BASH_VERSION" ]]; then
+        # Bash: Source the completion file if it exists
+        completion_dir="${HOME}/.local/share/bash-completion/completions"
+        if [[ -f "$completion_dir/agr" ]]; then
+            source "$completion_dir/agr"
+        fi
+    fi
+}
+
+# Initialize completions
+_agr_setup_completions
+
 # Only set up if asciinema is available and we're not already recording
 _agr_record_session() {
     local agent="$1"

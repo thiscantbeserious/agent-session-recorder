@@ -1,7 +1,8 @@
 //! Agent Session Recorder (AGR) - CLI entry point
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell as CompletionShell};
 use std::io::{self, BufRead, Write};
 
 use agr::{Analyzer, Config, MarkerManager, Recorder, StorageManager};
@@ -212,6 +213,22 @@ EXAMPLES:
 After installing, restart your shell or run: source ~/.zshrc"
     )]
     Shell(ShellCommands),
+
+    /// Generate shell completions (internal use)
+    #[command(hide = true)]
+    Completions {
+        /// Shell to generate completions for
+        #[arg(long, value_enum)]
+        shell: Option<CompletionShell>,
+
+        /// List cast files for completion (outputs agent/filename.cast format)
+        #[arg(long)]
+        files: bool,
+
+        /// Filter prefix for file listing
+        #[arg(default_value = "")]
+        prefix: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -440,6 +457,11 @@ fn main() -> Result<()> {
             ShellCommands::Install => cmd_shell_install(),
             ShellCommands::Uninstall => cmd_shell_uninstall(),
         },
+        Commands::Completions {
+            shell,
+            files,
+            prefix,
+        } => cmd_completions(shell, files, &prefix),
     }
 }
 
@@ -457,13 +479,11 @@ fn cmd_record(agent: &str, name: Option<&str>, args: &[String]) -> Result<()> {
 }
 
 fn cmd_analyze(file: &str, agent_override: Option<&str>) -> Result<()> {
-    use std::path::PathBuf;
-
     let config = Config::load()?;
     let agent = agent_override.unwrap_or(&config.recording.analysis_agent);
 
-    // Check file exists
-    let filepath = PathBuf::from(file);
+    // Resolve file path (supports short format like "claude/session.cast")
+    let filepath = resolve_file_path(file)?;
     if !filepath.exists() {
         anyhow::bail!("File not found: {}", file);
     }
@@ -763,13 +783,17 @@ fn cmd_list(agent: Option<&str>) -> Result<()> {
 }
 
 fn cmd_marker_add(file: &str, time: f64, label: &str) -> Result<()> {
-    MarkerManager::add_marker(file, time, label)?;
+    // Resolve file path (supports short format like "claude/session.cast")
+    let filepath = resolve_file_path(file)?;
+    MarkerManager::add_marker(&filepath, time, label)?;
     println!("Marker added at {:.1}s: \"{}\"", time, label);
     Ok(())
 }
 
 fn cmd_marker_list(file: &str) -> Result<()> {
-    let markers = MarkerManager::list_markers(file)?;
+    // Resolve file path (supports short format like "claude/session.cast")
+    let filepath = resolve_file_path(file)?;
+    let markers = MarkerManager::list_markers(&filepath)?;
 
     if markers.is_empty() {
         println!("No markers found in file.");
@@ -940,6 +964,18 @@ fn cmd_shell_install() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to install shell integration: {}", e))?;
     println!("Installed shell integration: {}", rc_file.display());
 
+    // Install completions
+    if let Some(path) = agr::shell::install_bash_completions()
+        .map_err(|e| anyhow::anyhow!("Failed to install bash completions: {}", e))?
+    {
+        println!("Installed bash completions: {}", path.display());
+    }
+    if let Some(path) = agr::shell::install_zsh_completions()
+        .map_err(|e| anyhow::anyhow!("Failed to install zsh completions: {}", e))?
+    {
+        println!("Installed zsh completions: {}", path.display());
+    }
+
     println!();
     println!("Shell integration installed successfully.");
     println!("Restart your shell or run: source {}", rc_file.display());
@@ -978,6 +1014,22 @@ fn cmd_shell_uninstall() -> Result<()> {
             }
         }
 
+        // Remove completions
+        if agr::shell::uninstall_bash_completions()
+            .map_err(|e| anyhow::anyhow!("Failed to remove bash completions: {}", e))?
+        {
+            if let Some(path) = agr::shell::bash_completion_path() {
+                println!("Removed bash completions: {}", path.display());
+            }
+        }
+        if agr::shell::uninstall_zsh_completions()
+            .map_err(|e| anyhow::anyhow!("Failed to remove zsh completions: {}", e))?
+        {
+            if let Some(path) = agr::shell::zsh_completion_path() {
+                println!("Removed zsh completions: {}", path.display());
+            }
+        }
+
         println!();
         println!("Shell integration removed successfully.");
         println!("Restart your shell to complete the removal.");
@@ -986,6 +1038,61 @@ fn cmd_shell_uninstall() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn cmd_completions(shell: Option<CompletionShell>, files: bool, prefix: &str) -> Result<()> {
+    if files {
+        // List cast files for dynamic completion
+        let config = Config::load()?;
+        let storage = StorageManager::new(config);
+
+        let prefix_filter = if prefix.is_empty() {
+            None
+        } else {
+            Some(prefix)
+        };
+
+        let files = storage.list_cast_files_short(prefix_filter)?;
+        for file in files {
+            println!("{}", file);
+        }
+        return Ok(());
+    }
+
+    if let Some(shell) = shell {
+        // Generate shell completion script
+        let mut cmd = Cli::command();
+        generate(shell, &mut cmd, "agr", &mut io::stdout());
+        return Ok(());
+    }
+
+    // No arguments - show usage
+    eprintln!("Usage: agr completions --shell <bash|zsh|fish|powershell>");
+    eprintln!("       agr completions --files [prefix]");
+    std::process::exit(1);
+}
+
+/// Resolve a file path, trying short format (agent/file.cast) first
+fn resolve_file_path(file: &str) -> Result<std::path::PathBuf> {
+    use std::path::PathBuf;
+
+    let path = PathBuf::from(file);
+
+    // If it's already an absolute path or exists as-is, use it directly
+    if path.is_absolute() || path.exists() {
+        return Ok(path);
+    }
+
+    // Try to resolve as short format via StorageManager
+    let config = Config::load()?;
+    let storage = StorageManager::new(config);
+
+    if let Some(resolved) = storage.resolve_cast_path(file) {
+        return Ok(resolved);
+    }
+
+    // Return the original path (will fail later with appropriate error)
+    Ok(path)
 }
 
 #[cfg(test)]
@@ -1149,5 +1256,72 @@ mod tests {
             }
             _ => panic!("Expected Analyze command"),
         }
+    }
+
+    #[test]
+    fn cli_completions_parses_with_shell_flag() {
+        let cli = Cli::try_parse_from(["agr", "completions", "--shell", "bash"]).unwrap();
+        match cli.command {
+            Commands::Completions {
+                shell,
+                files,
+                prefix,
+            } => {
+                assert_eq!(shell, Some(CompletionShell::Bash));
+                assert!(!files);
+                assert_eq!(prefix, "");
+            }
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn cli_completions_parses_with_files_flag() {
+        let cli = Cli::try_parse_from(["agr", "completions", "--files"]).unwrap();
+        match cli.command {
+            Commands::Completions {
+                shell,
+                files,
+                prefix,
+            } => {
+                assert!(shell.is_none());
+                assert!(files);
+                assert_eq!(prefix, "");
+            }
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn cli_completions_parses_with_files_and_prefix() {
+        let cli = Cli::try_parse_from(["agr", "completions", "--files", "claude/"]).unwrap();
+        match cli.command {
+            Commands::Completions {
+                shell,
+                files,
+                prefix,
+            } => {
+                assert!(shell.is_none());
+                assert!(files);
+                assert_eq!(prefix, "claude/");
+            }
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn cli_completions_is_hidden() {
+        // The completions command should not appear in --help output
+        let cmd = Cli::command();
+        let subcommands: Vec<_> = cmd.get_subcommands().collect();
+        let completions_cmd = subcommands.iter().find(|c| c.get_name() == "completions");
+        assert!(
+            completions_cmd.is_some(),
+            "Completions command should exist"
+        );
+        assert!(
+            completions_cmd.unwrap().is_hide_set(),
+            "Completions command should be hidden"
+        );
     }
 }

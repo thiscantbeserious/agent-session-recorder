@@ -51,6 +51,10 @@ echo
 echo "Running analyzer configuration tests..."
 source "$E2E_DIR/analyzer.sh"
 
+echo
+echo "Running completions tests..."
+source "$E2E_DIR/completions.sh"
+
 # Print final summary
 echo
 echo "=== Test Summary ==="

@@ -275,6 +275,64 @@ impl StorageManager {
             .filter(|s| s.age_days > threshold_days)
             .collect())
     }
+
+    /// Resolve a short path like "agent/file.cast" to a full path
+    ///
+    /// Returns None if the file doesn't exist at the resolved path.
+    /// If the input is already an absolute path or exists as-is, returns it directly.
+    pub fn resolve_cast_path(&self, path: &str) -> Option<PathBuf> {
+        let path_buf = PathBuf::from(path);
+
+        // If absolute path, return as-is if it exists
+        if path_buf.is_absolute() {
+            return if path_buf.exists() {
+                Some(path_buf)
+            } else {
+                None
+            };
+        }
+
+        // If it exists as a relative path from current directory, return it
+        if path_buf.exists() {
+            return Some(path_buf);
+        }
+
+        // Try to resolve as "agent/file.cast" format
+        // Split on the first '/' to get agent and filename
+        let parts: Vec<&str> = path.splitn(2, '/').collect();
+        if parts.len() == 2 {
+            let agent = parts[0];
+            let filename = parts[1];
+            let full_path = self.storage_dir().join(agent).join(filename);
+            if full_path.exists() {
+                return Some(full_path);
+            }
+        }
+
+        None
+    }
+
+    /// List all cast files in short format (agent/filename.cast)
+    ///
+    /// Optionally filter by a prefix (e.g., "claude/" to list only claude sessions)
+    pub fn list_cast_files_short(&self, prefix: Option<&str>) -> Result<Vec<String>> {
+        let sessions = self.list_sessions(None)?;
+
+        let mut files: Vec<String> = sessions
+            .iter()
+            .map(|s| format!("{}/{}", s.agent, s.filename))
+            .collect();
+
+        // Filter by prefix if provided
+        if let Some(prefix) = prefix {
+            files.retain(|f| f.starts_with(prefix));
+        }
+
+        // Sort alphabetically
+        files.sort();
+
+        Ok(files)
+    }
 }
 
 #[cfg(test)]
@@ -551,5 +609,93 @@ mod tests {
             stats.disk_percentage >= 0.0,
             "Disk percentage should be non-negative"
         );
+    }
+
+    #[test]
+    fn resolve_cast_path_handles_short_format() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        // Create a test session
+        let created_path = create_test_session(temp.path(), "claude", "session.cast", "content");
+
+        // Resolve using short format
+        let resolved = manager.resolve_cast_path("claude/session.cast");
+        assert!(resolved.is_some(), "Should resolve agent/file.cast format");
+        assert_eq!(resolved.unwrap(), created_path);
+    }
+
+    #[test]
+    fn resolve_cast_path_handles_absolute_path() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        // Create a test session
+        let created_path = create_test_session(temp.path(), "claude", "session.cast", "content");
+
+        // Resolve using absolute path
+        let resolved = manager.resolve_cast_path(&created_path.to_string_lossy());
+        assert!(resolved.is_some(), "Should resolve absolute path");
+        assert_eq!(resolved.unwrap(), created_path);
+    }
+
+    #[test]
+    fn resolve_cast_path_returns_none_for_missing_file() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        // Try to resolve non-existent file
+        let resolved = manager.resolve_cast_path("claude/nonexistent.cast");
+        assert!(resolved.is_none(), "Should return None for missing file");
+
+        // Also test absolute path that doesn't exist
+        let resolved = manager.resolve_cast_path("/nonexistent/path/file.cast");
+        assert!(
+            resolved.is_none(),
+            "Should return None for missing absolute path"
+        );
+    }
+
+    #[test]
+    fn list_cast_files_short_returns_correct_format() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        // Create sessions for multiple agents
+        create_test_session(temp.path(), "claude", "session1.cast", "content");
+        create_test_session(temp.path(), "codex", "session2.cast", "content");
+
+        let files = manager.list_cast_files_short(None).unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(files.contains(&"claude/session1.cast".to_string()));
+        assert!(files.contains(&"codex/session2.cast".to_string()));
+    }
+
+    #[test]
+    fn list_cast_files_short_filters_by_prefix() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let manager = StorageManager::new(config);
+
+        // Create sessions for multiple agents
+        create_test_session(temp.path(), "claude", "session1.cast", "content");
+        create_test_session(temp.path(), "claude", "session2.cast", "content");
+        create_test_session(temp.path(), "codex", "session3.cast", "content");
+
+        // Filter by claude prefix
+        let files = manager.list_cast_files_short(Some("claude/")).unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().all(|f| f.starts_with("claude/")));
+
+        // Filter by partial filename
+        let files = manager
+            .list_cast_files_short(Some("claude/session1"))
+            .unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0], "claude/session1.cast");
     }
 }

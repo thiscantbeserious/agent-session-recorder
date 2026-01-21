@@ -15,6 +15,12 @@ const MARKER_WARNING: &str = "# DO NOT EDIT - managed by 'agr shell install/unin
 /// The embedded shell script content
 pub const SHELL_SCRIPT: &str = include_str!("../shell/agr.sh");
 
+/// The embedded bash completion script
+pub const BASH_COMPLETIONS: &str = include_str!("../shell/completions.bash");
+
+/// The embedded zsh completion script
+pub const ZSH_COMPLETIONS: &str = include_str!("../shell/completions.zsh");
+
 /// Information about shell integration status
 #[derive(Debug, Clone)]
 pub struct ShellStatus {
@@ -253,6 +259,70 @@ pub fn install_script(script_path: &Path) -> io::Result<()> {
         fs::create_dir_all(parent)?;
     }
     fs::write(script_path, SHELL_SCRIPT)
+}
+
+/// Get the default bash completion installation path
+pub fn bash_completion_path() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    Some(
+        home.join(".local")
+            .join("share")
+            .join("bash-completion")
+            .join("completions")
+            .join("agr"),
+    )
+}
+
+/// Get the default zsh completion installation path
+pub fn zsh_completion_path() -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    Some(home.join(".zsh").join("completions").join("_agr"))
+}
+
+/// Install bash completions to the standard location
+pub fn install_bash_completions() -> io::Result<Option<PathBuf>> {
+    if let Some(path) = bash_completion_path() {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, BASH_COMPLETIONS)?;
+        return Ok(Some(path));
+    }
+    Ok(None)
+}
+
+/// Install zsh completions to the standard location
+pub fn install_zsh_completions() -> io::Result<Option<PathBuf>> {
+    if let Some(path) = zsh_completion_path() {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, ZSH_COMPLETIONS)?;
+        return Ok(Some(path));
+    }
+    Ok(None)
+}
+
+/// Uninstall bash completions
+pub fn uninstall_bash_completions() -> io::Result<bool> {
+    if let Some(path) = bash_completion_path() {
+        if path.exists() {
+            fs::remove_file(&path)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Uninstall zsh completions
+pub fn uninstall_zsh_completions() -> io::Result<bool> {
+    if let Some(path) = zsh_completion_path() {
+        if path.exists() {
+            fs::remove_file(&path)?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[cfg(test)]
