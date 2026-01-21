@@ -100,4 +100,46 @@ mod tests {
         assert!(LOGO_DONE.contains('╔'));
         assert!(LOGO_DONE.contains('╠'));
     }
+
+    #[test]
+    fn truncate_str_short_unchanged() {
+        assert_eq!(truncate_str("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_str_exact_length() {
+        assert_eq!(truncate_str("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_str_adds_ellipsis() {
+        assert_eq!(truncate_str("hello world", 8), "hello w…");
+    }
+
+    #[test]
+    fn truncate_str_handles_unicode() {
+        // Should truncate by character count, not bytes
+        assert_eq!(truncate_str("日本語テスト", 4), "日本語…");
+    }
+
+    #[test]
+    fn box_width_matches_bottom_border() {
+        // BOX_BOTTOM should be ║ + BOX_WIDTH chars + ║
+        // Actually it's ╚ + BOX_WIDTH ═ chars + ╝
+        let border_inner: String = BOX_BOTTOM.chars().skip(1).take(BOX_WIDTH).collect();
+        assert!(border_inner.chars().all(|c| c == '═'));
+    }
+
+    #[test]
+    fn print_functions_do_not_panic() {
+        // Simple coverage tests - just verify they run without panicking
+        print_start_banner();
+        print_done_banner();
+        print_full_logo();
+        print_box_line("test content");
+        print_box_line("a very long string that should be truncated to fit the box width");
+        print_box_bottom();
+        print_box_prompt("prompt: ");
+        print_box_line_end();
+    }
 }

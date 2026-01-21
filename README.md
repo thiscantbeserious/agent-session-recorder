@@ -1,8 +1,24 @@
 # Agent Session Recorder (AGR)
 
+```
+╔══════════════════════════════════════╗
+║  ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  ⏺ REC    ║
+╠══════════════════════════════════════╣
+║   ░█████╗░░██████╗░██████╗░          ║
+║   ██╔══██╗██╔════╝░██╔══██╗          ║
+║   ███████║██║░░██╗░██████╔╝          ║
+║   ██╔══██║██║░░╚██╗██╔══██╗          ║
+║   ██║░░██║╚██████╔╝██║░░██║          ║
+║   ╚═╝░░╚═╝░╚═════╝░╚═╝░░╚═╝          ║
+║   ◉──────────────────────⏺ REC       ║
+║   A G E N T   S E S S I O N          ║
+║   R E C O R D E R                    ║
+╚══════════════════════════════════════╝
+```
+
 [![CI](https://github.com/thiscantbeserious/agent-session-recorder/actions/workflows/ci.yml/badge.svg)](https://github.com/thiscantbeserious/agent-session-recorder/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/thiscantbeserious/agent-session-recorder/graph/badge.svg)](https://codecov.io/gh/thiscantbeserious/agent-session-recorder)
-[![Rust](https://img.shields.io/badge/Rust-1.75+-orange?logo=rust)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![asciinema](https://img.shields.io/badge/powered%20by-asciinema-d40000)](https://asciinema.org/)
 
