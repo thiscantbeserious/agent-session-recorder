@@ -7,6 +7,51 @@ use std::io::{self, BufRead, Write};
 
 use agr::{Analyzer, Config, MarkerManager, Recorder, StorageManager};
 
+/// Build version string.
+///
+/// For dev builds (default): "0.1.0-dev+abc1234 (owner/repo, built 2025-01-21)"
+/// For release builds (--features release): "0.1.0 (owner/repo, built 2025-01-21)"
+fn build_version() -> &'static str {
+    #[cfg(not(feature = "release"))]
+    {
+        // Dev build: include git hash
+        // Environment variables are set by build.rs via vergen
+        const GIT_SHA: &str = env!("VERGEN_GIT_SHA");
+        const VERSION: &str = env!("CARGO_PKG_VERSION");
+        const BUILD_DATE: &str = env!("AGR_BUILD_DATE");
+        const REPO_NAME: &str = env!("AGR_REPO_NAME");
+
+        // Use OnceLock for lazy initialization of the version string
+        static VERSION_STRING: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        VERSION_STRING.get_or_init(|| {
+            let version_part =
+                if GIT_SHA.is_empty() || GIT_SHA == "unknown" || GIT_SHA.starts_with("VERGEN_") {
+                    format!("{}-dev", VERSION)
+                } else {
+                    // Take first 7 characters of SHA for short hash
+                    let short_sha = if GIT_SHA.len() > 7 {
+                        &GIT_SHA[..7]
+                    } else {
+                        GIT_SHA
+                    };
+                    format!("{}-dev+{}", VERSION, short_sha)
+                };
+            format!("{} ({}, built {})", version_part, REPO_NAME, BUILD_DATE)
+        })
+    }
+
+    #[cfg(feature = "release")]
+    {
+        // Release build: clean version with repo and build date
+        const VERSION: &str = env!("CARGO_PKG_VERSION");
+        const BUILD_DATE: &str = env!("AGR_BUILD_DATE");
+        const REPO_NAME: &str = env!("AGR_REPO_NAME");
+
+        static VERSION_STRING: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+        VERSION_STRING.get_or_init(|| format!("{} ({}, built {})", VERSION, REPO_NAME, BUILD_DATE))
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "agr")]
 #[command(about = "Agent Session Recorder - Record AI agent terminal sessions")]
@@ -29,7 +74,7 @@ SHELL INTEGRATION:
 
 For more information, see: https://github.com/thiscantbeserious/agent-session-recorder"
 )]
-#[command(version)]
+#[command(version = build_version())]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
