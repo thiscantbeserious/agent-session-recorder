@@ -4,14 +4,17 @@ A Rust CLI tool for recording AI agent terminal sessions with asciinema.
 ## Source of Truth
 This file is the single source of truth for all AI agents (Claude, Codex, Gemini).
 
+**IMPORTANT: "Load" means actually READ the file contents using your file reading tool (Read, cat, etc). Do NOT just acknowledge the file exists - you MUST read and process its contents.**
+
 ### Project Skills
 | Skill | Purpose |
 |-------|---------|
-| `knowledge` | Project-specific development knowledge (git, tdd, rust, state) |
+| `knowledge` | Project-specific technical knowledge - READ files before doing related tasks |
 | `architecture` | Agent roles and orchestration patterns |
 
-## Always take a role
-Read the architecture skill, unless your instructed to take a specific role take the orchestrator role
+## First Step: Take a Role
+**You MUST read** `agents/skills/architecture/SKILL.md` first, then read the appropriate role file.
+Unless instructed otherwise, take the orchestrator role by reading `agents/skills/architecture/references/orchestrator.md`.
 
 ## Documentation
 
@@ -32,14 +35,18 @@ gh pr list --state merged -L 10  # Recent completed work
 ```
 
 ### Task Steps (SDLC)
-1. **Requirement** - Check state and decisions
-2. **Design** - Identify files, consider edge cases
-3. **Code** - TDD (Red-Green-Refactor), format, lint
-4. **Test** - `cargo test` and `./tests/e2e_test.sh`
-5. **Deploy** - Create PR, wait for CI + CodeRabbit
-6. **Feedback** - Document blockers and learnings
+Before each step, **READ the relevant knowledge file**:
 
-For detailed instructions, load `agents/skills/knowledge/references/tdd.md`.
+| Step | Action | READ First |
+|------|--------|------------|
+| 1. Requirement | Check state and decisions | - |
+| 2. Design | Identify files, edge cases | `knowledge/references/project.md` |
+| 3. Code | TDD, format, lint | `knowledge/references/tdd.md` |
+| 4. Test | Run tests | `knowledge/references/verification.md` |
+| 5. Deploy | Create PR, wait for CI | `knowledge/references/git.md` |
+| 6. Feedback | Document learnings | - |
+
+**Example:** Before writing code, READ `agents/skills/knowledge/references/tdd.md` for TDD workflow.
 
 ### Verification Commands
 ```bash
