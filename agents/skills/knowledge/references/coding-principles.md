@@ -178,25 +178,31 @@ fn process_item(item: &Item) -> Result<()> {
 
 **Tests belong in separate files**
 
-Unit tests go in `tests/` directory, not inline with source code.
+Unit tests go in `tests/unit/` directory, not inline with source code.
 
 ### Structure
 
 ```
 src/
-  storage.rs          # Implementation only
-  markers.rs          # Implementation only
+  storage.rs              # Implementation only
+  markers.rs              # Implementation only
 tests/
-  storage_test.rs     # Tests for storage module
-  markers_test.rs     # Tests for markers module
-  helpers/
-    mod.rs            # Shared test utilities
+  unit.rs                 # Module root for unit tests
+  unit/
+    storage_test.rs       # Tests for storage module
+    markers_test.rs       # Tests for markers module
+    helpers/
+      mod.rs              # Shared test utilities
+  e2e/
+    *.sh                  # End-to-end shell scripts
+  fixtures/
+    *.cast                # Test data files
 ```
 
 ### Naming Convention
 
 - Test file: `<module>_test.rs`
-- Test function: `test_<behavior>` or descriptive name
+- Test function: descriptive behavior name (e.g., `parse_header_extracts_version`)
 - Use `#[test]` attribute
 
 ### Example
