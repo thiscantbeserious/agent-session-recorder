@@ -177,17 +177,17 @@ fi
 
 section "agr.sh Completion Setup Tests"
 
-# Test: agr.sh contains completion setup function
-test_header "agr.sh contains _agr_setup_completions function"
-# Re-install to get the shell script
+# Test: Embedded script contains completion setup function
+test_header "Embedded script contains _agr_setup_completions function"
+# Re-install to get the shell integration (script is now embedded in .zshrc)
 touch "$HOME/.zshrc"
 $AGR shell install 2>&1
 
-AGR_SH="$HOME/.config/agr/agr.sh"
-if [ -f "$AGR_SH" ] && /usr/bin/grep -q "_agr_setup_completions" "$AGR_SH"; then
-    pass "agr.sh contains _agr_setup_completions function"
+# The script is now embedded directly in .zshrc, not in an external file
+if /usr/bin/grep -q "_agr_setup_completions" "$HOME/.zshrc"; then
+    pass "Embedded script contains _agr_setup_completions function"
 else
-    fail "agr.sh missing _agr_setup_completions function"
+    fail "Embedded script missing _agr_setup_completions function"
 fi
 
 # Clean up for next test suite
