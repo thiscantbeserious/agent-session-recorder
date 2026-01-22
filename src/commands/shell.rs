@@ -55,7 +55,7 @@ pub fn handle_install() -> Result<()> {
 }
 
 /// Install shell completions for bash and zsh.
-fn install_completions() -> Result<()> {
+pub(crate) fn install_completions() -> Result<()> {
     if let Some(path) = agr::shell::install_bash_completions()
         .map_err(|e| anyhow::anyhow!("Failed to install bash completions: {}", e))?
     {
@@ -101,7 +101,7 @@ pub fn handle_uninstall() -> Result<()> {
 }
 
 /// Remove the shell script file.
-fn remove_shell_script(rc_file: &std::path::Path) -> Result<()> {
+pub(crate) fn remove_shell_script(rc_file: &std::path::Path) -> Result<()> {
     // Extract the actual script path from RC file, fallback to default
     let script_path = agr::shell::extract_script_path(rc_file)
         .ok()
@@ -119,7 +119,7 @@ fn remove_shell_script(rc_file: &std::path::Path) -> Result<()> {
 }
 
 /// Remove shell completions for bash and zsh.
-fn remove_completions() -> Result<()> {
+pub(crate) fn remove_completions() -> Result<()> {
     if agr::shell::uninstall_bash_completions()
         .map_err(|e| anyhow::anyhow!("Failed to remove bash completions: {}", e))?
     {
@@ -135,4 +135,59 @@ fn remove_completions() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn remove_shell_script_nonexistent_rc_file_does_not_panic() {
+        let temp = TempDir::new().unwrap();
+        let rc_path = temp.path().join("nonexistent_rc");
+        // Should not panic even with a non-existent RC file
+        let result = remove_shell_script(&rc_path);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn remove_shell_script_empty_rc_file_does_not_panic() {
+        let temp = TempDir::new().unwrap();
+        let rc_path = temp.path().join(".zshrc");
+        fs::write(&rc_path, "").unwrap();
+
+        // Should not panic with an empty RC file
+        let result = remove_shell_script(&rc_path);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn remove_shell_script_rc_file_without_agr_does_not_panic() {
+        let temp = TempDir::new().unwrap();
+        let rc_path = temp.path().join(".zshrc");
+        fs::write(&rc_path, "export PATH=/usr/bin:$PATH\n").unwrap();
+
+        // Should not panic with an RC file that doesn't have agr integration
+        let result = remove_shell_script(&rc_path);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn install_completions_runs_without_error() {
+        // This test may actually install completions, but should not panic
+        // The underlying functions handle missing directories gracefully
+        let result = install_completions();
+        // On systems where completion dirs exist, this will succeed
+        // On systems without them, it should still not panic
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn remove_completions_runs_without_error() {
+        // Should not panic even if completion files don't exist
+        let result = remove_completions();
+        assert!(result.is_ok());
+    }
 }
