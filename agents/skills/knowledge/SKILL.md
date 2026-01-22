@@ -18,6 +18,7 @@ READ only what you need for your current task. See the guide below.
 | `tdd.md` | Writing code with tests, TDD workflow |
 | `verification.md` | Before committing or creating PR |
 | `git.md` | Creating branches, PRs, handling CI/CodeRabbit |
+| `coding-principles.md` | Writing new code, refactoring, code review |
 
 ## Dynamic Loading Guide
 
@@ -26,8 +27,8 @@ READ only what you need for your current task. See the guide below.
 | Step | Load These |
 |------|------------|
 | 1. Requirement | (none - check `.state/` files directly) |
-| 2. Design | `project.md` |
-| 3. Code | `tdd.md`, `commands.md` |
+| 2. Design | `project.md`, `coding-principles.md` |
+| 3. Code | `tdd.md`, `commands.md`, `coding-principles.md` |
 | 4. Test | `verification.md`, `commands.md` |
 | 5. Deploy | `git.md`, `verification.md` |
 | 6. Feedback | (none - update `.state/` files directly) |
@@ -36,11 +37,13 @@ READ only what you need for your current task. See the guide below.
 
 | Task | Load These |
 |------|------------|
-| Writing new code | `tdd.md`, `project.md` |
+| Writing new code | `tdd.md`, `project.md`, `coding-principles.md` |
 | Fixing a bug | `tdd.md`, `project.md`, `commands.md` |
 | Running tests | `verification.md`, `commands.md` |
 | Creating a PR | `git.md`, `verification.md` |
 | Understanding codebase | `project.md`, `commands.md` |
+| Refactoring code | `coding-principles.md`, `tdd.md` |
+| Code review | `coding-principles.md`, `verification.md` |
 
 ### When Unsure
 
@@ -51,4 +54,5 @@ references/commands.md
 references/tdd.md
 references/verification.md
 references/git.md
+references/coding-principles.md
 ```
