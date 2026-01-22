@@ -335,28 +335,20 @@ AGR's shell integration creates wrapper functions for your configured agents. Wh
 2. Checks if already inside a recording (to avoid nesting)
 3. If both pass, runs `agr record claude` instead of `claude` directly
 
-### Manual Setup
-
-If you prefer manual setup instead of `agr shell install`:
-
-```bash
-# Add to ~/.zshrc or ~/.bashrc
-source ~/.config/agr/agr.sh
-```
-
 ### How It Works
 
-The shell integration adds a marked section to your RC file:
+The shell integration embeds the AGR script directly into your RC file between markers:
 
 ```bash
 # >>> AGR (Agent Session Recorder) >>>
 # DO NOT EDIT - managed by 'agr shell install/uninstall'
-export _AGR_LOADED=1
-[ -f "$HOME/.config/agr/agr.sh" ] && source "$HOME/.config/agr/agr.sh"
+# (embedded shell script content - defines wrapper functions for auto-recording)
 # <<< AGR (Agent Session Recorder) <<<
 ```
 
-This makes it easy to update or remove with `agr shell uninstall`.
+This approach ensures the shell wrappers survive shell snapshots and won't break if external files go missing. The `agr shell uninstall` command cleanly removes the entire marked section.
+
+**Note:** Unlike sourcing an external file, the script content is embedded directly. To update the shell integration after upgrading AGR, run `agr shell install` again.
 
 ## asciicast v3 Format
 

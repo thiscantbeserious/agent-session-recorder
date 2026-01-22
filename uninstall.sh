@@ -25,11 +25,7 @@ else
             fi
         fi
     done
-    # Also remove the shell script
-    if [ -f "$HOME/.config/agr/agr.sh" ]; then
-        rm "$HOME/.config/agr/agr.sh"
-        echo "  Removed: $HOME/.config/agr/agr.sh"
-    fi
+    # Note: Shell script is now embedded in RC files, no external file to remove
 fi
 
 # Remove binary (after CLI cleanup so agr commands can run)

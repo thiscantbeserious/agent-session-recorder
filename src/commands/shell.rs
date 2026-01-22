@@ -16,6 +16,7 @@ pub fn handle_status() -> Result<()> {
 /// Install shell integration to .zshrc/.bashrc.
 ///
 /// Creates wrapper functions for configured agents that automatically record sessions.
+/// The shell script is embedded directly in the RC file (not sourced from an external file).
 #[cfg(not(tarpaulin_include))]
 pub fn handle_install() -> Result<()> {
     // Create config.toml with defaults if it doesn't exist
@@ -30,17 +31,8 @@ pub fn handle_install() -> Result<()> {
     let rc_file = agr::shell::detect_shell_rc()
         .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?;
 
-    // Determine script path (use config dir)
-    let script_path = agr::shell::default_script_path()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?;
-
-    // Install the shell script to config directory
-    agr::shell::install_script(&script_path)
-        .map_err(|e| anyhow::anyhow!("Failed to install shell script: {}", e))?;
-    println!("Installed shell script: {}", script_path.display());
-
-    // Install shell integration to RC file
-    agr::shell::install(&rc_file, &script_path)
+    // Install shell integration to RC file (script is embedded directly)
+    agr::shell::install(&rc_file)
         .map_err(|e| anyhow::anyhow!("Failed to install shell integration: {}", e))?;
     println!("Installed shell integration: {}", rc_file.display());
 
@@ -81,13 +73,29 @@ pub fn handle_uninstall() -> Result<()> {
         }
     };
 
+    // Check for old-style installation (external script file) before removing
+    // so we can clean it up for backward compatibility
+    let old_script_path = agr::shell::extract_script_path(&rc_file)
+        .ok()
+        .flatten()
+        .or_else(agr::shell::default_script_path);
+
     // Remove from RC file
     let removed = agr::shell::uninstall(&rc_file)
         .map_err(|e| anyhow::anyhow!("Failed to remove shell integration: {}", e))?;
 
     if removed {
         println!("Removed shell integration from: {}", rc_file.display());
-        remove_shell_script(&rc_file)?;
+
+        // Clean up old-style external script file if it exists
+        if let Some(script_path) = old_script_path {
+            if script_path.exists() {
+                std::fs::remove_file(&script_path)
+                    .map_err(|e| anyhow::anyhow!("Failed to remove shell script: {}", e))?;
+                println!("Removed old shell script: {}", script_path.display());
+            }
+        }
+
         remove_completions()?;
 
         println!();
@@ -97,24 +105,6 @@ pub fn handle_uninstall() -> Result<()> {
         println!("Shell integration was not found in: {}", rc_file.display());
     }
 
-    Ok(())
-}
-
-/// Remove the shell script file.
-pub(crate) fn remove_shell_script(rc_file: &std::path::Path) -> Result<()> {
-    // Extract the actual script path from RC file, fallback to default
-    let script_path = agr::shell::extract_script_path(rc_file)
-        .ok()
-        .flatten()
-        .or_else(agr::shell::default_script_path);
-
-    if let Some(script_path) = script_path {
-        if script_path.exists() {
-            std::fs::remove_file(&script_path)
-                .map_err(|e| anyhow::anyhow!("Failed to remove shell script: {}", e))?;
-            println!("Removed shell script: {}", script_path.display());
-        }
-    }
     Ok(())
 }
 
@@ -140,39 +130,6 @@ pub(crate) fn remove_completions() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use tempfile::TempDir;
-
-    #[test]
-    fn remove_shell_script_nonexistent_rc_file_does_not_panic() {
-        let temp = TempDir::new().unwrap();
-        let rc_path = temp.path().join("nonexistent_rc");
-        // Should not panic even with a non-existent RC file
-        let result = remove_shell_script(&rc_path);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn remove_shell_script_empty_rc_file_does_not_panic() {
-        let temp = TempDir::new().unwrap();
-        let rc_path = temp.path().join(".zshrc");
-        fs::write(&rc_path, "").unwrap();
-
-        // Should not panic with an empty RC file
-        let result = remove_shell_script(&rc_path);
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn remove_shell_script_rc_file_without_agr_does_not_panic() {
-        let temp = TempDir::new().unwrap();
-        let rc_path = temp.path().join(".zshrc");
-        fs::write(&rc_path, "export PATH=/usr/bin:$PATH\n").unwrap();
-
-        // Should not panic with an RC file that doesn't have agr integration
-        let result = remove_shell_script(&rc_path);
-        assert!(result.is_ok());
-    }
 
     #[test]
     fn install_completions_runs_without_error() {

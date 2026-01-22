@@ -115,7 +115,11 @@ pub fn find_installed_rc() -> Option<PathBuf> {
         .find(|rc| is_installed_in(rc).unwrap_or(false))
 }
 
-/// Extract the script path from an installed RC file
+/// Extract the script path from an installed RC file (for old-style installations)
+///
+/// This function is used for backward compatibility to detect old-style installations
+/// where the script was sourced from an external file. New installations embed the
+/// script directly and will return None.
 pub fn extract_script_path(rc_file: &Path) -> io::Result<Option<PathBuf>> {
     if !rc_file.exists() {
         return Ok(None);
@@ -123,16 +127,22 @@ pub fn extract_script_path(rc_file: &Path) -> io::Result<Option<PathBuf>> {
 
     let content = fs::read_to_string(rc_file)?;
 
-    // Look for source line between markers
+    // Look for old-style source line between markers
+    // The old pattern is: [ -f "/path/to/agr.sh" ] && source "/path/to/agr.sh"
+    // This should be at the start of a line (not indented, unlike internal script code)
     let in_section = content
         .lines()
         .skip_while(|line| !line.contains(MARKER_START))
         .take_while(|line| !line.contains(MARKER_END))
-        .find(|line| line.contains("source") || line.contains(". "));
+        .find(|line| {
+            let trimmed = line.trim();
+            // Old-style: starts with [ -f and contains source
+            // This won't match internal script code which is indented or in functions
+            trimmed.starts_with("[ -f \"") && trimmed.contains("&& source")
+        });
 
     if let Some(line) = in_section {
         // Extract path from: [ -f "/path/to/agr.sh" ] && source "/path/to/agr.sh"
-        // or: source "/path/to/agr.sh"
         if let Some(start) = line.find('"') {
             if let Some(end) = line[start + 1..].find('"') {
                 let path = &line[start + 1..start + 1 + end];
@@ -145,19 +155,20 @@ pub fn extract_script_path(rc_file: &Path) -> io::Result<Option<PathBuf>> {
 }
 
 /// Generate the shell integration section content
-pub fn generate_section(script_path: &Path) -> String {
-    let script_path_str = script_path.display();
-    format!(
-        r#"{MARKER_START}
-{MARKER_WARNING}
-[ -f "{script_path_str}" ] && source "{script_path_str}"
-{MARKER_END}"#
-    )
+///
+/// This embeds the full shell script content directly into the RC file
+/// instead of sourcing an external file. This ensures shell wrappers
+/// survive shell snapshots (e.g., Claude Code's shell-snapshots mechanism).
+pub fn generate_section() -> String {
+    format!("{MARKER_START}\n{MARKER_WARNING}\n{SHELL_SCRIPT}\n{MARKER_END}")
 }
 
 /// Install shell integration to an RC file
-pub fn install(rc_file: &Path, script_path: &Path) -> io::Result<()> {
-    // First, remove any existing installation
+///
+/// This embeds the full shell script content directly into the RC file.
+/// If there's an existing installation (old-style or new), it will be replaced.
+pub fn install(rc_file: &Path) -> io::Result<()> {
+    // First, remove any existing installation (handles both old and new style)
     if is_installed_in(rc_file)? {
         uninstall(rc_file)?;
     }
@@ -169,8 +180,8 @@ pub fn install(rc_file: &Path, script_path: &Path) -> io::Result<()> {
         String::new()
     };
 
-    // Generate section
-    let section = generate_section(script_path);
+    // Generate section with embedded script
+    let section = generate_section();
 
     // Append to file
     let new_content = if content.is_empty() {
