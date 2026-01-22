@@ -402,9 +402,9 @@ src/
 ├── commands/     # CLI command handlers (one file per command)
 └── *.rs          # Domain modules (config, storage, recording, etc.)
 tests/
-├── *_test.rs     # Integration tests
+├── unit/         # Unit tests for library modules
 ├── e2e/          # End-to-end test scripts
-└── helpers/      # Shared test utilities
+└── fixtures/     # Test data files
 ```
 
 ### Cross-Compilation

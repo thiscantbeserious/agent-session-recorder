@@ -82,7 +82,8 @@ cargo install cargo-tarpaulin  # Coverage tool (required for local coverage chec
 | `src/main.rs` | CLI entry point - clap definitions and command dispatch |
 | `src/lib.rs` | Library root - re-exports all modules |
 | `src/commands/` | CLI command handlers (one file per command) |
-| `tests/` | Integration tests, E2E tests (`e2e/`), and test helpers |
+| `tests/unit/` | Unit tests for library modules |
+| `tests/e2e/` | End-to-end shell script tests |
 
 Explore `src/` for domain modules (config, storage, recording, etc.).
 
