@@ -9,8 +9,9 @@ use agr::branding::{
 #[test]
 fn logo_full_is_not_empty() {
     assert!(!LOGO_FULL.is_empty());
-    assert!(LOGO_FULL.contains("A G E N T"));
-    assert!(LOGO_FULL.contains("R E C O R D E R"));
+    // Logo contains AGR in block letters and REC indicator
+    assert!(LOGO_FULL.contains("█████"));
+    assert!(LOGO_FULL.contains("REC"));
 }
 
 #[test]
@@ -29,10 +30,8 @@ fn logo_done_is_not_empty() {
 
 #[test]
 fn logos_have_box_borders() {
-    // Full logo has complete box
-    assert!(LOGO_FULL.contains('╔'));
-    assert!(LOGO_FULL.contains('╚'));
-    // Small logos have top and separator (bottom added programmatically)
+    // Full logo is borderless (simplified for mobile compatibility)
+    // Small logos still have top and separator (bottom added programmatically)
     assert!(LOGO_START.contains('╔'));
     assert!(LOGO_START.contains('╠'));
     assert!(LOGO_DONE.contains('╔'));

@@ -4,10 +4,33 @@
 //! Command implementations are in the `commands` module.
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use clap_complete::Shell as CompletionShell;
+use terminal_size::{terminal_size, Width};
 
 mod commands;
+
+/// Generate the ASCII logo with dynamic-width REC line.
+fn build_logo() -> String {
+    let width = terminal_size()
+        .map(|(Width(w), _)| w as usize)
+        .unwrap_or(80);
+
+    // Logo is 27 chars wide, REC indicator is " ⏺ REC "
+    let rec_prefix = " ⏺ REC ";
+    let rec_prefix_width = 7; // visual width
+    let dashes = width.saturating_sub(rec_prefix_width);
+    let rec_line = format!("{}{}", rec_prefix, "─".repeat(dashes));
+
+    const LOGO: &str = " █████╗  ██████╗ ██████╗
+██╔══██╗██╔════╝ ██╔══██╗
+███████║██║  ███╗██████╔╝
+██╔══██║██║   ██║██╔══██╗
+██║  ██║╚██████╔╝██║  ██║
+╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝";
+
+    format!("\n\n{}\n{}\n", LOGO, rec_line)
+}
 
 /// Build version string.
 ///
@@ -56,7 +79,6 @@ fn build_version() -> &'static str {
 
 #[derive(Parser)]
 #[command(name = "agr")]
-#[command(before_help = include_str!("../assets/logo.txt"))]
 #[command(
     about = "[ Agent Session Recorder ] - auto-record agent sessions and handle the recordings with AI!"
 )]
@@ -480,7 +502,8 @@ EXAMPLE:
 
 #[cfg(not(tarpaulin_include))]
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = Cli::command().before_help(build_logo()).get_matches();
+    let cli = Cli::from_arg_matches(&cli).unwrap();
 
     match cli.command {
         Commands::Record { agent, name, args } => {
