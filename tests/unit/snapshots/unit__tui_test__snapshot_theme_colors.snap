@@ -8,5 +8,5 @@ text_primary: Gray
 text_secondary: DarkGray
 accent: LightGreen
 error: Red
-success: Green
+success: LightGreen
 background: Reset

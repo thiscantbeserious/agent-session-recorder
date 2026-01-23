@@ -39,7 +39,7 @@ impl Theme {
             text_secondary: Color::DarkGray, // Dark gray for footer hints
             accent: Color::LightGreen,       // Bright green (ANSI 92) for logo
             error: Color::Red,
-            success: Color::Green,
+            success: Color::LightGreen, // Bright green for done banner
             background: Color::Reset,
         }
     }
