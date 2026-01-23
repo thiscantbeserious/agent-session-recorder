@@ -2,21 +2,23 @@
 
 use anyhow::Result;
 
+use agr::tui::current_theme;
 use agr::Config;
 
 /// List all configured agents.
 #[cfg(not(tarpaulin_include))]
 pub fn handle_list() -> Result<()> {
     let config = Config::load()?;
+    let theme = current_theme();
 
     if config.agents.enabled.is_empty() {
-        println!("No agents configured.");
+        println!("{}", theme.primary_text("No agents configured."));
         return Ok(());
     }
 
-    println!("Configured agents:");
+    println!("{}", theme.primary_text("Configured agents:"));
     for agent in &config.agents.enabled {
-        println!("  {}", agent);
+        println!("{}", theme.primary_text(&format!("  {}", agent)));
     }
 
     Ok(())
@@ -26,12 +28,16 @@ pub fn handle_list() -> Result<()> {
 #[cfg(not(tarpaulin_include))]
 pub fn handle_add(name: &str) -> Result<()> {
     let mut config = Config::load()?;
+    let theme = current_theme();
 
     if config.add_agent(name) {
         config.save()?;
-        println!("Added agent: {}", name);
+        println!("{}", theme.primary_text(&format!("Added agent: {}", name)));
     } else {
-        println!("Agent '{}' is already configured.", name);
+        println!(
+            "{}",
+            theme.primary_text(&format!("Agent '{}' is already configured.", name))
+        );
     }
 
     Ok(())
@@ -41,12 +47,19 @@ pub fn handle_add(name: &str) -> Result<()> {
 #[cfg(not(tarpaulin_include))]
 pub fn handle_remove(name: &str) -> Result<()> {
     let mut config = Config::load()?;
+    let theme = current_theme();
 
     if config.remove_agent(name) {
         config.save()?;
-        println!("Removed agent: {}", name);
+        println!(
+            "{}",
+            theme.primary_text(&format!("Removed agent: {}", name))
+        );
     } else {
-        println!("Agent '{}' was not configured.", name);
+        println!(
+            "{}",
+            theme.primary_text(&format!("Agent '{}' was not configured.", name))
+        );
     }
 
     Ok(())
@@ -72,13 +85,19 @@ pub fn handle_is_wrapped(name: &str) -> Result<()> {
 #[cfg(not(tarpaulin_include))]
 pub fn handle_nowrap_list() -> Result<()> {
     let config = Config::load()?;
+    let theme = current_theme();
 
     if config.agents.no_wrap.is_empty() {
-        println!("No agents in no-wrap list. All enabled agents will be auto-wrapped.");
+        println!(
+            "{}",
+            theme.primary_text(
+                "No agents in no-wrap list. All enabled agents will be auto-wrapped."
+            )
+        );
     } else {
-        println!("Agents not auto-wrapped:");
+        println!("{}", theme.primary_text("Agents not auto-wrapped:"));
         for agent in &config.agents.no_wrap {
-            println!("  {}", agent);
+            println!("{}", theme.primary_text(&format!("  {}", agent)));
         }
     }
 
@@ -89,15 +108,22 @@ pub fn handle_nowrap_list() -> Result<()> {
 #[cfg(not(tarpaulin_include))]
 pub fn handle_nowrap_add(name: &str) -> Result<()> {
     let mut config = Config::load()?;
+    let theme = current_theme();
 
     if config.add_no_wrap(name) {
         config.save()?;
         println!(
-            "Added '{}' to no-wrap list. It will not be auto-wrapped.",
-            name
+            "{}",
+            theme.primary_text(&format!(
+                "Added '{}' to no-wrap list. It will not be auto-wrapped.",
+                name
+            ))
         );
     } else {
-        println!("Agent '{}' is already in the no-wrap list.", name);
+        println!(
+            "{}",
+            theme.primary_text(&format!("Agent '{}' is already in the no-wrap list.", name))
+        );
     }
 
     Ok(())
@@ -107,15 +133,22 @@ pub fn handle_nowrap_add(name: &str) -> Result<()> {
 #[cfg(not(tarpaulin_include))]
 pub fn handle_nowrap_remove(name: &str) -> Result<()> {
     let mut config = Config::load()?;
+    let theme = current_theme();
 
     if config.remove_no_wrap(name) {
         config.save()?;
         println!(
-            "Removed '{}' from no-wrap list. It will now be auto-wrapped.",
-            name
+            "{}",
+            theme.primary_text(&format!(
+                "Removed '{}' from no-wrap list. It will now be auto-wrapped.",
+                name
+            ))
         );
     } else {
-        println!("Agent '{}' was not in the no-wrap list.", name);
+        println!(
+            "{}",
+            theme.primary_text(&format!("Agent '{}' was not in the no-wrap list.", name))
+        );
     }
 
     Ok(())

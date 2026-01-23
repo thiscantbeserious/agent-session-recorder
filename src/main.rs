@@ -702,8 +702,9 @@ fn main() -> Result<()> {
                     // Version is handled normally
                     e.exit();
                 }
-                clap::error::ErrorKind::MissingSubcommand => {
-                    // Missing subcommand also shows help - colorize it
+                clap::error::ErrorKind::MissingSubcommand
+                | clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+                    // Missing subcommand/argument shows help - colorize it
                     print_themed_help(&e);
                     std::process::exit(2);
                 }
