@@ -5,10 +5,12 @@
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::Widget,
 };
+
+use crate::tui::theme::current_theme;
 
 /// The AGR ASCII logo
 const LOGO_LINES: [&str; 6] = [
@@ -39,12 +41,13 @@ pub struct Logo {
 }
 
 impl Logo {
-    /// Create a new Logo widget with default styling.
+    /// Create a new Logo widget with styling from the current theme.
     pub fn new() -> Self {
+        let theme = current_theme();
         Self {
-            logo_style: Style::default().fg(Color::White),
-            rec_style: Style::default().fg(Color::Red),
-            dash_style: Style::default().fg(Color::DarkGray),
+            logo_style: theme.text_style(),
+            rec_style: theme.accent_style(),
+            dash_style: theme.text_secondary_style(),
         }
     }
 
@@ -136,6 +139,7 @@ pub fn build_static_logo(width: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::style::Color;
 
     #[test]
     fn logo_height_is_correct() {
@@ -180,8 +184,9 @@ mod tests {
     #[test]
     fn logo_widget_can_be_created() {
         let logo = Logo::new();
-        // Ensure it compiles and can be created
-        assert!(logo.logo_style == Style::default().fg(Color::White));
+        let theme = current_theme();
+        // Ensure it uses the theme's text style
+        assert!(logo.logo_style == theme.text_style());
     }
 
     #[test]

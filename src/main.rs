@@ -511,8 +511,8 @@ fn should_show_tui_help() -> bool {
 
 /// Show interactive TUI help screen.
 ///
-/// Displays the logo with dynamic REC line that responds to terminal resize.
-/// Press 'q', Escape, or Ctrl+C to exit and see the full help text.
+/// Displays the logo with dynamic REC line that responds to terminal resize,
+/// plus scrollable help content below.
 fn show_tui_help() -> Result<()> {
     use crossterm::{
         event::{self, Event as CrosstermEvent, KeyCode, KeyModifiers},
@@ -523,6 +523,17 @@ fn show_tui_help() -> Result<()> {
     use std::io;
     use std::time::Duration;
 
+    // Generate help text (without the logo - we render that separately)
+    let help_text = {
+        let mut cmd = Cli::command();
+        let mut buf = Vec::new();
+        cmd.write_long_help(&mut buf)?;
+        String::from_utf8_lossy(&buf).to_string()
+    };
+
+    // Count total lines for scroll bounds
+    let total_lines = help_text.lines().count() as u16;
+
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -530,24 +541,63 @@ fn show_tui_help() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
+    let mut scroll_offset: u16 = 0;
+
     // Draw loop
     loop {
+        let visible_height = terminal
+            .size()?
+            .height
+            .saturating_sub(tui::widgets::Logo::height() + 1);
+        let max_scroll = total_lines.saturating_sub(visible_height);
+
         // Draw
         terminal.draw(|frame| {
-            tui::ui::render_logo(frame);
+            tui::ui::render_help(frame, &help_text, scroll_offset);
         })?;
 
         // Handle events
-        if event::poll(Duration::from_millis(100))? {
-            if let CrosstermEvent::Key(key) = event::read()? {
-                // Exit on q, Escape, or Ctrl+C
-                if key.code == KeyCode::Char('q')
-                    || key.code == KeyCode::Esc
-                    || (key.code == KeyCode::Char('c')
-                        && key.modifiers.contains(KeyModifiers::CONTROL))
-                {
-                    break;
+        if event::poll(Duration::from_millis(50))? {
+            match event::read()? {
+                CrosstermEvent::Key(key) => {
+                    match key.code {
+                        // Exit
+                        KeyCode::Char('q') | KeyCode::Esc => break,
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            break
+                        }
+                        // Scroll down
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            scroll_offset = scroll_offset.saturating_add(1).min(max_scroll);
+                        }
+                        // Scroll up
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            scroll_offset = scroll_offset.saturating_sub(1);
+                        }
+                        // Page down
+                        KeyCode::PageDown | KeyCode::Char(' ') => {
+                            scroll_offset =
+                                scroll_offset.saturating_add(visible_height).min(max_scroll);
+                        }
+                        // Page up
+                        KeyCode::PageUp => {
+                            scroll_offset = scroll_offset.saturating_sub(visible_height);
+                        }
+                        // Home
+                        KeyCode::Home => {
+                            scroll_offset = 0;
+                        }
+                        // End
+                        KeyCode::End => {
+                            scroll_offset = max_scroll;
+                        }
+                        _ => {}
+                    }
                 }
+                CrosstermEvent::Resize(_, _) => {
+                    // Terminal resized - just redraw (logo will adapt)
+                }
+                _ => {}
             }
         }
     }
@@ -556,11 +606,6 @@ fn show_tui_help() -> Result<()> {
     disable_raw_mode()?;
     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
-
-    // Now show the static help text
-    let mut cmd = Cli::command().before_help(build_logo());
-    cmd.print_help()?;
-    println!(); // Add newline after help
 
     Ok(())
 }

@@ -8,5 +8,9 @@
 
 pub mod app;
 pub mod event;
+pub mod theme;
 pub mod ui;
 pub mod widgets;
+
+// Re-export theme for convenience
+pub use theme::{current_theme, Theme};
