@@ -248,6 +248,7 @@ impl ListApp {
             KeyCode::Char('/') => {
                 self.mode = Mode::Search;
                 self.search_input.clear();
+                self.status_message = None;
             }
             KeyCode::Char('f') => {
                 self.mode = Mode::AgentFilter;

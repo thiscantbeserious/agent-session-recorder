@@ -18,7 +18,7 @@ use ratatui::{
 use super::app::App;
 use super::event::Event;
 use super::theme::current_theme;
-use super::widgets::{FileExplorer, FileExplorerWidget, FileItem};
+use super::widgets::{FileExplorer, FileExplorerWidget, FileItem, SessionPreview};
 use crate::StorageManager;
 
 /// UI mode for the cleanup application
@@ -61,6 +61,10 @@ pub struct CleanupApp {
     storage: StorageManager,
     /// Whether files were deleted (for success message)
     files_deleted: bool,
+    /// Cached preview for the currently selected file
+    current_preview: Option<SessionPreview>,
+    /// Path of the file the current preview is for
+    preview_path: Option<String>,
 }
 
 impl CleanupApp {
@@ -88,6 +92,8 @@ impl CleanupApp {
             status_message: None,
             storage,
             files_deleted: false,
+            current_preview: None,
+            preview_path: None,
         })
     }
 
@@ -129,6 +135,9 @@ impl CleanupApp {
         self.explorer
             .set_page_size((height.saturating_sub(6)) as usize);
 
+        // Update preview cache if selection changed
+        self.update_preview_cache();
+
         let explorer = &mut self.explorer;
         let mode = self.mode;
         let search_input = &self.search_input;
@@ -140,6 +149,7 @@ impl CleanupApp {
         // Calculate selected size for status bar
         let selected_size: u64 = explorer.selected_items().iter().map(|i| i.size).sum();
         let selected_count = explorer.selected_count();
+        let preview = self.current_preview.as_ref();
 
         self.app.draw(|frame| {
             let area = frame.area();
@@ -152,8 +162,8 @@ impl CleanupApp {
             ])
             .split(area);
 
-            // Render file explorer
-            let widget = FileExplorerWidget::new(explorer);
+            // Render file explorer with preview
+            let widget = FileExplorerWidget::new(explorer).session_preview(preview);
             frame.render_widget(widget, chunks[0]);
 
             // Render status line
@@ -260,7 +270,6 @@ impl CleanupApp {
             // Selection
             KeyCode::Char(' ') => {
                 self.explorer.toggle_select();
-                self.explorer.down(); // Move to next after toggle
             }
             KeyCode::Char('a') => {
                 self.explorer.toggle_all();
@@ -274,6 +283,7 @@ impl CleanupApp {
             KeyCode::Char('/') => {
                 self.mode = Mode::Search;
                 self.search_input.clear();
+                self.status_message = None;
             }
             KeyCode::Char('f') => {
                 self.mode = Mode::AgentFilter;
@@ -540,6 +550,17 @@ impl CleanupApp {
         }
 
         Ok(())
+    }
+
+    /// Update the preview cache if the selected file changed.
+    fn update_preview_cache(&mut self) {
+        let current_path = self.explorer.selected_item().map(|item| item.path.clone());
+
+        // Only reload if selection changed
+        if current_path != self.preview_path {
+            self.preview_path = current_path.clone();
+            self.current_preview = current_path.and_then(|path| SessionPreview::load(&path));
+        }
     }
 
     /// Render the help modal overlay.
