@@ -154,35 +154,58 @@ pub mod ansi {
 
 /// Colorize CLI help text using the theme.
 ///
-/// Wraps description text (after command/option names) in the primary text color.
+/// - Logo lines (containing Unicode block chars) are colored green
+/// - REC line prefix is colored green, dashes are dark gray
+/// - Description text is colored gray
+///
 /// This post-processes clap's output to apply consistent theming.
 pub fn colorize_help(text: &str) -> String {
     let theme = current_theme();
+    let green = color_to_ansi(theme.accent);
     let gray = color_to_ansi(theme.text_primary);
+    let dark_gray = color_to_ansi(theme.text_secondary);
     let reset = ANSI_RESET;
 
-    // Process each line to wrap description text in gray
+    // Process each line
     text.lines()
         .map(|line| {
-            // Skip lines that are already fully styled (headers, etc.)
-            if line.contains("\x1b[") && !line.trim().starts_with("\x1b[32m") {
+            // Skip lines that already have ANSI codes
+            if line.contains("\x1b[") {
                 return line.to_string();
             }
 
-            // For command lines like "  record      Start recording..."
-            // The format is: spaces + command (green) + spaces + description
-            // We want to wrap the description part in gray
+            // Detect logo lines (contain Unicode block characters like █ ╔ ╗ ║ ╚ ╝ ═)
+            if line.contains('\u{2588}')
+                || line.contains('\u{2554}')
+                || line.contains('\u{2557}')
+                || line.contains('\u{2551}')
+                || line.contains('\u{255A}')
+                || line.contains('\u{255D}')
+                || line.contains('\u{2550}')
+            {
+                return format!("{}{}{}", green, line, reset);
+            }
 
-            // Check if this is a command/option line with a description
+            // Detect REC line (starts with ⏺ REC)
+            if line.contains("\u{23FA}") && line.contains("REC") {
+                // Split into REC prefix and dashes
+                if let Some(dash_start) = line.find('\u{2500}') {
+                    let (prefix, dashes) = line.split_at(dash_start);
+                    return format!(
+                        "{}{}{}{}{}{}",
+                        green, prefix, reset, dark_gray, dashes, reset
+                    );
+                }
+                return format!("{}{}{}", green, line, reset);
+            }
+
+            // For command lines, wrap description in gray
             if line.contains("  ") {
-                // Find where the description starts (after multiple spaces following command name)
                 let trimmed = line.trim_start();
                 if !trimmed.is_empty() && !trimmed.starts_with('-') && !trimmed.starts_with('<') {
-                    // This might be a command line or section header
-                    // Look for pattern: command_name followed by 2+ spaces then description
                     if let Some(desc_start) = find_description_start(line) {
                         let (prefix, desc) = line.split_at(desc_start);
-                        if !desc.trim().is_empty() && !desc.contains("\x1b[") {
+                        if !desc.trim().is_empty() {
                             return format!("{}{}{}{}", prefix, gray, desc, reset);
                         }
                     }

@@ -128,12 +128,14 @@ impl Widget for Logo {
 /// Generate the logo as a static string for non-TUI contexts.
 ///
 /// This is used when output is piped (not a TTY).
+/// Note: Colors are applied by colorize_help() post-processing since
+/// clap strips ANSI codes from before_help content.
 pub fn build_static_logo(width: usize) -> String {
     let dash_count = width.saturating_sub(REC_PREFIX_WIDTH);
     let rec_line = format!("{}{}", REC_PREFIX, "\u{2500}".repeat(dash_count));
 
     let logo_text = LOGO_LINES.join("\n");
-    format!("\n\n{}\n{}\n", logo_text, rec_line)
+    format!("\n{}\n{}\n", logo_text, rec_line)
 }
 
 #[cfg(test)]
