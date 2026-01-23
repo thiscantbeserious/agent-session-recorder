@@ -337,3 +337,143 @@ fn snapshot_theme_text_wrappers() {
     );
     insta::assert_snapshot!(snapshot);
 }
+
+// ============================================================================
+// File Explorer Widget Snapshots
+// ============================================================================
+
+use agr::tui::widgets::{FileExplorer, FileExplorerWidget, FileItem};
+use chrono::{Local, TimeZone};
+
+fn create_test_file_items() -> Vec<FileItem> {
+    vec![
+        FileItem::new(
+            "/sessions/claude/20240115-session1.cast",
+            "20240115-session1.cast",
+            "claude",
+            1024 * 50, // 50 KB
+            Local.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap(),
+        ),
+        FileItem::new(
+            "/sessions/codex/20240116-session2.cast",
+            "20240116-session2.cast",
+            "codex",
+            1024 * 1024 * 2, // 2 MB
+            Local.with_ymd_and_hms(2024, 1, 16, 14, 45, 0).unwrap(),
+        ),
+        FileItem::new(
+            "/sessions/claude/20240114-session3.cast",
+            "20240114-session3.cast",
+            "claude",
+            1024 * 100, // 100 KB
+            Local.with_ymd_and_hms(2024, 1, 14, 9, 0, 0).unwrap(),
+        ),
+        FileItem::new(
+            "/sessions/gemini/20240117-session4.cast",
+            "20240117-session4.cast",
+            "gemini",
+            1024 * 1024, // 1 MB
+            Local.with_ymd_and_hms(2024, 1, 17, 16, 0, 0).unwrap(),
+        ),
+    ]
+}
+
+/// Render a file explorer widget to a string for snapshot testing.
+fn render_explorer_to_string(explorer: &mut FileExplorer, width: u16, height: u16) -> String {
+    let area = Rect::new(0, 0, width, height);
+    let mut buf = Buffer::empty(area);
+
+    let widget = FileExplorerWidget::new(explorer);
+    widget.render(area, &mut buf);
+
+    let mut output = String::new();
+    for y in 0..height {
+        for x in 0..width {
+            let cell = &buf[(x, y)];
+            output.push_str(cell.symbol());
+        }
+        output.push('\n');
+    }
+    output
+}
+
+#[test]
+fn snapshot_file_explorer_basic() {
+    let mut explorer = FileExplorer::new(create_test_file_items());
+
+    let output = render_explorer_to_string(&mut explorer, 100, 15);
+    insta::assert_snapshot!("file_explorer_basic", output);
+}
+
+#[test]
+fn snapshot_file_explorer_with_selection() {
+    let mut explorer = FileExplorer::new(create_test_file_items());
+    // Move to second item
+    explorer.down();
+
+    let output = render_explorer_to_string(&mut explorer, 100, 15);
+    insta::assert_snapshot!("file_explorer_with_selection", output);
+}
+
+#[test]
+fn snapshot_file_explorer_with_multi_select() {
+    let mut explorer = FileExplorer::new(create_test_file_items());
+    // Select first item
+    explorer.toggle_select();
+    // Move to second and select
+    explorer.down();
+    explorer.toggle_select();
+    // Move to third (not selected)
+    explorer.down();
+
+    let output = render_explorer_to_string(&mut explorer, 100, 15);
+    insta::assert_snapshot!("file_explorer_multi_select", output);
+}
+
+#[test]
+fn snapshot_file_explorer_filtered_by_agent() {
+    let mut explorer = FileExplorer::new(create_test_file_items());
+    explorer.set_agent_filter(Some("claude".to_string()));
+
+    let output = render_explorer_to_string(&mut explorer, 100, 15);
+    insta::assert_snapshot!("file_explorer_filtered", output);
+}
+
+#[test]
+fn snapshot_file_explorer_sorted_by_name() {
+    use agr::tui::widgets::SortField;
+
+    let mut explorer = FileExplorer::new(create_test_file_items());
+    explorer.set_sort(SortField::Name);
+
+    let output = render_explorer_to_string(&mut explorer, 100, 15);
+    insta::assert_snapshot!("file_explorer_sorted_name", output);
+}
+
+#[test]
+fn snapshot_file_explorer_sorted_by_size() {
+    use agr::tui::widgets::SortField;
+
+    let mut explorer = FileExplorer::new(create_test_file_items());
+    explorer.set_sort(SortField::Size);
+
+    let output = render_explorer_to_string(&mut explorer, 100, 15);
+    insta::assert_snapshot!("file_explorer_sorted_size", output);
+}
+
+#[test]
+fn snapshot_file_explorer_narrow() {
+    let mut explorer = FileExplorer::new(create_test_file_items());
+
+    // Narrow width - should hide preview panel
+    let output = render_explorer_to_string(&mut explorer, 50, 15);
+    insta::assert_snapshot!("file_explorer_narrow", output);
+}
+
+#[test]
+fn snapshot_file_explorer_empty() {
+    let mut explorer = FileExplorer::new(vec![]);
+
+    let output = render_explorer_to_string(&mut explorer, 100, 15);
+    insta::assert_snapshot!("file_explorer_empty", output);
+}
