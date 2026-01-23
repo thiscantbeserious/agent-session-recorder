@@ -71,6 +71,8 @@ impl From<SessionInfo> for FileItem {
     }
 }
 
+use crate::terminal_buffer::{Color, StyledLine};
+
 /// Enhanced preview information for a session file.
 ///
 /// This data is loaded lazily when a file is selected for preview.
@@ -80,8 +82,8 @@ pub struct SessionPreview {
     pub duration_secs: f64,
     /// Number of marker events
     pub marker_count: usize,
-    /// Terminal snapshot at 10% of recording
-    pub terminal_preview: String,
+    /// Terminal snapshot at 10% of recording (with color info)
+    pub styled_preview: Vec<StyledLine>,
 }
 
 impl SessionPreview {
@@ -93,8 +95,110 @@ impl SessionPreview {
         Some(Self {
             duration_secs: cast.duration(),
             marker_count: cast.marker_count(),
-            terminal_preview: cast.terminal_preview_at(0.1),
+            styled_preview: cast.styled_preview_at(0.1),
         })
+    }
+
+    /// Convert our Color enum to ratatui Color
+    fn to_ratatui_color(color: Color) -> ratatui::style::Color {
+        match color {
+            Color::Default => ratatui::style::Color::Reset,
+            Color::Black => ratatui::style::Color::Black,
+            Color::Red => ratatui::style::Color::Red,
+            Color::Green => ratatui::style::Color::Green,
+            Color::Yellow => ratatui::style::Color::Yellow,
+            Color::Blue => ratatui::style::Color::Blue,
+            Color::Magenta => ratatui::style::Color::Magenta,
+            Color::Cyan => ratatui::style::Color::Cyan,
+            Color::White => ratatui::style::Color::White,
+            Color::BrightBlack => ratatui::style::Color::DarkGray,
+            Color::BrightRed => ratatui::style::Color::LightRed,
+            Color::BrightGreen => ratatui::style::Color::LightGreen,
+            Color::BrightYellow => ratatui::style::Color::LightYellow,
+            Color::BrightBlue => ratatui::style::Color::LightBlue,
+            Color::BrightMagenta => ratatui::style::Color::LightMagenta,
+            Color::BrightCyan => ratatui::style::Color::LightCyan,
+            Color::BrightWhite => ratatui::style::Color::White,
+            Color::Indexed(idx) => ratatui::style::Color::Indexed(idx),
+            Color::Rgb(r, g, b) => ratatui::style::Color::Rgb(r, g, b),
+        }
+    }
+
+    /// Convert a StyledLine to a ratatui Line with colors
+    pub fn styled_line_to_ratatui(line: &StyledLine) -> Line<'static> {
+        // Group consecutive cells with same style into spans
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        let mut current_text = String::new();
+        let mut current_style: Option<crate::terminal_buffer::CellStyle> = None;
+
+        for cell in &line.cells {
+            if Some(cell.style) == current_style {
+                current_text.push(cell.char);
+            } else {
+                // Flush previous span
+                if !current_text.is_empty() {
+                    if let Some(style) = current_style {
+                        let mut ratatui_style = Style::default();
+                        if style.fg != Color::Default {
+                            ratatui_style = ratatui_style.fg(Self::to_ratatui_color(style.fg));
+                        }
+                        if style.bg != Color::Default {
+                            ratatui_style = ratatui_style.bg(Self::to_ratatui_color(style.bg));
+                        }
+                        if style.bold {
+                            ratatui_style = ratatui_style.add_modifier(Modifier::BOLD);
+                        }
+                        if style.dim {
+                            ratatui_style = ratatui_style.add_modifier(Modifier::DIM);
+                        }
+                        if style.italic {
+                            ratatui_style = ratatui_style.add_modifier(Modifier::ITALIC);
+                        }
+                        if style.underline {
+                            ratatui_style = ratatui_style.add_modifier(Modifier::UNDERLINED);
+                        }
+                        spans.push(Span::styled(
+                            std::mem::take(&mut current_text),
+                            ratatui_style,
+                        ));
+                    } else {
+                        spans.push(Span::raw(std::mem::take(&mut current_text)));
+                    }
+                }
+                current_style = Some(cell.style);
+                current_text.push(cell.char);
+            }
+        }
+
+        // Flush final span
+        if !current_text.is_empty() {
+            if let Some(style) = current_style {
+                let mut ratatui_style = Style::default();
+                if style.fg != Color::Default {
+                    ratatui_style = ratatui_style.fg(Self::to_ratatui_color(style.fg));
+                }
+                if style.bg != Color::Default {
+                    ratatui_style = ratatui_style.bg(Self::to_ratatui_color(style.bg));
+                }
+                if style.bold {
+                    ratatui_style = ratatui_style.add_modifier(Modifier::BOLD);
+                }
+                if style.dim {
+                    ratatui_style = ratatui_style.add_modifier(Modifier::DIM);
+                }
+                if style.italic {
+                    ratatui_style = ratatui_style.add_modifier(Modifier::ITALIC);
+                }
+                if style.underline {
+                    ratatui_style = ratatui_style.add_modifier(Modifier::UNDERLINED);
+                }
+                spans.push(Span::styled(current_text, ratatui_style));
+            } else {
+                spans.push(Span::raw(current_text));
+            }
+        }
+
+        Line::from(spans)
     }
 
     /// Format duration as human-readable string (e.g., "5m 32s").
@@ -631,7 +735,7 @@ impl Widget for FileExplorerWidget<'_> {
             (
                 p.format_duration(),
                 p.marker_count,
-                p.terminal_preview.clone(),
+                p.styled_preview.clone(),
             )
         });
 
@@ -673,7 +777,7 @@ impl Widget for FileExplorerWidget<'_> {
                 ];
 
                 // Add duration and markers if session preview is available
-                if let Some((duration, markers, terminal_preview)) = session_preview_data {
+                if let Some((duration, markers, styled_preview)) = session_preview_data {
                     lines.push(Line::from(vec![
                         Span::styled("Duration: ", theme.text_secondary_style()),
                         Span::styled(duration, theme.text_style()),
@@ -691,19 +795,28 @@ impl Widget for FileExplorerWidget<'_> {
                     ]));
 
                     // Add terminal preview section if not empty
-                    if !terminal_preview.is_empty() {
+                    if !styled_preview.is_empty() {
                         lines.push(Line::from("")); // Empty line separator
                         lines.push(Line::from(vec![Span::styled(
                             "Preview @ 10%",
                             theme.text_secondary_style(),
                         )]));
 
-                        // Add terminal preview lines (limited to fit)
-                        for preview_line in terminal_preview.lines().take(12) {
-                            lines.push(Line::from(vec![Span::styled(
-                                format!(" {}", preview_line),
-                                theme.text_style(),
-                            )]));
+                        // Add terminal preview lines with colors (limited to fit)
+                        for styled_line in styled_preview.iter().take(12) {
+                            // Prepend a space and convert to ratatui Line with colors
+                            let mut ratatui_line =
+                                SessionPreview::styled_line_to_ratatui(styled_line);
+                            // Insert space at start
+                            if let Some(first_span) = ratatui_line.spans.first_mut() {
+                                *first_span = Span::styled(
+                                    format!(" {}", first_span.content),
+                                    first_span.style,
+                                );
+                            } else {
+                                ratatui_line.spans.insert(0, Span::raw(" "));
+                            }
+                            lines.push(ratatui_line);
                         }
                     }
                 } else {
@@ -1133,7 +1246,7 @@ mod tests {
         let preview = SessionPreview {
             duration_secs: 45.0,
             marker_count: 0,
-            terminal_preview: String::new(),
+            styled_preview: Vec::new(),
         };
         assert_eq!(preview.format_duration(), "45s");
     }
@@ -1143,7 +1256,7 @@ mod tests {
         let preview = SessionPreview {
             duration_secs: 332.0, // 5m 32s
             marker_count: 0,
-            terminal_preview: String::new(),
+            styled_preview: Vec::new(),
         };
         assert_eq!(preview.format_duration(), "5m 32s");
     }
@@ -1153,7 +1266,7 @@ mod tests {
         let preview = SessionPreview {
             duration_secs: 3732.0, // 1h 2m 12s
             marker_count: 0,
-            terminal_preview: String::new(),
+            styled_preview: Vec::new(),
         };
         assert_eq!(preview.format_duration(), "1h 2m 12s");
     }

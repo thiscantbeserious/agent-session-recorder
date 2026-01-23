@@ -277,6 +277,33 @@ impl AsciicastFile {
 
         buffer.to_string()
     }
+
+    /// Get a styled terminal preview at a specific percentage of the recording.
+    ///
+    /// Like `terminal_preview_at` but returns styled lines with color information
+    /// that can be rendered by TUI frameworks like ratatui.
+    pub fn styled_preview_at(&self, percent: f64) -> Vec<crate::terminal_buffer::StyledLine> {
+        use crate::terminal_buffer::TerminalBuffer;
+
+        let (cols, rows) = self.terminal_size();
+        let mut buffer = TerminalBuffer::new(cols as usize, rows as usize);
+
+        let duration = self.duration();
+        let target_time = duration * percent.clamp(0.0, 1.0);
+
+        let mut cumulative = 0.0;
+        for event in &self.events {
+            cumulative += event.time;
+            if cumulative > target_time {
+                break;
+            }
+            if event.is_output() {
+                buffer.process(&event.data);
+            }
+        }
+
+        buffer.styled_lines()
+    }
 }
 
 #[cfg(test)]

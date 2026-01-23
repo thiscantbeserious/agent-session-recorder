@@ -42,7 +42,7 @@ fn session_preview_format_duration_formats_correctly() {
     let preview = SessionPreview {
         duration_secs: 3661.5, // 1h 1m 1.5s
         marker_count: 0,
-        terminal_preview: String::new(),
+        styled_preview: Vec::new(),
     };
 
     // Should format as "1h 1m 1s"
@@ -60,7 +60,7 @@ fn session_preview_format_duration_formats_correctly() {
 }
 
 #[test]
-fn session_preview_generates_terminal_preview() {
+fn session_preview_generates_styled_preview() {
     let (temp_dir, path) = temp_fixture("sample.cast");
     let preview = SessionPreview::load(&path).expect("Should load preview");
 
@@ -68,8 +68,8 @@ fn session_preview_generates_terminal_preview() {
     // Actually, cumulative time at first event is 0.5, so at 0.08 nothing is shown yet
     // The preview might be empty or contain partial output
     // This is okay - the important thing is that it doesn't panic
-    // Just verify we can access the preview field
-    let _ = &preview.terminal_preview;
+    // Just verify we can access the styled_preview field
+    let _ = &preview.styled_preview;
 
     drop(temp_dir);
 }
