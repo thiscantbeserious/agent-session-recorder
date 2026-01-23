@@ -1,0 +1,20 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+assertion_line: 439
+expression: output
+---
+┌ Sessions ────────────────────────────────────────────────┐┌ Preview ─────────────────────────────┐
+│> [ ] 20240115-session1.cast  (claude, 50.0 KB)           ││Name: 20240115-session1.cast          │
+│  [ ] 20240114-session3.cast  (claude, 100.0 KB)          ││Agent: claude                         │
+│                                                          ││Size: 50.0 KB                         │
+│                                                          ││Modified: 2024-01-15 10:30            │
+│                                                          ││Path: /sessions/claude/20240115-sessio│
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────┘

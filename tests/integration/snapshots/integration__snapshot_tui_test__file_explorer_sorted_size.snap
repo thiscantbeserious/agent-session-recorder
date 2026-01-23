@@ -1,0 +1,20 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+assertion_line: 461
+expression: output
+---
+┌ Sessions ────────────────────────────────────────────────┐┌ Preview ─────────────────────────────┐
+│> [ ] 20240116-session2.cast  (codex, 2.0 MB)             ││Name: 20240116-session2.cast          │
+│  [ ] 20240117-session4.cast  (gemini, 1.0 MB)            ││Agent: codex                          │
+│  [ ] 20240114-session3.cast  (claude, 100.0 KB)          ││Size: 2.0 MB                          │
+│  [ ] 20240115-session1.cast  (claude, 50.0 KB)           ││Modified: 2024-01-16 14:45            │
+│                                                          ││Path: /sessions/codex/20240116-session│
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────┘
