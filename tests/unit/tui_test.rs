@@ -183,3 +183,157 @@ fn snapshot_cli_ansi_theme_colors() {
     );
     insta::assert_snapshot!(snapshot);
 }
+
+// ============================================================================
+// Branding Assets Snapshots
+// ============================================================================
+
+#[test]
+fn snapshot_branding_logo_start() {
+    // Small logo shown when starting a recording session
+    let logo = agr::branding::LOGO_START;
+    insta::assert_snapshot!("branding_logo_start", logo);
+}
+
+#[test]
+fn snapshot_branding_logo_done() {
+    // Small logo shown when a recording session ends
+    let logo = agr::branding::LOGO_DONE;
+    insta::assert_snapshot!("branding_logo_done", logo);
+}
+
+#[test]
+fn snapshot_branding_logo_full() {
+    // Full ASCII logo for interactive CLI mode
+    let logo = agr::branding::LOGO_FULL;
+    insta::assert_snapshot!("branding_logo_full", logo);
+}
+
+#[test]
+fn snapshot_branding_box_bottom() {
+    // Bottom border of the box
+    let border = agr::branding::BOX_BOTTOM;
+    insta::assert_snapshot!("branding_box_bottom", border);
+}
+
+// ============================================================================
+// Colorize Help Function Snapshots
+// ============================================================================
+
+#[test]
+fn snapshot_colorize_help_commands() {
+    use agr::tui::colorize_help;
+
+    // Test colorize_help with typical command list output
+    let input = r#"
+Commands:
+  record   Start recording a session
+  status   Show storage statistics
+  cleanup  Interactive cleanup of old sessions
+  list     List recorded sessions [aliases: ls]
+  analyze  Analyze a recording with AI
+"#;
+
+    let output = colorize_help(input);
+    insta::assert_snapshot!("colorize_help_commands", output);
+}
+
+#[test]
+fn snapshot_colorize_help_logo() {
+    use agr::tui::colorize_help;
+
+    // Test colorize_help with logo (should apply green to logo lines)
+    let input = r#" █████╗  ██████╗ ██████╗
+██╔══██╗██╔════╝ ██╔══██╗
+███████║██║  ███╗██████╔╝
+██╔══██║██║   ██║██╔══██╗
+██║  ██║╚██████╔╝██║  ██║
+╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝
+ ⏺ REC ─────────────────────────────────────────────────────────────────────────
+"#;
+
+    let output = colorize_help(input);
+    insta::assert_snapshot!("colorize_help_logo", output);
+}
+
+#[test]
+fn snapshot_colorize_help_mixed() {
+    use agr::tui::colorize_help;
+
+    // Test colorize_help with mixed content (logo + commands)
+    let input = r#" █████╗  ██████╗ ██████╗
+██╔══██╗██╔════╝ ██╔══██╗
+███████║██║  ███╗██████╔╝
+██╔══██║██║   ██║██╔══██╗
+██║  ██║╚██████╔╝██║  ██║
+╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝
+ ⏺ REC ─────────────────────────────────────────────────────────────────────────
+
+
+[ Agent Session Recorder ] - auto-record agent sessions!
+
+Usage: agr <COMMAND>
+
+Commands:
+  record   Start recording a session
+  status   Show storage statistics
+"#;
+
+    let output = colorize_help(input);
+    insta::assert_snapshot!("colorize_help_mixed", output);
+}
+
+// ============================================================================
+// Static Logo Builder Snapshots (Fixed Width)
+// ============================================================================
+
+#[test]
+fn snapshot_static_logo_width_40() {
+    use agr::tui::widgets::logo::build_static_logo;
+    let output = build_static_logo(40);
+    insta::assert_snapshot!("static_logo_width_40", output);
+}
+
+#[test]
+fn snapshot_static_logo_width_80() {
+    use agr::tui::widgets::logo::build_static_logo;
+    let output = build_static_logo(80);
+    insta::assert_snapshot!("static_logo_width_80", output);
+}
+
+#[test]
+fn snapshot_static_logo_width_120() {
+    use agr::tui::widgets::logo::build_static_logo;
+    let output = build_static_logo(120);
+    insta::assert_snapshot!("static_logo_width_120", output);
+}
+
+// ============================================================================
+// Theme Text Wrapper Snapshots
+// ============================================================================
+
+#[test]
+fn snapshot_theme_text_wrappers() {
+    let theme = current_theme();
+
+    let snapshot = format!(
+        "Theme Text Wrappers (Raw ANSI codes)\n\
+         ====================================\n\
+         \n\
+         accent_text(\"Hello World\"):\n{}\n\
+         \n\
+         primary_text(\"Hello World\"):\n{}\n\
+         \n\
+         secondary_text(\"Hello World\"):\n{}\n\
+         \n\
+         error_text(\"Hello World\"):\n{}\n\
+         \n\
+         success_text(\"Hello World\"):\n{}",
+        theme.accent_text("Hello World"),
+        theme.primary_text("Hello World"),
+        theme.secondary_text("Hello World"),
+        theme.error_text("Hello World"),
+        theme.success_text("Hello World"),
+    );
+    insta::assert_snapshot!(snapshot);
+}
