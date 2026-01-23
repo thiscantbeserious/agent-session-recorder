@@ -63,7 +63,12 @@ pub fn render_help(frame: &mut Frame, help_text: &str, scroll_offset: u16) {
 /// Create a centered layout with the given constraints.
 ///
 /// Returns the center area that can be used for content.
+/// Percentages are clamped to 0-100 to prevent underflow.
 pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    // Clamp percentages to valid range to prevent underflow
+    let percent_x = percent_x.min(100);
+    let percent_y = percent_y.min(100);
+
     let vertical_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -105,5 +110,16 @@ mod tests {
         // Should be roughly centered
         assert!(centered.x >= 20 && centered.x <= 30);
         assert!(centered.y >= 20 && centered.y <= 30);
+    }
+
+    #[test]
+    fn centered_rect_clamps_percent_over_100() {
+        let area = Rect::new(0, 0, 100, 100);
+        // Should not panic with percent > 100, and should behave like 100%
+        let centered = centered_rect(150, 200, area);
+
+        // With 100% for both, the centered rect should fill the area
+        assert_eq!(centered.width, area.width);
+        assert_eq!(centered.height, area.height);
     }
 }

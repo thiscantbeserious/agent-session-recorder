@@ -38,34 +38,42 @@ impl EventHandler {
 
         let handle = thread::spawn(move || {
             loop {
-                // Poll for events with timeout
-                if event::poll(tick_rate).unwrap_or(false) {
-                    match event::read() {
-                        Ok(CrosstermEvent::Key(key)) => {
-                            // Check for quit keys
-                            if key.code == KeyCode::Char('q')
-                                || key.code == KeyCode::Esc
-                                || (key.code == KeyCode::Char('c')
-                                    && key.modifiers.contains(KeyModifiers::CONTROL))
-                            {
-                                let _ = tx.send(Event::Quit);
-                                break;
+                // Poll for events with timeout using explicit pattern matching
+                match event::poll(tick_rate) {
+                    Ok(true) => {
+                        // Event available
+                        match event::read() {
+                            Ok(CrosstermEvent::Key(key)) => {
+                                // Check for quit keys
+                                if key.code == KeyCode::Char('q')
+                                    || key.code == KeyCode::Esc
+                                    || (key.code == KeyCode::Char('c')
+                                        && key.modifiers.contains(KeyModifiers::CONTROL))
+                                {
+                                    let _ = tx.send(Event::Quit);
+                                    break;
+                                }
+                                if tx.send(Event::Key(key)).is_err() {
+                                    break;
+                                }
                             }
-                            if tx.send(Event::Key(key)).is_err() {
-                                break;
+                            Ok(CrosstermEvent::Resize(width, height)) => {
+                                if tx.send(Event::Resize(width, height)).is_err() {
+                                    break;
+                                }
                             }
+                            Ok(_) => {}
+                            Err(_) => break,
                         }
-                        Ok(CrosstermEvent::Resize(width, height)) => {
-                            if tx.send(Event::Resize(width, height)).is_err() {
-                                break;
-                            }
-                        }
-                        Ok(_) => {}
-                        Err(_) => break,
                     }
-                } else {
-                    // Tick event
-                    if tx.send(Event::Tick).is_err() {
+                    Ok(false) => {
+                        // Timeout - send tick event
+                        if tx.send(Event::Tick).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => {
+                        // Polling error - exit the event loop
                         break;
                     }
                 }

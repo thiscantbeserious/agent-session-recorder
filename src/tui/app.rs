@@ -31,13 +31,29 @@ impl App {
     /// Create a new App instance.
     ///
     /// Sets up the terminal for TUI mode (raw mode, alternate screen).
+    /// Uses explicit rollback to ensure terminal is restored on error.
     pub fn new(tick_rate: Duration) -> Result<Self> {
-        // Setup terminal
+        // Setup terminal with explicit rollback on error
         enable_raw_mode()?;
+
+        // If alternate screen fails, restore raw mode
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        if let Err(e) = execute!(stdout, EnterAlternateScreen, EnableMouseCapture) {
+            let _ = disable_raw_mode();
+            return Err(e.into());
+        }
+
+        // If terminal creation fails, restore alternate screen and raw mode
         let backend = CrosstermBackend::new(stdout);
-        let terminal = Terminal::new(backend)?;
+        let terminal = match Terminal::new(backend) {
+            Ok(t) => t,
+            Err(e) => {
+                let mut stdout = io::stdout();
+                let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
+                let _ = disable_raw_mode();
+                return Err(e.into());
+            }
+        };
 
         let events = EventHandler::new(tick_rate);
 

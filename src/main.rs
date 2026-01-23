@@ -510,6 +510,47 @@ fn should_show_tui_help() -> bool {
     is_help_request && is_tty
 }
 
+use ratatui::{backend::CrosstermBackend, Terminal};
+
+/// RAII guard for terminal cleanup.
+///
+/// Ensures terminal is restored to normal state even if an error occurs.
+struct TerminalGuard<W: std::io::Write> {
+    terminal: Terminal<CrosstermBackend<W>>,
+}
+
+impl<W: std::io::Write> TerminalGuard<W> {
+    fn new(terminal: Terminal<CrosstermBackend<W>>) -> Self {
+        Self { terminal }
+    }
+}
+
+impl<W: std::io::Write> Drop for TerminalGuard<W> {
+    fn drop(&mut self) {
+        use crossterm::{
+            execute,
+            terminal::{disable_raw_mode, LeaveAlternateScreen},
+        };
+        let _ = disable_raw_mode();
+        let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
+        let _ = self.terminal.show_cursor();
+    }
+}
+
+impl<W: std::io::Write> std::ops::Deref for TerminalGuard<W> {
+    type Target = Terminal<CrosstermBackend<W>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.terminal
+    }
+}
+
+impl<W: std::io::Write> std::ops::DerefMut for TerminalGuard<W> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.terminal
+    }
+}
+
 /// Show interactive TUI help screen.
 ///
 /// Displays the logo with dynamic REC line that responds to terminal resize,
@@ -518,9 +559,8 @@ fn show_tui_help() -> Result<()> {
     use crossterm::{
         event::{self, Event as CrosstermEvent, KeyCode, KeyModifiers},
         execute,
-        terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+        terminal::{enable_raw_mode, EnterAlternateScreen},
     };
-    use ratatui::{backend::CrosstermBackend, Terminal};
     use std::io;
     use std::time::Duration;
 
@@ -535,12 +575,13 @@ fn show_tui_help() -> Result<()> {
     // Count total lines for scroll bounds
     let total_lines = help_text.lines().count() as u16;
 
-    // Setup terminal
+    // Setup terminal with RAII guard for cleanup
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let terminal = Terminal::new(backend)?;
+    let mut terminal = TerminalGuard::new(terminal);
 
     let mut scroll_offset: u16 = 0;
 
@@ -603,11 +644,7 @@ fn show_tui_help() -> Result<()> {
         }
     }
 
-    // Restore terminal
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
-
+    // Terminal is restored automatically by TerminalGuard's Drop impl
     Ok(())
 }
 

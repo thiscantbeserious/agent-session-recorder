@@ -71,8 +71,8 @@ impl Logo {
 
     /// Get the height required for the logo (logo lines + REC line + padding).
     pub fn height() -> u16 {
-        // 2 blank lines + 6 logo lines + 1 REC line = 9
-        9
+        // 2 blank lines + logo lines + 1 REC line
+        2 + LOGO_LINES.len() as u16 + 1
     }
 
     /// Build the REC line that scales to the given width.
