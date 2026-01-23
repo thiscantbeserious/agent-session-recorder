@@ -1,24 +1,27 @@
 //! List command handler
 
+use std::io::IsTerminal;
+
 use anyhow::Result;
 
-use agr::tui::current_theme;
+use agr::tui::widgets::FileItem;
+use agr::tui::{current_theme, ListApp};
 use agr::{Config, StorageManager};
 
 use super::truncate_string;
 
 /// List all recorded sessions with details.
 ///
-/// Shows sessions sorted by date (newest first) with agent name,
-/// age, file size, and filename.
+/// When stdout is a TTY, shows an interactive file explorer.
+/// When piped, shows a simple text table (fallback).
 #[cfg(not(tarpaulin_include))]
 pub fn handle(agent: Option<&str>) -> Result<()> {
     let config = Config::load()?;
     let storage = StorageManager::new(config);
-    let mut sessions = storage.list_sessions(agent)?;
-    let theme = current_theme();
+    let sessions = storage.list_sessions(agent)?;
 
     if sessions.is_empty() {
+        let theme = current_theme();
         if let Some(agent_name) = agent {
             println!(
                 "{}",
@@ -29,6 +32,38 @@ pub fn handle(agent: Option<&str>) -> Result<()> {
         }
         return Ok(());
     }
+
+    // Check if we're in a TTY - if so, use interactive TUI
+    if std::io::stdout().is_terminal() {
+        handle_tui(sessions, agent)
+    } else {
+        handle_text(sessions, agent, &storage)
+    }
+}
+
+/// Handle list command with interactive TUI.
+fn handle_tui(sessions: Vec<agr::storage::SessionInfo>, agent: Option<&str>) -> Result<()> {
+    // Convert sessions to FileItems
+    let items: Vec<FileItem> = sessions.into_iter().map(FileItem::from).collect();
+
+    // Create and run the list app
+    let mut app = ListApp::new(items)?;
+
+    // If agent filter was specified on command line, apply it
+    if let Some(agent_name) = agent {
+        app.set_agent_filter(agent_name);
+    }
+
+    app.run()
+}
+
+/// Handle list command with text output (piped mode fallback).
+fn handle_text(
+    mut sessions: Vec<agr::storage::SessionInfo>,
+    agent: Option<&str>,
+    storage: &StorageManager,
+) -> Result<()> {
+    let theme = current_theme();
 
     // Reverse to show newest first
     sessions.reverse();

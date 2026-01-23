@@ -19,6 +19,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Widget},
 };
 
+use crate::storage::SessionInfo;
 use crate::tui::current_theme;
 
 /// A file item in the explorer
@@ -51,6 +52,18 @@ impl FileItem {
             agent: agent.into(),
             size,
             modified,
+        }
+    }
+}
+
+impl From<SessionInfo> for FileItem {
+    fn from(session: SessionInfo) -> Self {
+        Self {
+            path: session.path.to_string_lossy().to_string(),
+            name: session.filename,
+            agent: session.agent,
+            size: session.size,
+            modified: session.modified,
         }
     }
 }
@@ -94,6 +107,8 @@ pub struct FileExplorer {
     sort_direction: SortDirection,
     /// Agent filter (None = show all)
     agent_filter: Option<String>,
+    /// Search filter - matches filename (case-insensitive)
+    search_filter: Option<String>,
     /// List state for ratatui
     list_state: ListState,
     /// Page size for page up/down navigation
@@ -120,6 +135,7 @@ impl FileExplorer {
             sort_field: SortField::default(),
             sort_direction: SortDirection::default(),
             agent_filter: None,
+            search_filter: None,
             list_state: ListState::default(),
             page_size: 10,
         };
@@ -353,6 +369,64 @@ impl FileExplorer {
         self.sync_list_state();
     }
 
+    /// Get the current search filter
+    pub fn search_filter(&self) -> Option<&str> {
+        self.search_filter.as_deref()
+    }
+
+    /// Set the search filter (case-insensitive substring match on filename)
+    pub fn set_search_filter(&mut self, search: Option<String>) {
+        self.search_filter = search;
+        self.apply_filter();
+        self.apply_sort();
+        self.selected = 0;
+        self.sync_list_state();
+    }
+
+    /// Clear both search and agent filters
+    pub fn clear_filters(&mut self) {
+        self.search_filter = None;
+        self.agent_filter = None;
+        self.apply_filter();
+        self.apply_sort();
+        self.selected = 0;
+        self.sync_list_state();
+    }
+
+    /// Remove an item by its path
+    ///
+    /// Returns true if the item was found and removed.
+    pub fn remove_item(&mut self, path: &str) -> bool {
+        if let Some(idx) = self.items.iter().position(|item| item.path == path) {
+            // Remove from multi-selected if present
+            self.multi_selected.remove(&idx);
+
+            // Adjust multi_selected indices for items after the removed one
+            self.multi_selected = self
+                .multi_selected
+                .iter()
+                .map(|&i| if i > idx { i - 1 } else { i })
+                .collect();
+
+            // Remove the item
+            self.items.remove(idx);
+
+            // Rebuild visible indices and adjust selection
+            self.apply_filter();
+            self.apply_sort();
+
+            // Adjust selection if needed
+            if self.selected >= self.visible_indices.len() && !self.visible_indices.is_empty() {
+                self.selected = self.visible_indices.len() - 1;
+            }
+            self.sync_list_state();
+
+            true
+        } else {
+            false
+        }
+    }
+
     /// Apply current filter to rebuild visible indices
     fn apply_filter(&mut self) {
         self.visible_indices = self
@@ -360,10 +434,21 @@ impl FileExplorer {
             .iter()
             .enumerate()
             .filter(|(_, item)| {
-                self.agent_filter
+                // Agent filter
+                let agent_match = self
+                    .agent_filter
                     .as_ref()
                     .map(|f| item.agent == *f)
-                    .unwrap_or(true)
+                    .unwrap_or(true);
+
+                // Search filter (case-insensitive substring match on filename)
+                let search_match = self
+                    .search_filter
+                    .as_ref()
+                    .map(|s| item.name.to_lowercase().contains(&s.to_lowercase()))
+                    .unwrap_or(true);
+
+                agent_match && search_match
             })
             .map(|(idx, _)| idx)
             .collect();
@@ -827,5 +912,103 @@ mod tests {
         assert_eq!(format_size(1536), "1.5 KB");
         assert_eq!(format_size(1048576), "1.0 MB");
         assert_eq!(format_size(1073741824), "1.0 GB");
+    }
+
+    // Search filter tests
+
+    #[test]
+    fn search_filter_matches_filename_case_insensitive() {
+        let mut explorer = FileExplorer::new(create_test_items());
+        explorer.set_search_filter(Some("session1".to_string()));
+        assert_eq!(explorer.len(), 1);
+        assert_eq!(explorer.selected_item().unwrap().name, "session1.cast");
+    }
+
+    #[test]
+    fn search_filter_case_insensitive() {
+        let mut explorer = FileExplorer::new(create_test_items());
+        explorer.set_search_filter(Some("SESSION1".to_string()));
+        assert_eq!(explorer.len(), 1);
+        assert_eq!(explorer.selected_item().unwrap().name, "session1.cast");
+    }
+
+    #[test]
+    fn search_filter_partial_match() {
+        let mut explorer = FileExplorer::new(create_test_items());
+        explorer.set_search_filter(Some("session".to_string()));
+        assert_eq!(explorer.len(), 3); // All match "session"
+    }
+
+    #[test]
+    fn search_filter_no_match_returns_empty() {
+        let mut explorer = FileExplorer::new(create_test_items());
+        explorer.set_search_filter(Some("nonexistent".to_string()));
+        assert_eq!(explorer.len(), 0);
+        assert!(explorer.selected_item().is_none());
+    }
+
+    #[test]
+    fn search_filter_none_shows_all() {
+        let mut explorer = FileExplorer::new(create_test_items());
+        explorer.set_search_filter(Some("session1".to_string()));
+        assert_eq!(explorer.len(), 1);
+        explorer.set_search_filter(None);
+        assert_eq!(explorer.len(), 3);
+    }
+
+    #[test]
+    fn search_and_agent_filters_combine() {
+        let mut explorer = FileExplorer::new(create_test_items());
+        // Filter to claude only
+        explorer.set_agent_filter(Some("claude".to_string()));
+        assert_eq!(explorer.len(), 2);
+        // Then search within claude sessions
+        explorer.set_search_filter(Some("session1".to_string()));
+        assert_eq!(explorer.len(), 1);
+        assert_eq!(explorer.selected_item().unwrap().name, "session1.cast");
+        assert_eq!(explorer.selected_item().unwrap().agent, "claude");
+    }
+
+    #[test]
+    fn clear_filters_clears_both_search_and_agent() {
+        let mut explorer = FileExplorer::new(create_test_items());
+        explorer.set_agent_filter(Some("claude".to_string()));
+        explorer.set_search_filter(Some("session1".to_string()));
+        assert_eq!(explorer.len(), 1);
+        explorer.clear_filters();
+        assert_eq!(explorer.len(), 3);
+        assert!(explorer.agent_filter().is_none());
+        assert!(explorer.search_filter().is_none());
+    }
+
+    #[test]
+    fn search_filter_getter_returns_value() {
+        let mut explorer = FileExplorer::new(create_test_items());
+        assert!(explorer.search_filter().is_none());
+        explorer.set_search_filter(Some("test".to_string()));
+        assert_eq!(explorer.search_filter(), Some("test"));
+    }
+
+    // From<SessionInfo> conversion test
+    #[test]
+    fn file_item_from_session_info() {
+        use std::path::PathBuf;
+
+        let session = SessionInfo {
+            path: PathBuf::from("/sessions/claude/test.cast"),
+            agent: "claude".to_string(),
+            filename: "test.cast".to_string(),
+            size: 1024,
+            modified: Local.with_ymd_and_hms(2024, 1, 15, 10, 0, 0).unwrap(),
+            age_days: 0,
+            age_hours: 0,
+            age_minutes: 0,
+        };
+
+        let item = FileItem::from(session);
+        assert_eq!(item.path, "/sessions/claude/test.cast");
+        assert_eq!(item.name, "test.cast");
+        assert_eq!(item.agent, "claude");
+        assert_eq!(item.size, 1024);
     }
 }

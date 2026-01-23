@@ -477,3 +477,62 @@ fn snapshot_file_explorer_empty() {
     let output = render_explorer_to_string(&mut explorer, 100, 15);
     insta::assert_snapshot!("file_explorer_empty", output);
 }
+
+#[test]
+fn test_file_explorer_remove_item() {
+    let mut explorer = FileExplorer::new(create_test_file_items());
+
+    // Initially should have 4 items
+    assert_eq!(explorer.len(), 4);
+
+    // Remove an existing item
+    let removed = explorer.remove_item("/sessions/codex/20240116-session2.cast");
+    assert!(removed, "Should return true when item exists");
+    assert_eq!(explorer.len(), 3);
+
+    // Try to remove non-existent item
+    let not_removed = explorer.remove_item("/sessions/nonexistent.cast");
+    assert!(!not_removed, "Should return false when item doesn't exist");
+    assert_eq!(explorer.len(), 3);
+}
+
+#[test]
+fn test_file_explorer_remove_item_adjusts_selection() {
+    let mut explorer = FileExplorer::new(create_test_file_items());
+
+    // Move to the last item (index 3)
+    explorer.down();
+    explorer.down();
+    explorer.down();
+
+    // Remove the last item - selection should adjust
+    explorer.remove_item("/sessions/gemini/20240117-session4.cast");
+
+    // Selection should now be at the new last item (index 2)
+    let selected = explorer.selected_item();
+    assert!(selected.is_some());
+    assert_eq!(selected.unwrap().agent, "claude"); // Third item was claude
+}
+
+#[test]
+fn test_file_explorer_remove_item_clears_multi_select() {
+    let mut explorer = FileExplorer::new(create_test_file_items());
+
+    // Multi-select the first two visible items
+    // Default sort is by date descending, so order is:
+    // 0: gemini/session4 (2024-01-17) - raw idx 3
+    // 1: codex/session2 (2024-01-16) - raw idx 1
+    // 2: claude/session1 (2024-01-15) - raw idx 0
+    // 3: claude/session3 (2024-01-14) - raw idx 2
+    explorer.toggle_select(); // Select gemini (first visible)
+    explorer.down();
+    explorer.toggle_select(); // Select codex (second visible)
+
+    assert_eq!(explorer.selected_items().len(), 2);
+
+    // Remove the gemini item (first selected)
+    explorer.remove_item("/sessions/gemini/20240117-session4.cast");
+
+    // Should only have one selected now (codex)
+    assert_eq!(explorer.selected_items().len(), 1);
+}
