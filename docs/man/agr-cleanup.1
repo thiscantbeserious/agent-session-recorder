@@ -1,0 +1,35 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH cleanup 1  "cleanup " 
+.SH NAME
+cleanup \- Interactive cleanup of old sessions
+.SH SYNOPSIS
+\fBcleanup\fR [\fB\-\-agent\fR] [\fB\-\-older\-than\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Interactively delete old session recordings to free up disk space.
+.PP
+Displays a list of sessions sorted by age and lets you choose how many
+to delete. Supports filtering by agent and age. Sessions older than
+the configured threshold (default: 30 days) are marked with *.
+.PP
+EXAMPLES:
+    agr cleanup                          Interactive cleanup of all sessions
+    agr cleanup \-\-agent claude           Only show Claude sessions
+    agr cleanup \-\-older\-than 60          Only show sessions older than 60 days
+    agr cleanup \-\-agent codex \-\-older\-than 30
+.PP
+INTERACTIVE OPTIONS:
+    [number]    Delete the N oldest sessions
+    \*(Aqold\*(Aq       Delete all sessions older than threshold
+    \*(Aqall\*(Aq       Delete all matching sessions
+    0           Cancel without deleting
+.SH OPTIONS
+.TP
+\fB\-\-agent\fR \fI<AGENT>\fR
+Only show sessions from this agent
+.TP
+\fB\-\-older\-than\fR \fI<OLDER_THAN>\fR
+Only show sessions older than N days
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)

@@ -1,0 +1,35 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH analyze 1  "analyze " 
+.SH NAME
+analyze \- Analyze a recording with AI
+.SH SYNOPSIS
+\fBanalyze\fR [\fB\-a\fR|\fB\-\-agent\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fIFILE\fR> 
+.SH DESCRIPTION
+Analyze a recording file using an AI agent.
+.PP
+The analyzer reads the cast file, identifies key moments (errors, decisions,
+milestones), and adds markers using \*(Aqagr marker add\*(Aq. This is the same
+analysis that runs automatically when auto_analyze is enabled.
+.PP
+The default agent is configured in ~/.config/agr/config.toml under
+[recording].analysis_agent. Use \-\-agent to override for a single run.
+.PP
+EXAMPLES:
+    agr analyze session.cast              Analyze with default agent
+    agr analyze session.cast \-\-agent codex    Override agent for this run
+.PP
+SUPPORTED AGENTS:
+    claude      Claude Code CLI
+    codex       OpenAI Codex CLI
+    gemini  Google Gemini CLI
+.SH OPTIONS
+.TP
+\fB\-a\fR, \fB\-\-agent\fR \fI<AGENT>\fR
+Agent to use (overrides config)
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+<\fIFILE\fR>
+Path to the .cast recording file

@@ -1,0 +1,28 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH add 1  "add " 
+.SH NAME
+add \- Add a marker to a cast file at a specific timestamp
+.SH SYNOPSIS
+\fBadd\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIFILE\fR> <\fITIME\fR> <\fILABEL\fR> 
+.SH DESCRIPTION
+Add a marker to a cast file at a specific timestamp.
+.PP
+Markers are injected into the asciicast file using the native v3 marker
+format. The timestamp is cumulative seconds from the start of the recording.
+.PP
+EXAMPLE:
+    agr marker add ~/recorded_agent_sessions/claude/session.cast 45.2 "Build error"
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+<\fIFILE\fR>
+Path to the .cast recording file
+.TP
+<\fITIME\fR>
+Timestamp in seconds (e.g., 45.2)
+.TP
+<\fILABEL\fR>
+Description of the marker (e.g., "Build failed")

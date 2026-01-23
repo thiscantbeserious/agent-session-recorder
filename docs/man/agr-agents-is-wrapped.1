@@ -1,0 +1,22 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH is-wrapped 1  "is-wrapped " 
+.SH NAME
+is\-wrapped \- Check if an agent should be wrapped (used by shell integration)
+.SH SYNOPSIS
+\fBis\-wrapped\fR [\fB\-h\fR|\fB\-\-help\fR] <\fINAME\fR> 
+.SH DESCRIPTION
+Check if an agent should be auto\-wrapped by shell integration.
+.PP
+Returns exit code 0 if the agent should be wrapped, 1 if not.
+Used internally by the shell integration script.
+.PP
+EXAMPLE:
+    agr agents is\-wrapped claude && echo "Should wrap"
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+<\fINAME\fR>
+Name of the agent to check

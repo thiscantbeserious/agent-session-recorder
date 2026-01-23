@@ -1,0 +1,25 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH list 1  "list " 
+.SH NAME
+list \- List recorded sessions
+.SH SYNOPSIS
+\fBlist\fR [\fB\-h\fR|\fB\-\-help\fR] [\fIAGENT\fR] 
+.SH DESCRIPTION
+List all recorded sessions with details.
+.PP
+Shows sessions sorted by date (newest first) with agent name,
+age, file size, and filename.
+.PP
+EXAMPLES:
+    agr list                List all sessions
+    agr ls                  Same as \*(Aqagr list\*(Aq (alias)
+    agr list claude         List only Claude sessions
+    agr list codex          List only Codex sessions
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+[\fIAGENT\fR]
+Filter sessions by agent name

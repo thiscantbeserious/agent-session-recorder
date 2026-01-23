@@ -1,0 +1,19 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH uninstall 1  "uninstall " 
+.SH NAME
+uninstall \- Remove shell integration from .zshrc/.bashrc
+.SH SYNOPSIS
+\fBuninstall\fR [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Remove shell integration from your shell configuration.
+.PP
+Removes the AGR section from your .zshrc/.bashrc and deletes
+the shell script. Restart your shell after uninstalling.
+.PP
+EXAMPLE:
+    agr shell uninstall
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)

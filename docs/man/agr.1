@@ -1,0 +1,65 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH agr 1  "agr 0.1.0" 
+.SH NAME
+agr \- [ Agent Session Recorder ] \- auto\-record agent sessions and handle the recordings with AI!
+.SH SYNOPSIS
+\fBagr\fR [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] <\fIsubcommands\fR>
+.SH DESCRIPTION
+Agent Session Recorder (AGR) \- Record AI agent terminal sessions with asciinema.
+.PP
+AGR automatically records your AI coding agent sessions (Claude, Codex, Gemini, etc.)
+to ~/recorded_agent_sessions/ in asciicast v3 format. Recordings can be played back
+with asciinema, auto\-analyzed by AI agents, and annotated with markers.
+.PP
+QUICK START:
+    agr record claude              Record a Claude session
+    agr status                     Check storage usage
+    agr list                       List all recordings
+    agr cleanup                    Clean up old recordings
+.PP
+SHELL INTEGRATION:
+    agr shell install              Auto\-record configured agents
+    agr agents add claude          Add agent to auto\-record list
+.PP
+For more information, see: https://github.com/thiscantbeserious/agent\-session\-recorder
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print version
+.SH SUBCOMMANDS
+.TP
+agr\-record(1)
+Start recording a session
+.TP
+agr\-status(1)
+Show storage statistics
+.TP
+agr\-cleanup(1)
+Interactive cleanup of old sessions
+.TP
+agr\-list(1)
+List recorded sessions
+.TP
+agr\-analyze(1)
+Analyze a recording with AI
+.TP
+agr\-marker(1)
+Manage markers in cast files
+.TP
+agr\-agents(1)
+Manage configured agents
+.TP
+agr\-config(1)
+Configuration management
+.TP
+agr\-shell(1)
+Manage shell integration
+.TP
+agr\-help(1)
+Print this message or the help of the given subcommand(s)
+.SH VERSION
+v0.1.0

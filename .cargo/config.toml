@@ -1,3 +1,7 @@
+# Aliases
+[alias]
+xtask = "run --package xtask --"
+
 # Cross-compilation configuration for Agent Session Recorder
 #
 # To cross-compile, you need:

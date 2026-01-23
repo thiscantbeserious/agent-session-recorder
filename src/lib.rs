@@ -5,6 +5,7 @@
 pub mod analyzer;
 pub mod asciicast;
 pub mod branding;
+pub mod cli;
 pub mod config;
 pub mod playback;
 pub mod recording;

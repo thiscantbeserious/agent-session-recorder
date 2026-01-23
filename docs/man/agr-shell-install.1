@@ -1,0 +1,23 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH install 1  "install " 
+.SH NAME
+install \- Install shell integration to .zshrc/.bashrc
+.SH SYNOPSIS
+\fBinstall\fR [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Install shell integration for automatic session recording.
+.PP
+Adds a clearly marked section to your .zshrc (or .bashrc) that
+sources the AGR shell script. This creates wrapper functions for
+configured agents that automatically record sessions.
+.PP
+After installation, restart your shell or run:
+    source ~/.zshrc
+.PP
+EXAMPLE:
+    agr shell install
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)

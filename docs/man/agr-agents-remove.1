@@ -1,0 +1,21 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH remove 1  "remove " 
+.SH NAME
+remove \- Remove an agent from the configuration
+.SH SYNOPSIS
+\fBremove\fR [\fB\-h\fR|\fB\-\-help\fR] <\fINAME\fR> 
+.SH DESCRIPTION
+Remove an agent from the configured list.
+.PP
+The agent will no longer be auto\-recorded via shell integration.
+.PP
+EXAMPLE:
+    agr agents remove codex
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+<\fINAME\fR>
+Name of the agent to remove
