@@ -7,8 +7,10 @@
 //! - Multi-select with space
 //! - Sort by date/size/name
 //! - Filter by agent
+//! - Enhanced preview with duration, markers, and terminal snapshot
 
 use std::collections::HashSet;
+use std::path::Path;
 
 use chrono::{DateTime, Local};
 use ratatui::{
@@ -19,6 +21,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Widget},
 };
 
+use crate::asciicast::AsciicastFile;
 use crate::storage::SessionInfo;
 use crate::tui::current_theme;
 
@@ -64,6 +67,49 @@ impl From<SessionInfo> for FileItem {
             agent: session.agent,
             size: session.size,
             modified: session.modified,
+        }
+    }
+}
+
+/// Enhanced preview information for a session file.
+///
+/// This data is loaded lazily when a file is selected for preview.
+#[derive(Debug, Clone)]
+pub struct SessionPreview {
+    /// Total duration of the recording in seconds
+    pub duration_secs: f64,
+    /// Number of marker events
+    pub marker_count: usize,
+    /// Terminal snapshot at 10% of recording
+    pub terminal_preview: String,
+}
+
+impl SessionPreview {
+    /// Load preview information from an asciicast file.
+    ///
+    /// Returns None if the file cannot be parsed.
+    pub fn load<P: AsRef<Path>>(path: P) -> Option<Self> {
+        let cast = AsciicastFile::parse(path).ok()?;
+        Some(Self {
+            duration_secs: cast.duration(),
+            marker_count: cast.marker_count(),
+            terminal_preview: cast.terminal_preview_at(0.1),
+        })
+    }
+
+    /// Format duration as human-readable string (e.g., "5m 32s").
+    pub fn format_duration(&self) -> String {
+        let total_secs = self.duration_secs as u64;
+        let hours = total_secs / 3600;
+        let minutes = (total_secs % 3600) / 60;
+        let seconds = total_secs % 60;
+
+        if hours > 0 {
+            format!("{}h {}m {}s", hours, minutes, seconds)
+        } else if minutes > 0 {
+            format!("{}m {}s", minutes, seconds)
+        } else {
+            format!("{}s", seconds)
         }
     }
 }
@@ -487,6 +533,8 @@ pub struct FileExplorerWidget<'a> {
     explorer: &'a mut FileExplorer,
     show_preview: bool,
     show_checkboxes: bool,
+    /// Optional enhanced preview data for the selected session
+    session_preview: Option<&'a SessionPreview>,
 }
 
 impl<'a> FileExplorerWidget<'a> {
@@ -496,6 +544,7 @@ impl<'a> FileExplorerWidget<'a> {
             explorer,
             show_preview: true,
             show_checkboxes: true,
+            session_preview: None,
         }
     }
 
@@ -508,6 +557,12 @@ impl<'a> FileExplorerWidget<'a> {
     /// Show or hide checkboxes for multi-select
     pub fn show_checkboxes(mut self, show: bool) -> Self {
         self.show_checkboxes = show;
+        self
+    }
+
+    /// Set the session preview data to display enhanced information
+    pub fn session_preview(mut self, preview: Option<&'a SessionPreview>) -> Self {
+        self.session_preview = preview;
         self
     }
 }
@@ -571,6 +626,15 @@ impl Widget for FileExplorerWidget<'_> {
             None
         };
 
+        // Clone session preview data to avoid lifetime issues
+        let session_preview_data = self.session_preview.map(|p| {
+            (
+                p.format_duration(),
+                p.marker_count,
+                p.terminal_preview.clone(),
+            )
+        });
+
         // Render list
         let list = List::new(items)
             .block(
@@ -593,7 +657,7 @@ impl Widget for FileExplorerWidget<'_> {
         // Render preview panel if enabled
         if self.show_preview && chunks.len() > 1 {
             let preview_text = if let Some((name, agent, size, modified, path)) = preview_data {
-                vec![
+                let mut lines = vec![
                     Line::from(vec![
                         Span::styled("Name: ", theme.text_secondary_style()),
                         Span::styled(name, theme.text_style()),
@@ -606,18 +670,58 @@ impl Widget for FileExplorerWidget<'_> {
                         Span::styled("Size: ", theme.text_secondary_style()),
                         Span::styled(format_size(size), theme.text_style()),
                     ]),
-                    Line::from(vec![
+                ];
+
+                // Add duration and markers if session preview is available
+                if let Some((duration, markers, terminal_preview)) = session_preview_data {
+                    lines.push(Line::from(vec![
+                        Span::styled("Duration: ", theme.text_secondary_style()),
+                        Span::styled(duration, theme.text_style()),
+                    ]));
+                    lines.push(Line::from(vec![
+                        Span::styled("Markers: ", theme.text_secondary_style()),
+                        Span::styled(markers.to_string(), theme.text_style()),
+                    ]));
+                    lines.push(Line::from(vec![
                         Span::styled("Modified: ", theme.text_secondary_style()),
                         Span::styled(
                             modified.format("%Y-%m-%d %H:%M").to_string(),
                             theme.text_style(),
                         ),
-                    ]),
-                    Line::from(vec![
+                    ]));
+
+                    // Add terminal preview section if not empty
+                    if !terminal_preview.is_empty() {
+                        lines.push(Line::from("")); // Empty line separator
+                        lines.push(Line::from(vec![Span::styled(
+                            "Preview @ 10%",
+                            theme.text_secondary_style(),
+                        )]));
+
+                        // Add terminal preview lines (limited to fit)
+                        for preview_line in terminal_preview.lines().take(6) {
+                            lines.push(Line::from(vec![Span::styled(
+                                format!(" {}", preview_line),
+                                theme.text_style(),
+                            )]));
+                        }
+                    }
+                } else {
+                    // Fallback when no session preview is available
+                    lines.push(Line::from(vec![
+                        Span::styled("Modified: ", theme.text_secondary_style()),
+                        Span::styled(
+                            modified.format("%Y-%m-%d %H:%M").to_string(),
+                            theme.text_style(),
+                        ),
+                    ]));
+                    lines.push(Line::from(vec![
                         Span::styled("Path: ", theme.text_secondary_style()),
                         Span::styled(path, theme.text_secondary_style()),
-                    ]),
-                ]
+                    ]));
+                }
+
+                lines
             } else {
                 vec![Line::from("No file selected")]
             };
@@ -1020,5 +1124,37 @@ mod tests {
         assert_eq!(item.name, "test.cast");
         assert_eq!(item.agent, "claude");
         assert_eq!(item.size, 1024);
+    }
+
+    // SessionPreview tests
+
+    #[test]
+    fn session_preview_format_duration_seconds() {
+        let preview = SessionPreview {
+            duration_secs: 45.0,
+            marker_count: 0,
+            terminal_preview: String::new(),
+        };
+        assert_eq!(preview.format_duration(), "45s");
+    }
+
+    #[test]
+    fn session_preview_format_duration_minutes() {
+        let preview = SessionPreview {
+            duration_secs: 332.0, // 5m 32s
+            marker_count: 0,
+            terminal_preview: String::new(),
+        };
+        assert_eq!(preview.format_duration(), "5m 32s");
+    }
+
+    #[test]
+    fn session_preview_format_duration_hours() {
+        let preview = SessionPreview {
+            duration_secs: 3732.0, // 1h 2m 12s
+            marker_count: 0,
+            terminal_preview: String::new(),
+        };
+        assert_eq!(preview.format_duration(), "1h 2m 12s");
     }
 }

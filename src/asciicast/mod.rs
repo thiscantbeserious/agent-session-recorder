@@ -233,6 +233,50 @@ impl AsciicastFile {
 
         output
     }
+
+    /// Get the count of marker events in the recording.
+    pub fn marker_count(&self) -> usize {
+        self.events.iter().filter(|e| e.is_marker()).count()
+    }
+
+    /// Get the terminal dimensions from the header.
+    ///
+    /// Returns (cols, rows) or defaults to (80, 24) if not specified.
+    pub fn terminal_size(&self) -> (u32, u32) {
+        let cols = self.header.term.as_ref().and_then(|t| t.cols).unwrap_or(80);
+        let rows = self.header.term.as_ref().and_then(|t| t.rows).unwrap_or(24);
+        (cols, rows)
+    }
+
+    /// Get a terminal preview at a specific percentage of the recording.
+    ///
+    /// This replays the output through a virtual terminal to get the actual
+    /// screen state at that point in time. Useful for generating preview
+    /// snapshots of recordings.
+    ///
+    /// The `percent` parameter should be between 0.0 and 1.0.
+    pub fn terminal_preview_at(&self, percent: f64) -> String {
+        use crate::terminal_buffer::TerminalBuffer;
+
+        let (cols, rows) = self.terminal_size();
+        let mut buffer = TerminalBuffer::new(cols as usize, rows as usize);
+
+        let duration = self.duration();
+        let target_time = duration * percent.clamp(0.0, 1.0);
+
+        let mut cumulative = 0.0;
+        for event in &self.events {
+            cumulative += event.time;
+            if cumulative > target_time {
+                break;
+            }
+            if event.is_output() {
+                buffer.process(&event.data);
+            }
+        }
+
+        buffer.to_string()
+    }
 }
 
 #[cfg(test)]
@@ -333,5 +377,58 @@ mod tests {
         assert_eq!(file.find_insertion_index(0.0), 0);
         assert_eq!(file.find_insertion_index(0.15), 1);
         assert_eq!(file.find_insertion_index(1.0), 4);
+    }
+
+    #[test]
+    fn marker_count_returns_correct_count() {
+        let file = create_test_file();
+        assert_eq!(file.marker_count(), 1);
+
+        let empty = AsciicastFile::new(Header {
+            version: 3,
+            width: Some(80),
+            height: Some(24),
+            term: None,
+            timestamp: None,
+            duration: None,
+            title: None,
+            command: None,
+            env: None,
+            idle_time_limit: None,
+        });
+        assert_eq!(empty.marker_count(), 0);
+    }
+
+    #[test]
+    fn terminal_size_returns_defaults_when_missing() {
+        let file = create_test_file();
+        assert_eq!(file.terminal_size(), (80, 24));
+    }
+
+    #[test]
+    fn terminal_size_returns_header_values() {
+        let mut file = create_test_file();
+        file.header.term = Some(TermInfo {
+            cols: Some(120),
+            rows: Some(40),
+            term_type: None,
+        });
+        assert_eq!(file.terminal_size(), (120, 40));
+    }
+
+    #[test]
+    fn terminal_preview_at_zero_is_empty() {
+        let file = create_test_file();
+        assert_eq!(file.terminal_preview_at(0.0), "");
+    }
+
+    #[test]
+    fn terminal_preview_at_end_has_all_output() {
+        let file = create_test_file();
+        // At 100%, should have all output
+        let preview = file.terminal_preview_at(1.0);
+        assert!(preview.contains("hello"));
+        assert!(preview.contains("world"));
+        assert!(preview.contains("!"));
     }
 }

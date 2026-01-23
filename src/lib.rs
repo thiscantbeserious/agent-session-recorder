@@ -10,6 +10,7 @@ pub mod playback;
 pub mod recording;
 pub mod shell;
 pub mod storage;
+pub mod terminal_buffer;
 pub mod tui;
 
 pub use analyzer::Analyzer;
@@ -18,3 +19,4 @@ pub use config::Config;
 pub use recording::Recorder;
 pub use shell::ShellStatus;
 pub use storage::StorageManager;
+pub use terminal_buffer::TerminalBuffer;
