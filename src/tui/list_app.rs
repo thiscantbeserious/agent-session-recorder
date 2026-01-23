@@ -140,8 +140,8 @@ impl ListApp {
             ])
             .split(area);
 
-            // Render file explorer
-            let widget = FileExplorerWidget::new(explorer);
+            // Render file explorer (no checkboxes in list view - it's single-select)
+            let widget = FileExplorerWidget::new(explorer).show_checkboxes(false);
             frame.render_widget(widget, chunks[0]);
 
             // Render status line

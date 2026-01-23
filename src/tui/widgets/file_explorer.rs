@@ -486,6 +486,7 @@ impl FileExplorer {
 pub struct FileExplorerWidget<'a> {
     explorer: &'a mut FileExplorer,
     show_preview: bool,
+    show_checkboxes: bool,
 }
 
 impl<'a> FileExplorerWidget<'a> {
@@ -494,12 +495,19 @@ impl<'a> FileExplorerWidget<'a> {
         Self {
             explorer,
             show_preview: true,
+            show_checkboxes: true,
         }
     }
 
     /// Show or hide the preview panel
     pub fn show_preview(mut self, show: bool) -> Self {
         self.show_preview = show;
+        self
+    }
+
+    /// Show or hide checkboxes for multi-select
+    pub fn show_checkboxes(mut self, show: bool) -> Self {
+        self.show_checkboxes = show;
         self
     }
 }
@@ -529,20 +537,22 @@ impl Widget for FileExplorerWidget<'_> {
             })
             .collect();
 
+        let show_checkboxes = self.show_checkboxes;
         let items: Vec<ListItem> = item_data
             .iter()
             .map(|(name, agent, size_str, is_checked)| {
-                let checkbox = if *is_checked { "[x] " } else { "[ ] " };
-                let line = Line::from(vec![
-                    Span::styled(checkbox, theme.text_secondary_style()),
-                    Span::styled(name.as_str(), theme.text_style()),
-                    Span::raw("  "),
-                    Span::styled(
-                        format!("({}, {})", agent, size_str),
-                        theme.text_secondary_style(),
-                    ),
-                ]);
-                ListItem::new(line)
+                let mut spans = vec![];
+                if show_checkboxes {
+                    let checkbox = if *is_checked { "[x] " } else { "[ ] " };
+                    spans.push(Span::styled(checkbox, theme.text_secondary_style()));
+                }
+                spans.push(Span::styled(name.as_str(), theme.text_style()));
+                spans.push(Span::raw("  "));
+                spans.push(Span::styled(
+                    format!("({}, {})", agent, size_str),
+                    theme.text_secondary_style(),
+                ));
+                ListItem::new(Line::from(spans))
             })
             .collect();
 

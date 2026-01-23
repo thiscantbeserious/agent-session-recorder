@@ -7,9 +7,14 @@ use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::{
+    cursor::MoveTo,
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    style::ResetColor,
+    terminal::{
+        disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
+        LeaveAlternateScreen,
+    },
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 
@@ -115,13 +120,32 @@ impl App {
     /// Resume the TUI after a suspend.
     ///
     /// Re-enters alternate screen and raw mode, and recreates the event handler.
+    /// Performs thorough terminal reset to prevent display corruption from
+    /// external command output (e.g., asciinema playback).
     pub fn resume(&mut self) -> Result<()> {
+        // Clear main screen residue before entering alternate screen
+        // This prevents old playback output from showing through
+        execute!(
+            self.terminal.backend_mut(),
+            ResetColor,
+            MoveTo(0, 0),
+            Clear(ClearType::All)
+        )?;
+
         enable_raw_mode()?;
         execute!(
             self.terminal.backend_mut(),
             EnterAlternateScreen,
             EnableMouseCapture
         )?;
+
+        // Reset colors and clear alternate screen for clean state
+        execute!(
+            self.terminal.backend_mut(),
+            ResetColor,
+            Clear(ClearType::All)
+        )?;
+
         self.terminal.hide_cursor()?;
         self.terminal.clear()?;
 
