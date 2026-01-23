@@ -1,0 +1,12 @@
+---
+source: tests/unit/tui_test.rs
+assertion_line: 98
+expression: snapshot
+---
+Theme: claude_code
+text_primary: Gray
+text_secondary: DarkGray
+accent: LightGreen
+error: Red
+success: LightGreen
+background: Reset

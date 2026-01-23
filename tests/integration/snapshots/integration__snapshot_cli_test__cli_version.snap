@@ -1,0 +1,11 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 189
+expression: output
+---
+=== agr --version ===
+Exit code: 0
+
+--- stdout ---
+agr <VERSION>
+--- stderr ---

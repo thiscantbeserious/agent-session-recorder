@@ -10,6 +10,7 @@ pub mod markers;
 pub mod recording;
 pub mod shell;
 pub mod storage;
+pub mod tui;
 
 pub use analyzer::Analyzer;
 pub use asciicast::{AsciicastFile, Event, EventType, Header};

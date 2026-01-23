@@ -1,7 +1,9 @@
 //! Branding and ASCII art logos for AGR
 //!
 //! Logos are embedded at compile time from the assets directory.
+//! Uses the theme system for consistent colors across TUI and CLI.
 
+use crate::tui::theme::current_theme;
 use unicode_width::UnicodeWidthStr;
 
 /// Full ASCII logo for interactive CLI mode
@@ -19,19 +21,22 @@ pub const BOX_WIDTH: usize = 39;
 /// Bottom border of the box
 pub const BOX_BOTTOM: &str = "╚═══════════════════════════════════════╝";
 
-/// Print the start banner
+/// Print the start banner with theme colors
 pub fn print_start_banner() {
-    print!("{}", LOGO_START);
+    let theme = current_theme();
+    print!("{}", theme.accent_text(LOGO_START));
 }
 
-/// Print the done banner
+/// Print the done banner with theme colors
 pub fn print_done_banner() {
-    print!("{}", LOGO_DONE);
+    let theme = current_theme();
+    print!("{}", theme.success_text(LOGO_DONE));
 }
 
-/// Print the full logo
+/// Print the full logo with theme colors
 pub fn print_full_logo() {
-    print!("{}", LOGO_FULL);
+    let theme = current_theme();
+    print!("{}", theme.accent_text(LOGO_FULL));
 }
 
 /// Print a line inside the box, padded to fit

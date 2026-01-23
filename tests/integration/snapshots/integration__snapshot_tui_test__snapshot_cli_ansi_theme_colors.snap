@@ -1,0 +1,12 @@
+---
+source: tests/unit/tui_test.rs
+assertion_line: 184
+expression: snapshot
+---
+CLI ANSI Theme Colors
+=====================
+accent_text("test"): "\u{1b}[92mtest\u{1b}[0m"
+primary_text("test"): "\u{1b}[37mtest\u{1b}[0m"
+secondary_text("test"): "\u{1b}[90mtest\u{1b}[0m"
+error_text("test"): "\u{1b}[31mtest\u{1b}[0m"
+success_text("test"): "\u{1b}[92mtest\u{1b}[0m"

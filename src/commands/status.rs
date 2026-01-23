@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 
+use agr::tui::current_theme;
 use agr::{Config, StorageManager};
 
 /// Display storage statistics for recorded sessions.
@@ -13,6 +14,7 @@ pub fn handle() -> Result<()> {
     let config = Config::load()?;
     let storage = StorageManager::new(config);
     let stats = storage.get_stats()?;
-    println!("{}", stats.summary());
+    let theme = current_theme();
+    println!("{}", theme.primary_text(&stats.summary()));
     Ok(())
 }

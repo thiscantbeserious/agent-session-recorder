@@ -70,11 +70,14 @@ _agr_record_session() {
 # Generate wrapper functions from config
 # Each wrapper is self-contained to survive shell snapshots (e.g., Claude Code's shell-snapshots)
 _agr_setup_wrappers() {
-    local agents agent
+    local agents agent esc
 
     # Try to get agent list from agr
+    # Strip ANSI color codes from output to handle themed CLI output
+    # Use $'...' syntax for ESC character to ensure BSD/GNU sed compatibility
     if command -v agr &>/dev/null; then
-        agents=$(agr agents list 2>/dev/null | grep -v "^Configured" | grep -v "^No agents" | sed 's/^  //')
+        esc=$'\x1b'
+        agents=$(agr agents list 2>/dev/null | sed "s/${esc}\[[0-9;]*m//g" | grep -v "^Configured" | grep -v "^No agents" | sed 's/^  //')
     fi
 
     # Fallback to default agents if agr not available

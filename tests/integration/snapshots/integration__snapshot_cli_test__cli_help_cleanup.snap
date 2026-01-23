@@ -1,0 +1,39 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 139
+expression: output
+---
+=== agr cleanup --help ===
+Exit code: 0
+
+--- stdout ---
+Interactively delete old session recordings to free up disk space.
+
+Displays a list of sessions sorted by age and lets you choose how many
+to delete. Supports filtering by agent and age. Sessions older than
+the configured threshold (default: 30 days) are marked with *.
+
+EXAMPLES:
+    agr cleanup                          [37mInteractive cleanup of all sessions[0m
+    agr cleanup --agent claude           [37mOnly show Claude sessions[0m
+    agr cleanup --older-than 60          [37mOnly show sessions older than 60 days[0m
+    agr cleanup --agent codex --older-than 30
+
+INTERACTIVE OPTIONS:
+    [number]    [37mDelete the N oldest sessions[0m
+    'old'       [37mDelete all sessions older than threshold[0m
+    'all'       [37mDelete all matching sessions[0m
+    0           [37mCancel without deleting[0m
+
+Usage: agr cleanup [OPTIONS]
+
+Options:
+      --agent <AGENT>
+          Only show sessions from this agent
+
+      --older-than <OLDER_THAN>
+          Only show sessions older than N days
+
+  -h, --help
+          Print help (see a summary with '-h')
+--- stderr ---

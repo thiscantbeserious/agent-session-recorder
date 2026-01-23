@@ -1,0 +1,22 @@
+---
+source: tests/unit/tui_test.rs
+assertion_line: 338
+expression: snapshot
+---
+Theme Text Wrappers (Raw ANSI codes)
+====================================
+
+accent_text("Hello World"):
+[92mHello World[0m
+
+primary_text("Hello World"):
+[37mHello World[0m
+
+secondary_text("Hello World"):
+[90mHello World[0m
+
+error_text("Hello World"):
+[31mHello World[0m
+
+success_text("Hello World"):
+[92mHello World[0m

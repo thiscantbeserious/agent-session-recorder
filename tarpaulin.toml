@@ -9,7 +9,9 @@ fail-under = 70.0
 # - tests/*: Test files themselves
 # - */tests.rs: Inline test modules
 # - src/recording.rs: Requires asciinema, tested via e2e
-exclude-files = ["tests/*", "*/tests.rs", "src/recording.rs"]
+# - src/tui/app.rs: Requires terminal, tested manually
+# - src/tui/event.rs: Requires terminal, tested manually
+exclude-files = ["tests/*", "*/tests.rs", "src/recording.rs", "src/tui/app.rs", "src/tui/event.rs"]
 
 # Skip functions that are hard to test
 ignore = [
@@ -17,6 +19,9 @@ ignore = [
     "main",
     # CLI parsing (tested via integration tests)
     "build_cli",
+    # TUI functions (require terminal, tested manually)
+    "show_tui_help",
+    "should_show_tui_help",
 ]
 
 [report]

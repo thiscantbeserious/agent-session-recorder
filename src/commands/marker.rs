@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 
+use agr::tui::current_theme;
 use agr::{Config, MarkerManager};
 
 use super::resolve_file_path;
@@ -12,10 +13,14 @@ use super::resolve_file_path;
 #[cfg(not(tarpaulin_include))]
 pub fn handle_add(file: &str, time: f64, label: &str) -> Result<()> {
     let config = Config::load()?;
+    let theme = current_theme();
     // Resolve file path (supports short format like "claude/session.cast")
     let filepath = resolve_file_path(file, &config)?;
     MarkerManager::add_marker(&filepath, time, label)?;
-    println!("Marker added at {:.1}s: \"{}\"", time, label);
+    println!(
+        "{}",
+        theme.primary_text(&format!("Marker added at {:.1}s: \"{}\"", time, label))
+    );
     Ok(())
 }
 
@@ -23,18 +28,19 @@ pub fn handle_add(file: &str, time: f64, label: &str) -> Result<()> {
 #[cfg(not(tarpaulin_include))]
 pub fn handle_list(file: &str) -> Result<()> {
     let config = Config::load()?;
+    let theme = current_theme();
     // Resolve file path (supports short format like "claude/session.cast")
     let filepath = resolve_file_path(file, &config)?;
     let markers = MarkerManager::list_markers(&filepath)?;
 
     if markers.is_empty() {
-        println!("No markers found in file.");
+        println!("{}", theme.primary_text("No markers found in file."));
         return Ok(());
     }
 
-    println!("Markers:");
+    println!("{}", theme.primary_text("Markers:"));
     for marker in markers {
-        println!("  {}", marker);
+        println!("{}", theme.primary_text(&format!("  {}", marker)));
     }
 
     Ok(())

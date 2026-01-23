@@ -1,0 +1,29 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 99
+expression: output
+---
+=== agr config --help ===
+Exit code: 0
+
+--- stdout ---
+View and edit the AGR configuration file.
+
+Configuration is stored in ~/.config/agr/config.toml and includes
+storage settings, agent list, shell integration options, and more.
+
+EXAMPLES:
+    agr config show          [37mDisplay current configuration[0m
+    agr config edit          [37mOpen config in $EDITOR[0m
+
+Usage: agr config <COMMAND>
+
+Commands:
+  show  [37mShow current configuration as TOML[0m
+  edit  [37mOpen configuration file in your default editor[0m
+  help  [37mPrint this message or the help of the given subcommand(s)[0m
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+--- stderr ---

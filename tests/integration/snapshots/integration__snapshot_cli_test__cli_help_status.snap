@@ -1,0 +1,28 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 129
+expression: output
+---
+=== agr status --help ===
+Exit code: 0
+
+--- stdout ---
+Display storage statistics for recorded sessions.
+
+Shows total size, disk usage percentage, session count by agent,
+and age of the oldest recording.
+
+EXAMPLE:
+    agr status
+
+OUTPUT:
+    Agent Sessions: 1.2 GB (0.5% of disk)
+       Sessions: 23 total (claude: 15, codex: 8)
+       Oldest: 2025-01-01 (20 days ago)
+
+Usage: agr status
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+--- stderr ---

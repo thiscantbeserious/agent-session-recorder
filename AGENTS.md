@@ -62,7 +62,16 @@ Use the `knowledge` skill to load these files.
 ```bash
 cargo fmt && cargo clippy && cargo test && ./tests/e2e_test.sh
 cargo tarpaulin            # Coverage check (see tarpaulin.toml)
+cargo test tui_test        # TUI snapshot tests only
 ```
+
+### Snapshot Testing (TUI)
+Visual components use `insta` for snapshot testing. Snapshots live in `tests/unit/snapshots/`.
+When visual output changes, tests fail with a diff. Accept changes with:
+```bash
+cd tests/unit/snapshots && for f in *.snap.new; do mv "$f" "${f%.new}"; done
+```
+IMPORTANT: If unsure whether snapshot changes are intentional, ASK THE USER before accepting.
 
 ### Development Prerequisites
 ```bash
@@ -82,7 +91,9 @@ cargo install cargo-tarpaulin  # Coverage tool (required for local coverage chec
 | `src/main.rs` | CLI entry point - clap definitions and command dispatch |
 | `src/lib.rs` | Library root - re-exports all modules |
 | `src/commands/` | CLI command handlers (one file per command) |
+| `src/tui/` | TUI module - theme, widgets, event handling |
 | `tests/unit/` | Unit tests for library modules |
+| `tests/unit/snapshots/` | Visual snapshot files for TUI tests |
 | `tests/e2e/` | End-to-end shell script tests |
 
 Explore `src/` for domain modules (config, storage, recording, etc.).

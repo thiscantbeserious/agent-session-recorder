@@ -2,14 +2,16 @@
 
 use anyhow::Result;
 
+use agr::tui::current_theme;
 use agr::Config;
 
 /// Show shell integration status.
 #[cfg(not(tarpaulin_include))]
 pub fn handle_status() -> Result<()> {
     let config = Config::load()?;
+    let theme = current_theme();
     let status = agr::shell::get_status(config.shell.auto_wrap);
-    println!("{}", status.summary());
+    println!("{}", theme.primary_text(&status.summary()));
     Ok(())
 }
 
@@ -19,12 +21,16 @@ pub fn handle_status() -> Result<()> {
 /// The shell script is embedded directly in the RC file (not sourced from an external file).
 #[cfg(not(tarpaulin_include))]
 pub fn handle_install() -> Result<()> {
+    let theme = current_theme();
     // Create config.toml with defaults if it doesn't exist
     let config_path = Config::config_path()?;
     if !config_path.exists() {
         let config = Config::default();
         config.save()?;
-        println!("Created config file: {}", config_path.display());
+        println!(
+            "{}",
+            theme.primary_text(&format!("Created config file: {}", config_path.display()))
+        );
     }
 
     // Detect shell RC file
@@ -34,29 +40,51 @@ pub fn handle_install() -> Result<()> {
     // Install shell integration to RC file (script is embedded directly)
     agr::shell::install(&rc_file)
         .map_err(|e| anyhow::anyhow!("Failed to install shell integration: {}", e))?;
-    println!("Installed shell integration: {}", rc_file.display());
+    println!(
+        "{}",
+        theme.primary_text(&format!(
+            "Installed shell integration: {}",
+            rc_file.display()
+        ))
+    );
 
     // Install completions
     install_completions()?;
 
     println!();
-    println!("Shell integration installed successfully.");
-    println!("Restart your shell or run: source {}", rc_file.display());
+    println!(
+        "{}",
+        theme.primary_text("Shell integration installed successfully.")
+    );
+    println!(
+        "{}",
+        theme.primary_text(&format!(
+            "Restart your shell or run: source {}",
+            rc_file.display()
+        ))
+    );
 
     Ok(())
 }
 
 /// Install shell completions for bash and zsh.
 pub(crate) fn install_completions() -> Result<()> {
+    let theme = current_theme();
     if let Some(path) = agr::shell::install_bash_completions()
         .map_err(|e| anyhow::anyhow!("Failed to install bash completions: {}", e))?
     {
-        println!("Installed bash completions: {}", path.display());
+        println!(
+            "{}",
+            theme.primary_text(&format!("Installed bash completions: {}", path.display()))
+        );
     }
     if let Some(path) = agr::shell::install_zsh_completions()
         .map_err(|e| anyhow::anyhow!("Failed to install zsh completions: {}", e))?
     {
-        println!("Installed zsh completions: {}", path.display());
+        println!(
+            "{}",
+            theme.primary_text(&format!("Installed zsh completions: {}", path.display()))
+        );
     }
     Ok(())
 }
@@ -64,11 +92,15 @@ pub(crate) fn install_completions() -> Result<()> {
 /// Remove shell integration from .zshrc/.bashrc.
 #[cfg(not(tarpaulin_include))]
 pub fn handle_uninstall() -> Result<()> {
+    let theme = current_theme();
     // Find where shell integration is installed
     let rc_file = match agr::shell::find_installed_rc() {
         Some(rc) => rc,
         None => {
-            println!("Shell integration is not installed.");
+            println!(
+                "{}",
+                theme.primary_text("Shell integration is not installed.")
+            );
             return Ok(());
         }
     };
@@ -85,24 +117,48 @@ pub fn handle_uninstall() -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to remove shell integration: {}", e))?;
 
     if removed {
-        println!("Removed shell integration from: {}", rc_file.display());
+        println!(
+            "{}",
+            theme.primary_text(&format!(
+                "Removed shell integration from: {}",
+                rc_file.display()
+            ))
+        );
 
         // Clean up old-style external script file if it exists
         if let Some(script_path) = old_script_path {
             if script_path.exists() {
                 std::fs::remove_file(&script_path)
                     .map_err(|e| anyhow::anyhow!("Failed to remove shell script: {}", e))?;
-                println!("Removed old shell script: {}", script_path.display());
+                println!(
+                    "{}",
+                    theme.primary_text(&format!(
+                        "Removed old shell script: {}",
+                        script_path.display()
+                    ))
+                );
             }
         }
 
         remove_completions()?;
 
         println!();
-        println!("Shell integration removed successfully.");
-        println!("Restart your shell to complete the removal.");
+        println!(
+            "{}",
+            theme.primary_text("Shell integration removed successfully.")
+        );
+        println!(
+            "{}",
+            theme.primary_text("Restart your shell to complete the removal.")
+        );
     } else {
-        println!("Shell integration was not found in: {}", rc_file.display());
+        println!(
+            "{}",
+            theme.primary_text(&format!(
+                "Shell integration was not found in: {}",
+                rc_file.display()
+            ))
+        );
     }
 
     Ok(())
@@ -110,18 +166,25 @@ pub fn handle_uninstall() -> Result<()> {
 
 /// Remove shell completions for bash and zsh.
 pub(crate) fn remove_completions() -> Result<()> {
+    let theme = current_theme();
     if agr::shell::uninstall_bash_completions()
         .map_err(|e| anyhow::anyhow!("Failed to remove bash completions: {}", e))?
     {
         if let Some(path) = agr::shell::bash_completion_path() {
-            println!("Removed bash completions: {}", path.display());
+            println!(
+                "{}",
+                theme.primary_text(&format!("Removed bash completions: {}", path.display()))
+            );
         }
     }
     if agr::shell::uninstall_zsh_completions()
         .map_err(|e| anyhow::anyhow!("Failed to remove zsh completions: {}", e))?
     {
         if let Some(path) = agr::shell::zsh_completion_path() {
-            println!("Removed zsh completions: {}", path.display());
+            println!(
+                "{}",
+                theme.primary_text(&format!("Removed zsh completions: {}", path.display()))
+            );
         }
     }
     Ok(())

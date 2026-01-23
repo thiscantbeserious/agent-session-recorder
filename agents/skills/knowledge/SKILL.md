@@ -15,7 +15,7 @@ READ only what you need for your current task. See the guide below.
 |------|-----------|
 | `project.md` | Understanding codebase structure, source files |
 | `commands.md` | Running AGR CLI, cargo commands, build scripts |
-| `tdd.md` | Writing code with tests, TDD workflow |
+| `tdd.md` | Writing code with tests, TDD workflow, snapshot testing |
 | `verification.md` | Before committing or creating PR |
 | `git.md` | Creating branches, PRs, handling CI/CodeRabbit |
 | `coding-principles.md` | Writing new code, refactoring, code review |
@@ -44,6 +44,7 @@ READ only what you need for your current task. See the guide below.
 | Understanding codebase | `project.md`, `commands.md` |
 | Refactoring code | `coding-principles.md`, `tdd.md` |
 | Code review | `coding-principles.md`, `verification.md` |
+| TUI/visual changes | `tdd.md` (snapshot testing section) |
 
 ### When Unsure
 

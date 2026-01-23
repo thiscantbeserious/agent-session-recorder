@@ -1,0 +1,16 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 163
+expression: output
+---
+=== agr nonexistent ===
+Exit code: 2
+
+--- stdout ---
+
+--- stderr ---
+error: unrecognized subcommand 'nonexistent'
+
+Usage: agr <COMMAND>
+
+For more information, try '--help'.

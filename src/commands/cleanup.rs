@@ -4,6 +4,7 @@ use anyhow::Result;
 use std::io::{self, BufRead, Write};
 
 use agr::storage::{SessionInfo, StorageStats};
+use agr::tui::current_theme;
 use agr::{Config, StorageManager};
 
 use super::truncate_string;
@@ -27,10 +28,14 @@ pub fn handle(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()>
     }
 
     if sessions.is_empty() {
+        let theme = current_theme();
         if agent_filter.is_some() || older_than.is_some() {
-            println!("No sessions match the specified filters.");
+            println!(
+                "{}",
+                theme.primary_text("No sessions match the specified filters.")
+            );
         } else {
-            println!("No sessions to clean up.");
+            println!("{}", theme.primary_text("No sessions to clean up."));
         }
         return Ok(());
     }
@@ -62,11 +67,15 @@ pub(crate) fn print_header(
     agent_filter: Option<&str>,
     older_than: Option<u32>,
 ) -> Result<()> {
-    println!("=== Agent Session Cleanup ===");
+    let theme = current_theme();
+    println!("{}", theme.primary_text("=== Agent Session Cleanup ==="));
     println!(
-        "Storage: {} ({:.1}% of disk)",
-        stats.size_human(),
-        stats.disk_percentage
+        "{}",
+        theme.primary_text(&format!(
+            "Storage: {} ({:.1}% of disk)",
+            stats.size_human(),
+            stats.disk_percentage
+        ))
     );
 
     // Show agent breakdown
@@ -77,19 +86,28 @@ pub(crate) fn print_header(
         .collect();
     if !agents_summary.is_empty() {
         println!(
-            "   Sessions: {} total ({})",
-            stats.session_count,
-            agents_summary.join(", ")
+            "{}",
+            theme.primary_text(&format!(
+                "   Sessions: {} total ({})",
+                stats.session_count,
+                agents_summary.join(", ")
+            ))
         );
     }
     println!();
 
     // Show filter info if applicable
     if let Some(agent) = agent_filter {
-        println!("Filtered by agent: {}", agent);
+        println!(
+            "{}",
+            theme.primary_text(&format!("Filtered by agent: {}", agent))
+        );
     }
     if let Some(days) = older_than {
-        println!("Filtered by age: > {} days", days);
+        println!(
+            "{}",
+            theme.primary_text(&format!("Filtered by age: > {} days", days))
+        );
     }
     if agent_filter.is_some() || older_than.is_some() {
         println!();
@@ -100,6 +118,7 @@ pub(crate) fn print_header(
 
 /// Print the session summary message.
 pub(crate) fn print_session_summary(total: usize, old_count: usize, age_threshold: u32) {
+    let theme = current_theme();
     let session_msg = if old_count > 0 {
         format!(
             "Found {} sessions ({} older than {} days - marked with *)",
@@ -108,15 +127,23 @@ pub(crate) fn print_session_summary(total: usize, old_count: usize, age_threshol
     } else {
         format!("Found {} sessions", total)
     };
-    println!("{}", session_msg);
+    println!("{}", theme.primary_text(&session_msg));
     println!();
 }
 
 /// Print the sessions table (up to 15 entries).
 pub(crate) fn print_sessions_table(sessions: &[SessionInfo], age_threshold: u32) {
-    println!("  #  |  Age   | DateTime         | Agent       | Size       | Filename");
+    let theme = current_theme();
     println!(
-        "-----+--------+------------------+-------------+------------+---------------------------"
+        "{}",
+        theme
+            .primary_text("  #  |  Age   | DateTime         | Agent       | Size       | Filename")
+    );
+    println!(
+        "{}",
+        theme.primary_text(
+            "-----+--------+------------------+-------------+------------+---------------------------"
+        )
     );
 
     for (i, session) in sessions.iter().take(15).enumerate() {
@@ -126,19 +153,25 @@ pub(crate) fn print_sessions_table(sessions: &[SessionInfo], age_threshold: u32)
             " "
         };
         println!(
-            "{:>3}  | {:>5}{} | {} | {:11} | {:>10} | {}",
-            i + 1,
-            session.format_age(),
-            age_marker,
-            session.modified.format("%Y-%m-%d %H:%M"),
-            truncate_string(&session.agent, 11),
-            session.size_human(),
-            session.filename
+            "{}",
+            theme.primary_text(&format!(
+                "{:>3}  | {:>5}{} | {} | {:11} | {:>10} | {}",
+                i + 1,
+                session.format_age(),
+                age_marker,
+                session.modified.format("%Y-%m-%d %H:%M"),
+                truncate_string(&session.agent, 11),
+                session.size_human(),
+                session.filename
+            ))
         );
     }
 
     if sessions.len() > 15 {
-        println!("... and {} more sessions", sessions.len() - 15);
+        println!(
+            "{}",
+            theme.primary_text(&format!("... and {} more sessions", sessions.len() - 15))
+        );
     }
     println!();
 }
@@ -150,6 +183,7 @@ fn process_deletion_input(
     age_threshold: u32,
     storage: &StorageManager,
 ) -> Result<()> {
+    let theme = current_theme();
     // Build prompt with quick delete options
     let prompt = if old_count > 0 {
         format!(
@@ -159,7 +193,7 @@ fn process_deletion_input(
     } else {
         "Delete: [number], 'all', or 0 to cancel: ".to_string()
     };
-    print!("{}", prompt);
+    print!("{}", theme.primary_text(&prompt));
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -184,8 +218,9 @@ pub(crate) fn parse_deletion_input(
     old_count: usize,
     age_threshold: u32,
 ) -> Result<Vec<SessionInfo>> {
+    let theme = current_theme();
     if input == "0" || input.is_empty() {
-        println!("No sessions deleted.");
+        println!("{}", theme.primary_text("No sessions deleted."));
         return Ok(vec![]);
     } else if input == "all" {
         return Ok(sessions.to_vec());
@@ -197,35 +232,51 @@ pub(crate) fn parse_deletion_input(
             .collect());
     } else if let Ok(count) = input.parse::<usize>() {
         if count > sessions.len() {
-            println!("Invalid number. Maximum is {}.", sessions.len());
+            println!(
+                "{}",
+                theme.primary_text(&format!("Invalid number. Maximum is {}.", sessions.len()))
+            );
             return Ok(vec![]);
         }
         return Ok(sessions.iter().take(count).cloned().collect());
     }
 
-    println!("Invalid input. Use a number, 'old', 'all', or 0 to cancel.");
+    println!(
+        "{}",
+        theme.primary_text("Invalid input. Use a number, 'old', 'all', or 0 to cancel.")
+    );
     Ok(vec![])
 }
 
 /// Confirm deletion with user and execute.
 fn confirm_and_delete(to_delete: &[SessionInfo], storage: &StorageManager) -> Result<()> {
+    let theme = current_theme();
     // Calculate total size to be freed
     let total_size: u64 = to_delete.iter().map(|s| s.size).sum();
 
     println!();
     println!(
-        "Will delete {} sessions ({}):",
-        to_delete.len(),
-        humansize::format_size(total_size, humansize::BINARY)
+        "{}",
+        theme.primary_text(&format!(
+            "Will delete {} sessions ({}):",
+            to_delete.len(),
+            humansize::format_size(total_size, humansize::BINARY)
+        ))
     );
     for session in to_delete.iter().take(10) {
-        println!("  - {} ({})", session.filename, session.agent);
+        println!(
+            "{}",
+            theme.primary_text(&format!("  - {} ({})", session.filename, session.agent))
+        );
     }
     if to_delete.len() > 10 {
-        println!("  ... and {} more", to_delete.len() - 10);
+        println!(
+            "{}",
+            theme.primary_text(&format!("  ... and {} more", to_delete.len() - 10))
+        );
     }
 
-    print!("\nConfirm? [y/N]: ");
+    print!("{}", theme.primary_text("\nConfirm? [y/N]: "));
     io::stdout().flush()?;
 
     let mut confirm = String::new();
@@ -235,13 +286,16 @@ fn confirm_and_delete(to_delete: &[SessionInfo], storage: &StorageManager) -> Re
         let freed = storage.delete_sessions(to_delete)?;
         let new_stats = storage.get_stats()?;
         println!(
-            "Deleted {} sessions (freed {}). New size: {}",
-            to_delete.len(),
-            humansize::format_size(freed, humansize::BINARY),
-            new_stats.size_human()
+            "{}",
+            theme.primary_text(&format!(
+                "Deleted {} sessions (freed {}). New size: {}",
+                to_delete.len(),
+                humansize::format_size(freed, humansize::BINARY),
+                new_stats.size_human()
+            ))
         );
     } else {
-        println!("Cancelled.");
+        println!("{}", theme.primary_text("Cancelled."));
     }
 
     Ok(())
