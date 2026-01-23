@@ -23,6 +23,8 @@ pub struct App {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     /// Event handler
     events: EventHandler,
+    /// Tick rate for event handler (needed for recreation after suspend)
+    tick_rate: Duration,
     /// Whether the app should quit
     should_quit: bool,
 }
@@ -60,6 +62,7 @@ impl App {
         Ok(Self {
             terminal,
             events,
+            tick_rate,
             should_quit: false,
         })
     }
@@ -91,6 +94,40 @@ impl App {
         F: FnOnce(&mut ratatui::Frame),
     {
         self.terminal.draw(f)?;
+        Ok(())
+    }
+
+    /// Suspend the TUI and restore normal terminal mode.
+    ///
+    /// Use this before running external commands that need the terminal.
+    /// Call `resume()` afterward to re-enter TUI mode.
+    pub fn suspend(&mut self) -> Result<()> {
+        disable_raw_mode()?;
+        execute!(
+            self.terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
+        self.terminal.show_cursor()?;
+        Ok(())
+    }
+
+    /// Resume the TUI after a suspend.
+    ///
+    /// Re-enters alternate screen and raw mode, and recreates the event handler.
+    pub fn resume(&mut self) -> Result<()> {
+        enable_raw_mode()?;
+        execute!(
+            self.terminal.backend_mut(),
+            EnterAlternateScreen,
+            EnableMouseCapture
+        )?;
+        self.terminal.hide_cursor()?;
+        self.terminal.clear()?;
+
+        // Recreate event handler (old one may be in bad state after suspend)
+        self.events = EventHandler::new(self.tick_rate);
+
         Ok(())
     }
 }

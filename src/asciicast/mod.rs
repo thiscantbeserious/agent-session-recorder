@@ -1,12 +1,27 @@
 //! asciicast v3 format parser and writer
 //!
+//! This module provides types and utilities for working with asciicast v3 files,
+//! the format used by asciinema for terminal recordings.
+//!
 //! Reference: https://docs.asciinema.org/manual/asciicast/v3/
+//!
+//! # Structure
+//!
+//! - `reader` - Parsing asciicast files from various sources
+//! - `writer` - Writing asciicast files to various destinations
+//! - `marker` - Adding and listing markers in recordings
 
-use anyhow::{bail, Context, Result};
+pub mod marker;
+mod reader;
+mod writer;
+
+pub use marker::{MarkerInfo, MarkerManager};
+
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
+
+// ============================================================================
+// Header Types
+// ============================================================================
 
 /// asciicast v3 header
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -51,6 +66,10 @@ pub struct EnvInfo {
     #[serde(rename = "TERM", skip_serializing_if = "Option::is_none")]
     pub term: Option<String>,
 }
+
+// ============================================================================
+// Event Types
+// ============================================================================
 
 /// Event type codes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,47 +144,11 @@ impl Event {
     pub fn is_marker(&self) -> bool {
         self.event_type == EventType::Marker
     }
-
-    /// Parse an event from a JSON line
-    pub fn from_json(line: &str) -> Result<Self> {
-        let value: serde_json::Value =
-            serde_json::from_str(line).context("Failed to parse event JSON")?;
-
-        let arr = value.as_array().context("Event must be a JSON array")?;
-
-        if arr.len() < 3 {
-            bail!("Event array must have at least 3 elements");
-        }
-
-        let time = arr[0].as_f64().context("Event time must be a number")?;
-
-        let code = arr[1].as_str().context("Event type must be a string")?;
-
-        let event_type =
-            EventType::from_code(code).with_context(|| format!("Unknown event type: {}", code))?;
-
-        let data = arr[2]
-            .as_str()
-            .context("Event data must be a string")?
-            .to_string();
-
-        Ok(Event {
-            time,
-            event_type,
-            data,
-        })
-    }
-
-    /// Convert event to JSON string
-    pub fn to_json(&self) -> String {
-        serde_json::to_string(&serde_json::json!([
-            self.time,
-            self.event_type.to_code(),
-            self.data
-        ]))
-        .unwrap()
-    }
 }
+
+// ============================================================================
+// AsciicastFile
+// ============================================================================
 
 /// Complete asciicast file representation
 #[derive(Debug, Clone)]
@@ -181,91 +164,6 @@ impl AsciicastFile {
             header,
             events: Vec::new(),
         }
-    }
-
-    /// Parse an asciicast v3 file from a path
-    pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path = path.as_ref();
-        let file =
-            fs::File::open(path).with_context(|| format!("Failed to open file: {:?}", path))?;
-        let reader = BufReader::new(file);
-
-        Self::parse_reader(reader)
-    }
-
-    /// Parse an asciicast v3 file from a reader
-    pub fn parse_reader<R: BufRead>(reader: R) -> Result<Self> {
-        let mut lines = reader.lines();
-
-        // First line is the header
-        let header_line = lines
-            .next()
-            .context("File is empty")?
-            .context("Failed to read header line")?;
-
-        let header: Header =
-            serde_json::from_str(&header_line).context("Failed to parse header")?;
-
-        if header.version != 3 {
-            bail!(
-                "Only asciicast v3 format is supported (got version {})",
-                header.version
-            );
-        }
-
-        // Remaining lines are events
-        let mut events = Vec::new();
-        for (line_num, line_result) in lines.enumerate() {
-            let line =
-                line_result.with_context(|| format!("Failed to read line {}", line_num + 2))?;
-
-            if line.trim().is_empty() {
-                continue;
-            }
-
-            let event = Event::from_json(&line)
-                .with_context(|| format!("Failed to parse event on line {}", line_num + 2))?;
-            events.push(event);
-        }
-
-        Ok(AsciicastFile { header, events })
-    }
-
-    /// Parse from a string
-    pub fn parse_str(content: &str) -> Result<Self> {
-        let reader = BufReader::new(content.as_bytes());
-        Self::parse_reader(reader)
-    }
-
-    /// Write the asciicast file to a path
-    pub fn write<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        let path = path.as_ref();
-        let mut file =
-            fs::File::create(path).with_context(|| format!("Failed to create file: {:?}", path))?;
-
-        self.write_to(&mut file)
-    }
-
-    /// Write the asciicast file to a writer
-    pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<()> {
-        // Write header
-        let header_json =
-            serde_json::to_string(&self.header).context("Failed to serialize header")?;
-        writeln!(writer, "{}", header_json)?;
-
-        // Write events
-        for event in &self.events {
-            writeln!(writer, "{}", event.to_json())?;
-        }
-
-        Ok(())
-    }
-
-    /// Convert to string
-    pub fn to_string(&self) -> Result<String> {
-        let mut buffer = Vec::new();
-        self.write_to(&mut buffer)?;
-        Ok(String::from_utf8(buffer)?)
     }
 
     /// Get all marker events
@@ -309,5 +207,131 @@ impl AsciicastFile {
         let cumulative_times = self.cumulative_times();
         let prev_cumulative = cumulative_times.get(index - 1).copied().unwrap_or(0.0);
         absolute_timestamp - prev_cumulative
+    }
+
+    /// Get the total duration of the recording
+    pub fn duration(&self) -> f64 {
+        self.cumulative_times().last().copied().unwrap_or(0.0)
+    }
+
+    /// Get output text up to a specific timestamp
+    ///
+    /// Returns all output data concatenated up to (and including) the given timestamp.
+    pub fn output_at(&self, timestamp: f64) -> String {
+        let mut output = String::new();
+        let mut cumulative = 0.0;
+
+        for event in &self.events {
+            cumulative += event.time;
+            if cumulative > timestamp {
+                break;
+            }
+            if event.is_output() {
+                output.push_str(&event.data);
+            }
+        }
+
+        output
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_file() -> AsciicastFile {
+        let mut file = AsciicastFile::new(Header {
+            version: 3,
+            width: Some(80),
+            height: Some(24),
+            term: None,
+            timestamp: None,
+            duration: None,
+            title: None,
+            command: None,
+            env: None,
+            idle_time_limit: None,
+        });
+        file.events.push(Event::output(0.1, "hello"));
+        file.events.push(Event::output(0.2, " world"));
+        file.events.push(Event::marker(0.1, "test marker"));
+        file.events.push(Event::output(0.3, "!"));
+        file
+    }
+
+    #[test]
+    fn event_type_from_code() {
+        assert_eq!(EventType::from_code("o"), Some(EventType::Output));
+        assert_eq!(EventType::from_code("i"), Some(EventType::Input));
+        assert_eq!(EventType::from_code("m"), Some(EventType::Marker));
+        assert_eq!(EventType::from_code("r"), Some(EventType::Resize));
+        assert_eq!(EventType::from_code("x"), Some(EventType::Exit));
+        assert_eq!(EventType::from_code("z"), None);
+    }
+
+    #[test]
+    fn event_type_to_code() {
+        assert_eq!(EventType::Output.to_code(), "o");
+        assert_eq!(EventType::Input.to_code(), "i");
+        assert_eq!(EventType::Marker.to_code(), "m");
+        assert_eq!(EventType::Resize.to_code(), "r");
+        assert_eq!(EventType::Exit.to_code(), "x");
+    }
+
+    #[test]
+    fn markers_returns_only_markers() {
+        let file = create_test_file();
+        let markers = file.markers();
+        assert_eq!(markers.len(), 1);
+        assert_eq!(markers[0].data, "test marker");
+    }
+
+    #[test]
+    fn outputs_returns_only_outputs() {
+        let file = create_test_file();
+        let outputs = file.outputs();
+        assert_eq!(outputs.len(), 3);
+    }
+
+    #[test]
+    fn cumulative_times_calculates_correctly() {
+        let file = create_test_file();
+        let times = file.cumulative_times();
+        assert_eq!(times.len(), 4);
+        assert!((times[0] - 0.1).abs() < 0.001);
+        assert!((times[1] - 0.3).abs() < 0.001);
+        assert!((times[2] - 0.4).abs() < 0.001);
+        assert!((times[3] - 0.7).abs() < 0.001);
+    }
+
+    #[test]
+    fn duration_returns_total_time() {
+        let file = create_test_file();
+        assert!((file.duration() - 0.7).abs() < 0.001);
+    }
+
+    #[test]
+    fn output_at_returns_output_up_to_timestamp() {
+        let file = create_test_file();
+
+        // At 0.0 - nothing yet
+        assert_eq!(file.output_at(0.0), "");
+
+        // At 0.15 - just "hello"
+        assert_eq!(file.output_at(0.15), "hello");
+
+        // At 0.35 - "hello world"
+        assert_eq!(file.output_at(0.35), "hello world");
+
+        // At 1.0 - everything
+        assert_eq!(file.output_at(1.0), "hello world!");
+    }
+
+    #[test]
+    fn find_insertion_index_works() {
+        let file = create_test_file();
+        assert_eq!(file.find_insertion_index(0.0), 0);
+        assert_eq!(file.find_insertion_index(0.15), 1);
+        assert_eq!(file.find_insertion_index(1.0), 4);
     }
 }

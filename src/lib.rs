@@ -6,16 +6,15 @@ pub mod analyzer;
 pub mod asciicast;
 pub mod branding;
 pub mod config;
-pub mod markers;
+pub mod playback;
 pub mod recording;
 pub mod shell;
 pub mod storage;
 pub mod tui;
 
 pub use analyzer::Analyzer;
-pub use asciicast::{AsciicastFile, Event, EventType, Header};
+pub use asciicast::{AsciicastFile, Event, EventType, Header, MarkerInfo, MarkerManager};
 pub use config::Config;
-pub use markers::MarkerManager;
 pub use recording::Recorder;
 pub use shell::ShellStatus;
 pub use storage::StorageManager;

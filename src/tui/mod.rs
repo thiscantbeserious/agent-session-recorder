@@ -8,9 +8,13 @@
 
 pub mod app;
 pub mod event;
+pub mod list_app;
 pub mod theme;
 pub mod ui;
 pub mod widgets;
 
 // Re-export theme for convenience
 pub use theme::{colorize_help, current_theme};
+
+// Re-export list app for commands
+pub use list_app::ListApp;

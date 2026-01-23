@@ -11,7 +11,7 @@ fail-under = 70.0
 # - src/recording.rs: Requires asciinema, tested via e2e
 # - src/tui/app.rs: Requires terminal, tested manually
 # - src/tui/event.rs: Requires terminal, tested manually
-exclude-files = ["tests/*", "*/tests.rs", "src/recording.rs", "src/tui/app.rs", "src/tui/event.rs"]
+exclude-files = ["tests/*", "*/tests.rs", "src/recording.rs", "src/tui/app.rs", "src/tui/event.rs", "src/tui/list_app.rs"]
 
 # Skip functions that are hard to test
 ignore = [

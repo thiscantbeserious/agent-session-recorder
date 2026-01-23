@@ -2,8 +2,7 @@
 
 use super::helpers::temp_fixture;
 
-use agr::markers::MarkerInfo;
-use agr::{AsciicastFile, MarkerManager};
+use agr::{AsciicastFile, MarkerInfo, MarkerManager};
 use std::io::Write;
 use tempfile::NamedTempFile;
 
