@@ -1,0 +1,40 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 69
+expression: output
+---
+=== agr analyze --help ===
+Exit code: 0
+
+--- stdout ---
+Analyze a recording file using an AI agent.
+
+The analyzer reads the cast file, identifies key moments (errors, decisions,
+milestones), and adds markers using 'agr marker add'. This is the same
+analysis that runs automatically when auto_analyze is enabled.
+
+The default agent is configured in ~/.config/agr/config.toml under
+[recording].analysis_agent. Use --agent to override for a single run.
+
+EXAMPLES:
+    agr analyze session.cast              [37mAnalyze with default agent[0m
+    agr analyze session.cast --agent codex    [37mOverride agent for this run[0m
+
+SUPPORTED AGENTS:
+    claude      [37mClaude Code CLI[0m
+    codex       [37mOpenAI Codex CLI[0m
+    gemini  [37mGoogle Gemini CLI[0m
+
+Usage: agr analyze [OPTIONS] <FILE>
+
+Arguments:
+  <FILE>
+          Path to the .cast recording file
+
+Options:
+  -a, --agent <AGENT>
+          Agent to use (overrides config)
+
+  -h, --help
+          Print help (see a summary with '-h')
+--- stderr ---

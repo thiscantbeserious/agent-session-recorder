@@ -1,0 +1,31 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 109
+expression: output
+---
+=== agr marker --help ===
+Exit code: 0
+
+--- stdout ---
+Add and list markers in asciicast recording files.
+
+Markers are annotations at specific timestamps in a recording,
+useful for highlighting key moments like errors, decisions, or
+milestones. Markers use the native asciicast v3 marker format.
+
+EXAMPLES:
+    agr marker add session.cast 45.2 "Build failed"
+    agr marker add session.cast 120.5 "Deployment complete"
+    agr marker list session.cast
+
+Usage: agr marker <COMMAND>
+
+Commands:
+  add   [37mAdd a marker to a cast file at a specific timestamp[0m
+  list  [37mList all markers in a cast file[0m
+  help  [37mPrint this message or the help of the given subcommand(s)[0m
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+--- stderr ---

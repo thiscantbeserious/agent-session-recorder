@@ -1,0 +1,38 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 59
+expression: output
+---
+=== agr record --help ===
+Exit code: 0
+
+--- stdout ---
+Start recording an AI agent session with asciinema.
+
+The recording is saved to ~/recorded_agent_sessions/<agent>/<timestamp>.cast
+in asciicast v3 format. When the session ends, you can optionally rename
+the recording for easier identification.
+
+EXAMPLES:
+    agr record claude                    [37mRecord a Claude Code session[0m
+    agr record codex                     [37mRecord an OpenAI Codex session[0m
+    agr record claude --name my-session  [37mRecord with a specific filename[0m
+    agr record claude -- --help          [37mPass --help flag to claude[0m
+    agr record gemini -- chat        [37mStart gemini in chat mode[0m
+
+Usage: agr record [OPTIONS] <AGENT> [-- <ARGS>...]
+
+Arguments:
+  <AGENT>
+          Agent name (e.g., claude, codex, gemini)
+
+  [ARGS]...
+          Arguments to pass to the agent (after --)
+
+Options:
+  -n, --name <NAME>
+          Session name (skips rename prompt)
+
+  -h, --help
+          Print help (see a summary with '-h')
+--- stderr ---

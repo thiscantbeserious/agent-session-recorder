@@ -1,0 +1,30 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 119
+expression: output
+---
+=== agr list --help ===
+Exit code: 0
+
+--- stdout ---
+List all recorded sessions with details.
+
+Shows sessions sorted by date (newest first) with agent name,
+age, file size, and filename.
+
+EXAMPLES:
+    agr list                [37mList all sessions[0m
+    agr ls                  [37mSame as 'agr list' (alias)[0m
+    agr list claude         [37mList only Claude sessions[0m
+    agr list codex          [37mList only Codex sessions[0m
+
+Usage: agr list [AGENT]
+
+Arguments:
+  [AGENT]
+          Filter sessions by agent name
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+--- stderr ---

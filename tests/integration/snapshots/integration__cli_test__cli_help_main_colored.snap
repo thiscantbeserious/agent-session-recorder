@@ -1,0 +1,57 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 205
+expression: output
+---
+=== agr --help (colored) ===
+Exit code: 0
+
+--- stdout (ANSI escaped) ---
+ESC[92m █████╗  ██████╗ ██████╗ESC[0m
+ESC[92m██╔══██╗██╔════╝ ██╔══██╗ESC[0m
+ESC[92m███████║██║  ███╗██████╔╝ESC[0m
+ESC[92m██╔══██║██║   ██║██╔══██╗ESC[0m
+ESC[92m██║  ██║╚██████╔╝██║  ██║ESC[0m
+ESC[92m╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝ESC[0m
+ESC[92m ⏺ REC ESC[0mESC[90m─────────────────────────────────────────────────────────────────────────ESC[0m
+
+
+Agent Session Recorder (AGR) - Record AI agent terminal sessions with asciinema.
+
+AGR automatically records your AI coding agent sessions (Claude, Codex, Gemini, etc.)
+to ~/recorded_agent_sessions/ in asciicast v3 format. Recordings can be played back
+with asciinema, auto-analyzed by AI agents, and annotated with markers.
+
+QUICK START:
+    agr record claude              ESC[37mRecord a Claude sessionESC[0m
+    agr status                     ESC[37mCheck storage usageESC[0m
+    agr list                       ESC[37mList all recordingsESC[0m
+    agr cleanup                    ESC[37mClean up old recordingsESC[0m
+
+SHELL INTEGRATION:
+    agr shell install              ESC[37mAuto-record configured agentsESC[0m
+    agr agents add claude          ESC[37mAdd agent to auto-record listESC[0m
+
+For more information, see: https://github.com/thiscantbeserious/agent-session-recorder
+
+Usage: agr <COMMAND>
+
+Commands:
+  record   ESC[37mStart recording a sessionESC[0m
+  status   ESC[37mShow storage statisticsESC[0m
+  cleanup  ESC[37mInteractive cleanup of old sessionsESC[0m
+  list     ESC[37mList recorded sessions [aliases: ls]ESC[0m
+  analyze  ESC[37mAnalyze a recording with AIESC[0m
+  marker   ESC[37mManage markers in cast filesESC[0m
+  agents   ESC[37mManage configured agentsESC[0m
+  config   ESC[37mConfiguration managementESC[0m
+  shell    ESC[37mManage shell integrationESC[0m
+  help     ESC[37mPrint this message or the help of the given subcommand(s)ESC[0m
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+--- stderr ---

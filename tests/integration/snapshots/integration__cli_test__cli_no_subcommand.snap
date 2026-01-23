@@ -1,0 +1,38 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 153
+expression: output
+---
+=== agr (no args) ===
+Exit code: 2
+
+--- stdout ---
+[92m █████╗  ██████╗ ██████╗[0m
+[92m██╔══██╗██╔════╝ ██╔══██╗[0m
+[92m███████║██║  ███╗██████╔╝[0m
+[92m██╔══██║██║   ██║██╔══██╗[0m
+[92m██║  ██║╚██████╔╝██║  ██║[0m
+[92m╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[0m
+[92m ⏺ REC [0m[90m─────────────────────────────────────────────────────────────────────────[0m
+
+
+[ Agent Session Recorder ] - auto-record agent sessions and handle the recordings with AI!
+
+Usage: agr <COMMAND>
+
+Commands:
+  record   [37mStart recording a session[0m
+  status   [37mShow storage statistics[0m
+  cleanup  [37mInteractive cleanup of old sessions[0m
+  list     [37mList recorded sessions [aliases: ls][0m
+  analyze  [37mAnalyze a recording with AI[0m
+  marker   [37mManage markers in cast files[0m
+  agents   [37mManage configured agents[0m
+  config   [37mConfiguration management[0m
+  shell    [37mManage shell integration[0m
+  help     [37mPrint this message or the help of the given subcommand(s)[0m
+
+Options:
+  -h, --help     Print help (see more with '--help')
+  -V, --version  Print version
+--- stderr ---

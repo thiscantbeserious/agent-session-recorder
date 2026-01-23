@@ -1,0 +1,57 @@
+---
+source: tests/integration/cli_test.rs
+assertion_line: 49
+expression: output
+---
+=== agr --help ===
+Exit code: 0
+
+--- stdout ---
+[92m █████╗  ██████╗ ██████╗[0m
+[92m██╔══██╗██╔════╝ ██╔══██╗[0m
+[92m███████║██║  ███╗██████╔╝[0m
+[92m██╔══██║██║   ██║██╔══██╗[0m
+[92m██║  ██║╚██████╔╝██║  ██║[0m
+[92m╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[0m
+[92m ⏺ REC [0m[90m─────────────────────────────────────────────────────────────────────────[0m
+
+
+Agent Session Recorder (AGR) - Record AI agent terminal sessions with asciinema.
+
+AGR automatically records your AI coding agent sessions (Claude, Codex, Gemini, etc.)
+to ~/recorded_agent_sessions/ in asciicast v3 format. Recordings can be played back
+with asciinema, auto-analyzed by AI agents, and annotated with markers.
+
+QUICK START:
+    agr record claude              [37mRecord a Claude session[0m
+    agr status                     [37mCheck storage usage[0m
+    agr list                       [37mList all recordings[0m
+    agr cleanup                    [37mClean up old recordings[0m
+
+SHELL INTEGRATION:
+    agr shell install              [37mAuto-record configured agents[0m
+    agr agents add claude          [37mAdd agent to auto-record list[0m
+
+For more information, see: https://github.com/thiscantbeserious/agent-session-recorder
+
+Usage: agr <COMMAND>
+
+Commands:
+  record   [37mStart recording a session[0m
+  status   [37mShow storage statistics[0m
+  cleanup  [37mInteractive cleanup of old sessions[0m
+  list     [37mList recorded sessions [aliases: ls][0m
+  analyze  [37mAnalyze a recording with AI[0m
+  marker   [37mManage markers in cast files[0m
+  agents   [37mManage configured agents[0m
+  config   [37mConfiguration management[0m
+  shell    [37mManage shell integration[0m
+  help     [37mPrint this message or the help of the given subcommand(s)[0m
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+--- stderr ---
