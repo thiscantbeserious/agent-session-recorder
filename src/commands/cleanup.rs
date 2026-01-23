@@ -1,17 +1,21 @@
 //! Cleanup command handler
 
+use std::io::IsTerminal;
+
 use anyhow::Result;
 use std::io::{self, BufRead, Write};
 
 use agr::storage::{SessionInfo, StorageStats};
-use agr::tui::current_theme;
+use agr::tui::widgets::FileItem;
+use agr::tui::{current_theme, CleanupApp};
 use agr::{Config, StorageManager};
 
 use super::truncate_string;
 
 /// Interactive cleanup of old session recordings.
 ///
-/// Displays sessions sorted by age and lets you choose how many to delete.
+/// When stdout is a TTY, shows an interactive file explorer with multi-select.
+/// When piped, shows a text-based prompt interface (fallback).
 /// Supports filtering by agent and age threshold.
 #[cfg(not(tarpaulin_include))]
 pub fn handle(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()> {
@@ -40,6 +44,41 @@ pub fn handle(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()>
         return Ok(());
     }
 
+    // Check if we're in a TTY - if so, use interactive TUI
+    if std::io::stdout().is_terminal() {
+        handle_tui(sessions, agent_filter, storage)
+    } else {
+        handle_text(sessions, agent_filter, older_than, age_threshold, storage)
+    }
+}
+
+/// Handle cleanup command with interactive TUI.
+fn handle_tui(
+    sessions: Vec<SessionInfo>,
+    agent_filter: Option<&str>,
+    storage: StorageManager,
+) -> Result<()> {
+    // Convert sessions to FileItems
+    let items: Vec<FileItem> = sessions.into_iter().map(FileItem::from).collect();
+
+    // Create and run the cleanup app
+    let mut app = CleanupApp::new(items, storage)?;
+
+    // If agent filter was specified on command line, it's already applied
+    // (sessions were filtered before being passed to this function)
+    let _ = agent_filter; // Acknowledge the parameter (already used in filtering)
+
+    app.run()
+}
+
+/// Handle cleanup command with text output (piped mode fallback).
+fn handle_text(
+    sessions: Vec<SessionInfo>,
+    agent_filter: Option<&str>,
+    older_than: Option<u32>,
+    age_threshold: u32,
+    storage: StorageManager,
+) -> Result<()> {
     let stats = storage.get_stats()?;
 
     // Count old sessions (older than configured threshold)
