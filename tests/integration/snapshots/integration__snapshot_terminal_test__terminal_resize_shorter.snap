@@ -1,0 +1,8 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 209
+expression: buf.to_string()
+---
+     Line2
+          Line3
+               Line4

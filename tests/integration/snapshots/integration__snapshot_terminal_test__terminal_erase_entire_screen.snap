@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 116
+expression: "process(\"Line1\\nLine2\\nLine3\\x1b[2J\")"
+---
+

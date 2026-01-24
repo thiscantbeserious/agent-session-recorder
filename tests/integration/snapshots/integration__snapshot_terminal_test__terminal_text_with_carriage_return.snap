@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 37
+expression: "process(\"XXXX\\rHello\")"
+---
+Hello

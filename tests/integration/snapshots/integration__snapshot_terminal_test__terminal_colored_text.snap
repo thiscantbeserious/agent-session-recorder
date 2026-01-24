@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 132
+expression: "process(\"\\x1b[31mRed\\x1b[32mGreen\\x1b[34mBlue\\x1b[0m\")"
+---
+RedGreenBlue

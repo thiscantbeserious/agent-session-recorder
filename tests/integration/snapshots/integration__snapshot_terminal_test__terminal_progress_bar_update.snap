@@ -1,0 +1,8 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 271
+expression: buf.to_string()
+---
+Downloading...
+[##########] 100%        ] 0%
+                 Done!
