@@ -147,7 +147,11 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
             // Handle all pending input events before rendering
             // First poll waits up to 16ms, then drain any queued events with zero timeout
             let mut first_poll = true;
-            while event::poll(if first_poll { Duration::from_millis(16) } else { Duration::ZERO })? {
+            while event::poll(if first_poll {
+                Duration::from_millis(16)
+            } else {
+                Duration::ZERO
+            })? {
                 first_poll = false;
                 match event::read()? {
                     Event::Resize(new_cols, new_rows) => {
@@ -164,125 +168,97 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                         needs_render = true;
                     }
                     Event::Key(key) => {
-                    if show_help {
-                        show_help = false;
-                        needs_render = true;
-                        continue;
-                    }
-
-                    match key.code {
-                        KeyCode::Char('q') => {
-                            return Ok(PlaybackResult::Interrupted);
+                        if show_help {
+                            show_help = false;
+                            needs_render = true;
+                            continue;
                         }
-                        KeyCode::Esc => {
-                            if viewport_mode {
-                                viewport_mode = false;
-                            } else if free_mode {
-                                free_mode = false;
-                            } else {
+
+                        match key.code {
+                            KeyCode::Char('q') => {
                                 return Ok(PlaybackResult::Interrupted);
                             }
-                        }
-                        KeyCode::Char('v') => {
-                            viewport_mode = !viewport_mode;
-                            if viewport_mode {
-                                free_mode = false; // Exit free mode when entering viewport mode
-                            }
-                        }
-                        KeyCode::Char('f') => {
-                            free_mode = !free_mode;
-                            if free_mode {
-                                viewport_mode = false; // Exit viewport mode when entering free mode
-                                paused = true; // Enforce pause in free mode
-                                // Start at current cursor position or middle of viewport
-                                free_line = buffer.cursor_row();
-                            }
-                        }
-                        KeyCode::Char(' ') => {
-                            paused = !paused;
-                            if !paused {
-                                // Exit free mode when resuming playback
-                                free_mode = false;
-                                // Reset timing when resuming
-                                start_time = Instant::now();
-                                time_offset = current_time;
-                            }
-                        }
-                        KeyCode::Char('+') | KeyCode::Char('=') => {
-                            speed = (speed * 1.5).min(16.0);
-                        }
-                        KeyCode::Char('-') | KeyCode::Char('_') => {
-                            speed = (speed / 1.5).max(0.1);
-                        }
-                        KeyCode::Char('?') => {
-                            show_help = true;
-                        }
-                        KeyCode::Char('r') => {
-                            // Resize terminal to match recording size
-                            let target_rows = rec_rows + status_lines as u32;
-                            write!(stdout, "\x1b[8;{};{}t", target_rows, rec_cols)?;
-                            stdout.flush()?;
-                            // Small delay for terminal to resize
-                            std::thread::sleep(Duration::from_millis(50));
-                            // Update view dimensions after resize
-                            if let Ok((new_cols, new_rows)) = crossterm::terminal::size() {
-                                term_cols = new_cols;
-                                term_rows = new_rows;
-                                view_rows = (new_rows.saturating_sub(status_lines)) as usize;
-                                view_cols = new_cols as usize;
-                                // Reset viewport offset since we now fit
-                                if view_rows >= rec_rows as usize {
-                                    view_row_offset = 0;
-                                }
-                                if view_cols >= rec_cols as usize {
-                                    view_col_offset = 0;
-                                }
-                            }
-                        }
-                        // Marker navigation (forward only)
-                        KeyCode::Char('m') => {
-                            if let Some(next) = markers.iter().find(|m| m.time > current_time + 0.1)
-                            {
-                                seek_to_time(&mut buffer, &cast, next.time, rec_cols, rec_rows);
-                                current_time = next.time;
-                                time_offset = current_time;
-                                (event_idx, cumulative_time) =
-                                    find_event_index_at_time(&cast, current_time);
-                                paused = true;
-                            }
-                        }
-                        // Seeking
-                        KeyCode::Char('<') | KeyCode::Char(',') => {
-                            let new_time = (current_time - 5.0).max(0.0);
-                            seek_to_time(&mut buffer, &cast, new_time, rec_cols, rec_rows);
-                            current_time = new_time;
-                            time_offset = current_time;
-                            start_time = Instant::now();
-                            (event_idx, cumulative_time) =
-                                find_event_index_at_time(&cast, current_time);
-                        }
-                        KeyCode::Char('>') | KeyCode::Char('.') => {
-                            let new_time = (current_time + 5.0).min(total_duration);
-                            current_time = new_time;
-                            time_offset = current_time;
-                            start_time = Instant::now();
-                            (event_idx, cumulative_time) =
-                                find_event_index_at_time(&cast, current_time);
-                            buffer = TerminalBuffer::new(rec_cols as usize, rec_rows as usize);
-                            process_up_to_time(&mut buffer, current_time, &cast);
-                        }
-                        // Arrow keys: seek by default, viewport scroll in viewport mode
-                        // Shift+Arrow: seek by 5% of total duration
-                        KeyCode::Left => {
-                            if viewport_mode {
-                                view_col_offset = view_col_offset.saturating_sub(1);
-                            } else {
-                                let step = if key.modifiers.contains(KeyModifiers::SHIFT) {
-                                    total_duration * 0.05 // 5% jump
+                            KeyCode::Esc => {
+                                if viewport_mode {
+                                    viewport_mode = false;
+                                } else if free_mode {
+                                    free_mode = false;
                                 } else {
-                                    5.0 // 5 seconds
-                                };
-                                let new_time = (current_time - step).max(0.0);
+                                    return Ok(PlaybackResult::Interrupted);
+                                }
+                            }
+                            KeyCode::Char('v') => {
+                                viewport_mode = !viewport_mode;
+                                if viewport_mode {
+                                    free_mode = false; // Exit free mode when entering viewport mode
+                                }
+                            }
+                            KeyCode::Char('f') => {
+                                free_mode = !free_mode;
+                                if free_mode {
+                                    viewport_mode = false; // Exit viewport mode when entering free mode
+                                    paused = true; // Enforce pause in free mode
+                                                   // Start at current cursor position or middle of viewport
+                                    free_line = buffer.cursor_row();
+                                }
+                            }
+                            KeyCode::Char(' ') => {
+                                paused = !paused;
+                                if !paused {
+                                    // Exit free mode when resuming playback
+                                    free_mode = false;
+                                    // Reset timing when resuming
+                                    start_time = Instant::now();
+                                    time_offset = current_time;
+                                }
+                            }
+                            KeyCode::Char('+') | KeyCode::Char('=') => {
+                                speed = (speed * 1.5).min(16.0);
+                            }
+                            KeyCode::Char('-') | KeyCode::Char('_') => {
+                                speed = (speed / 1.5).max(0.1);
+                            }
+                            KeyCode::Char('?') => {
+                                show_help = true;
+                            }
+                            KeyCode::Char('r') => {
+                                // Resize terminal to match recording size
+                                let target_rows = rec_rows + status_lines as u32;
+                                write!(stdout, "\x1b[8;{};{}t", target_rows, rec_cols)?;
+                                stdout.flush()?;
+                                // Small delay for terminal to resize
+                                std::thread::sleep(Duration::from_millis(50));
+                                // Update view dimensions after resize
+                                if let Ok((new_cols, new_rows)) = crossterm::terminal::size() {
+                                    term_cols = new_cols;
+                                    term_rows = new_rows;
+                                    view_rows = (new_rows.saturating_sub(status_lines)) as usize;
+                                    view_cols = new_cols as usize;
+                                    // Reset viewport offset since we now fit
+                                    if view_rows >= rec_rows as usize {
+                                        view_row_offset = 0;
+                                    }
+                                    if view_cols >= rec_cols as usize {
+                                        view_col_offset = 0;
+                                    }
+                                }
+                            }
+                            // Marker navigation (forward only)
+                            KeyCode::Char('m') => {
+                                if let Some(next) =
+                                    markers.iter().find(|m| m.time > current_time + 0.1)
+                                {
+                                    seek_to_time(&mut buffer, &cast, next.time, rec_cols, rec_rows);
+                                    current_time = next.time;
+                                    time_offset = current_time;
+                                    (event_idx, cumulative_time) =
+                                        find_event_index_at_time(&cast, current_time);
+                                    paused = true;
+                                }
+                            }
+                            // Seeking
+                            KeyCode::Char('<') | KeyCode::Char(',') => {
+                                let new_time = (current_time - 5.0).max(0.0);
                                 seek_to_time(&mut buffer, &cast, new_time, rec_cols, rec_rows);
                                 current_time = new_time;
                                 time_offset = current_time;
@@ -290,18 +266,8 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                                 (event_idx, cumulative_time) =
                                     find_event_index_at_time(&cast, current_time);
                             }
-                        }
-                        KeyCode::Right => {
-                            if viewport_mode {
-                                let max_offset = (rec_cols as usize).saturating_sub(view_cols);
-                                view_col_offset = (view_col_offset + 1).min(max_offset);
-                            } else {
-                                let step = if key.modifiers.contains(KeyModifiers::SHIFT) {
-                                    total_duration * 0.05 // 5% jump
-                                } else {
-                                    5.0 // 5 seconds
-                                };
-                                let new_time = (current_time + step).min(total_duration);
+                            KeyCode::Char('>') | KeyCode::Char('.') => {
+                                let new_time = (current_time + 5.0).min(total_duration);
                                 current_time = new_time;
                                 time_offset = current_time;
                                 start_time = Instant::now();
@@ -310,70 +276,112 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                                 buffer = TerminalBuffer::new(rec_cols as usize, rec_rows as usize);
                                 process_up_to_time(&mut buffer, current_time, &cast);
                             }
-                        }
-                        KeyCode::Up => {
-                            if free_mode {
-                                // Move highlight up one line
-                                let old_offset = view_row_offset;
-                                prev_free_line = free_line;
-                                free_line = free_line.saturating_sub(1);
-                                // Auto-scroll viewport to keep highlighted line visible
-                                if free_line < view_row_offset {
-                                    view_row_offset = free_line;
+                            // Arrow keys: seek by default, viewport scroll in viewport mode
+                            // Shift+Arrow: seek by 5% of total duration
+                            KeyCode::Left => {
+                                if viewport_mode {
+                                    view_col_offset = view_col_offset.saturating_sub(1);
+                                } else {
+                                    let step = if key.modifiers.contains(KeyModifiers::SHIFT) {
+                                        total_duration * 0.05 // 5% jump
+                                    } else {
+                                        5.0 // 5 seconds
+                                    };
+                                    let new_time = (current_time - step).max(0.0);
+                                    seek_to_time(&mut buffer, &cast, new_time, rec_cols, rec_rows);
+                                    current_time = new_time;
+                                    time_offset = current_time;
+                                    start_time = Instant::now();
+                                    (event_idx, cumulative_time) =
+                                        find_event_index_at_time(&cast, current_time);
                                 }
-                                // If viewport didn't scroll, only update highlight lines
-                                if view_row_offset == old_offset && prev_free_line != free_line {
-                                    free_line_only = true;
-                                }
-                            } else if viewport_mode {
-                                view_row_offset = view_row_offset.saturating_sub(1);
                             }
-                        }
-                        KeyCode::Down => {
-                            if free_mode {
-                                // Move highlight down one line
-                                let old_offset = view_row_offset;
-                                prev_free_line = free_line;
-                                let max_line = (rec_rows as usize).saturating_sub(1);
-                                free_line = (free_line + 1).min(max_line);
-                                // Auto-scroll viewport to keep highlighted line visible
-                                if free_line >= view_row_offset + view_rows {
-                                    view_row_offset = free_line - view_rows + 1;
+                            KeyCode::Right => {
+                                if viewport_mode {
+                                    let max_offset = (rec_cols as usize).saturating_sub(view_cols);
+                                    view_col_offset = (view_col_offset + 1).min(max_offset);
+                                } else {
+                                    let step = if key.modifiers.contains(KeyModifiers::SHIFT) {
+                                        total_duration * 0.05 // 5% jump
+                                    } else {
+                                        5.0 // 5 seconds
+                                    };
+                                    let new_time = (current_time + step).min(total_duration);
+                                    current_time = new_time;
+                                    time_offset = current_time;
+                                    start_time = Instant::now();
+                                    (event_idx, cumulative_time) =
+                                        find_event_index_at_time(&cast, current_time);
+                                    buffer =
+                                        TerminalBuffer::new(rec_cols as usize, rec_rows as usize);
+                                    process_up_to_time(&mut buffer, current_time, &cast);
                                 }
-                                // If viewport didn't scroll, only update highlight lines
-                                if view_row_offset == old_offset && prev_free_line != free_line {
-                                    free_line_only = true;
-                                }
-                            } else if viewport_mode {
-                                let max_offset = (rec_rows as usize).saturating_sub(view_rows);
-                                view_row_offset = (view_row_offset + 1).min(max_offset);
                             }
+                            KeyCode::Up => {
+                                if free_mode {
+                                    // Move highlight up one line
+                                    let old_offset = view_row_offset;
+                                    prev_free_line = free_line;
+                                    free_line = free_line.saturating_sub(1);
+                                    // Auto-scroll viewport to keep highlighted line visible
+                                    if free_line < view_row_offset {
+                                        view_row_offset = free_line;
+                                    }
+                                    // If viewport didn't scroll, only update highlight lines
+                                    if view_row_offset == old_offset && prev_free_line != free_line
+                                    {
+                                        free_line_only = true;
+                                    }
+                                } else if viewport_mode {
+                                    view_row_offset = view_row_offset.saturating_sub(1);
+                                }
+                            }
+                            KeyCode::Down => {
+                                if free_mode {
+                                    // Move highlight down one line
+                                    let old_offset = view_row_offset;
+                                    prev_free_line = free_line;
+                                    let max_line = (rec_rows as usize).saturating_sub(1);
+                                    free_line = (free_line + 1).min(max_line);
+                                    // Auto-scroll viewport to keep highlighted line visible
+                                    if free_line >= view_row_offset + view_rows {
+                                        view_row_offset = free_line - view_rows + 1;
+                                    }
+                                    // If viewport didn't scroll, only update highlight lines
+                                    if view_row_offset == old_offset && prev_free_line != free_line
+                                    {
+                                        free_line_only = true;
+                                    }
+                                } else if viewport_mode {
+                                    let max_offset = (rec_rows as usize).saturating_sub(view_rows);
+                                    view_row_offset = (view_row_offset + 1).min(max_offset);
+                                }
+                            }
+                            KeyCode::Home => {
+                                seek_to_time(&mut buffer, &cast, 0.0, rec_cols, rec_rows);
+                                current_time = 0.0;
+                                time_offset = 0.0;
+                                start_time = Instant::now();
+                                event_idx = 0;
+                                cumulative_time = 0.0;
+                                view_row_offset = 0;
+                                view_col_offset = 0;
+                            }
+                            KeyCode::End => {
+                                buffer = TerminalBuffer::new(rec_cols as usize, rec_rows as usize);
+                                process_up_to_time(&mut buffer, total_duration, &cast);
+                                current_time = total_duration;
+                                time_offset = current_time;
+                                event_idx = cast.events.len();
+                                cumulative_time = total_duration;
+                                paused = true;
+                            }
+                            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                return Ok(PlaybackResult::Interrupted);
+                            }
+                            _ => {}
                         }
-                        KeyCode::Home => {
-                            seek_to_time(&mut buffer, &cast, 0.0, rec_cols, rec_rows);
-                            current_time = 0.0;
-                            time_offset = 0.0;
-                            start_time = Instant::now();
-                            event_idx = 0;
-                            cumulative_time = 0.0;
-                            view_row_offset = 0;
-                            view_col_offset = 0;
-                        }
-                        KeyCode::End => {
-                            buffer = TerminalBuffer::new(rec_cols as usize, rec_rows as usize);
-                            process_up_to_time(&mut buffer, total_duration, &cast);
-                            current_time = total_duration;
-                            time_offset = current_time;
-                            event_idx = cast.events.len();
-                            cumulative_time = total_duration;
-                            paused = true;
-                        }
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            return Ok(PlaybackResult::Interrupted);
-                        }
-                        _ => {}
-                    }
-                    needs_render = true;
+                        needs_render = true;
                     }
                     _ => {} // Ignore other events (mouse, focus, etc.)
                 }
@@ -707,7 +715,7 @@ fn render_scroll_indicator(
     // Draw at top-right, completely aligned to edge
     let arrow_color = Color::Yellow;
     let bg_color = Color::AnsiValue(236); // Same as progress bar
-    // Width = arrows + spaces between + padding on sides
+                                          // Width = arrows + spaces between + padding on sides
     let display_width = (arrows.len() * 2 + 1) as u16; // each arrow + space, plus padding
     let start_col = term_cols.saturating_sub(display_width);
 
