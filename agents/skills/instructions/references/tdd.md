@@ -31,12 +31,11 @@ Tests are separate from source code. Never use inline `#[cfg(test)]` modules.
 
 ```
 tests/
-  unit.rs                 # Unit test module root
-  unit/
+  integration.rs          # Integration test module root
+  integration/
     storage_test.rs       # Tests for storage module
     markers_test.rs       # Tests for markers module
-  integration/
-    *.rs                  # Integration tests (Rust binary tests)
+    snapshots/            # Snapshot files for visual tests
   e2e/
     *.sh                  # End-to-end shell scripts
   fixtures/
