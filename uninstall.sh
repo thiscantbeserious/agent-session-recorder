@@ -4,8 +4,6 @@ set -e
 echo "=== Agent Session Recorder (AGR) Uninstaller ==="
 echo
 
-INSTALL_DIR="$HOME/.local/bin"
-
 # Remove shell integration (before binary removal so agr CLI can run)
 echo
 echo "Removing shell integration..."
@@ -16,26 +14,22 @@ else
     echo "agr not found in PATH, removing shell integration manually..."
     for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
         if [ -f "$rc" ]; then
-            # Check if AGR markers are present
             if grep -q ">>> AGR (Agent Session Recorder) >>>" "$rc" 2>/dev/null; then
-                # Remove the marked section using sed
                 sed -i.bak '/# >>> AGR (Agent Session Recorder) >>>/,/# <<< AGR (Agent Session Recorder) <<</d' "$rc"
                 rm -f "$rc.bak"
                 echo "  Removed shell integration from: $rc"
             fi
         fi
     done
-    # Note: Shell script is now embedded in RC files, no external file to remove
 fi
 
-# Remove binary (after CLI cleanup so agr commands can run)
+# Remove binary
 echo
 echo "Removing binary..."
-if [ -f "$INSTALL_DIR/agr" ]; then
-    rm "$INSTALL_DIR/agr"
-    echo "Removed binary: $INSTALL_DIR/agr"
+if command -v cargo &>/dev/null; then
+    cargo uninstall agr 2>/dev/null && echo "Removed agr via cargo" || echo "agr not installed via cargo"
 else
-    echo "Binary not found at: $INSTALL_DIR/agr"
+    echo "cargo not found, skipping binary removal"
 fi
 
 # Remove config directory (ask first)

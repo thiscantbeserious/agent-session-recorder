@@ -44,35 +44,17 @@ if ! command -v asciinema &>/dev/null; then
 fi
 echo "asciinema: $(command -v asciinema)"
 
-# Build binary
-echo
-echo "Building binary..."
-
-# Try native build first (if cargo available)
-if command -v cargo &>/dev/null; then
-    echo "Using native Rust build..."
-    cargo build --release
-    mkdir -p dist
-    cp target/release/agr dist/agr
-# Fallback to Docker for Linux binary
-elif command -v docker &>/dev/null; then
-    echo "Using Docker build (produces Linux binary)..."
-    ./build.sh
-else
-    echo "Error: Neither cargo nor docker found. Please install one of them."
-    exit 1
-fi
-
 # Install binary
-INSTALL_DIR="$HOME/.local/bin"
-mkdir -p "$INSTALL_DIR"
-cp dist/agr "$INSTALL_DIR/agr"
-chmod +x "$INSTALL_DIR/agr"
+echo
+echo "Installing binary..."
 
-# On macOS, re-sign the binary to avoid security issues
-if [ "$OS" = "Darwin" ]; then
-    echo "Signing binary for macOS..."
-    codesign -s - -f "$INSTALL_DIR/agr" 2>/dev/null || true
+if command -v cargo &>/dev/null; then
+    echo "Using cargo install..."
+    cargo install --path . --force
+    INSTALL_DIR="$HOME/.cargo/bin"
+else
+    echo "Error: cargo not found. Please install Rust: https://rustup.rs"
+    exit 1
 fi
 
 echo
