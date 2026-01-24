@@ -1,96 +1,70 @@
-# Agile SDLC for AGR Development
+# SDLC Process
 
-This document describes the Agile Software Development Life Cycle used for AGR.
+The Software Development Life Cycle using orchestrated roles.
 
-## Core Principles
+## Roles
 
-Based on the Agile Manifesto:
+| Role | Phase | Responsibility |
+|------|-------|----------------|
+| Architect | Design | Creates plan, proposes options |
+| Implementer | Code | Implements based on plan |
+| Reviewer | Test | Validates against plan |
+| Product Owner | Feedback | Final spec review, scope check |
+| Maintainer | Deploy | Merges PR, handles releases |
 
-- **Early customer involvement** - Get feedback early and often
-- **Iterative development** - Work in short cycles (sprints)
-- **Self-organizing teams** - Agents take ownership of tasks
-- **Adaptation to change** - Respond to feedback, don't fight it
+## Flow
+
+```
+1. Design    → Architect creates .state/<branch>/plan.md
+2. Code      → Implementer follows plan
+3. Test      → Reviewer validates against plan
+4. Feedback  → Product Owner reviews spec compliance
+5. Deploy    → Maintainer merges after approvals
+```
 
 ## Phases
 
-### 1. Requirement Gathering
+### 1. Design (Architect)
 
-Collaborate to understand and prioritize needs.
+- Understand requirements
+- Propose 2-3 options with trade-offs
+- Ask for user input
+- Create plan in `.state/<branch-name>/plan.md`
 
-**For AGR agents:**
-```bash
-# Check current state
-cat .state/INDEX.md
-cat .state/decisions.md
-gh pr list --state merged    # What's been done
-gh pr list                   # What's in progress
-```
+### 2. Code (Implementer)
 
-### 2. Design
+- Follow the plan
+- TDD: write test first, then code
+- Apply `coding-principles.md`
+- Create PR when done
 
-Translate requirements into manageable tasks.
+### 3. Test (Reviewer)
 
-**For AGR agents:**
-- Break down features into small, testable units
-- Identify files to create/modify
-- Consider edge cases
-- Document significant decisions in `.state/decisions.md`
+- Read the plan first
+- Validate implementation matches plan
+- Run tests: `cargo test && ./tests/e2e_test.sh`
+- Check CodeRabbit review
+- Report findings
 
-### 3. Coding (TDD Sprint)
+### 4. Feedback (Product Owner)
 
-Develop in short iterative cycles with frequent integration.
+- Validate against original requirements
+- Check for scope creep
+- Propose splitting side-work into new branches
+- Final approval gate
 
-**For AGR agents - Red-Green-Refactor:**
-1. Write failing test first (behavior-focused)
-2. Run test - must fail
-3. Write minimal code to pass
-4. Run test - must pass
-5. Refactor if needed
-6. `cargo fmt` and `cargo clippy`
-7. Commit
+### 5. Deploy (Maintainer)
 
-### 4. Testing / QA
-
-Testing is integral to each iteration.
-
-**For AGR agents:**
-```bash
-cargo test              # Unit tests (MUST pass)
-./tests/e2e_test.sh     # E2E tests (MUST pass)
-```
-
-### 5. Deployment
-
-Release increments frequently.
-
-**For AGR agents:**
-1. Create PR: `gh pr create`
-2. Wait for CI (build, test, lint)
-3. Wait for CodeRabbit review
-4. Merge after verification: `gh pr merge --squash`
-
-### 6. Feedback
-
-Gather input to refine and improve.
-
-**For AGR agents:**
-- Document blockers encountered
-- Note lessons learned in `.state/decisions.md`
-- Update state files for next session
+- Merge PR after all approvals
+- Handle release tagging if needed
+- Clean up branches
 
 ## Cycle
 
-These phases work cyclically:
-
 ```
-Requirement -> Design -> Code -> Test -> Deploy -> Feedback
-     ^                                           |
-     +-------------------------------------------+
+Design → Code → Test → Feedback → Deploy
+  ^                                 |
+  +---------------------------------+
 ```
 
-Each cycle delivers incremental value while remaining responsive to change.
-
-## Reference
-
-- [Agile SDLC - GeeksforGeeks](https://www.geeksforgeeks.org/software-engineering/agile-sdlc-software-development-life-cycle/)
-- [Agile Manifesto](https://agilemanifesto.org/)
+Each cycle delivers incremental value. Product Owner may trigger new cycles for split-out work.

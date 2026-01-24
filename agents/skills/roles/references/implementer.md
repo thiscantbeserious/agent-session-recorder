@@ -1,4 +1,4 @@
-# Implementation Agent
+# Implementer
 
 Spawned per-task to implement features on feature branches.
 
