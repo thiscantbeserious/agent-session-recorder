@@ -15,9 +15,10 @@ This file is the single source of truth for all AI agents (Claude, Codex, Gemini
 | `knowledge` | Project-specific technical knowledge - READ files before doing related tasks |
 | `architecture` | Agent roles and orchestration patterns |
 
-## First Step: Take a Role
-**You MUST read** `agents/skills/architecture/SKILL.md` first, then read the appropriate role file.
-Unless instructed otherwise, take the orchestrator role by reading `agents/skills/architecture/references/orchestrator.md`.
+## First Steps
+
+1. Read `agents/skills/architecture/SKILL.md` and take a role (default: orchestrator)
+2. Read `tdd.md` and `coding-principles.md` before writing any code
 
 ## Documentation
 
