@@ -115,18 +115,9 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
     let mut show_help = false;
     let mut viewport_mode = false;
     let mut free_mode = false;
-    let mut free_event_idx: usize = 0; // Current output event index in free mode
+    let mut free_line: usize = 0; // Highlighted line in free mode (buffer row)
     let mut start_time = Instant::now();
     let mut time_offset = 0.0f64;
-
-    // Pre-compute output event indices for free mode navigation
-    let output_event_indices: Vec<usize> = cast
-        .events
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| e.is_output())
-        .map(|(i, _)| i)
-        .collect();
 
     // Setup terminal
     let mut stdout = io::stdout();
@@ -182,11 +173,8 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                             if free_mode {
                                 viewport_mode = false; // Exit viewport mode when entering free mode
                                 paused = true; // Enforce pause in free mode
-                                // Find current position in output events
-                                free_event_idx = output_event_indices
-                                    .iter()
-                                    .position(|&i| i >= event_idx)
-                                    .unwrap_or(output_event_indices.len().saturating_sub(1));
+                                // Start at current cursor position or middle of viewport
+                                free_line = buffer.cursor_row();
                             }
                         }
                         KeyCode::Char(' ') => {
@@ -303,59 +291,25 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                             }
                         }
                         KeyCode::Up => {
-                            if free_mode && !output_event_indices.is_empty() {
-                                // Go back one output event
-                                if free_event_idx > 0 {
-                                    free_event_idx -= 1;
-                                    // Rebuild buffer up to this event
-                                    buffer =
-                                        TerminalBuffer::new(rec_cols as usize, rec_rows as usize);
-                                    let target_idx = output_event_indices[free_event_idx];
-                                    for (i, evt) in cast.events.iter().enumerate() {
-                                        if i > target_idx {
-                                            break;
-                                        }
-                                        if evt.is_output() {
-                                            buffer.process(&evt.data);
-                                        }
-                                    }
-                                    // Update event_idx and time to match
-                                    event_idx = target_idx + 1;
-                                    (_, cumulative_time) =
-                                        find_event_index_at_time(&cast, current_time);
-                                    // Scroll to show cursor/bottom
-                                    let cursor_row = buffer.cursor_row();
-                                    if cursor_row < view_row_offset {
-                                        view_row_offset = cursor_row;
-                                    } else if cursor_row >= view_row_offset + view_rows {
-                                        view_row_offset = cursor_row.saturating_sub(view_rows) + 1;
-                                    }
+                            if free_mode {
+                                // Move highlight up one line
+                                free_line = free_line.saturating_sub(1);
+                                // Auto-scroll viewport to keep highlighted line visible
+                                if free_line < view_row_offset {
+                                    view_row_offset = free_line;
                                 }
                             } else if viewport_mode {
                                 view_row_offset = view_row_offset.saturating_sub(1);
                             }
                         }
                         KeyCode::Down => {
-                            if free_mode && !output_event_indices.is_empty() {
-                                // Go forward one output event
-                                if free_event_idx + 1 < output_event_indices.len() {
-                                    free_event_idx += 1;
-                                    // Process events up to this point
-                                    let target_idx = output_event_indices[free_event_idx];
-                                    while event_idx <= target_idx && event_idx < cast.events.len() {
-                                        let evt = &cast.events[event_idx];
-                                        if evt.is_output() {
-                                            buffer.process(&evt.data);
-                                        }
-                                        event_idx += 1;
-                                    }
-                                    // Scroll to show cursor/bottom
-                                    let cursor_row = buffer.cursor_row();
-                                    if cursor_row < view_row_offset {
-                                        view_row_offset = cursor_row;
-                                    } else if cursor_row >= view_row_offset + view_rows {
-                                        view_row_offset = cursor_row.saturating_sub(view_rows) + 1;
-                                    }
+                            if free_mode {
+                                // Move highlight down one line
+                                let max_line = (rec_rows as usize).saturating_sub(1);
+                                free_line = (free_line + 1).min(max_line);
+                                // Auto-scroll viewport to keep highlighted line visible
+                                if free_line >= view_row_offset + view_rows {
+                                    view_row_offset = free_line - view_rows + 1;
                                 }
                             } else if viewport_mode {
                                 let max_offset = (rec_rows as usize).saturating_sub(view_rows);
@@ -425,11 +379,7 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                     view_col_offset,
                     view_rows,
                     view_cols,
-                    if free_mode {
-                        Some(buffer.cursor_row())
-                    } else {
-                        None
-                    },
+                    if free_mode { Some(free_line) } else { None },
                 )?;
 
                 // Show scroll indicator if viewport can scroll
@@ -838,10 +788,9 @@ fn render_help(stdout: &mut io::Stdout, width: u16, height: u16) -> Result<()> {
         "  ║  Markers                                  ║",
         "  ║    m          Jump to next marker         ║",
         "  ║                                           ║",
-        "  ║  Free Mode (step through output)           ║",
+        "  ║  Free Mode (line-by-line navigation)       ║",
         "  ║    f          Toggle free mode            ║",
-        "  ║    ↑          Step back one output        ║",
-        "  ║    ↓          Step forward one output     ║",
+        "  ║    ↑/↓        Move highlight up/down      ║",
         "  ║    Esc        Exit free mode              ║",
         "  ║                                           ║",
         "  ║  Viewport                                 ║",
