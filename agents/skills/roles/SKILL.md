@@ -5,4 +5,6 @@ description: Agent role definitions. Load when assigned a role (e.g., "you are a
 
 # Agent Roles
 
-Read the role file from `references/` that matches your assignment. Default is orchestrator.
+## Access Pattern
+
+Read the role file from `references/` that matches your assignment (default: orchestrator). After loading your role, check the instructions skill for task-specific guidance.
