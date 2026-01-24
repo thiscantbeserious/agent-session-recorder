@@ -12,19 +12,18 @@ This file is the single source of truth for all AI agents (Claude, Codex, Gemini
 ### Project Skills
 | Skill | Purpose |
 |-------|---------|
-| `knowledge` | Project-specific technical knowledge - READ files before doing related tasks |
-| `architecture` | Agent roles and orchestration patterns |
+| `instructions` | Project-specific development instructions |
+| `roles` | Agent role definitions |
 
-## First Step: Take a Role
-**You MUST read** `agents/skills/architecture/SKILL.md` first, then read the appropriate role file.
-Unless instructed otherwise, take the orchestrator role by reading `agents/skills/architecture/references/orchestrator.md`.
+## First Steps
+
+1. Take a role (default: orchestrator)
+2. Read `tdd.md` and `coding-principles.md` before writing any code
 
 ## Documentation
 
 | Doc | Purpose |
 |-----|---------|
-| `agents/skills/architecture/` | Agent roles and orchestration patterns |
-| `agents/skills/knowledge/` | Project-specific development knowledge |
 | `.state/INDEX.md` | Current state, where to find things |
 | `.state/decisions.md` | Technical decisions log |
 
@@ -39,24 +38,17 @@ gh pr list --state merged -L 10  # Recent completed work
 
 ### Task Steps (SDLC)
 
-## ⚠️ MANDATORY: Read Knowledge Files Before Actions
+## Read Instructions Before Actions
 
-**You MUST actually READ the knowledge file BEFORE taking any action in that phase.**
-Do NOT skip this step. Do NOT assume you know the rules. Project-specific rules override defaults.
+Read the relevant instruction file before taking action. Use the `instructions` skill.
 
-| Phase | Action | MUST READ FIRST |
-|-------|--------|-----------------|
+| Phase | Action | Read |
+|-------|--------|------|
 | Design | Identify files, edge cases | `project.md` |
-| Code | TDD, format, lint | `tdd.md` |
+| Code | TDD, format, lint | `tdd.md`, `coding-principles.md` |
 | Test | Run tests | `verification.md` |
-| Deploy | Create PR, **merge PR** | `git.md` |
+| Deploy | Create PR, merge PR | `git.md` |
 | Feedback | Document learnings | `.state/decisions.md` |
-
-Use the `knowledge` skill to load these files.
-
-**This applies to ALL agents** (orchestrator, impl, verify). Fresh sessions must read the relevant file before acting.
-
-**Why:** Project-specific rules (e.g., "never delete branches") are in these files. Skipping causes mistakes.
 
 ### Verification Commands
 ```bash
