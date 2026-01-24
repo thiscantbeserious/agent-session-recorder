@@ -42,7 +42,7 @@ tests/
     *.cast                # Test data files
 ```
 
-**Preference:** Rust-style binary tests in `tests/` over inline test modules.
+**Preference:** Integration tests in `tests/` over inline `#[cfg(test)]` modules, unless not feasible.
 
 **Naming:** `<module>_test.rs` for files, descriptive behavior names for functions.
 
