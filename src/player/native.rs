@@ -114,6 +114,8 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
     let mut cumulative_time = 0.0f64; // Track cumulative event time at current event_idx
     let mut show_help = false;
     let mut viewport_mode = false;
+    let mut free_mode = false;
+    let mut free_line: usize = 0; // Highlighted line in free mode (absolute buffer row)
     let mut start_time = Instant::now();
     let mut time_offset = 0.0f64;
 
@@ -154,12 +156,26 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                         KeyCode::Esc => {
                             if viewport_mode {
                                 viewport_mode = false;
+                            } else if free_mode {
+                                free_mode = false;
                             } else {
                                 return Ok(PlaybackResult::Interrupted);
                             }
                         }
                         KeyCode::Char('v') => {
                             viewport_mode = !viewport_mode;
+                            if viewport_mode {
+                                free_mode = false; // Exit free mode when entering viewport mode
+                            }
+                        }
+                        KeyCode::Char('f') => {
+                            free_mode = !free_mode;
+                            if free_mode {
+                                viewport_mode = false; // Exit viewport mode when entering free mode
+                                // Set free_line to middle of current viewport
+                                free_line = view_row_offset + view_rows / 2;
+                                free_line = free_line.min(rec_rows as usize - 1);
+                            }
                         }
                         KeyCode::Char(' ') => {
                             paused = !paused;
@@ -273,12 +289,25 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                             }
                         }
                         KeyCode::Up => {
-                            if viewport_mode {
+                            if free_mode {
+                                free_line = free_line.saturating_sub(1);
+                                // Auto-scroll viewport to keep highlighted line visible
+                                if free_line < view_row_offset {
+                                    view_row_offset = free_line;
+                                }
+                            } else if viewport_mode {
                                 view_row_offset = view_row_offset.saturating_sub(1);
                             }
                         }
                         KeyCode::Down => {
-                            if viewport_mode {
+                            if free_mode {
+                                let max_line = (rec_rows as usize).saturating_sub(1);
+                                free_line = (free_line + 1).min(max_line);
+                                // Auto-scroll viewport to keep highlighted line visible
+                                if free_line >= view_row_offset + view_rows {
+                                    view_row_offset = free_line - view_rows + 1;
+                                }
+                            } else if viewport_mode {
                                 let max_offset = (rec_rows as usize).saturating_sub(view_rows);
                                 view_row_offset = (view_row_offset + 1).min(max_offset);
                             }
@@ -346,6 +375,7 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                     view_col_offset,
                     view_rows,
                     view_cols,
+                    if free_mode { Some(free_line) } else { None },
                 )?;
 
                 // Show scroll indicator if viewport can scroll
@@ -385,6 +415,7 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                     view_row_offset,
                     markers.len(),
                     viewport_mode,
+                    free_mode,
                 )?;
             }
 
@@ -643,6 +674,7 @@ fn render_status_bar(
     row_offset: usize,
     marker_count: usize,
     viewport_mode: bool,
+    free_mode: bool,
 ) -> Result<()> {
     execute!(
         stdout,
@@ -660,6 +692,14 @@ fn render_status_bar(
             stdout,
             SetForegroundColor(Color::Magenta),
             Print("[V] "),
+        )?;
+    }
+
+    if free_mode {
+        execute!(
+            stdout,
+            SetForegroundColor(Color::Green),
+            Print("[F] "),
         )?;
     }
 
@@ -701,6 +741,10 @@ fn render_status_bar(
         SetForegroundColor(Color::DarkGrey),
         Print(":mrk "),
         SetForegroundColor(Color::Cyan),
+        Print("f"),
+        SetForegroundColor(Color::DarkGrey),
+        Print(":fre "),
+        SetForegroundColor(Color::Cyan),
         Print("v"),
         SetForegroundColor(Color::DarkGrey),
         Print(":vpt "),
@@ -739,6 +783,11 @@ fn render_help(stdout: &mut io::Stdout, width: u16, height: u16) -> Result<()> {
         "  ║                                           ║",
         "  ║  Markers                                  ║",
         "  ║    m          Jump to next marker         ║",
+        "  ║                                           ║",
+        "  ║  Free Mode (line-by-line navigation)      ║",
+        "  ║    f          Toggle free mode            ║",
+        "  ║    ↑/↓        Move highlight up/down      ║",
+        "  ║    Esc        Exit free mode              ║",
         "  ║                                           ║",
         "  ║  Viewport                                 ║",
         "  ║    v          Toggle viewport mode        ║",
@@ -784,6 +833,8 @@ fn format_duration(seconds: f64) -> String {
 }
 
 /// Render a viewport of the terminal buffer to stdout.
+/// If `highlight_line` is Some, that line (in buffer coordinates) gets a green background.
+#[allow(clippy::too_many_arguments)]
 fn render_viewport(
     stdout: &mut io::Stdout,
     buffer: &TerminalBuffer,
@@ -791,17 +842,24 @@ fn render_viewport(
     col_offset: usize,
     view_rows: usize,
     view_cols: usize,
+    highlight_line: Option<usize>,
 ) -> Result<()> {
     let styled_lines = buffer.styled_lines();
 
     for view_row in 0..view_rows {
         let buf_row = view_row + row_offset;
+        let is_highlighted = highlight_line == Some(buf_row);
 
         execute!(
             stdout,
             MoveTo(0, view_row as u16),
             Clear(ClearType::CurrentLine)
         )?;
+
+        // Set green background for highlighted line
+        if is_highlighted {
+            execute!(stdout, SetBackgroundColor(Color::DarkGreen))?;
+        }
 
         if buf_row < styled_lines.len() {
             let line = &styled_lines[buf_row];
@@ -814,38 +872,55 @@ fn render_viewport(
                     let cell = &line.cells[buf_col];
 
                     if cell.style != current_style {
-                        apply_style(stdout, &cell.style)?;
+                        apply_style_with_highlight(stdout, &cell.style, is_highlighted)?;
                         current_style = cell.style;
                     }
 
                     write!(stdout, "{}", cell.char)?;
                 } else {
                     if current_style != CellStyle::default() {
-                        execute!(stdout, ResetColor)?;
+                        if is_highlighted {
+                            execute!(stdout, ResetColor, SetBackgroundColor(Color::DarkGreen))?;
+                        } else {
+                            execute!(stdout, ResetColor)?;
+                        }
                         current_style = CellStyle::default();
                     }
                     write!(stdout, " ")?;
                 }
             }
 
-            if current_style != CellStyle::default() {
+            if current_style != CellStyle::default() || is_highlighted {
                 execute!(stdout, ResetColor)?;
             }
+        } else if is_highlighted {
+            // Fill empty highlighted line with spaces
+            for _ in 0..view_cols {
+                write!(stdout, " ")?;
+            }
+            execute!(stdout, ResetColor)?;
         }
     }
 
     Ok(())
 }
 
-/// Apply a cell style to the terminal.
-fn apply_style(stdout: &mut io::Stdout, style: &CellStyle) -> Result<()> {
+/// Apply a cell style, preserving green background if highlighted.
+fn apply_style_with_highlight(
+    stdout: &mut io::Stdout,
+    style: &CellStyle,
+    is_highlighted: bool,
+) -> Result<()> {
     execute!(stdout, ResetColor)?;
 
     if let Some(color) = convert_color(&style.fg) {
         execute!(stdout, SetForegroundColor(color))?;
     }
 
-    if let Some(color) = convert_color(&style.bg) {
+    if is_highlighted {
+        // Always use green background for highlighted lines
+        execute!(stdout, SetBackgroundColor(Color::DarkGreen))?;
+    } else if let Some(color) = convert_color(&style.bg) {
         execute!(stdout, SetBackgroundColor(color))?;
     }
 
