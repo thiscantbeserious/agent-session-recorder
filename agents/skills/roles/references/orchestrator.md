@@ -2,70 +2,58 @@
 
 Coordinates the SDLC workflow. Never implements code directly.
 
-## SDLC Flow
-
-Read `sdlc.md` for the full process.
-
-| Phase | Role |
-|-------|------|
-| Requirement | Orchestrator |
-| Design | Architect |
-| Code | Implementer |
-| Test | Reviewer |
-| Feedback | Product Owner |
-| Deploy | Maintainer |
-
-## Workflow
+## Flow
 
 ```
-                    +------------------+
-                    |   Orchestrator   |
-                    | (Requirement)    |
-                    +--------+---------+
-                             |
-                             v
-                    +--------+---------+
-                    |    Architect     |
-                    |    (Design)      |
-                    +--------+---------+
-                             |
-         +-------------------+-------------------+
-         |                                       |
-         v                                       |
-+--------+---------+                             |
-|   Implementer    |                             |
-|     (Code)       |                             |
-+--------+---------+                             |
-         |                                       |
-         v                                       |
-+--------+---------+                             |
-|    Reviewer      +------ FAIL ----------------+
-|     (Test)       |       (back to design      |
-+--------+---------+        or code)            |
-         | PASS                                  |
-         v                                       |
-+--------+---------+                             |
-|  Product Owner   +------ FAIL ----------------+
-|   (Feedback)     |       (scope issue or      |
-+--------+---------+        spec mismatch)      |
-         | PASS                                  |
-         v                                       |
-+--------+---------+                             |
-|   Maintainer     |                             |
-|    (Deploy)      |                             |
-+--------+---------+                             |
-         |                                       |
-         v                                       |
-      MERGED -----> New cycle for split-out work?
+User Request
+     │
+     ▼
+┌─────────────┐
+│ Orchestrator│  Coordinates, never implements
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐     ┌─────────┐
+│  Architect  │────▶│ ADR.md  │◀─────────────────────┐
+└──────┬──────┘     └─────────┘                      │
+       │            Decision record (immutable)      │
+       │                                             │
+       │            ┌──────────┐                     │
+       └───────────▶│ PLAN.md  │◀────────────┐       │
+                    └────┬─────┘             │       │
+                    Execution (mutable)      │       │
+                         │                   │       │
+                         ▼                   │       │
+               ┌─────────────────┐           │       │
+               │   Implementer   │  Works ───┘       │
+               └────────┬────────┘  from PLAN        │
+                        │                            │
+                        ▼                            │
+               ┌─────────────────┐  Validates ───────┤
+               │    Reviewer     │  against ADR+PLAN │
+               └────────┬────────┘                   │
+                        │                            │
+                        ▼                            │
+               ┌─────────────────┐                   │
+               │  Product Owner  │───────────────────┘ Verifies ADR Context
+               └────────┬────────┘
+                        │
+                        ▼
+               ┌─────────────────┐
+               │   Maintainer    │  Merges, updates ADR Status
+               └─────────────────┘
 ```
+
+## Steps
 
 1. Spawn Architect for design phase
-   - Wait for ADR at `.state/<branch-name>/ADR.md`
+   - Wait for ADR.md and PLAN.md at `.state/<branch-name>/`
    - Architect proposes options, asks for input
    - ADR Status changes to Accepted after user decision
 
 2. Spawn Implementer for code phase
-   - Implementer follows ADR Execution Stages
+   - Implementer works from PLAN.md stages
+   - Updates PLAN.md progress
    - Wait for PR to be created
 
 3. Wait for CodeRabbit review
@@ -75,7 +63,7 @@ Read `sdlc.md` for the full process.
    Never proceed while showing "processing"
 
 4. Spawn Reviewer (fresh session)
-   - Validates implementation against ADR Decision and Stages
+   - Validates implementation against ADR.md and PLAN.md
    - Runs tests, checks coverage
    - Reports findings
 
@@ -85,6 +73,7 @@ Read `sdlc.md` for the full process.
 
 6. Spawn Maintainer to merge
    - Only after all approvals
+   - Updates ADR Status to Accepted
    - Handles PR merge and cleanup
 
 ## Responsibilities
@@ -97,17 +86,18 @@ Read `sdlc.md` for the full process.
 
 ## State Files
 
-- `.state/<branch-name>/ADR.md` - ADR for this work
-- `.state/decisions.md` - Technical decisions log
-- `.state/INDEX.md` - Entry point
+- `.state/<branch-name>/ADR.md` - decision record (immutable)
+- `.state/<branch-name>/PLAN.md` - execution tasks (mutable)
+- `.state/decisions.md` - technical decisions log
+- `.state/INDEX.md` - entry point
 
 ## Rules
 
-1. **Never write code** - only orchestrate
-2. **Plan first** - always start with Architect
-3. **Sequential flow** - one phase at a time
-4. **Fresh sessions** - each role gets fresh context
-5. **CodeRabbit required** - wait for actual review
+1. Never write code - only orchestrate
+2. ADR first - always start with Architect
+3. Sequential flow - one phase at a time
+4. Fresh sessions - each role gets fresh context
+5. CodeRabbit required - wait for actual review
 
 ## Ambiguous Instructions
 
