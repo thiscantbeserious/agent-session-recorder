@@ -2,9 +2,13 @@
 
 How to think about architectural decisions before writing code.
 
-The SDLC workflow moves work through phases (Design → Code → Test → Feedback → Deploy). This document guides the Design phase - breaking problems into small, focused pieces that can iterate through the cycle independently.
+This guide covers:
+- **SOLID** - Foundational principles for maintainable systems
+- **Clean Code** - Philosophy for simplicity and pragmatism
+- **Problem Decomposition** - Breaking work into focused pieces
+- **Trade-off Evaluation** - Choosing between approaches
 
-**Goal:** Each iteration delivers working, tested, reviewable code. No big-bang changes.
+**Goal:** Designs that are simple, maintainable, and small enough to review in one sitting.
 
 ## SOLID Principles
 
