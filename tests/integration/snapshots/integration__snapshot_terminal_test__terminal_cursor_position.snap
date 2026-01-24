@@ -1,0 +1,10 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 72
+expression: "process(\"\\x1b[3;10HX\\x1b[5;20HY\\x1b[1;1HZ\")"
+---
+Z
+
+         X
+
+                   Y

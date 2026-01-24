@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 228
+expression: "process(\"Progress: ▓▓▓▓░░░░ 50%\")"
+---
+Progress: ▓▓▓▓░░░░ 50%

@@ -1,0 +1,7 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 43
+expression: "process(\"This is a line that is longer than forty characters wide\")"
+---
+This is a line that is longer than forty
+ characters wide

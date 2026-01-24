@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 62
+expression: "process(\"Hello\\x1b[5CWorld\")"
+---
+Hello     World

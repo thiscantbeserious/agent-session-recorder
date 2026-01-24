@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 126
+expression: "process(\"\\x1b[1mBold\\x1b[0m Normal\")"
+---
+Bold Normal

@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 260
+expression: "process(\"\\x1b[32muser\\x1b[0m@\\x1b[34mhost\\x1b[0m:\\x1b[33m~/dir\\x1b[0m$ \")"
+---
+user@host:~/dir$

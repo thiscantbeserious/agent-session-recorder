@@ -386,7 +386,7 @@ impl ListApp {
 
     /// Play the selected session with asciinema.
     fn play_session(&mut self) -> Result<()> {
-        use crate::playback;
+        use crate::player;
 
         if let Some(item) = self.explorer.selected_item() {
             let path = Path::new(&item.path);
@@ -395,7 +395,7 @@ impl ListApp {
             self.app.suspend()?;
 
             // Play the session
-            let result = playback::play_session(path)?;
+            let result = player::play_session(path)?;
 
             // Resume TUI - re-enters alternate screen and raw mode
             self.app.resume()?;

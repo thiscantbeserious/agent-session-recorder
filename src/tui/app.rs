@@ -106,6 +106,12 @@ impl App {
     ///
     /// Use this before running external commands that need the terminal.
     /// Call `resume()` afterward to re-enter TUI mode.
+    ///
+    /// Performs thorough terminal reset to ensure external commands
+    /// (like asciinema playback) start with a clean terminal state:
+    /// - Resets scroll region to full screen
+    /// - Clears screen and moves cursor to home
+    /// - Resets colors and attributes
     pub fn suspend(&mut self) -> Result<()> {
         disable_raw_mode()?;
         execute!(
@@ -114,6 +120,24 @@ impl App {
             DisableMouseCapture
         )?;
         self.terminal.show_cursor()?;
+
+        // Reset terminal state for clean handoff to external commands
+        // This is critical for asciinema playback which uses cursor positioning
+        execute!(
+            self.terminal.backend_mut(),
+            ResetColor,
+            crossterm::terminal::SetTitle(""), // Clear any title we may have set
+            MoveTo(0, 0),
+            Clear(ClearType::All)
+        )?;
+
+        // Reset scroll region to full screen (CSI r - DECSTBM reset)
+        // Without this, scroll regions from the TUI can corrupt playback
+        print!("\x1b[r");
+        // Flush to ensure all sequences are sent before external command runs
+        use std::io::Write;
+        std::io::stdout().flush()?;
+
         Ok(())
     }
 

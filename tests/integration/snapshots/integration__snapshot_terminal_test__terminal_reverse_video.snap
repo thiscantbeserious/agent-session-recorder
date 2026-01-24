@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 152
+expression: "process(\"\\x1b[7mReversed\\x1b[27mNormal\")"
+---
+ReversedNormal

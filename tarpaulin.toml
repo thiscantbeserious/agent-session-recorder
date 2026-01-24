@@ -9,10 +9,11 @@ fail-under = 70.0
 # - tests/*: Test files themselves
 # - */tests.rs: Inline test modules
 # - src/tui/*: TUI code requires terminal, tested via e2e/manual
+# - src/player/native.rs, src/player/asciinema.rs: Players require terminal, tested via e2e/manual
 # - src/main.rs: CLI entry point, tested via e2e
-# - src/recording.rs, src/playback.rs: Require asciinema, tested via e2e
+# - src/recording.rs: Requires asciinema, tested via e2e
 # - src/commands/list.rs, src/commands/cleanup.rs: Launch TUI, tested via e2e/manual
-exclude-files = ["tests/*", "*/tests.rs", "src/tui/*", "src/main.rs", "src/recording.rs", "src/playback.rs", "src/commands/list.rs", "src/commands/cleanup.rs"]
+exclude-files = ["tests/*", "*/tests.rs", "src/tui/*", "src/player/native.rs", "src/player/asciinema.rs", "src/main.rs", "src/recording.rs", "src/commands/list.rs", "src/commands/cleanup.rs"]
 
 # Skip functions that are hard to test
 ignore = [

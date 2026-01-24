@@ -6,6 +6,7 @@
 
 use std::fmt;
 
+use unicode_width::UnicodeWidthChar;
 use vte::{Parser, Perform};
 
 /// ANSI color codes
@@ -44,6 +45,7 @@ pub struct CellStyle {
     pub dim: bool,
     pub italic: bool,
     pub underline: bool,
+    pub reverse: bool,
 }
 
 /// A single cell in the terminal buffer
@@ -88,6 +90,8 @@ pub struct TerminalBuffer {
     current_style: CellStyle,
     /// VTE parser for handling ANSI sequences
     parser: Parser,
+    /// Saved cursor position (for CSI s/u)
+    saved_cursor: Option<(usize, usize)>,
 }
 
 impl TerminalBuffer {
@@ -102,6 +106,7 @@ impl TerminalBuffer {
             cursor_row: 0,
             current_style: CellStyle::default(),
             parser: Parser::new(),
+            saved_cursor: None,
         }
     }
 
@@ -116,8 +121,46 @@ impl TerminalBuffer {
             cursor_col: &mut self.cursor_col,
             cursor_row: &mut self.cursor_row,
             current_style: &mut self.current_style,
+            saved_cursor: &mut self.saved_cursor,
         };
         self.parser.advance(&mut performer, data.as_bytes());
+    }
+
+    /// Resize the terminal buffer to new dimensions.
+    ///
+    /// Preserves existing content where possible, truncating or extending
+    /// rows/columns as needed. Cursor position is clamped to the new bounds.
+    pub fn resize(&mut self, new_width: usize, new_height: usize) {
+        // Create new buffer with new dimensions
+        let mut new_buffer = vec![vec![Cell::default(); new_width]; new_height];
+
+        // Copy existing content, preserving as much as possible
+        for (row_idx, row) in self.buffer.iter().enumerate() {
+            if row_idx >= new_height {
+                break;
+            }
+            for (col_idx, cell) in row.iter().enumerate() {
+                if col_idx >= new_width {
+                    break;
+                }
+                new_buffer[row_idx][col_idx] = *cell;
+            }
+        }
+
+        self.buffer = new_buffer;
+        self.width = new_width;
+        self.height = new_height;
+
+        // Clamp cursor to new bounds
+        self.cursor_col = self.cursor_col.min(new_width.saturating_sub(1));
+        self.cursor_row = self.cursor_row.min(new_height.saturating_sub(1));
+
+        // Invalidate saved cursor if it's now out of bounds
+        if let Some((row, col)) = self.saved_cursor {
+            if row >= new_height || col >= new_width {
+                self.saved_cursor = None;
+            }
+        }
     }
 
     /// Get the terminal width.
@@ -128,6 +171,11 @@ impl TerminalBuffer {
     /// Get the terminal height.
     pub fn height(&self) -> usize {
         self.height
+    }
+
+    /// Get the current cursor row (0-indexed).
+    pub fn cursor_row(&self) -> usize {
+        self.cursor_row
     }
 
     /// Get styled lines for rendering with color support.
@@ -147,6 +195,11 @@ impl TerminalBuffer {
                 StyledLine { cells }
             })
             .collect()
+    }
+
+    /// Get a reference to a specific row's cells (no cloning).
+    pub fn row(&self, row_idx: usize) -> Option<&[Cell]> {
+        self.buffer.get(row_idx).map(|r| r.as_slice())
     }
 }
 
@@ -185,6 +238,7 @@ struct TerminalPerformer<'a> {
     cursor_col: &'a mut usize,
     cursor_row: &'a mut usize,
     current_style: &'a mut CellStyle,
+    saved_cursor: &'a mut Option<(usize, usize)>,
 }
 
 impl<'a> TerminalPerformer<'a> {
@@ -214,7 +268,16 @@ impl<'a> TerminalPerformer<'a> {
 
     /// Write a character at the current cursor position with current style.
     fn put_char(&mut self, c: char) {
-        if *self.cursor_col >= self.width {
+        // Get the display width of the character (0, 1, or 2)
+        let char_width = c.width().unwrap_or(1);
+
+        // Skip zero-width characters (combining marks, etc.)
+        if char_width == 0 {
+            return;
+        }
+
+        // Check if we need to wrap
+        if *self.cursor_col + char_width > self.width {
             // Line wrap - move to next line and column 0
             self.line_feed();
             self.carriage_return();
@@ -226,6 +289,15 @@ impl<'a> TerminalPerformer<'a> {
                 style: *self.current_style,
             };
             *self.cursor_col += 1;
+
+            // For wide characters, fill the next cell with a placeholder space
+            if char_width == 2 && *self.cursor_col < self.width {
+                self.buffer[*self.cursor_row][*self.cursor_col] = Cell {
+                    char: ' ', // Placeholder for second half of wide char
+                    style: *self.current_style,
+                };
+                *self.cursor_col += 1;
+            }
         }
     }
 
@@ -243,6 +315,77 @@ impl<'a> TerminalPerformer<'a> {
         if *self.cursor_row < self.height {
             for col in 0..self.width {
                 self.buffer[*self.cursor_row][col] = Cell::default();
+            }
+        }
+    }
+
+    /// Erase from start of line to cursor (inclusive).
+    fn erase_from_sol(&mut self) {
+        if *self.cursor_row < self.height {
+            let end_col = (*self.cursor_col).min(self.width - 1);
+            for col in 0..=end_col {
+                self.buffer[*self.cursor_row][col] = Cell::default();
+            }
+        }
+    }
+
+    /// Erase from start of screen to cursor.
+    fn erase_from_sos(&mut self) {
+        // Erase all rows before current
+        for row in 0..*self.cursor_row {
+            for col in 0..self.width {
+                self.buffer[row][col] = Cell::default();
+            }
+        }
+        // Erase current row up to and including cursor
+        self.erase_from_sol();
+    }
+
+    /// Delete n characters at cursor, shifting remaining left.
+    fn delete_chars(&mut self, n: usize) {
+        if *self.cursor_row < self.height {
+            let row = &mut self.buffer[*self.cursor_row];
+            for i in *self.cursor_col..self.width {
+                if i + n < self.width {
+                    row[i] = row[i + n];
+                } else {
+                    row[i] = Cell::default();
+                }
+            }
+        }
+    }
+
+    /// Insert n blank characters at cursor, shifting existing right.
+    fn insert_chars(&mut self, n: usize) {
+        if *self.cursor_row < self.height {
+            let row = &mut self.buffer[*self.cursor_row];
+            for i in ((*self.cursor_col + n)..self.width).rev() {
+                row[i] = row[i - n];
+            }
+            let end = (*self.cursor_col + n).min(self.width);
+            for cell in row.iter_mut().take(end).skip(*self.cursor_col) {
+                *cell = Cell::default();
+            }
+        }
+    }
+
+    /// Delete n lines at cursor, scrolling up.
+    fn delete_lines(&mut self, n: usize) {
+        for _ in 0..n {
+            if *self.cursor_row < self.height {
+                self.buffer.remove(*self.cursor_row);
+                self.buffer.push(vec![Cell::default(); self.width]);
+            }
+        }
+    }
+
+    /// Insert n blank lines at cursor, scrolling down.
+    fn insert_lines(&mut self, n: usize) {
+        for _ in 0..n {
+            if *self.cursor_row < self.height {
+                self.buffer.pop();
+                self.buffer
+                    .insert(*self.cursor_row, vec![Cell::default(); self.width]);
             }
         }
     }
@@ -279,12 +422,14 @@ impl<'a> TerminalPerformer<'a> {
                 2 => self.current_style.dim = true,
                 3 => self.current_style.italic = true,
                 4 => self.current_style.underline = true,
+                7 => self.current_style.reverse = true,
                 22 => {
                     self.current_style.bold = false;
                     self.current_style.dim = false;
                 }
                 23 => self.current_style.italic = false,
                 24 => self.current_style.underline = false,
+                27 => self.current_style.reverse = false,
                 // Standard foreground colors (30-37)
                 30 => self.current_style.fg = Color::Black,
                 31 => self.current_style.fg = Color::Red,
@@ -406,7 +551,7 @@ impl Perform for TerminalPerformer<'_> {
     fn csi_dispatch(
         &mut self,
         params: &vte::Params,
-        _intermediates: &[u8],
+        intermediates: &[u8],
         _ignore: bool,
         action: char,
     ) {
@@ -414,6 +559,15 @@ impl Perform for TerminalPerformer<'_> {
             .iter()
             .map(|p| p.first().copied().unwrap_or(0))
             .collect();
+
+        // Handle DEC private mode sequences (ESC[?...h/l) and mouse tracking (ESC[<...)
+        // These are safe to ignore for text rendering purposes
+        if intermediates.contains(&b'?') || intermediates.contains(&b'<') {
+            // DEC private modes - we don't need to implement them for text rendering
+            // Common ones: ?25h/l (cursor visibility), ?2026h/l (synchronized update),
+            // ?1049h/l (alternate screen buffer), <... (mouse tracking SGR mode), etc.
+            return;
+        }
 
         match action {
             // Cursor movement
@@ -423,18 +577,18 @@ impl Perform for TerminalPerformer<'_> {
                 *self.cursor_row = self.cursor_row.saturating_sub(n);
             }
             'B' => {
-                // Cursor down
-                let n = params.first().copied().unwrap_or(1) as usize;
+                // Cursor down - default to 1 if no param or param is 0
+                let n = params.first().copied().filter(|&x| x != 0).unwrap_or(1) as usize;
                 *self.cursor_row = (*self.cursor_row + n).min(self.height - 1);
             }
             'C' => {
-                // Cursor forward
-                let n = params.first().copied().unwrap_or(1) as usize;
+                // Cursor forward - default to 1 if no param or param is 0
+                let n = params.first().copied().filter(|&x| x != 0).unwrap_or(1) as usize;
                 *self.cursor_col = (*self.cursor_col + n).min(self.width - 1);
             }
             'D' => {
-                // Cursor back
-                let n = params.first().copied().unwrap_or(1) as usize;
+                // Cursor back - default to 1 if no param or param is 0
+                let n = params.first().copied().filter(|&x| x != 0).unwrap_or(1) as usize;
                 *self.cursor_col = self.cursor_col.saturating_sub(n);
             }
             'H' | 'f' => {
@@ -449,7 +603,8 @@ impl Perform for TerminalPerformer<'_> {
                 let mode = params.first().copied().unwrap_or(0);
                 match mode {
                     0 => self.erase_to_eos(),
-                    2 => self.clear_screen(),
+                    1 => self.erase_from_sos(),
+                    2 | 3 => self.clear_screen(),
                     _ => {}
                 }
             }
@@ -458,9 +613,63 @@ impl Perform for TerminalPerformer<'_> {
                 let mode = params.first().copied().unwrap_or(0);
                 match mode {
                     0 => self.erase_to_eol(),
+                    1 => self.erase_from_sol(),
                     2 => self.erase_line(),
                     _ => {}
                 }
+            }
+            'L' => {
+                // Insert lines
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.insert_lines(n);
+            }
+            'M' => {
+                // Delete lines
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.delete_lines(n);
+            }
+            'P' => {
+                // Delete characters
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.delete_chars(n);
+            }
+            '@' => {
+                // Insert blank characters
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.insert_chars(n);
+            }
+            'X' => {
+                // Erase characters (replace with spaces, don't move cursor)
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                if *self.cursor_row < self.height {
+                    for i in 0..n {
+                        let col = *self.cursor_col + i;
+                        if col < self.width {
+                            self.buffer[*self.cursor_row][col] = Cell::default();
+                        }
+                    }
+                }
+            }
+            's' => {
+                // Save cursor position
+                *self.saved_cursor = Some((*self.cursor_row, *self.cursor_col));
+            }
+            'u' => {
+                // Restore cursor position
+                if let Some((row, col)) = *self.saved_cursor {
+                    *self.cursor_row = row.min(self.height - 1);
+                    *self.cursor_col = col.min(self.width - 1);
+                }
+            }
+            'G' => {
+                // Cursor horizontal absolute
+                let col = params.first().copied().unwrap_or(1) as usize;
+                *self.cursor_col = col.saturating_sub(1).min(self.width - 1);
+            }
+            'd' => {
+                // Cursor vertical absolute
+                let row = params.first().copied().unwrap_or(1) as usize;
+                *self.cursor_row = row.saturating_sub(1).min(self.height - 1);
             }
             'm' => {
                 // SGR (Select Graphic Rendition) - handle colors and styles
@@ -470,7 +679,32 @@ impl Perform for TerminalPerformer<'_> {
         }
     }
 
-    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {}
+    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, byte: u8) {
+        match byte {
+            b'7' => {
+                // DECSC - DEC save cursor
+                *self.saved_cursor = Some((*self.cursor_row, *self.cursor_col));
+            }
+            b'8' => {
+                // DECRC - DEC restore cursor
+                if let Some((row, col)) = *self.saved_cursor {
+                    *self.cursor_row = row.min(self.height - 1);
+                    *self.cursor_col = col.min(self.width - 1);
+                }
+            }
+            b'M' => {
+                // RI - Reverse Index (move cursor up, scroll if at top)
+                if *self.cursor_row > 0 {
+                    *self.cursor_row -= 1;
+                } else {
+                    // Scroll down - add empty row at top, remove bottom
+                    self.buffer.pop();
+                    self.buffer.insert(0, vec![Cell::default(); self.width]);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1054,5 +1288,346 @@ mod tests {
         let output = buf.to_string();
         assert!(output.contains("X"));
         assert!(output.contains("Y"));
+    }
+
+    // DEC private mode tests
+
+    #[test]
+    fn dec_private_mode_sequences_are_ignored() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        // ESC[?2026h (synchronized update begin) and ESC[?2026l (end)
+        buf.process("\x1b[?2026hHello\x1b[?2026l");
+        assert_eq!(buf.to_string(), "Hello");
+    }
+
+    #[test]
+    fn dec_cursor_visibility_is_ignored() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        // ESC[?25l (hide cursor) and ESC[?25h (show cursor)
+        buf.process("\x1b[?25lHidden\x1b[?25h Visible");
+        assert_eq!(buf.to_string(), "Hidden Visible");
+    }
+
+    #[test]
+    fn dec_alternate_screen_is_ignored() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        // ESC[?1049h (enter alternate screen) and ESC[?1049l (leave)
+        buf.process("\x1b[?1049hContent\x1b[?1049l");
+        assert_eq!(buf.to_string(), "Content");
+    }
+
+    // DEC save/restore cursor tests
+
+    #[test]
+    fn dec_save_restore_cursor() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        // ESC 7 (save cursor), move and write, ESC 8 (restore cursor)
+        buf.process("Hello\x1b7"); // Save cursor at position 5
+        buf.process("\r\nWorld"); // Move to next line
+        buf.process("\x1b8"); // Restore cursor to position 5
+        buf.process("!");
+        assert_eq!(buf.to_string(), "Hello!\nWorld");
+    }
+
+    #[test]
+    fn dec_restore_without_save_does_nothing() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("Hello");
+        buf.process("\x1b8"); // Restore without prior save
+        buf.process("X");
+        // Cursor should stay where it was
+        assert_eq!(buf.to_string(), "HelloX");
+    }
+
+    // Reverse index test
+
+    #[test]
+    fn reverse_index_moves_cursor_up() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("Line1\r\nLine2");
+        buf.process("\x1bM"); // Reverse index - move up
+        buf.process("X");
+        assert_eq!(buf.to_string(), "Line1X\nLine2");
+    }
+
+    #[test]
+    fn reverse_index_scrolls_at_top() {
+        let mut buf = TerminalBuffer::new(10, 3);
+        buf.process("Line1\r\nLine2\r\nLine3");
+        buf.process("\x1b[1;1H"); // Move to top-left
+        buf.process("\x1bM"); // Reverse index at top - should scroll down
+        buf.process("New");
+        // Line3 should be pushed off, new line at top
+        assert_eq!(buf.to_string(), "New\nLine1\nLine2");
+    }
+
+    // Reverse video attribute tests
+
+    #[test]
+    fn reverse_video_attribute() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("\x1b[7mReversed\x1b[27mNormal");
+        let lines = buf.styled_lines();
+        let first_line = &lines[0];
+        // Check that "Reversed" has reverse attribute
+        assert!(first_line
+            .cells
+            .iter()
+            .any(|c| c.char == 'R' && c.style.reverse));
+        // Check that "Normal" does not have reverse attribute
+        assert!(first_line
+            .cells
+            .iter()
+            .any(|c| c.char == 'N' && !c.style.reverse));
+    }
+
+    #[test]
+    fn reverse_video_reset_by_sgr0() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("\x1b[7mReversed\x1b[0mNormal");
+        let lines = buf.styled_lines();
+        let first_line = &lines[0];
+        assert!(first_line
+            .cells
+            .iter()
+            .any(|c| c.char == 'R' && c.style.reverse));
+        assert!(first_line
+            .cells
+            .iter()
+            .any(|c| c.char == 'N' && !c.style.reverse));
+    }
+
+    #[test]
+    fn reverse_video_combined_with_colors() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        // Red text with reverse video
+        buf.process("\x1b[31;7mX");
+        let lines = buf.styled_lines();
+        let cell = lines[0].cells.iter().find(|c| c.char == 'X').unwrap();
+        assert!(cell.style.reverse);
+        assert_eq!(cell.style.fg, Color::Red);
+    }
+
+    // CSI s/u cursor save/restore (different from DEC ESC 7/8)
+
+    #[test]
+    fn csi_save_restore_cursor() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("Hello\x1b[s"); // CSI s - save cursor
+        buf.process("\r\nWorld");
+        buf.process("\x1b[u"); // CSI u - restore cursor
+        buf.process("!");
+        assert_eq!(buf.to_string(), "Hello!\nWorld");
+    }
+
+    // Wide character tests
+
+    #[test]
+    fn wide_character_takes_two_columns() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        // CJK character (wide) followed by ASCII
+        buf.process("中X");
+        // The wide char takes 2 columns, so X should be at column 2
+        assert_eq!(buf.cursor_col, 3); // 中 (2 cols) + X (1 col) = 3
+    }
+
+    #[test]
+    fn wide_character_alignment() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("A中B");
+        // A at col 0, 中 at col 1-2, B at col 3
+        let output = buf.to_string();
+        assert!(output.contains("A"));
+        assert!(output.contains("中"));
+        assert!(output.contains("B"));
+    }
+
+    #[test]
+    fn wide_character_wraps_correctly() {
+        let mut buf = TerminalBuffer::new(5, 2);
+        // Width is 5, wide char needs 2 cols
+        buf.process("AAAA中"); // 4 A's + wide char that needs 2 cols
+                               // Wide char should wrap to next line since only 1 col left
+        assert_eq!(buf.cursor_row, 1);
+    }
+
+    #[test]
+    fn bullet_character_width() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        // Bullet ● is typically single-width
+        buf.process("●X");
+        let output = buf.to_string();
+        assert!(output.contains("●"));
+        assert!(output.contains("X"));
+    }
+
+    // Cursor movement with zero parameter tests
+
+    #[test]
+    fn cursor_forward_zero_param_moves_one() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("A\x1b[0CB"); // ESC[0C should move forward 1, same as ESC[1C
+        assert_eq!(buf.to_string(), "A B");
+    }
+
+    #[test]
+    fn cursor_down_zero_param_moves_one() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("A\x1b[0BB"); // ESC[0B should move down 1
+        assert_eq!(buf.cursor_row, 1);
+    }
+
+    #[test]
+    fn cursor_back_zero_param_moves_one() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("ABC\x1b[0DX"); // ESC[0D should move back 1
+        assert_eq!(buf.to_string(), "ABX");
+    }
+
+    #[test]
+    fn cursor_up_zero_param_moves_one() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("A\r\nB\x1b[0AX"); // ESC[0A should move up 1
+        assert_eq!(buf.to_string(), "AX\nB");
+    }
+
+    // Mouse tracking sequences are ignored
+
+    #[test]
+    fn mouse_tracking_sgr_mode_ignored() {
+        let mut buf = TerminalBuffer::new(80, 24);
+        // ESC[<0;10;5M is SGR mouse tracking format
+        buf.process("Hello\x1b[<0;10;5MWorld");
+        assert_eq!(buf.to_string(), "HelloWorld");
+    }
+
+    #[test]
+    fn special_characters_have_correct_width() {
+        // Verify that special Unicode chars used in spinners have width 1
+        use unicode_width::UnicodeWidthChar;
+        let chars = [
+            '⏺', '⎿', '✳', '✶', '✻', '✢', '✽', '·', '●', '❯', '↓', '─', '│', '\u{00A0}',
+        ];
+        for c in chars {
+            let w = c.width().unwrap_or(1);
+            assert_eq!(
+                w, 1,
+                "Character {} (U+{:04X}) should have width 1, got {}",
+                c, c as u32, w
+            );
+        }
+    }
+
+    // Terminal resize tests
+
+    #[test]
+    fn resize_preserves_content() {
+        let mut buf = TerminalBuffer::new(10, 3);
+        buf.process("Hello\r\nWorld");
+
+        // Resize to larger
+        buf.resize(20, 5);
+        assert_eq!(buf.width(), 20);
+        assert_eq!(buf.height(), 5);
+
+        let output = buf.to_string();
+        assert!(output.contains("Hello"), "Should preserve Hello");
+        assert!(output.contains("World"), "Should preserve World");
+    }
+
+    #[test]
+    fn resize_truncates_content() {
+        let mut buf = TerminalBuffer::new(10, 3);
+        buf.process("Hello World");
+
+        // Resize to smaller width
+        buf.resize(5, 3);
+        assert_eq!(buf.width(), 5);
+
+        let output = buf.to_string();
+        assert!(output.contains("Hello"), "Should contain Hello");
+        assert!(!output.contains("World"), "Should truncate World");
+    }
+
+    #[test]
+    fn resize_clamps_cursor() {
+        let mut buf = TerminalBuffer::new(20, 10);
+        buf.process("Test\r\n\r\n\r\n\r\n\r\nEnd"); // Move cursor down
+
+        // Cursor should be at row 5
+        assert_eq!(buf.cursor_row, 5);
+
+        // Resize to fewer rows
+        buf.resize(20, 3);
+        assert_eq!(buf.cursor_row, 2); // Clamped to max row (height - 1)
+    }
+
+    #[test]
+    fn resize_during_playback_sequence() {
+        // Simulate what happens when recording resizes mid-playback
+        let mut buf = TerminalBuffer::new(80, 24);
+        buf.process("Initial content at 80 cols");
+        assert_eq!(buf.width(), 80);
+
+        // Simulate resize event from 80x24 to 100x24
+        buf.resize(100, 24);
+        assert_eq!(buf.width(), 100);
+
+        // New content should be able to use full width
+        buf.process("\r\n");
+        buf.process("This is wider content that uses the new 100 column width...............");
+
+        let output = buf.to_string();
+        assert!(output.contains("Initial content"));
+        assert!(output.contains("This is wider content"));
+    }
+
+    #[test]
+    fn spinner_update_sequence() {
+        // Simulate the actual spinner update sequence from a Claude Code recording
+        let mut buf = TerminalBuffer::new(86, 52);
+
+        // First, set up some initial content (like the terminal would have)
+        buf.process("Line 0: Some initial content\r\n");
+        buf.process("Line 1: More content\r\n");
+        buf.process("Line 2: Even more\r\n");
+        buf.process("Line 3: Content here\r\n");
+        buf.process("Line 4: Fourth line\r\n");
+        buf.process("Line 5: Fifth line\r\n");
+        buf.process("Line 6: Sixth line");
+
+        // Now at row 6, col 17
+        assert_eq!(buf.cursor_row, 6);
+
+        // Now process the spinner update (simplified version):
+        // CR, cursor up 6, print spinner, cursor forward 1, print "Bash"
+        buf.process("\r"); // CR - go to col 0
+        assert_eq!(buf.cursor_col, 0);
+
+        buf.process("\x1b[6A"); // Cursor up 6
+        assert_eq!(buf.cursor_row, 0);
+
+        buf.process("⏺"); // Print spinner
+        assert_eq!(buf.cursor_col, 1);
+
+        buf.process("\x1b[1C"); // Cursor forward 1
+        assert_eq!(buf.cursor_col, 2);
+
+        buf.process("Bash"); // Print text
+        assert_eq!(buf.cursor_col, 6);
+
+        // Check row 0 contains the spinner and "Bash"
+        let output = buf.to_string();
+        let lines: Vec<&str> = output.lines().collect();
+        assert!(
+            lines[0].starts_with("⏺"),
+            "Row 0 should start with ⏺, got: {}",
+            lines[0]
+        );
+        assert!(
+            lines[0].contains("Bash"),
+            "Row 0 should contain Bash, got: {}",
+            lines[0]
+        );
     }
 }

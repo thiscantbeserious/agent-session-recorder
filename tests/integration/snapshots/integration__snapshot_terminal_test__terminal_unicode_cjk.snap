@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 223
+expression: "process(\"Hello 中文 World\")"
+---
+Hello 中 文  World

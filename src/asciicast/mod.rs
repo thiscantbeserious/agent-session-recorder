@@ -144,6 +144,26 @@ impl Event {
     pub fn is_marker(&self) -> bool {
         self.event_type == EventType::Marker
     }
+
+    pub fn is_resize(&self) -> bool {
+        self.event_type == EventType::Resize
+    }
+
+    /// Parse resize event data ("COLSxROWS" format) into (cols, rows).
+    /// Returns None if this is not a resize event or the data is malformed.
+    pub fn parse_resize(&self) -> Option<(u32, u32)> {
+        if !self.is_resize() {
+            return None;
+        }
+        let parts: Vec<&str> = self.data.split('x').collect();
+        if parts.len() == 2 {
+            let cols = parts[0].parse().ok()?;
+            let rows = parts[1].parse().ok()?;
+            Some((cols, rows))
+        } else {
+            None
+        }
+    }
 }
 
 // ============================================================================
@@ -457,5 +477,35 @@ mod tests {
         assert!(preview.contains("hello"));
         assert!(preview.contains("world"));
         assert!(preview.contains("!"));
+    }
+
+    #[test]
+    fn parse_resize_returns_dimensions() {
+        let event = Event::new(0.1, EventType::Resize, "100x50");
+        assert_eq!(event.parse_resize(), Some((100, 50)));
+    }
+
+    #[test]
+    fn parse_resize_returns_none_for_output() {
+        let event = Event::output(0.1, "hello");
+        assert_eq!(event.parse_resize(), None);
+    }
+
+    #[test]
+    fn parse_resize_returns_none_for_malformed() {
+        let event = Event::new(0.1, EventType::Resize, "invalid");
+        assert_eq!(event.parse_resize(), None);
+    }
+
+    #[test]
+    fn is_resize_returns_true_for_resize_events() {
+        let event = Event::new(0.1, EventType::Resize, "80x24");
+        assert!(event.is_resize());
+    }
+
+    #[test]
+    fn is_resize_returns_false_for_output() {
+        let event = Event::output(0.1, "hello");
+        assert!(!event.is_resize());
     }
 }

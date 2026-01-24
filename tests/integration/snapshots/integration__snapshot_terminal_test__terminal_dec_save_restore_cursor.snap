@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 238
+expression: "process(\"Hello\\x1b7 World\\x1b8X\")"
+---
+HelloXWorld

@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 101
+expression: "process(\"Hello World\\x1b[2K\")"
+---
+

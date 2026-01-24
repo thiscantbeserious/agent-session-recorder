@@ -1,0 +1,6 @@
+---
+source: tests/integration/snapshot_terminal_test.rs
+assertion_line: 82
+expression: "process(\"0123456789\\x1b[5GX\")"
+---
+0123X56789
