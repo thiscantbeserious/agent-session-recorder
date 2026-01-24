@@ -2,6 +2,8 @@
 
 How to evaluate approaches and choose solutions that scale.
 
+**Mindset:** Be skeptical and pragmatic. Propose alternatives with reasoning, not top-down decisions. Scope follow-ups for what doesn't fit the current iteration.
+
 This guide covers:
 - **SOLID** - Foundational principles for maintainable systems
 - **Clean Code** - Pragmatic philosophy for sustainable code
