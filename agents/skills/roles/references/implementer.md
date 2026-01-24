@@ -12,12 +12,13 @@ Conditionally load:
 
 ## Responsibilities
 
-- Follow the plan from architect
-- Apply coding-principles.md
+- Read the ADR plan at `.state/<branch-name>/plan.md`
+- Implement the Execution Stages from the ADR
+- Stay within the Decision scope (don't expand beyond what was decided)
+- Apply coding-principles
 - Follow TDD when writing new code
 - Run `cargo test` and `./tests/e2e_test.sh`
 - Create PR with clear description
-- Update `.state/INDEX.md` if needed
 
 ## Workflow
 

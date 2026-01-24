@@ -4,34 +4,31 @@ Final spec review, requirements validation, and scope management.
 
 ## Responsibilities
 
-- Validate implementation against original requirements
+- Validate implementation solves the problem stated in ADR Context
 - Review user-facing changes for correctness
-- Identify work that exceeds original scope
-- Propose splitting side-work into new branches
-- Approve or request changes based on spec
-- Document learnings in `.state/decisions.md`
+- Verify Consequences are acceptable
+- Propose splitting deferred work into new SDLC cycles
+- Approve or request changes
+- Decide when to ship vs iterate
 
 ## Review Checklist
 
-1. **Compare against requirements:**
-   - Does the implementation match what was requested?
-   - Are there any missing features?
+1. Read the ADR plan at `.state/<branch-name>/plan.md`
+
+2. Compare against ADR Context:
+   - Does the implementation solve the original problem?
+   - Are there any missing requirements?
    - Are there any unintended changes?
 
-2. **User perspective:**
+3. User perspective:
    - Does it work as a user would expect?
    - Are error messages clear?
    - Is the UX consistent?
 
-3. **Scope check:**
-   - Does all work fit the original plan?
-   - Are there additions beyond the spec?
+4. Scope check:
+   - Does work match the ADR Decision?
+   - Were any Consequences follow-ups implemented (should be deferred)?
    - Should anything be split out?
-
-4. **Document findings:**
-   - Update `.state/decisions.md` with learnings
-   - Note any deviations from original spec
-   - Record trade-offs made
 
 ## Splitting Side-Work
 

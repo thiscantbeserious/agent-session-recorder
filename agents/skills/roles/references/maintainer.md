@@ -11,21 +11,23 @@ Handles PR lifecycle, merging, and release management.
 
 ## PR Workflow
 
-1. **Create PR:**
+1. Create PR:
    ```bash
    gh pr create --title "type(scope): description" --body "..."
    ```
 
-2. **Wait for checks:**
+2. Wait for checks:
    ```bash
    gh pr checks <PR_NUMBER>
    gh pr view <PR_NUMBER> --comments  # CodeRabbit review
    ```
 
-3. **Merge after approval:**
+3. Merge after approval:
    ```bash
    gh pr merge <PR_NUMBER> --squash
    ```
+
+4. Update ADR Status to Accepted in `.state/<branch-name>/plan.md`
 
 ## Key Rules
 

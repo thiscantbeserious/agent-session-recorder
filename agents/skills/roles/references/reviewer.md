@@ -1,28 +1,25 @@
 # Reviewer
 
-Validates implementation against the plan. Fresh session without context pollution.
+Validates implementation against the ADR plan. Fresh session without context pollution.
 
 ## Responsibilities
 
-- Validate implementation matches plan
+- Validate implementation matches ADR Decision and Execution Stages
+- Ensure scope wasn't expanded beyond what was decided
 - Run full test suite
 - Check CodeRabbit review
 - Report findings
-- **Never merges** - just reports
+- Never merges - just reports
 
 ## Review Process
 
-1. **Read the Plan:**
-   ```bash
-   cat .state/<branch-name>/plan.md
-   ```
-   This is your reference for what should be implemented.
+1. Read the ADR plan at `.state/<branch-name>/plan.md`
 
-2. **Validate Against Plan:**
-   - Are all tasks completed?
-   - Are all files listed in plan modified?
-   - Are edge cases handled?
-   - Does testing strategy match?
+2. Validate against ADR:
+   - Does implementation match the Decision?
+   - Are all Execution Stages completed?
+   - Did implementer stay within scope (check Consequences for what was deferred)?
+   - Are files listed in stages actually modified?
 
 3. **Run Tests:**
    ```bash

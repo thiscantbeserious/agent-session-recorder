@@ -53,15 +53,50 @@ Designs implementation approaches with a long-term maintenance perspective. Upho
 .state/<branch-name>/plan.md
 ```
 
-## Plan Contents
-A good plan has:
-- Clear goal (what problem we're solving)
-- Chosen approach (why this over alternatives)
-- Stages with verifiable outcomes (what "done" looks like)
-- Files affected (scope visibility)
-- Design principles applied (reference `design-principles.md`)
+## Plan Structure (ADR Format)
 
-Structure adapts to the task. A bug fix might be one stage. A feature might be five.
+Plans follow Architecture Decision Record format to capture both the decision and execution.
+
+```markdown
+# ADR: <title>
+
+## Status
+Proposed | Accepted | Rejected | Superseded
+
+## Context
+What is the situation? What problem are we solving?
+What forces are at play (technical, business, constraints)?
+
+## Options Considered
+### Option 1: <name>
+- Pros: ...
+- Cons: ...
+
+### Option 2: <name>
+- Pros: ...
+- Cons: ...
+
+## Decision
+Which option and why. What trade-offs are we accepting?
+
+## Consequences
+- What becomes easier
+- What becomes harder
+- Follow-ups to scope for later
+
+## Execution Stages
+
+### Stage 1: <name>
+- [ ] Task
+- [ ] Task
+Files: `path/to/file.rs`
+
+### Stage 2: <name>
+- [ ] Task
+Files: `path/to/file.rs`
+```
+
+Structure adapts to task size. A bug fix might skip Options. A feature needs full ADR.
 
 ## Key Rules
 - Never skip the options discussion

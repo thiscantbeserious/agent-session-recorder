@@ -59,31 +59,31 @@ Read `sdlc.md` for the full process.
       MERGED -----> New cycle for split-out work?
 ```
 
-1. **Spawn Architect** for design phase
-   - Wait for plan at `.state/<branch-name>/plan.md`
+1. Spawn Architect for design phase
+   - Wait for ADR plan at `.state/<branch-name>/plan.md`
    - Architect proposes options, asks for input
-   - Plan is finalized after user decision
+   - ADR Status changes to Accepted after user decision
 
-2. **Spawn Implementer** for code phase
-   - Implementer follows the plan
+2. Spawn Implementer for code phase
+   - Implementer follows ADR Execution Stages
    - Wait for PR to be created
 
-3. **Wait for CodeRabbit** review
+3. Wait for CodeRabbit review
    ```bash
    gh pr view <PR_NUMBER> --comments | grep -i coderabbit
    ```
    Never proceed while showing "processing"
 
-4. **Spawn Reviewer** (fresh session)
-   - Validates implementation against plan
+4. Spawn Reviewer (fresh session)
+   - Validates implementation against ADR Decision and Stages
    - Runs tests, checks coverage
    - Reports findings
 
-5. **Spawn Product Owner** for final review
-   - Validates against original requirements
-   - May propose splitting side-work into new branches
+5. Spawn Product Owner for final review
+   - Validates against ADR Context (original problem)
+   - May propose splitting Consequences follow-ups into new cycles
 
-6. **Spawn Maintainer** to merge
+6. Spawn Maintainer to merge
    - Only after all approvals
    - Handles PR merge and cleanup
 
@@ -97,7 +97,7 @@ Read `sdlc.md` for the full process.
 
 ## State Files
 
-- `.state/<branch-name>/plan.md` - The plan for this work
+- `.state/<branch-name>/plan.md` - ADR plan for this work
 - `.state/decisions.md` - Technical decisions log
 - `.state/INDEX.md` - Entry point
 
