@@ -25,9 +25,9 @@ Which option and why. What trade-offs are we accepting?
 - What becomes harder
 - Follow-ups to scope for later
 
-## History
+## Decision History
 
-Decisions made during design (numbered, 1-2 sentences each):
+Decisions made with user during design (numbered, 1-2 sentences each):
 
 1. ...
 2. ...
