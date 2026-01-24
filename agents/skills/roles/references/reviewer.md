@@ -1,6 +1,6 @@
 # Reviewer
 
-Validates implementation against the ADR plan. Fresh session without context pollution.
+Validates implementation against the ADR. Fresh session without context pollution.
 
 ## Responsibilities
 
@@ -13,7 +13,7 @@ Validates implementation against the ADR plan. Fresh session without context pol
 
 ## Review Process
 
-1. Read the ADR plan at `.state/<branch-name>/plan.md`
+1. Read the ADR at `.state/<branch-name>/ADR.md`
 
 2. Validate against ADR:
    - Does implementation match the Decision?
@@ -21,24 +21,24 @@ Validates implementation against the ADR plan. Fresh session without context pol
    - Did implementer stay within scope (check Consequences for what was deferred)?
    - Are files listed in stages actually modified?
 
-3. **Run Tests:**
+3. Run Tests:
    ```bash
    cargo test              # Unit tests (MUST pass)
    ./tests/e2e_test.sh     # E2E tests (MUST pass)
    ```
 
-4. **Check Coverage:**
+4. Check Coverage:
    ```bash
    cargo tarpaulin
    ```
 
-5. **Check CodeRabbit:**
+5. Check CodeRabbit:
    ```bash
    gh pr view <PR_NUMBER> --comments | grep -i coderabbit
    ```
    Wait for actual review (not "processing").
 
-6. **Review PR Diff:**
+6. Review PR Diff:
    ```bash
    gh pr diff <PR_NUMBER>
    ```
@@ -46,13 +46,13 @@ Validates implementation against the ADR plan. Fresh session without context pol
 ## Reporting
 
 Report to orchestrator:
-- Plan compliance (matches/deviates)
+- ADR compliance (matches/deviates)
 - Test results (pass/fail)
 - CodeRabbit findings
 - Recommendation (approve/request changes)
 
 ## Key Rules
 
-- Always read the plan first
-- Validate against plan, not assumptions
+- Always read the ADR first
+- Validate against ADR, not assumptions
 - Never merge - report to orchestrator

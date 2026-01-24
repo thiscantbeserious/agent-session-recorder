@@ -13,7 +13,7 @@ Final spec review, requirements validation, and scope management.
 
 ## Review Checklist
 
-1. Read the ADR plan at `.state/<branch-name>/plan.md`
+1. Read the ADR at `.state/<branch-name>/ADR.md`
 
 2. Compare against ADR Context:
    - Does the implementation solve the original problem?
@@ -45,6 +45,6 @@ Example:
 ## Key Rules
 
 - Focus on "what" not "how" (leave implementation details to reviewer)
-- Validate against original requirements, not the plan
+- Validate against original requirements, not the ADR
 - Final approval gate before release
 - Keep scope tight - split out side-work rather than approving bloat

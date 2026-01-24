@@ -60,7 +60,7 @@ Read `sdlc.md` for the full process.
 ```
 
 1. Spawn Architect for design phase
-   - Wait for ADR plan at `.state/<branch-name>/plan.md`
+   - Wait for ADR at `.state/<branch-name>/ADR.md`
    - Architect proposes options, asks for input
    - ADR Status changes to Accepted after user decision
 
@@ -97,7 +97,7 @@ Read `sdlc.md` for the full process.
 
 ## State Files
 
-- `.state/<branch-name>/plan.md` - ADR plan for this work
+- `.state/<branch-name>/ADR.md` - ADR for this work
 - `.state/decisions.md` - Technical decisions log
 - `.state/INDEX.md` - Entry point
 

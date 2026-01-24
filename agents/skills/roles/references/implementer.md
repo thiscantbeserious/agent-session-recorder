@@ -12,7 +12,7 @@ Conditionally load:
 
 ## Responsibilities
 
-- Read the ADR plan at `.state/<branch-name>/plan.md`
+- Read the ADR at `.state/<branch-name>/ADR.md`
 - Implement the Execution Stages from the ADR
 - Stay within the Decision scope (don't expand beyond what was decided)
 - Apply coding-principles

@@ -27,7 +27,7 @@ Handles PR lifecycle, merging, and release management.
    gh pr merge <PR_NUMBER> --squash
    ```
 
-4. Update ADR Status to Accepted in `.state/<branch-name>/plan.md`
+4. Update ADR Status to Accepted in `.state/<branch-name>/ADR.md`
 
 ## Key Rules
 
