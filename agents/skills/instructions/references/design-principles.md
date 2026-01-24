@@ -1,14 +1,14 @@
 # Design Principles
 
-How to think about architectural decisions before writing code.
+How to evaluate approaches and choose solutions that scale.
 
 This guide covers:
 - **SOLID** - Foundational principles for maintainable systems
-- **Clean Code** - Philosophy for simplicity and pragmatism
+- **Clean Code** - Pragmatic philosophy for sustainable code
 - **Problem Decomposition** - Breaking work into focused pieces
 - **Trade-off Evaluation** - Choosing between approaches
 
-**Goal:** Designs that are simple, maintainable, and small enough to review in one sitting.
+**Goal:** Propose the best plan - one that solves the problem today and scales for tomorrow.
 
 ## SOLID Principles
 
