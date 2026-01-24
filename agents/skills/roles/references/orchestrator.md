@@ -102,12 +102,28 @@ User Request
 - `.state/PROJECT_DECISIONS.md` - learnings required for further work
 - `.state/INDEX.md` - entry point
 
+## Spawning Roles
+
+When spawning a role, always include its role definition as the initial prompt:
+
+```
+You are the <Role>.
+
+<paste content from references/<role>.md>
+
+Branch: <branch-name>
+ADR: .state/<branch-name>/ADR.md
+PLAN: .state/<branch-name>/PLAN.md
+```
+
+This ensures each role starts with full context of their responsibilities.
+
 ## Rules
 
 1. Never write code - only orchestrate
 2. ADR first - always start with Architect
 3. Sequential flow - one phase at a time
-4. Fresh sessions - each role gets fresh context
+4. Fresh sessions - each role gets fresh context with role definition
 5. CodeRabbit required - wait for actual review
 
 ## Ambiguous Instructions
