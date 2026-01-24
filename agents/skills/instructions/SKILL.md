@@ -3,9 +3,9 @@ name: instructions
 description: Project-specific development instructions. Load when working on tasks like coding, testing, git operations, or exploring the codebase. Read the matching file from references/.
 ---
 
-# Development Instructions
+## Access Pattern
 
-Reference files in `references/` contain project-specific rules. Read them before taking related actions.
+Before taking action, check if a reference file matches by name (e.g., git → git.md) or by task type (e.g., writing code → tdd.md). Read it first.
 
 ## Required Before Writing Code
 
