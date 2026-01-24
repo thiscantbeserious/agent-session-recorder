@@ -43,11 +43,17 @@ git push -u origin feature/phase1-task-name
 gh pr create --title "feat(scope): description"
 ```
 
-## TDD Cycle
+## TDD Cycle for New Implementations
 
-See `tdd.md` for full details. Quick reference:
+1. Write failing test first (behavior-focused)
+2. Run test - must fail
+3. Write minimal code to pass
+4. Run test - must pass
+5. Refactor if needed
+6. `cargo fmt` and `cargo clippy`
+7. Commit
 
-1. Write failing test → 2. Run (must fail) → 3. Minimal code to pass → 4. Run (must pass) → 5. Refactor → 6. `cargo fmt && cargo clippy` → 7. Commit
+See `tdd.md` for test organization and snapshot testing.
 
 ## Verification Before PR
 
