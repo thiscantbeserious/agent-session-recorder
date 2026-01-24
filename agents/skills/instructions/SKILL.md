@@ -1,6 +1,6 @@
 ---
 name: instructions
-description: Project-specific development instructions. Load before using tools/commands (e.g., git, cargo) or when writing code. Read the matching file from references/.
+description: Project-specific development instructions. Load when working on tasks like coding, testing, git operations, or exploring the codebase. Read the matching file from references/.
 ---
 
 # Development Instructions
