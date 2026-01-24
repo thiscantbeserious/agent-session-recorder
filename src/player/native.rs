@@ -372,6 +372,9 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
             if show_help {
                 render_help(&mut stdout, term_cols, term_rows)?;
             } else {
+                // Begin synchronized update to prevent flicker
+                write!(stdout, "\x1b[?2026h")?;
+
                 render_viewport(
                     &mut stdout,
                     &buffer,
@@ -421,6 +424,9 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                     viewport_mode,
                     free_mode,
                 )?;
+
+                // End synchronized update
+                write!(stdout, "\x1b[?2026l")?;
             }
 
             stdout.flush()?;
@@ -533,50 +539,52 @@ fn render_progress_bar(
     let total_str = format_duration(total_duration);
     let time_display = format!(" {}/{}", current_str, total_str);
 
-    execute!(
-        stdout,
-        MoveTo(0, row),
-        Clear(ClearType::CurrentLine),
-        SetBackgroundColor(Color::AnsiValue(236)),
-        Print(" "),
-    )?;
+    // Build output string
+    let mut output = String::with_capacity(width as usize * 4);
+    output.push_str(&format!("\x1b[{};1H", row + 1)); // Move cursor
+    output.push_str("\x1b[48;5;236m "); // Dark gray background + padding
 
-    execute!(stdout, SetForegroundColor(Color::Green))?;
+    // ANSI color codes
+    const GREEN: &str = "\x1b[32m";
+    const YELLOW: &str = "\x1b[33m";
+    const WHITE: &str = "\x1b[97m";
+    const DARK_GREY: &str = "\x1b[90m";
+    const GREY: &str = "\x1b[37m";
+
+    output.push_str(GREEN);
     for (i, &c) in bar.iter().enumerate() {
         if i < filled {
             if c == '◆' {
-                execute!(
-                    stdout,
-                    SetForegroundColor(Color::Yellow),
-                    Print(c),
-                    SetForegroundColor(Color::Green)
-                )?;
+                output.push_str(YELLOW);
+                output.push(c);
+                output.push_str(GREEN);
             } else {
-                write!(stdout, "━")?;
+                output.push('━');
             }
         } else if i == filled {
-            execute!(stdout, SetForegroundColor(Color::White), Print(c))?;
+            output.push_str(WHITE);
+            output.push(c);
         } else if c == '◆' {
-            execute!(stdout, SetForegroundColor(Color::Yellow), Print(c))?;
+            output.push_str(YELLOW);
+            output.push(c);
         } else {
-            execute!(stdout, SetForegroundColor(Color::DarkGrey), Print(c))?;
+            output.push_str(DARK_GREY);
+            output.push(c);
         }
     }
 
-    execute!(
-        stdout,
-        SetForegroundColor(Color::Grey),
-        Print(&time_display),
-    )?;
+    output.push_str(GREY);
+    output.push_str(&time_display);
 
-    // Fill remaining width with background
-    let used_width = 1 + bar_width + time_display.len(); // padding + bar + time
+    // Fill remaining width
+    let used_width = 1 + bar_width + time_display.len();
     let remaining = (width as usize).saturating_sub(used_width);
     for _ in 0..remaining {
-        write!(stdout, " ")?;
+        output.push(' ');
     }
 
-    execute!(stdout, ResetColor)?;
+    output.push_str("\x1b[0m"); // Reset
+    write!(stdout, "{}", output)?;
 
     Ok(())
 }
@@ -647,18 +655,14 @@ fn render_scroll_indicator(
 
 /// Render a separator line.
 fn render_separator_line(stdout: &mut io::Stdout, width: u16, row: u16) -> Result<()> {
-    execute!(
-        stdout,
-        MoveTo(0, row),
-        Clear(ClearType::CurrentLine),
-        SetForegroundColor(Color::DarkGrey),
-    )?;
-
+    // Build line as string to minimize syscalls
+    let mut output = String::with_capacity(width as usize + 20);
+    output.push_str(&format!("\x1b[{};1H\x1b[90m", row + 1)); // Move + dark gray
     for _ in 0..width {
-        write!(stdout, "─")?;
+        output.push('─');
     }
-
-    execute!(stdout, ResetColor)?;
+    output.push_str("\x1b[0m"); // Reset
+    write!(stdout, "{}", output)?;
     Ok(())
 }
 
@@ -666,7 +670,7 @@ fn render_separator_line(stdout: &mut io::Stdout, width: u16, row: u16) -> Resul
 #[allow(clippy::too_many_arguments)]
 fn render_status_bar(
     stdout: &mut io::Stdout,
-    _width: u16,
+    width: u16,
     row: u16,
     paused: bool,
     speed: f64,
@@ -680,92 +684,90 @@ fn render_status_bar(
     viewport_mode: bool,
     free_mode: bool,
 ) -> Result<()> {
-    execute!(
-        stdout,
-        MoveTo(0, row),
-        Clear(ClearType::CurrentLine),
-        Print(" "),
-        SetForegroundColor(Color::White),
-    )?;
+    // ANSI color codes
+    const WHITE: &str = "\x1b[97m";
+    const MAGENTA: &str = "\x1b[35m";
+    const GREEN: &str = "\x1b[32m";
+    const DARK_GREY: &str = "\x1b[90m";
+    const YELLOW: &str = "\x1b[33m";
+    const CYAN: &str = "\x1b[36m";
+    const RESET: &str = "\x1b[0m";
+
+    let mut output = String::with_capacity(256);
+    output.push_str(&format!("\x1b[{};1H", row + 1)); // Move cursor
+
+    output.push_str(WHITE);
+    output.push(' ');
 
     let state = if paused { "▶  " } else { "⏸  " };
-    execute!(stdout, Print(state))?;
+    output.push_str(state);
 
     if viewport_mode {
-        execute!(
-            stdout,
-            SetForegroundColor(Color::Magenta),
-            Print("[V] "),
-        )?;
+        output.push_str(MAGENTA);
+        output.push_str("[V] ");
     }
 
     if free_mode {
-        execute!(
-            stdout,
-            SetForegroundColor(Color::Green),
-            Print("[F] "),
-        )?;
+        output.push_str(GREEN);
+        output.push_str("[F] ");
     }
 
-    execute!(
-        stdout,
-        SetForegroundColor(Color::DarkGrey),
-        Print("spd:"),
-        SetForegroundColor(Color::White),
-        Print(format!("{:.1}x ", speed)),
-    )?;
+    output.push_str(DARK_GREY);
+    output.push_str("spd:");
+    output.push_str(WHITE);
+    output.push_str(&format!("{:.1}x ", speed));
 
     if marker_count > 0 {
-        execute!(
-            stdout,
-            SetForegroundColor(Color::Yellow),
-            Print(format!("◆{} ", marker_count)),
-        )?;
+        output.push_str(YELLOW);
+        output.push_str(&format!("◆{} ", marker_count));
     }
 
     if rec_cols as usize > view_cols || rec_rows as usize > view_rows {
-        execute!(
-            stdout,
-            SetForegroundColor(Color::DarkGrey),
-            Print(format!("[{},{}] ", col_offset, row_offset)),
-        )?;
+        output.push_str(DARK_GREY);
+        output.push_str(&format!("[{},{}] ", col_offset, row_offset));
     }
 
     let play_action = if paused { ":play " } else { ":pause " };
-    execute!(
-        stdout,
-        SetForegroundColor(Color::DarkGrey),
-        Print("│ "),
-        SetForegroundColor(Color::Cyan),
-        Print("space"),
-        SetForegroundColor(Color::DarkGrey),
-        Print(play_action),
-        SetForegroundColor(Color::Cyan),
-        Print("m"),
-        SetForegroundColor(Color::DarkGrey),
-        Print(":mrk "),
-        SetForegroundColor(Color::Cyan),
-        Print("f"),
-        SetForegroundColor(Color::DarkGrey),
-        Print(":fre "),
-        SetForegroundColor(Color::Cyan),
-        Print("v"),
-        SetForegroundColor(Color::DarkGrey),
-        Print(":vpt "),
-        SetForegroundColor(Color::Cyan),
-        Print("r"),
-        SetForegroundColor(Color::DarkGrey),
-        Print(":rsz "),
-        SetForegroundColor(Color::Cyan),
-        Print("?"),
-        SetForegroundColor(Color::DarkGrey),
-        Print(":hlp "),
-        SetForegroundColor(Color::Cyan),
-        Print("q"),
-        SetForegroundColor(Color::DarkGrey),
-        Print(":quit"),
-        ResetColor,
-    )?;
+    output.push_str(DARK_GREY);
+    output.push_str("│ ");
+    output.push_str(CYAN);
+    output.push_str("space");
+    output.push_str(DARK_GREY);
+    output.push_str(play_action);
+    output.push_str(CYAN);
+    output.push('m');
+    output.push_str(DARK_GREY);
+    output.push_str(":mrk ");
+    output.push_str(CYAN);
+    output.push('f');
+    output.push_str(DARK_GREY);
+    output.push_str(":fre ");
+    output.push_str(CYAN);
+    output.push('v');
+    output.push_str(DARK_GREY);
+    output.push_str(":vpt ");
+    output.push_str(CYAN);
+    output.push('r');
+    output.push_str(DARK_GREY);
+    output.push_str(":rsz ");
+    output.push_str(CYAN);
+    output.push('?');
+    output.push_str(DARK_GREY);
+    output.push_str(":hlp ");
+    output.push_str(CYAN);
+    output.push('q');
+    output.push_str(DARK_GREY);
+    output.push_str(":quit");
+
+    // Pad to full width to overwrite any leftover content
+    let current_len = output.chars().filter(|c| !c.is_ascii_control()).count();
+    let padding = (width as usize).saturating_sub(current_len);
+    for _ in 0..padding {
+        output.push(' ');
+    }
+
+    output.push_str(RESET);
+    write!(stdout, "{}", output)?;
 
     Ok(())
 }
@@ -849,9 +851,7 @@ fn render_viewport(
     highlight_line: Option<usize>,
 ) -> Result<()> {
     // Build output string to minimize syscalls
-    // Use synchronized update to prevent flicker (DEC private mode 2026)
-    let mut output = String::with_capacity(view_rows * view_cols * 2 + 32);
-    output.push_str("\x1b[?2026h"); // Begin synchronized update
+    let mut output = String::with_capacity(view_rows * view_cols * 2);
 
     for view_row in 0..view_rows {
         let buf_row = view_row + row_offset;
@@ -929,7 +929,6 @@ fn render_viewport(
         let _ = chars_written; // Already writing full width above
     }
 
-    output.push_str("\x1b[?2026l"); // End synchronized update
     write!(stdout, "{}", output)?;
     Ok(())
 }
