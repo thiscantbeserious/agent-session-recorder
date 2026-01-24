@@ -172,6 +172,7 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                             free_mode = !free_mode;
                             if free_mode {
                                 viewport_mode = false; // Exit viewport mode when entering free mode
+                                paused = true; // Enforce pause in free mode
                                 // Set free_line to middle of current viewport
                                 free_line = view_row_offset + view_rows / 2;
                                 free_line = free_line.min(rec_rows as usize - 1);
@@ -180,6 +181,8 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                         KeyCode::Char(' ') => {
                             paused = !paused;
                             if !paused {
+                                // Exit free mode when resuming playback
+                                free_mode = false;
                                 // Reset timing when resuming
                                 start_time = Instant::now();
                                 time_offset = current_time;
