@@ -54,57 +54,16 @@ Designs implementation approaches with a long-term maintenance perspective. Upho
 .state/<branch-name>/plan.md
 ```
 
-## Plan Structure
+## Plan Contents
 
-The plan is written after options are discussed and a decision is made. Contains actionable tasks with clear verification criteria.
+A good plan has:
+- Clear goal (what problem we're solving)
+- Chosen approach (why this over alternatives)
+- Stages with verifiable outcomes (what "done" looks like)
+- Files affected (scope visibility)
+- Design principles applied (reference `design-principles.md`)
 
-```markdown
-# Plan: <feature name>
-
-## Summary
-One sentence describing the goal.
-
-## Approach
-Brief description of chosen approach and why.
-
-## Stages
-
-### Stage 1: <name>
-- [ ] Task 1
-- [ ] Task 2
-Files: `path/to/file.rs`
-
-### Stage 2: <name>
-- [ ] Task 1
-- [ ] Task 2
-Files: `path/to/file.rs`
-
-## Implementer Checklist
-- [ ] All tasks completed
-- [ ] Tests written (TDD)
-- [ ] coding-principles.md followed (implementation details)
-
-## Reviewer Checklist
-- [ ] Implementation matches plan
-- [ ] All tests pass
-- [ ] Edge cases handled
-- [ ] Code quality acceptable
-
-## Product Owner Checklist
-- [ ] Meets original requirements
-- [ ] User experience correct
-- [ ] No unintended changes
-
-## Principles Applied
-- design-principles.md: how applied (architecture decisions)
-- coding-principles.md: for implementer (implementation details)
-- tdd.md: for implementer (test approach)
-
-## Long-term Considerations
-- Maintenance implications
-- Future extensibility
-- Technical debt introduced (if any)
-```
+Structure adapts to the task. A bug fix might be one stage. A feature might be five.
 
 ## Key Rules
 
@@ -113,4 +72,3 @@ Files: `path/to/file.rs`
 - Confirm plan approval before handoff
 - Prefer many small stages over few large ones
 - Every stage must be testable
-- Reference design-principles.md for architecture decisions
