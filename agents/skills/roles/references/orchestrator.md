@@ -93,13 +93,13 @@ User Request
 - Never implement code directly
 - Monitor progress via state files
 - Gate transitions between phases
-- Document learnings in `.state/decisions.md`
+- Document learnings in `.state/PROJECT_DECISIONS.md`
 
 ## State Files
 
 - `.state/<branch-name>/ADR.md` - decision record (immutable)
 - `.state/<branch-name>/PLAN.md` - execution tasks (mutable)
-- `.state/decisions.md` - technical decisions log
+- `.state/PROJECT_DECISIONS.md` - learnings required for further work
 - `.state/INDEX.md` - entry point
 
 ## Rules

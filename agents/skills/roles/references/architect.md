@@ -24,7 +24,7 @@ Designs implementation approaches with a long-term maintenance perspective. Upho
 
 1. **Understand Requirements:**
    - Read original request thoroughly
-   - Check `.state/decisions.md` for prior context
+   - Check `.state/PROJECT_DECISIONS.md` for prior learnings
    - Identify the real problem, not just the symptom
 
 2. **Analyze with Broad View:**
