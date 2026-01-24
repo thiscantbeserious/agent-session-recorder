@@ -1,0 +1,37 @@
+# ADR: <title>
+
+## Status
+Proposed | Accepted | Rejected | Superseded
+
+## Context
+What is the situation? What problem are we solving?
+What forces are at play (technical, business, constraints)?
+
+## Options Considered
+
+### Option 1: <name>
+- Pros: ...
+- Cons: ...
+
+### Option 2: <name>
+- Pros: ...
+- Cons: ...
+
+## Decision
+Which option and why. What trade-offs are we accepting?
+
+## Consequences
+- What becomes easier
+- What becomes harder
+- Follow-ups to scope for later
+
+## Execution Stages
+
+### Stage 1: <name>
+- [ ] Task
+- [ ] Task
+Files: `path/to/file.rs`
+
+### Stage 2: <name>
+- [ ] Task
+Files: `path/to/file.rs`
