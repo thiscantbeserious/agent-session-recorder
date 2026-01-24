@@ -419,6 +419,7 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                 write!(stdout, "\x1b[?2026h")?;
 
                 // Partial update: only re-render changed highlight lines in free mode
+                // Skip all UI chrome (progress bar, status bar, etc.) for partial updates
                 if free_line_only && free_mode {
                     render_single_line(
                         &mut stdout,
@@ -439,6 +440,8 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                         true, // highlighted
                     )?;
                     free_line_only = false;
+                    // End synchronized update and skip UI chrome
+                    write!(stdout, "\x1b[?2026l")?;
                 } else {
                     render_viewport(
                         &mut stdout,
@@ -449,50 +452,50 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
                         view_cols,
                         if free_mode { Some(free_line) } else { None },
                     )?;
+
+                    // Show scroll indicator if viewport can scroll
+                    render_scroll_indicator(
+                        &mut stdout,
+                        term_cols,
+                        view_row_offset,
+                        view_col_offset,
+                        view_rows,
+                        view_cols,
+                        rec_rows as usize,
+                        rec_cols as usize,
+                    )?;
+
+                    render_separator_line(&mut stdout, term_cols, term_rows - 3)?;
+
+                    render_progress_bar(
+                        &mut stdout,
+                        term_cols,
+                        term_rows - 2,
+                        current_time,
+                        total_duration,
+                        &markers,
+                    )?;
+
+                    render_status_bar(
+                        &mut stdout,
+                        term_cols,
+                        term_rows - 1,
+                        paused,
+                        speed,
+                        rec_cols,
+                        rec_rows,
+                        view_cols,
+                        view_rows,
+                        view_col_offset,
+                        view_row_offset,
+                        markers.len(),
+                        viewport_mode,
+                        free_mode,
+                    )?;
+
+                    // End synchronized update
+                    write!(stdout, "\x1b[?2026l")?;
                 }
-
-                // Show scroll indicator if viewport can scroll
-                render_scroll_indicator(
-                    &mut stdout,
-                    term_cols,
-                    view_row_offset,
-                    view_col_offset,
-                    view_rows,
-                    view_cols,
-                    rec_rows as usize,
-                    rec_cols as usize,
-                )?;
-
-                render_separator_line(&mut stdout, term_cols, term_rows - 3)?;
-
-                render_progress_bar(
-                    &mut stdout,
-                    term_cols,
-                    term_rows - 2,
-                    current_time,
-                    total_duration,
-                    &markers,
-                )?;
-
-                render_status_bar(
-                    &mut stdout,
-                    term_cols,
-                    term_rows - 1,
-                    paused,
-                    speed,
-                    rec_cols,
-                    rec_rows,
-                    view_cols,
-                    view_rows,
-                    view_col_offset,
-                    view_row_offset,
-                    markers.len(),
-                    viewport_mode,
-                    free_mode,
-                )?;
-
-                // End synchronized update
-                write!(stdout, "\x1b[?2026l")?;
             }
 
             stdout.flush()?;
