@@ -48,16 +48,21 @@ Designs implementation approaches with a long-term maintenance perspective. Upho
    - Iterate on feedback until approved
    - Only hand off to orchestrator after explicit approval
 
-## ADR Location
+## Output Location
 ```
-.state/<branch-name>/ADR.md
+.state/<branch-name>/ADR.md   # Decision record (immutable after approval)
+.state/<branch-name>/PLAN.md  # Execution tasks (mutable by implementer)
 ```
 
-## ADR Structure
+## Templates
 
-Use the template at `templates/ADR.md`. Copy it to `.state/<branch-name>/ADR.md` and fill in.
+Use templates from `templates/`:
+- `ADR.md` - decision record, verified against
+- `PLAN.md` - execution stages, implementer works from this
 
-Structure adapts to task size. A bug fix might skip Options. A feature needs full ADR.
+Copy both to `.state/<branch-name>/` and fill in.
+
+Structure adapts to task size. A bug fix might have minimal ADR. A feature needs full ADR + detailed PLAN.
 
 ## Key Rules
 - Never skip the options discussion

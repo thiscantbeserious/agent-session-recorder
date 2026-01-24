@@ -12,9 +12,10 @@ Conditionally load:
 
 ## Responsibilities
 
-- Read the ADR at `.state/<branch-name>/ADR.md`
-- Implement the Execution Stages from the ADR
-- Stay within the Decision scope (don't expand beyond what was decided)
+- Read PLAN.md at `.state/<branch-name>/PLAN.md` for tasks
+- Read ADR.md at `.state/<branch-name>/ADR.md` for decision context
+- Work through PLAN.md stages, update progress as you go
+- Stay within ADR Decision scope (don't expand beyond what was decided)
 - Apply coding-principles
 - Follow TDD when writing new code
 - Run `cargo test` and `./tests/e2e_test.sh`

@@ -31,14 +31,3 @@ Decisions made with user during design (numbered, 1-2 sentences each):
 
 1. ...
 2. ...
-
-## Execution Stages
-
-### Stage 1: <name>
-- [ ] Task
-- [ ] Task
-Files: `path/to/file.rs`
-
-### Stage 2: <name>
-- [ ] Task
-Files: `path/to/file.rs`
