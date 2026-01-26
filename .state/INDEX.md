@@ -7,7 +7,7 @@
 | Completed work | `gh pr list --state merged` |
 | Current branch | `git branch --show-current` |
 | Open PRs | `gh pr list` |
-| Technical decisions | `.state/decisions.md` |
+| Technical decisions | `.state/PROJECT_DECISIONS.md` |
 | Templates | `.state-templates/` |
 | Archives | `.archive/state/` |
 | Architecture docs | `architecture/` |
@@ -33,5 +33,6 @@ git log --oneline -5
 **Current focus:** None (phase complete)
 
 **Recently completed:**
-- E2E test refactor into category files (PR #17 merged)
-- Shell wrapper & prompt fixes (PR #16 merged)
+- SDLC role system improvements with ADR/PLAN separation (PR #56 merged)
+- Skills restructured into roles and instructions (PR #54 merged)
+- Install script fix (PR #55 merged)
