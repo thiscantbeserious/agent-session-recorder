@@ -13,11 +13,11 @@ References: ADR.md
 
 Goal: Reorder sections to place operational mechanics first and expand boundaries
 
-- [ ] Move "Spawning Roles" section to position 2 (after header/intro)
-- [ ] Rename "Rules" to "Boundaries & Restrictions" and expand content
-- [ ] Move expanded "Boundaries & Restrictions" to position 3
-- [ ] Add new "SDLC Scope" section at position 4
-- [ ] Reorder remaining sections: Roles, Flow, Steps, Responsibilities, State Files, Ambiguous Instructions
+- [x] Move "Spawning Roles" section to position 2 (after header/intro)
+- [x] Rename "Rules" to "Boundaries & Restrictions" and expand content
+- [x] Move expanded "Boundaries & Restrictions" to position 3
+- [x] Add new "SDLC Scope" section at position 4
+- [x] Reorder remaining sections: Roles, Flow, Steps, Responsibilities, State Files, Ambiguous Instructions
 
 Files: `.claude/skills/roles/references/orchestrator.md`
 
@@ -30,12 +30,12 @@ Considerations:
 
 Goal: Transform the brief "Rules" into comprehensive boundaries
 
-- [ ] Add "never commit directly" alongside "never implement code"
-- [ ] Add "relay only" restriction: Orchestrator must not form own decisions or opinions
-- [ ] Document that Orchestrator only passes messages/decisions between Agents
-- [ ] Document `/roles` command as the ONLY exception to full SDLC
-- [ ] Add clear warning that bypassing SDLC without `/roles` violates protocol
-- [ ] Number the restrictions for easy reference
+- [x] Add "never commit directly" alongside "never implement code"
+- [x] Add "relay only" restriction: Orchestrator must not form own decisions or opinions
+- [x] Document that Orchestrator only passes messages/decisions between Agents
+- [x] Document `/roles` command as the ONLY exception to full SDLC
+- [x] Add clear warning that bypassing SDLC without `/roles` violates protocol
+- [x] Number the restrictions for easy reference
 
 Files: `.claude/skills/roles/references/orchestrator.md`
 
@@ -48,10 +48,10 @@ Considerations:
 
 Goal: Explicitly state that ALL tasks go through the full SDLC
 
-- [ ] Create new section between Boundaries and Roles table
-- [ ] List task types: features, bugfixes, chores, refactoring, documentation
-- [ ] Emphasize consistency prevents shortcuts that lead to errors
-- [ ] Reference that even "small" tasks benefit from the discipline
+- [x] Create new section between Boundaries and Roles table
+- [x] List task types: features, bugfixes, chores, refactoring, documentation
+- [x] Emphasize consistency prevents shortcuts that lead to errors
+- [x] Reference that even "small" tasks benefit from the discipline
 
 Files: `.claude/skills/roles/references/orchestrator.md`
 
@@ -63,10 +63,10 @@ Considerations:
 
 Goal: Ensure the restructured document is complete and consistent
 
-- [ ] Verify all original content preserved
-- [ ] Check section numbering and headings
-- [ ] Validate internal references (if any)
-- [ ] Confirm markdown renders correctly
+- [x] Verify all original content preserved
+- [x] Check section numbering and headings
+- [x] Validate internal references (if any)
+- [x] Confirm markdown renders correctly
 
 Files: `.claude/skills/roles/references/orchestrator.md`
 
