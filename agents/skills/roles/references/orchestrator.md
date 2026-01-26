@@ -42,6 +42,25 @@ PLAN: .state/<branch-name>/PLAN.md
 
 This ensures each role starts immediately with full context, no extra loading step.
 
+### Spawning the Reviewer
+
+The Reviewer requires an additional `Phase` parameter:
+
+```
+You are the Reviewer.
+
+<paste full content from references/reviewer.md here>
+
+Phase: internal  # or "coderabbit"
+Branch: <branch-name>
+ADR: .state/<branch-name>/ADR.md
+PLAN: .state/<branch-name>/PLAN.md
+PR: <PR_NUMBER>
+```
+
+- **Phase: internal** - First review, before PR is marked ready. Focus on ADR compliance and scope.
+- **Phase: coderabbit** - Second review, after CodeRabbit completes. Focus on addressing external findings.
+
 ## Boundaries & Restrictions
 
 The Orchestrator operates within strict boundaries. Violations compromise the SDLC's quality guarantees.
@@ -117,13 +136,30 @@ User Request
                   └────────┬────────┘  from PLAN        │
                            │                            │
                            ▼                            │
-                  ┌─────────────────┐  Validates ───────┤
-                  │    Reviewer     │  against ADR+PLAN │
-                  └────────┬────────┘                   │
+                     [Draft PR]                         │
                            │                            │
                            ▼                            │
                   ┌─────────────────┐                   │
-                  │  Product Owner  │───────────────────┘ Validates against REQUIREMENTS
+                  │    Reviewer     │  Phase 1: Internal│
+                  │  (Phase: internal)  ADR+PLAN check │
+                  └────────┬────────┘                   │
+                           │                            │
+                      ┌────┴────┐                       │
+                      │  Gate   │ Mark PR ready only    │
+                      └────┬────┘ after internal pass   │
+                           │                            │
+                           ▼                            │
+                    [CodeRabbit]  External review       │
+                           │                            │
+                           ▼                            │
+                  ┌─────────────────┐                   │
+                  │    Reviewer     │  Phase 2: Address │
+                  │(Phase: coderabbit) CodeRabbit findings
+                  └────────┬────────┘                   │
+                           │                            │
+                           ▼                            │
+                  ┌─────────────────┐  Validates ───────┘
+                  │  Product Owner  │  against REQUIREMENTS
                   └────────┬────────┘
                            │
                            ▼
@@ -149,24 +185,36 @@ User Request
 3. Spawn Implementer for code phase
    - Implementer works from PLAN.md stages
    - Updates PLAN.md progress
-   - Wait for PR to be created
+   - Wait for **Draft PR** to be created
 
-4. Wait for CodeRabbit review
+4. Spawn Reviewer (Phase 1: Internal)
+   - Validates implementation against ADR.md and PLAN.md
+   - Checks scope adherence and test coverage
+   - Reports findings
+   - **Gate:** Only proceed if internal review passes
+
+5. Mark PR ready for review
+   ```bash
+   gh pr ready <PR_NUMBER>
+   ```
+   This triggers CodeRabbit external review
+
+6. Wait for CodeRabbit review
    ```bash
    gh pr view <PR_NUMBER> --comments | grep -i coderabbit
    ```
    Never proceed while showing "processing"
 
-5. Spawn Reviewer (fresh session)
-   - Validates implementation against ADR.md and PLAN.md
-   - Runs tests, checks coverage
-   - Reports findings
+7. Spawn Reviewer (Phase 2: CodeRabbit)
+   - Reviews CodeRabbit findings
+   - Addresses or dismisses each finding with rationale
+   - Reports recommendations
 
-6. Spawn Product Owner for final validation
+8. Spawn Product Owner for final validation
    - Validates against REQUIREMENTS.md (original requirements)
    - May propose splitting out-of-scope work into new cycles
 
-7. Spawn Maintainer to merge
+9. Spawn Maintainer to merge
    - Only after all approvals
    - Updates ADR Status to Accepted
    - Handles PR merge and cleanup

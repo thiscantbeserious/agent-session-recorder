@@ -33,13 +33,30 @@ User Request
                └────────┬────────┘  from PLAN        │
                         │                            │
                         ▼                            │
-               ┌─────────────────┐  Validates ───────┤
-               │    Reviewer     │  against ADR+PLAN │
-               └────────┬────────┘                   │
+                   [Draft PR]                        │
                         │                            │
                         ▼                            │
                ┌─────────────────┐                   │
-               │  Product Owner  │───────────────────┘ Verifies ADR Context
+               │    Reviewer     │  Phase 1: Internal│
+               │ (Phase: internal)  ADR+PLAN check  │
+               └────────┬────────┘                   │
+                        │                            │
+                   ┌────┴────┐                       │
+                   │  Gate   │ Mark PR ready         │
+                   └────┬────┘                       │
+                        │                            │
+                        ▼                            │
+                  [CodeRabbit]  External review      │
+                        │                            │
+                        ▼                            │
+               ┌─────────────────┐                   │
+               │    Reviewer     │  Phase 2: Address │
+               │(Phase: coderabbit) findings        │
+               └────────┬────────┘                   │
+                        │                            │
+                        ▼                            │
+               ┌─────────────────┐  Validates ───────┘
+               │  Product Owner  │  against REQUIREMENTS
                └────────┬────────┘
                         │
                         ▼
