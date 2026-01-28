@@ -111,8 +111,12 @@ pub fn apply_transforms(path: &Path) -> Result<TransformResult> {
     cast.write(&temp_path)
         .with_context(|| format!("Failed to write transformed file: {}", temp_path.display()))?;
 
-    fs::rename(&temp_path, path)
-        .with_context(|| format!("Failed to replace original file: {}", path.display()))?;
+    if let Err(e) = fs::rename(&temp_path, path) {
+        // Clean up temp file on failure (best-effort, ignore cleanup errors)
+        let _ = fs::remove_file(&temp_path);
+        return Err(e)
+            .with_context(|| format!("Failed to replace original file: {}", path.display()));
+    }
 
     Ok(TransformResult {
         original_duration,
@@ -145,8 +149,18 @@ pub fn restore_from_backup(path: &Path) -> Result<()> {
         anyhow::bail!("No backup exists for: {}", path.display());
     }
 
-    fs::copy(&backup, path)
-        .with_context(|| format!("Failed to restore from backup: {}", backup.display()))?;
+    // Use atomic temp+rename pattern for crash safety
+    let temp_path = path.with_extension("cast.tmp");
+
+    fs::copy(&backup, &temp_path)
+        .with_context(|| format!("Failed to copy backup to temp file: {}", backup.display()))?;
+
+    if let Err(e) = fs::rename(&temp_path, path) {
+        // Clean up temp file on failure
+        let _ = fs::remove_file(&temp_path);
+        return Err(e)
+            .with_context(|| format!("Failed to restore from backup: {}", path.display()));
+    }
 
     Ok(())
 }

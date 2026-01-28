@@ -21,7 +21,9 @@ use super::event::Event;
 use super::preview_cache::PreviewCache;
 use super::theme::current_theme;
 use super::widgets::{FileExplorer, FileExplorerWidget, FileItem};
-use crate::asciicast::{apply_transforms, has_backup, restore_from_backup, TransformResult};
+use crate::asciicast::{
+    apply_transforms, backup_path_for, has_backup, restore_from_backup, TransformResult,
+};
 
 /// UI mode for the list application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -522,6 +524,19 @@ impl ListApp {
     /// Execute the currently selected context menu action.
     fn execute_context_menu_action(&mut self) -> Result<()> {
         let action = ContextMenuItem::ALL[self.context_menu_idx];
+
+        // Guard: check if Restore is disabled (no backup)
+        if matches!(action, ContextMenuItem::Restore) {
+            if let Some(item) = self.explorer.selected_item() {
+                let path = std::path::Path::new(&item.path);
+                if !has_backup(path) {
+                    self.mode = Mode::Normal;
+                    self.status_message = Some("No backup exists for this file".to_string());
+                    return Ok(());
+                }
+            }
+        }
+
         self.mode = Mode::Normal; // Close menu first
 
         match action {
@@ -568,9 +583,23 @@ impl ListApp {
             if let Err(e) = std::fs::remove_file(&path) {
                 self.status_message = Some(format!("Failed to delete: {}", e));
             } else {
+                // Also delete backup if it exists
+                let backup = backup_path_for(std::path::Path::new(&path));
+                let backup_deleted = if backup.exists() {
+                    std::fs::remove_file(&backup).is_ok()
+                } else {
+                    false
+                };
+
                 // Remove from explorer to keep UI in sync
                 self.explorer.remove_item(&path);
-                self.status_message = Some(format!("Deleted: {}", name));
+
+                // Update status message
+                self.status_message = Some(if backup_deleted {
+                    format!("Deleted: {} (and backup)", name)
+                } else {
+                    format!("Deleted: {}", name)
+                });
             }
         }
         Ok(())
