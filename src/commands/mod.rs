@@ -13,6 +13,7 @@ pub mod marker;
 pub mod record;
 pub mod shell;
 pub mod status;
+pub mod transform;
 
 use anyhow::Result;
 use std::path::PathBuf;

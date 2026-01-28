@@ -70,9 +70,34 @@ agr status
 # Play back a recording:
 asciinema play ~/recorded_agent_sessions/claude/session.cast
 
+# Remove long pauses from a recording (e.g., lunch breaks):
+agr transform --remove-silence session.cast
+
 # Add a marker to highlight an important moment:
 agr marker add session.cast 45.2 "Build failed - missing dependency"
 ```
+
+## Post-Processing Recordings
+
+### Silence Removal
+
+Long pauses in recordings (coffee breaks, lunch, thinking time) can make playback tedious. The transform command removes these silences by capping intervals at a configurable threshold.
+
+```bash
+# Use default threshold (2.0 seconds) or header's idle_time_limit:
+agr transform --remove-silence session.cast
+
+# Use a custom threshold (1.5 seconds):
+agr transform --remove-silence=1.5 session.cast
+
+# Write to a new file instead of modifying in-place:
+agr transform --remove-silence --output fast.cast session.cast
+```
+
+**Threshold Resolution Order:**
+1. CLI argument (`--remove-silence=1.5`) - explicit user intent
+2. Header's `idle_time_limit` - recording author's intent
+3. Default: 2.0 seconds
 
 ## Documentation
 
