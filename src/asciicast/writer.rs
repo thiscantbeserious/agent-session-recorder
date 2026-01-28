@@ -1,6 +1,45 @@
-//! Asciicast v3 file writer
+//! Asciicast v3 file writer.
 //!
-//! Handles writing asciicast files to various destinations.
+//! This module provides serialization functionality for asciicast v3 files.
+//! It writes NDJSON format where the first line is a JSON header and
+//! subsequent lines are event arrays.
+//!
+//! # Format
+//!
+//! The output format matches the asciicast v3 specification:
+//!
+//! ```text
+//! {"version":3,"term":{"cols":80,"rows":24}}
+//! [0.5,"o","Hello "]
+//! [0.3,"o","world!"]
+//! ```
+//!
+//! # Example
+//!
+//! ```no_run
+//! use agr::{AsciicastFile, Event, Header};
+//!
+//! let mut file = AsciicastFile::new(Header {
+//!     version: 3,
+//!     width: None,
+//!     height: None,
+//!     term: None,
+//!     timestamp: None,
+//!     duration: None,
+//!     title: None,
+//!     command: None,
+//!     env: None,
+//!     idle_time_limit: None,
+//! });
+//! file.events.push(Event::output(0.5, "hello"));
+//!
+//! // Write to file
+//! file.write("output.cast")?;
+//!
+//! // Or get as string
+//! let content = file.to_string()?;
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use std::fs;
 use std::io::Write;
@@ -8,10 +47,13 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
-use super::{AsciicastFile, Event};
+use super::types::{AsciicastFile, Event};
 
 impl Event {
-    /// Convert event to JSON string
+    /// Serialize the event to a JSON string.
+    ///
+    /// Produces the array format: `[time, type_code, data]`.
+    /// This method cannot fail as all event fields are JSON-safe.
     pub fn to_json(&self) -> String {
         serde_json::to_string(&serde_json::json!([
             self.time,
@@ -23,7 +65,13 @@ impl Event {
 }
 
 impl AsciicastFile {
-    /// Write the asciicast file to a path
+    /// Write the asciicast file to a filesystem path.
+    ///
+    /// Creates or overwrites the file at the given path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be created or written.
     pub fn write<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
         let mut file =
@@ -32,7 +80,13 @@ impl AsciicastFile {
         self.write_to(&mut file)
     }
 
-    /// Write the asciicast file to a writer
+    /// Write the asciicast file to any writer.
+    ///
+    /// Writes the header as the first line, followed by each event on its own line.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if writing fails or header serialization fails.
     pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<()> {
         // Write header
         let header_json =
@@ -47,7 +101,14 @@ impl AsciicastFile {
         Ok(())
     }
 
-    /// Convert to string
+    /// Serialize the asciicast file to a string.
+    ///
+    /// Convenience method that writes to an in-memory buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if serialization fails or the result is not valid UTF-8.
+    #[allow(clippy::inherent_to_string_shadow_display)]
     pub fn to_string(&self) -> Result<String> {
         let mut buffer = Vec::new();
         self.write_to(&mut buffer)?;

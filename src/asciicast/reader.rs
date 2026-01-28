@@ -1,6 +1,39 @@
-//! Asciicast v3 file reader/parser
+//! Asciicast v3 file parser.
 //!
-//! Handles parsing asciicast files from various sources.
+//! This module provides parsing functionality for asciicast v3 files from
+//! various sources: file paths, readers, and strings. The parser reads
+//! NDJSON format where the first line is a JSON header and subsequent
+//! lines are event arrays.
+//!
+//! # Format
+//!
+//! ```text
+//! {"version":3,"term":{"cols":80,"rows":24}}  <- Header (JSON object)
+//! [0.5,"o","Hello "]                          <- Event (JSON array)
+//! [0.3,"o","world!"]                          <- Event (JSON array)
+//! ```
+//!
+//! # Error Handling
+//!
+//! All parsing functions return `Result` and provide context for errors:
+//! - File I/O errors include the file path
+//! - JSON parsing errors include the line number
+//! - Version mismatches report the found version
+//!
+//! # Example
+//!
+//! ```no_run
+//! use agr::AsciicastFile;
+//!
+//! // Parse from file path
+//! let file = AsciicastFile::parse("recording.cast")?;
+//!
+//! // Parse from string
+//! let content = r#"{"version":3}
+//! [0.1,"o","hello"]"#;
+//! let file = AsciicastFile::parse_str(content)?;
+//! # Ok::<(), anyhow::Error>(())
+//! ```
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -8,10 +41,24 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 
-use super::{AsciicastFile, Event, EventType, Header};
+use super::types::{AsciicastFile, Event, EventType, Header};
 
 impl Event {
-    /// Parse an event from a JSON line
+    /// Parse an event from a JSON line.
+    ///
+    /// Expects an array format: `[time, type_code, data]` where:
+    /// - `time` is a number (seconds since previous event)
+    /// - `type_code` is a string ("o", "i", "m", "r", or "x")
+    /// - `data` is a string (event payload)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The line is not valid JSON
+    /// - The JSON is not an array with at least 3 elements
+    /// - The time is not a number
+    /// - The type code is not a recognized string
+    /// - The data is not a string
     pub fn from_json(line: &str) -> Result<Self> {
         let value: serde_json::Value =
             serde_json::from_str(line).context("Failed to parse event JSON")?;
@@ -43,7 +90,13 @@ impl Event {
 }
 
 impl AsciicastFile {
-    /// Parse an asciicast v3 file from a path
+    /// Parse an asciicast v3 file from a filesystem path.
+    ///
+    /// Opens the file and delegates to [`parse_reader`](Self::parse_reader).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be opened or parsed.
     pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let file =
@@ -53,7 +106,18 @@ impl AsciicastFile {
         Self::parse_reader(reader)
     }
 
-    /// Parse an asciicast v3 file from a reader
+    /// Parse an asciicast v3 file from any buffered reader.
+    ///
+    /// Reads the first line as a JSON header, then parses each subsequent
+    /// line as an event. Empty lines are skipped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The file is empty
+    /// - The header is not valid JSON or missing `version` field
+    /// - The version is not 3
+    /// - Any event line fails to parse
     pub fn parse_reader<R: BufRead>(reader: R) -> Result<Self> {
         let mut lines = reader.lines();
 
@@ -91,7 +155,13 @@ impl AsciicastFile {
         Ok(AsciicastFile { header, events })
     }
 
-    /// Parse from a string
+    /// Parse an asciicast v3 file from a string.
+    ///
+    /// Convenience wrapper around [`parse_reader`](Self::parse_reader).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if parsing fails (see `parse_reader`).
     pub fn parse_str(content: &str) -> Result<Self> {
         let reader = BufReader::new(content.as_bytes());
         Self::parse_reader(reader)

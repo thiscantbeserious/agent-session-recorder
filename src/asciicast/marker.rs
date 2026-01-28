@@ -6,7 +6,7 @@ use std::path::Path;
 
 use anyhow::{bail, Result};
 
-use super::{AsciicastFile, Event, EventType};
+use super::types::{AsciicastFile, Event, EventType};
 
 /// Information about a marker
 #[derive(Debug, Clone)]
