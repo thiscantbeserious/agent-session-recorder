@@ -4,8 +4,10 @@
 //! including file operations, error handling, and round-trip integrity.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
+
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 
 use tempfile::TempDir;
 
@@ -210,18 +212,10 @@ fn transform_corrupt_json_file_clear_error() {
 #[test]
 fn transform_truncated_file_clear_error() {
     let temp_dir = TempDir::new().unwrap();
-    // Just the header, no events - this is actually valid
-    // Let's make a truly truncated file mid-JSON
-    let _cast_path = create_cast_file(
-        &temp_dir,
-        "truncated.cast",
-        r#"{"version":3,"term":{"cols":80,"rows":24}}"#,
-    );
-
-    // This might actually be valid (file with no events), so let's try a different truncation
+    // Create a truly truncated file mid-JSON (incomplete event line)
     let truncated_path = create_cast_file(
         &temp_dir,
-        "truncated2.cast",
+        "truncated.cast",
         r#"{"version":3,"term":{"cols":80,"rows":24}}
 [0.5,"o","incomplete"#,
     );
@@ -298,6 +292,7 @@ fn transform_file_not_found_clear_error() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn transform_permission_denied_clear_error() {
     let temp_dir = TempDir::new().unwrap();
