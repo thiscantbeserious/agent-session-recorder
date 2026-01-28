@@ -38,3 +38,6 @@ mod preview_test;
 
 #[path = "integration/snapshot_terminal_test.rs"]
 mod snapshot_terminal_test;
+
+#[path = "integration/transform_test.rs"]
+mod transform_test;

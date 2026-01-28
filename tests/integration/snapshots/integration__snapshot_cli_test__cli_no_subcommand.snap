@@ -1,6 +1,5 @@
 ---
-source: tests/integration/cli_test.rs
-assertion_line: 153
+source: tests/integration/snapshot_cli_test.rs
 expression: output
 ---
 === agr (no args) ===
@@ -21,16 +20,17 @@ Exit code: 2
 Usage: agr <COMMAND>
 
 Commands:
-  record   [37mStart recording a session[0m
-  status   [37mShow storage statistics[0m
-  cleanup  [37mInteractive cleanup of old sessions[0m
-  list     [37mList recorded sessions [aliases: ls][0m
-  analyze  [37mAnalyze a recording with AI[0m
-  marker   [37mManage markers in cast files[0m
-  agents   [37mManage configured agents[0m
-  config   [37mConfiguration management[0m
-  shell    [37mManage shell integration[0m
-  help     [37mPrint this message or the help of the given subcommand(s)[0m
+  record     [37mStart recording a session[0m
+  status     [37mShow storage statistics[0m
+  cleanup    [37mInteractive cleanup of old sessions[0m
+  list       [37mList recorded sessions [aliases: ls][0m
+  analyze    [37mAnalyze a recording with AI[0m
+  marker     [37mManage markers in cast files[0m
+  agents     [37mManage configured agents[0m
+  config     [37mConfiguration management[0m
+  shell      [37mManage shell integration[0m
+  transform  [37mTransform asciicast recordings[0m
+  help       [37mPrint this message or the help of the given subcommand(s)[0m
 
 Options:
   -h, --help     Print help (see more with '--help')

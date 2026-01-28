@@ -1,6 +1,5 @@
 ---
-source: tests/integration/cli_test.rs
-assertion_line: 205
+source: tests/integration/snapshot_cli_test.rs
 expression: output
 ---
 === agr --help (colored) ===
@@ -37,16 +36,17 @@ For more information, see: https://github.com/thiscantbeserious/agent-session-re
 Usage: agr <COMMAND>
 
 Commands:
-  record   ESC[37mStart recording a sessionESC[0m
-  status   ESC[37mShow storage statisticsESC[0m
-  cleanup  ESC[37mInteractive cleanup of old sessionsESC[0m
-  list     ESC[37mList recorded sessions [aliases: ls]ESC[0m
-  analyze  ESC[37mAnalyze a recording with AIESC[0m
-  marker   ESC[37mManage markers in cast filesESC[0m
-  agents   ESC[37mManage configured agentsESC[0m
-  config   ESC[37mConfiguration managementESC[0m
-  shell    ESC[37mManage shell integrationESC[0m
-  help     ESC[37mPrint this message or the help of the given subcommand(s)ESC[0m
+  record     ESC[37mStart recording a sessionESC[0m
+  status     ESC[37mShow storage statisticsESC[0m
+  cleanup    ESC[37mInteractive cleanup of old sessionsESC[0m
+  list       ESC[37mList recorded sessions [aliases: ls]ESC[0m
+  analyze    ESC[37mAnalyze a recording with AIESC[0m
+  marker     ESC[37mManage markers in cast filesESC[0m
+  agents     ESC[37mManage configured agentsESC[0m
+  config     ESC[37mConfiguration managementESC[0m
+  shell      ESC[37mManage shell integrationESC[0m
+  transform  ESC[37mTransform asciicast recordingsESC[0m
+  help       ESC[37mPrint this message or the help of the given subcommand(s)ESC[0m
 
 Options:
   -h, --help

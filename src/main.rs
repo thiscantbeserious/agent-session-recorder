@@ -319,6 +319,29 @@ fn main() -> Result<()> {
             ShellCommands::Install => commands::shell::handle_install(),
             ShellCommands::Uninstall => commands::shell::handle_uninstall(),
         },
+        Commands::Transform {
+            remove_silence,
+            output,
+            file,
+        } => {
+            // Parse the threshold from the optional string value
+            let threshold = match remove_silence {
+                Some(ref s) if !s.is_empty() => {
+                    let parsed: f64 = s.parse().map_err(|_| {
+                        anyhow::anyhow!("Invalid threshold '{}': must be a positive number", s)
+                    })?;
+                    Some(parsed)
+                }
+                _ => None, // No value provided, will use header or default
+            };
+
+            // Currently only silence removal is supported
+            if remove_silence.is_none() {
+                anyhow::bail!("No transform specified. Use --remove-silence to remove silence.");
+            }
+
+            commands::transform::handle_remove_silence(&file, threshold, output.as_deref())
+        }
         Commands::Completions {
             shell,
             files,

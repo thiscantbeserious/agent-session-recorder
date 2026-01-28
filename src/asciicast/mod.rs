@@ -15,12 +15,16 @@
 
 pub mod marker;
 mod reader;
+mod silence_removal;
 mod transform;
 mod types;
 mod writer;
 
 // Re-export marker types
 pub use marker::{MarkerInfo, MarkerManager};
+
+// Re-export silence removal types
+pub use silence_removal::{SilenceRemoval, DEFAULT_SILENCE_THRESHOLD};
 
 // Re-export transform types
 pub use transform::{Transform, TransformChain};
