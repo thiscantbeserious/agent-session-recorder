@@ -38,7 +38,11 @@ pub fn validate_threshold(threshold: f64) -> Result<()> {
     if !threshold.is_finite() {
         bail!(
             "Threshold must be a finite number (got: {})",
-            if threshold.is_nan() { "NaN" } else { "Infinity" }
+            if threshold.is_nan() {
+                "NaN"
+            } else {
+                "Infinity"
+            }
         );
     }
     Ok(())

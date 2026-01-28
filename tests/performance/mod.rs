@@ -2,8 +2,8 @@
 //!
 //! This module contains helpers shared across performance tests.
 
-use std::process::Command;
 use std::path::PathBuf;
+use std::process::Command;
 use tempfile::TempDir;
 
 /// Helper to run agr CLI and capture output
