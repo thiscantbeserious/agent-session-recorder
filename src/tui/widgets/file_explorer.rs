@@ -21,7 +21,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Widget},
 };
 
-use crate::asciicast::EventType;
+use crate::asciicast::{has_backup, EventType};
 use crate::storage::SessionInfo;
 use crate::tui::current_theme;
 
@@ -716,6 +716,19 @@ impl FileExplorer {
         agents
     }
 
+    /// Update metadata for an item by reloading from disk.
+    /// Returns true if item was found and updated.
+    pub fn update_item_metadata(&mut self, path: &str) -> bool {
+        if let Some(idx) = self.items.iter().position(|item| item.path == path) {
+            // Reload metadata from disk
+            if let Ok(metadata) = std::fs::metadata(path) {
+                self.items[idx].size = metadata.len();
+                return true;
+            }
+        }
+        false
+    }
+
     // === Rendering helpers ===
 
     /// Get the list state for ratatui
@@ -796,15 +809,17 @@ impl Widget for FileExplorerWidget<'_> {
         };
 
         // Build list items (collect data first to avoid borrow issues)
-        let item_data: Vec<(String, String, String, bool)> = self
+        let item_data: Vec<(String, String, String, bool, bool)> = self
             .explorer
             .visible_items()
             .map(|(_, item, is_checked)| {
+                let has_bak = has_backup(std::path::Path::new(&item.path));
                 (
                     item.name.clone(),
                     item.agent.clone(),
                     format_size(item.size),
                     is_checked,
+                    has_bak,
                 )
             })
             .collect();
@@ -812,13 +827,19 @@ impl Widget for FileExplorerWidget<'_> {
         let show_checkboxes = self.show_checkboxes;
         let items: Vec<ListItem> = item_data
             .iter()
-            .map(|(name, agent, size_str, is_checked)| {
+            .map(|(name, agent, size_str, is_checked, has_bak)| {
                 let mut spans = vec![];
                 if show_checkboxes {
                     let checkbox = if *is_checked { "[x] " } else { "[ ] " };
                     spans.push(Span::styled(checkbox, theme.text_secondary_style()));
                 }
                 spans.push(Span::styled(name.as_str(), theme.text_style()));
+
+                // Add [opt] indicator if backup exists
+                if *has_bak {
+                    spans.push(Span::styled(" [opt]", theme.accent_style()));
+                }
+
                 spans.push(Span::raw("  "));
                 spans.push(Span::styled(
                     format!("({}, {})", agent, size_str),

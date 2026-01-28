@@ -747,15 +747,15 @@ fn snapshot_context_menu_last_item_selected() {
 }
 
 // ============================================================================
-// Transform Result Modal Snapshots
+// Optimize Result Modal Snapshots
 // ============================================================================
 
 use agr::asciicast::TransformResult;
-use agr::tui::list_app::TransformResultState;
+use agr::tui::list_app::OptimizeResultState;
 use std::path::PathBuf;
 
-/// Render the transform result modal to a buffer and return as string.
-fn render_transform_result_to_string(result_state: &TransformResultState) -> String {
+/// Render the optimize result modal to a buffer and return as string.
+fn render_optimize_result_to_string(result_state: &OptimizeResultState) -> String {
     let width = 60u16;
     let height = 15u16;
     let area = Rect::new(0, 0, width, height);
@@ -766,7 +766,7 @@ fn render_transform_result_to_string(result_state: &TransformResultState) -> Str
 
     terminal
         .draw(|frame| {
-            ListApp::render_transform_result_modal(frame, area, result_state);
+            ListApp::render_optimize_result_modal(frame, area, result_state);
         })
         .unwrap();
 
@@ -784,8 +784,8 @@ fn render_transform_result_to_string(result_state: &TransformResultState) -> Str
 }
 
 #[test]
-fn snapshot_transform_result_success() {
-    let result_state = TransformResultState {
+fn snapshot_optimize_result_success() {
+    let result_state = OptimizeResultState {
         filename: "20240115-session.cast".to_string(),
         result: Ok(TransformResult {
             original_duration: 3661.5, // 1h 1m 1s
@@ -795,13 +795,13 @@ fn snapshot_transform_result_success() {
         }),
     };
 
-    let output = render_transform_result_to_string(&result_state);
-    insta::assert_snapshot!("transform_result_success", output);
+    let output = render_optimize_result_to_string(&result_state);
+    insta::assert_snapshot!("optimize_result_success", output);
 }
 
 #[test]
-fn snapshot_transform_result_success_existing_backup() {
-    let result_state = TransformResultState {
+fn snapshot_optimize_result_success_existing_backup() {
+    let result_state = OptimizeResultState {
         filename: "session.cast".to_string(),
         result: Ok(TransformResult {
             original_duration: 300.0, // 5m
@@ -811,19 +811,19 @@ fn snapshot_transform_result_success_existing_backup() {
         }),
     };
 
-    let output = render_transform_result_to_string(&result_state);
-    insta::assert_snapshot!("transform_result_existing_backup", output);
+    let output = render_optimize_result_to_string(&result_state);
+    insta::assert_snapshot!("optimize_result_existing_backup", output);
 }
 
 #[test]
-fn snapshot_transform_result_error() {
-    let result_state = TransformResultState {
+fn snapshot_optimize_result_error() {
+    let result_state = OptimizeResultState {
         filename: "broken.cast".to_string(),
         result: Err("Failed to parse asciicast: invalid JSON at line 5".to_string()),
     };
 
-    let output = render_transform_result_to_string(&result_state);
-    insta::assert_snapshot!("transform_result_error", output);
+    let output = render_optimize_result_to_string(&result_state);
+    insta::assert_snapshot!("optimize_result_error", output);
 }
 
 // ============================================================================

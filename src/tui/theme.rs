@@ -102,6 +102,15 @@ impl Theme {
         Style::default().fg(self.success)
     }
 
+    /// Style for highlighted/selected items in dialogs and menus.
+    /// Uses black text on accent background for readability.
+    pub fn highlight_style(&self) -> Style {
+        Style::default()
+            .fg(Color::Black)
+            .bg(self.accent)
+            .add_modifier(Modifier::BOLD)
+    }
+
     // ANSI color helpers for CLI output
 
     /// Format text with the accent color (for CLI output).
@@ -336,5 +345,14 @@ mod tests {
         assert_eq!(color_to_ansi(Color::Gray), "\x1b[37m");
         assert_eq!(color_to_ansi(Color::DarkGray), "\x1b[90m");
         assert_eq!(color_to_ansi(Color::Reset), "\x1b[0m");
+    }
+
+    #[test]
+    fn highlight_style_uses_black_on_accent() {
+        let theme = Theme::claude_code();
+        let style = theme.highlight_style();
+        assert_eq!(style.fg, Some(Color::Black));
+        assert_eq!(style.bg, Some(Color::LightGreen)); // accent color
+        assert!(style.add_modifier.contains(ratatui::style::Modifier::BOLD));
     }
 }

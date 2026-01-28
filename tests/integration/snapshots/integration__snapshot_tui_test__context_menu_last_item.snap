@@ -4,12 +4,12 @@ expression: output
 ---
                                                             
                                                             
-                                                            
           ┌ Menu ────────────────────────────────┐          
           │Actions                               │          
           │                                      │          
           │    Play (p)                          │          
-          │    Transform (remove silence) (t)    │          
+          │    Optimize (t)                      │          
+          │       Removes silence from recording │          
           │    Restore from backup (r)           │          
           │    Delete (d)                        │          
           │>   Add marker (m)                    │          

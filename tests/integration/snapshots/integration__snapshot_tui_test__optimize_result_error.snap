@@ -4,13 +4,12 @@ expression: output
 ---
                                                             
                                                             
-  ┌ Transform Complete ─────────────────────────────────┐   
-  │File: session.cast                                   │   
+                                                            
+  ┌ Optimization Failed ────────────────────────────────┐   
+  │File: broken.cast                                    │   
   │                                                     │   
-  │Original: 5m 0s                                      │   
-  │New:      3m 0s                                      │   
-  │Saved:    2m 0s (40%)                                │   
+  │Error:                                               │   
+  │Failed to parse asciicast: invalid JSON at line 5    │   
   │                                                     │   
-  │Backup: Using existing                               │   
   │                                                     │   
   └─────────────────────────────────────────────────────┘

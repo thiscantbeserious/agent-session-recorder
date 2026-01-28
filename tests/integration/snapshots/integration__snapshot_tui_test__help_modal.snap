@@ -15,8 +15,7 @@ expression: output
      │Actions                                                   │     
      │  Enter       Context menu                                │     
      │  p           Play session                                │     
-     │  t           Transform (remove silence)                  │     
-     │  r           Restore from backup                         │     
+     │  t           Optimize (removes silence)                  │     
      │  d           Delete session                              │     
      │                                                          │     
      │Filtering                                                 │     
@@ -28,5 +27,6 @@ expression: output
      │  q           Quit                                        │     
      │                                                          │     
      │Press any key to close                                    │     
+     │                                                          │     
      │                                                          │     
      └──────────────────────────────────────────────────────────┘

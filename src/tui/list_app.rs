@@ -41,15 +41,15 @@ pub enum Mode {
     ConfirmDelete,
     /// Context menu mode - showing actions for selected file
     ContextMenu,
-    /// Transform result mode - showing transform results or error
-    TransformResult,
+    /// Optimize result mode - showing optimization results or error
+    OptimizeResult,
 }
 
 /// Context menu item definition
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContextMenuItem {
     Play,
-    Transform,
+    Optimize,
     Restore,
     Delete,
     AddMarker,
@@ -59,7 +59,7 @@ impl ContextMenuItem {
     /// All menu items in display order
     pub const ALL: [ContextMenuItem; 5] = [
         ContextMenuItem::Play,
-        ContextMenuItem::Transform,
+        ContextMenuItem::Optimize,
         ContextMenuItem::Restore,
         ContextMenuItem::Delete,
         ContextMenuItem::AddMarker,
@@ -69,7 +69,7 @@ impl ContextMenuItem {
     pub fn label(&self) -> &'static str {
         match self {
             ContextMenuItem::Play => "Play",
-            ContextMenuItem::Transform => "Transform (remove silence)",
+            ContextMenuItem::Optimize => "Optimize",
             ContextMenuItem::Restore => "Restore from backup",
             ContextMenuItem::Delete => "Delete",
             ContextMenuItem::AddMarker => "Add marker",
@@ -80,7 +80,7 @@ impl ContextMenuItem {
     pub fn shortcut(&self) -> &'static str {
         match self {
             ContextMenuItem::Play => "p",
-            ContextMenuItem::Transform => "t",
+            ContextMenuItem::Optimize => "t",
             ContextMenuItem::Restore => "r",
             ContextMenuItem::Delete => "d",
             ContextMenuItem::AddMarker => "m",
@@ -88,10 +88,10 @@ impl ContextMenuItem {
     }
 }
 
-/// Holds the result of a transform operation for display in modal.
+/// Holds the result of an optimize operation for display in modal.
 #[derive(Debug, Clone)]
-pub struct TransformResultState {
-    /// The filename that was transformed
+pub struct OptimizeResultState {
+    /// The filename that was optimized
     pub filename: String,
     /// The result (Ok with data or Err with message)
     pub result: Result<TransformResult, String>,
@@ -117,8 +117,8 @@ pub struct ListApp {
     preview_cache: PreviewCache,
     /// Context menu selected index
     context_menu_idx: usize,
-    /// Transform result for modal display
-    transform_result: Option<TransformResultState>,
+    /// Optimize result for modal display
+    optimize_result: Option<OptimizeResultState>,
 }
 
 impl ListApp {
@@ -145,7 +145,7 @@ impl ListApp {
             status_message: None,
             preview_cache: PreviewCache::default(),
             context_menu_idx: 0,
-            transform_result: None,
+            optimize_result: None,
         })
     }
 
@@ -202,7 +202,7 @@ impl ListApp {
         let agent_filter_idx = self.agent_filter_idx;
         let available_agents = &self.available_agents;
         let context_menu_idx = self.context_menu_idx;
-        let transform_result = self.transform_result.clone();
+        let optimize_result = self.optimize_result.clone();
 
         // Get preview for current selection from cache
         let current_path = explorer.selected_item().map(|i| i.path.clone());
@@ -248,7 +248,7 @@ impl ListApp {
                     Mode::ConfirmDelete => "Delete this session? (y/n)".to_string(),
                     Mode::Help => String::new(),
                     Mode::ContextMenu => String::new(),
-                    Mode::TransformResult => String::new(),
+                    Mode::OptimizeResult => String::new(),
                     Mode::Normal => {
                         // Show current filters if any
                         let mut parts = vec![];
@@ -277,9 +277,9 @@ impl ListApp {
                 Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
                 Mode::Help => "Press any key to close help",
                 Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
-                Mode::TransformResult => "Enter/Esc: dismiss",
+                Mode::OptimizeResult => "Enter/Esc: dismiss",
                 Mode::Normal => {
-                    "↑↓: navigate | Enter: menu | p: play | t: transform | r: restore | d: delete | ?: help | q: quit"
+                    "↑↓: navigate | Enter: menu | p: play | t: optimize | d: delete | ?: help | q: quit"
                 }
             };
             let footer = Paragraph::new(footer_text)
@@ -298,9 +298,9 @@ impl ListApp {
                 Mode::ContextMenu => {
                     Self::render_context_menu_modal(frame, area, context_menu_idx, backup_exists);
                 }
-                Mode::TransformResult => {
-                    if let Some(ref result_state) = transform_result {
-                        Self::render_transform_result_modal(frame, area, result_state);
+                Mode::OptimizeResult => {
+                    if let Some(ref result_state) = optimize_result {
+                        Self::render_optimize_result_modal(frame, area, result_state);
                     }
                 }
                 _ => {}
@@ -319,7 +319,7 @@ impl ListApp {
             Mode::Help => self.handle_help_key(key)?,
             Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
             Mode::ContextMenu => self.handle_context_menu_key(key)?,
-            Mode::TransformResult => self.handle_transform_result_key(key)?,
+            Mode::OptimizeResult => self.handle_optimize_result_key(key)?,
         }
         Ok(())
     }
@@ -362,22 +362,10 @@ impl ListApp {
             }
             // Direct shortcuts (bypass context menu)
             KeyCode::Char('p') => self.play_session()?,
-            KeyCode::Char('t') => self.transform_session()?,
+            KeyCode::Char('t') => self.optimize_session()?,
             KeyCode::Char('d') => {
                 if self.explorer.selected_item().is_some() {
                     self.mode = Mode::ConfirmDelete;
-                }
-            }
-            KeyCode::Char('r') => {
-                // Guard: check if backup exists before restoring
-                if let Some(item) = self.explorer.selected_item() {
-                    let path = std::path::Path::new(&item.path);
-                    if !has_backup(path) {
-                        self.status_message =
-                            Some(format!("No backup exists for: {}", item.name.clone()));
-                    } else {
-                        self.restore_session()?;
-                    }
                 }
             }
             KeyCode::Char('m') => self.add_marker()?,
@@ -522,12 +510,12 @@ impl ListApp {
         Ok(())
     }
 
-    /// Handle keys in transform result mode.
-    fn handle_transform_result_key(&mut self, key: KeyEvent) -> Result<()> {
+    /// Handle keys in optimize result mode.
+    fn handle_optimize_result_key(&mut self, key: KeyEvent) -> Result<()> {
         // Enter or Esc dismisses the modal
         if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
             self.mode = Mode::Normal;
-            self.transform_result = None;
+            self.optimize_result = None;
         }
         Ok(())
     }
@@ -553,7 +541,7 @@ impl ListApp {
 
         match action {
             ContextMenuItem::Play => self.play_session()?,
-            ContextMenuItem::Transform => self.transform_session()?,
+            ContextMenuItem::Optimize => self.optimize_session()?,
             ContextMenuItem::Restore => self.restore_session()?,
             ContextMenuItem::Delete => {
                 if self.explorer.selected_item().is_some() {
@@ -618,12 +606,15 @@ impl ListApp {
         if let Some(item) = self.explorer.selected_item() {
             let path = std::path::Path::new(&item.path);
             let name = item.name.clone();
+            let path_str = item.path.clone();
 
             // Attempt restore (restore_from_backup handles missing backup case)
             match restore_from_backup(path) {
                 Ok(()) => {
                     // Invalidate the preview cache for this file
                     self.preview_cache.invalidate(path);
+                    // Refresh file metadata in explorer
+                    self.explorer.update_item_metadata(&path_str);
                     self.status_message = Some(format!("Restored from backup: {}", name));
                 }
                 Err(e) => {
@@ -634,28 +625,31 @@ impl ListApp {
         Ok(())
     }
 
-    /// Transform the selected session (apply silence removal).
-    fn transform_session(&mut self) -> Result<()> {
+    /// Optimize the selected session (apply silence removal).
+    fn optimize_session(&mut self) -> Result<()> {
         if let Some(item) = self.explorer.selected_item() {
             let path = std::path::Path::new(&item.path);
             let name = item.name.clone();
+            let path_str = item.path.clone();
 
             // Apply transforms and store result for modal display
             let result = match apply_transforms(path) {
                 Ok(result) => {
                     // Invalidate the preview cache for this file
                     self.preview_cache.invalidate(path);
+                    // Refresh file metadata in explorer
+                    self.explorer.update_item_metadata(&path_str);
                     Ok(result)
                 }
                 Err(e) => Err(e.to_string()),
             };
 
             // Store result and show modal
-            self.transform_result = Some(TransformResultState {
+            self.optimize_result = Some(OptimizeResultState {
                 filename: name,
                 result,
             });
-            self.mode = Mode::TransformResult;
+            self.mode = Mode::OptimizeResult;
         }
         Ok(())
     }
@@ -705,7 +699,7 @@ impl ListApp {
 
         // Center the modal
         let modal_width = 60.min(area.width.saturating_sub(4));
-        let modal_height = 27.min(area.height.saturating_sub(4)); // Updated for sectioned layout
+        let modal_height = 26.min(area.height.saturating_sub(4)); // Updated: removed r shortcut
         let x = (area.width - modal_width) / 2;
         let y = (area.height - modal_height) / 2;
         let modal_area = Rect::new(x, y, modal_width, modal_height);
@@ -754,11 +748,7 @@ impl ListApp {
             ]),
             Line::from(vec![
                 Span::styled("  t", Style::default().fg(theme.accent)),
-                Span::raw("           Transform (remove silence)"),
-            ]),
-            Line::from(vec![
-                Span::styled("  r", Style::default().fg(theme.accent)),
-                Span::raw("           Restore from backup"),
+                Span::raw("           Optimize (removes silence)"),
             ]),
             Line::from(vec![
                 Span::styled("  d", Style::default().fg(theme.accent)),
@@ -868,7 +858,7 @@ impl ListApp {
 
         // Center the modal
         let modal_width = 40.min(area.width.saturating_sub(4));
-        let modal_height = (ContextMenuItem::ALL.len() + 4) as u16; // items + title + padding + footer
+        let modal_height = (ContextMenuItem::ALL.len() + 5) as u16; // items + title + padding + footer + optimize hint
         let modal_height = modal_height.min(area.height.saturating_sub(4));
         let x = (area.width - modal_width) / 2;
         let y = (area.height - modal_height) / 2;
@@ -901,10 +891,7 @@ impl ListApp {
             };
 
             let style = if is_selected {
-                Style::default()
-                    .fg(theme.background)
-                    .bg(theme.accent)
-                    .add_modifier(Modifier::BOLD)
+                theme.highlight_style()
             } else if is_disabled {
                 Style::default().fg(theme.text_secondary)
             } else {
@@ -917,6 +904,14 @@ impl ListApp {
                 format!("{}{}", prefix, label),
                 style,
             )));
+
+            // Add hint for Optimize
+            if matches!(item, ContextMenuItem::Optimize) {
+                lines.push(Line::from(Span::styled(
+                    "       Removes silence from recording",
+                    Style::default().fg(theme.text_secondary),
+                )));
+            }
         }
 
         lines.push(Line::from(""));
@@ -937,13 +932,13 @@ impl ListApp {
         frame.render_widget(menu, modal_area);
     }
 
-    /// Render the transform result modal overlay.
+    /// Render the optimize result modal overlay.
     ///
     /// This function is public to allow snapshot testing.
-    pub fn render_transform_result_modal(
+    pub fn render_optimize_result_modal(
         frame: &mut Frame,
         area: Rect,
-        result_state: &TransformResultState,
+        result_state: &OptimizeResultState,
     ) {
         let theme = current_theme();
 
@@ -964,7 +959,7 @@ impl ListApp {
         // Build content based on success or error
         let (title, border_color, lines) = match &result_state.result {
             Ok(result) => {
-                let title = " Transform Complete ";
+                let title = " Optimization Complete ";
                 let border_color = theme.success;
 
                 let lines = vec![
@@ -1016,7 +1011,7 @@ impl ListApp {
                 (title, border_color, lines)
             }
             Err(error) => {
-                let title = " Transform Failed ";
+                let title = " Optimization Failed ";
                 let border_color = theme.error;
 
                 let lines = vec![
@@ -1126,9 +1121,9 @@ mod tests {
 
     #[test]
     fn context_menu_item_order() {
-        // Verify expected order: Play, Transform, Restore, Delete, AddMarker
+        // Verify expected order: Play, Optimize, Restore, Delete, AddMarker
         assert_eq!(ContextMenuItem::ALL[0], ContextMenuItem::Play);
-        assert_eq!(ContextMenuItem::ALL[1], ContextMenuItem::Transform);
+        assert_eq!(ContextMenuItem::ALL[1], ContextMenuItem::Optimize);
         assert_eq!(ContextMenuItem::ALL[2], ContextMenuItem::Restore);
         assert_eq!(ContextMenuItem::ALL[3], ContextMenuItem::Delete);
         assert_eq!(ContextMenuItem::ALL[4], ContextMenuItem::AddMarker);
@@ -1162,8 +1157,8 @@ mod tests {
     }
 
     #[test]
-    fn transform_result_mode_exists() {
-        assert_eq!(Mode::TransformResult, Mode::TransformResult);
-        assert_ne!(Mode::TransformResult, Mode::Normal);
+    fn optimize_result_mode_exists() {
+        assert_eq!(Mode::OptimizeResult, Mode::OptimizeResult);
+        assert_ne!(Mode::OptimizeResult, Mode::Normal);
     }
 }
