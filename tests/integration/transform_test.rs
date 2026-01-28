@@ -79,11 +79,8 @@ fn transform_inplace_modification_works() {
     let cast_path = create_cast_file(&temp_dir, "test.cast", sample_cast_with_long_pauses());
 
     // Run transform without --output (in-place)
-    let (stdout, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (stdout, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
 
     assert_eq!(exit_code, 0, "Exit code should be 0. stderr: {}", stderr);
     assert!(
@@ -192,13 +189,13 @@ fn transform_corrupt_json_file_clear_error() {
     let temp_dir = TempDir::new().unwrap();
     let cast_path = create_cast_file(&temp_dir, "corrupt.cast", "{ not valid json at all");
 
-    let (stdout, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (stdout, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
 
-    assert_ne!(exit_code, 0, "Exit code should be non-zero for corrupt file");
+    assert_ne!(
+        exit_code, 0,
+        "Exit code should be non-zero for corrupt file"
+    );
     let combined = format!("{}{}", stdout, stderr);
     assert!(
         combined.to_lowercase().contains("error")
@@ -226,7 +223,10 @@ fn transform_truncated_file_clear_error() {
         truncated_path.to_str().unwrap(),
     ]);
 
-    assert_ne!(exit_code, 0, "Exit code should be non-zero for truncated file");
+    assert_ne!(
+        exit_code, 0,
+        "Exit code should be non-zero for truncated file"
+    );
     let combined = format!("{}{}", stdout, stderr);
     assert!(
         combined.to_lowercase().contains("error")
@@ -256,13 +256,13 @@ fn transform_missing_header_clear_error() {
 [0.1,"o","hello\r\n"]"#,
     );
 
-    let (stdout, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (stdout, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
 
-    assert_ne!(exit_code, 0, "Exit code should be non-zero for missing header");
+    assert_ne!(
+        exit_code, 0,
+        "Exit code should be non-zero for missing header"
+    );
     let combined = format!("{}{}", stdout, stderr);
     assert!(
         combined.to_lowercase().contains("error")
@@ -281,7 +281,10 @@ fn transform_file_not_found_clear_error() {
         "/nonexistent/path/to/file.cast",
     ]);
 
-    assert_ne!(exit_code, 0, "Exit code should be non-zero for missing file");
+    assert_ne!(
+        exit_code, 0,
+        "Exit code should be non-zero for missing file"
+    );
     let combined = format!("{}{}", stdout, stderr);
     assert!(
         combined.to_lowercase().contains("not found")
@@ -303,18 +306,18 @@ fn transform_permission_denied_clear_error() {
     perms.set_mode(0o444);
     fs::set_permissions(&cast_path, perms).unwrap();
 
-    let (stdout, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (stdout, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
 
     // Restore permissions for cleanup
     let mut perms = fs::metadata(&cast_path).unwrap().permissions();
     perms.set_mode(0o644);
     fs::set_permissions(&cast_path, perms).unwrap();
 
-    assert_ne!(exit_code, 0, "Exit code should be non-zero for read-only file");
+    assert_ne!(
+        exit_code, 0,
+        "Exit code should be non-zero for read-only file"
+    );
     let combined = format!("{}{}", stdout, stderr);
     assert!(
         combined.to_lowercase().contains("permission")
@@ -339,7 +342,10 @@ fn transform_invalid_threshold_clear_error_before_file_ops() {
         cast_path.to_str().unwrap(),
     ]);
 
-    assert_ne!(exit_code, 0, "Exit code should be non-zero for invalid threshold");
+    assert_ne!(
+        exit_code, 0,
+        "Exit code should be non-zero for invalid threshold"
+    );
     let combined = format!("{}{}", stdout, stderr);
     assert!(
         combined.to_lowercase().contains("positive")
@@ -368,11 +374,13 @@ fn transform_invalid_threshold_zero() {
         cast_path.to_str().unwrap(),
     ]);
 
-    assert_ne!(exit_code, 0, "Exit code should be non-zero for zero threshold");
+    assert_ne!(
+        exit_code, 0,
+        "Exit code should be non-zero for zero threshold"
+    );
     let combined = format!("{}{}", stdout, stderr);
     assert!(
-        combined.to_lowercase().contains("positive")
-            || combined.to_lowercase().contains("error"),
+        combined.to_lowercase().contains("positive") || combined.to_lowercase().contains("error"),
         "Should show error about zero threshold. Output: {}",
         combined
     );
@@ -389,7 +397,10 @@ fn transform_invalid_threshold_nan() {
         cast_path.to_str().unwrap(),
     ]);
 
-    assert_ne!(exit_code, 0, "Exit code should be non-zero for NaN threshold");
+    assert_ne!(
+        exit_code, 0,
+        "Exit code should be non-zero for NaN threshold"
+    );
     let combined = format!("{}{}", stdout, stderr);
     assert!(
         combined.to_lowercase().contains("invalid")
@@ -409,11 +420,8 @@ fn transform_then_parse_produces_valid_asciicast() {
     let temp_dir = TempDir::new().unwrap();
     let cast_path = create_cast_file(&temp_dir, "roundtrip.cast", sample_cast_with_long_pauses());
 
-    let (_, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (_, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
 
     assert_eq!(exit_code, 0, "Transform should succeed. stderr: {}", stderr);
 
@@ -438,11 +446,8 @@ fn transform_preserves_header_fields() {
     // Parse before transform
     let original = AsciicastFile::parse(&cast_path).unwrap();
 
-    let (_, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (_, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
 
     assert_eq!(exit_code, 0, "Transform should succeed. stderr: {}", stderr);
 
@@ -470,11 +475,8 @@ fn transform_preserves_all_event_data_fields() {
     let original_data: Vec<_> = original.events.iter().map(|e| e.data.clone()).collect();
     let original_types: Vec<_> = original.events.iter().map(|e| e.event_type).collect();
 
-    let (_, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (_, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
 
     assert_eq!(exit_code, 0, "Transform should succeed. stderr: {}", stderr);
 
@@ -512,11 +514,8 @@ fn transform_preserves_unicode_content() {
     let original = AsciicastFile::parse(&cast_path).unwrap();
     let original_data: Vec<_> = original.events.iter().map(|e| e.data.clone()).collect();
 
-    let (_, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (_, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
 
     assert_eq!(exit_code, 0, "Transform should succeed. stderr: {}", stderr);
 
@@ -549,7 +548,11 @@ fn transform_multiple_times_cumulative_effect() {
         "--remove-silence=10.0",
         cast_path.to_str().unwrap(),
     ]);
-    assert_eq!(exit_code, 0, "First transform should succeed. stderr: {}", stderr);
+    assert_eq!(
+        exit_code, 0,
+        "First transform should succeed. stderr: {}",
+        stderr
+    );
 
     // After first: [0.5, 10.0, 10.0]
     let after_first = AsciicastFile::parse(&cast_path).unwrap();
@@ -562,7 +565,11 @@ fn transform_multiple_times_cumulative_effect() {
         "--remove-silence=2.0",
         cast_path.to_str().unwrap(),
     ]);
-    assert_eq!(exit_code, 0, "Second transform should succeed. stderr: {}", stderr);
+    assert_eq!(
+        exit_code, 0,
+        "Second transform should succeed. stderr: {}",
+        stderr
+    );
 
     // After second: [0.5, 2.0, 2.0]
     let after_second = AsciicastFile::parse(&cast_path).unwrap();
@@ -593,11 +600,8 @@ fn transform_uses_header_idle_time_limit_when_no_cli_threshold() {
         sample_cast_with_idle_time_limit(),
     );
 
-    let (stdout, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (stdout, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
 
     assert_eq!(exit_code, 0, "Transform should succeed. stderr: {}", stderr);
     assert!(

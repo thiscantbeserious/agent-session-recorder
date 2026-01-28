@@ -29,11 +29,8 @@ fn transform_large_file_via_cli_completes() {
     let cast_path = create_cast_file(&temp_dir, "large.cast", &large_content);
 
     let start = std::time::Instant::now();
-    let (stdout, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (stdout, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
     let duration = start.elapsed();
 
     assert_eq!(
@@ -72,11 +69,8 @@ fn transform_large_file_output_is_valid_and_playable() {
     let large_content = generate_large_cast(100_000);
     let cast_path = create_cast_file(&temp_dir, "large_valid.cast", &large_content);
 
-    let (_, stderr, exit_code) = run_agr(&[
-        "transform",
-        "--remove-silence",
-        cast_path.to_str().unwrap(),
-    ]);
+    let (_, stderr, exit_code) =
+        run_agr(&["transform", "--remove-silence", cast_path.to_str().unwrap()]);
 
     assert_eq!(
         exit_code, 0,
@@ -97,7 +91,11 @@ fn transform_large_file_output_is_valid_and_playable() {
     assert_eq!(cast.events.len(), 100_000);
 
     // Verify some events were actually transformed (the ones with 5.0s intervals)
-    let clamped_count = cast.events.iter().filter(|e| (e.time - 2.0).abs() < 0.001).count();
+    let clamped_count = cast
+        .events
+        .iter()
+        .filter(|e| (e.time - 2.0).abs() < 0.001)
+        .count();
     assert!(
         clamped_count > 0,
         "Some events should have been clamped to 2.0s"

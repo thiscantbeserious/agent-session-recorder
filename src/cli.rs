@@ -237,8 +237,7 @@ After installing, restart your shell or run: source ~/.zshrc"
     Shell(ShellCommands),
 
     /// Transform asciicast recordings
-    #[command(
-        long_about = "Apply transformations to asciicast recording files.
+    #[command(long_about = "Apply transformations to asciicast recording files.
 
 Transforms modify the timing or content of recordings. Currently supports
 silence removal, which caps long pauses at a configurable threshold.
@@ -256,8 +255,7 @@ EXAMPLES:
         Use explicit 1.5s threshold (note: requires = for value)
 
     agr transform --remove-silence --output fast.cast session.cast
-        Write to separate file, preserving original"
-    )]
+        Write to separate file, preserving original")]
     Transform {
         /// Remove silence by capping intervals at threshold
         #[arg(

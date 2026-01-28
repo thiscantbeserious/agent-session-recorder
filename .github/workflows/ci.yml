@@ -125,7 +125,8 @@ jobs:
         run: cargo build --release
 
       - name: Generate coverage
-        run: cargo tarpaulin --out xml --output-dir coverage
+        # Run lib and integration tests, skip performance tests (instrumentation overhead breaks timing)
+        run: cargo tarpaulin --out xml --output-dir coverage --lib --test integration
 
       - name: Upload to Codecov
         uses: codecov/codecov-action@v5
