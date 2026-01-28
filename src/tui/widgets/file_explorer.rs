@@ -743,6 +743,8 @@ pub struct FileExplorerWidget<'a> {
     show_checkboxes: bool,
     /// Optional enhanced preview data for the selected session
     session_preview: Option<&'a SessionPreview>,
+    /// Whether a backup exists for the selected file
+    has_backup: bool,
 }
 
 impl<'a> FileExplorerWidget<'a> {
@@ -753,6 +755,7 @@ impl<'a> FileExplorerWidget<'a> {
             show_preview: true,
             show_checkboxes: true,
             session_preview: None,
+            has_backup: false,
         }
     }
 
@@ -771,6 +774,12 @@ impl<'a> FileExplorerWidget<'a> {
     /// Set the session preview data to display enhanced information
     pub fn session_preview(mut self, preview: Option<&'a SessionPreview>) -> Self {
         self.session_preview = preview;
+        self
+    }
+
+    /// Set whether a backup exists for the selected file
+    pub fn has_backup(mut self, has_backup: bool) -> Self {
+        self.has_backup = has_backup;
         self
     }
 }
@@ -843,6 +852,9 @@ impl Widget for FileExplorerWidget<'_> {
             )
         });
 
+        // Capture backup status
+        let has_backup = self.has_backup;
+
         // Render list
         let list = List::new(items)
             .block(
@@ -890,6 +902,19 @@ impl Widget for FileExplorerWidget<'_> {
                         Span::styled("Markers: ", theme.text_secondary_style()),
                         Span::styled(markers.to_string(), theme.text_style()),
                     ]));
+                    // Show backup status
+                    if has_backup {
+                        lines.push(Line::from(vec![
+                            Span::styled("Backup: ", theme.text_secondary_style()),
+                            Span::styled(
+                                "Available",
+                                Style::default()
+                                    .fg(theme.success)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(" (r to restore)", theme.text_secondary_style()),
+                        ]));
+                    }
                     lines.push(Line::from(vec![
                         Span::styled("Modified: ", theme.text_secondary_style()),
                         Span::styled(

@@ -1,0 +1,32 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+expression: output
+---
+                                                                      
+                                                                      
+     ┌ Help ────────────────────────────────────────────────────┐     
+     │Keyboard Shortcuts                                        │     
+     │                                                          │     
+     │Navigation                                                │     
+     │  ↑/↓ j/k    Navigate                                     │     
+     │  PgUp/Dn    Page up/down                                 │     
+     │  Home/End   First/last                                   │     
+     │                                                          │     
+     │Actions                                                   │     
+     │  Enter       Context menu                                │     
+     │  p           Play session                                │     
+     │  t           Transform (remove silence)                  │     
+     │  r           Restore from backup                         │     
+     │  d           Delete session                              │     
+     │                                                          │     
+     │Filtering                                                 │     
+     │  /           Search by filename                          │     
+     │  f           Filter by agent                             │     
+     │  Esc         Clear filters                               │     
+     │                                                          │     
+     │  ?           This help                                   │     
+     │  q           Quit                                        │     
+     │                                                          │     
+     │Press any key to close                                    │     
+     │                                                          │     
+     └──────────────────────────────────────────────────────────┘

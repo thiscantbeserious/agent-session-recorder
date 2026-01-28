@@ -116,6 +116,16 @@ impl PreviewCache {
         }
     }
 
+    /// Invalidate a cached preview (e.g., after file modification)
+    ///
+    /// Removes the preview from cache so it will be reloaded on next access.
+    pub fn invalidate<P: AsRef<Path>>(&mut self, path: P) {
+        let path_str = path.as_ref().to_string_lossy().to_string();
+        self.cache.remove(&path_str);
+        self.lru_order.retain(|p| p != &path_str);
+        self.pending.remove(&path_str);
+    }
+
     /// Insert a preview into the cache
     fn insert(&mut self, path: String, preview: SessionPreview) {
         // If already in cache, just update LRU
@@ -177,5 +187,23 @@ mod tests {
         cache.request("/test/path");
         cache.request("/test/path"); // Should not panic or duplicate
         assert!(cache.is_pending("/test/path"));
+    }
+
+    #[test]
+    fn invalidate_removes_from_pending() {
+        let mut cache = PreviewCache::new(10);
+        cache.request("/test/path");
+        assert!(cache.is_pending("/test/path"));
+
+        cache.invalidate("/test/path");
+        assert!(!cache.is_pending("/test/path"));
+    }
+
+    #[test]
+    fn invalidate_nonexistent_path_is_safe() {
+        let mut cache = PreviewCache::new(10);
+        // Should not panic
+        cache.invalidate("/nonexistent/path");
+        assert!(!cache.is_pending("/nonexistent/path"));
     }
 }

@@ -380,3 +380,161 @@ impl StorageManager {
         Ok(files)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use std::path::Path;
+    use tempfile::TempDir;
+
+    /// Create a test config with a custom storage directory.
+    fn create_test_config(storage_dir: &Path) -> Config {
+        Config {
+            storage: crate::config::StorageConfig {
+                directory: storage_dir.to_string_lossy().to_string(),
+                size_threshold_gb: 5.0,
+                age_threshold_days: 30,
+            },
+            agents: crate::config::AgentsConfig {
+                enabled: vec!["claude".to_string(), "codex".to_string()],
+                no_wrap: vec![],
+            },
+            shell: Default::default(),
+            recording: Default::default(),
+        }
+    }
+
+    // ========================================================================
+    // Backup file filtering tests
+    // ========================================================================
+
+    /// Test that list_sessions excludes .bak files from the file list.
+    ///
+    /// This is a critical regression test - .bak files are backups created
+    /// by the transform feature and should never appear in the session list.
+    #[test]
+    fn list_sessions_excludes_bak_files() {
+        let dir = TempDir::new().unwrap();
+        let storage_dir = dir.path();
+
+        // Create agent directory
+        let agent_dir = storage_dir.join("claude");
+        fs::create_dir_all(&agent_dir).unwrap();
+
+        // Create a valid .cast file
+        let cast_file = agent_dir.join("session.cast");
+        let mut f = fs::File::create(&cast_file).unwrap();
+        writeln!(f, r#"{{"version":3}}"#).unwrap();
+        writeln!(f, r#"[0.1,"o","hello"]"#).unwrap();
+
+        // Create a .cast.bak file (backup)
+        let bak_file = agent_dir.join("session.cast.bak");
+        let mut f = fs::File::create(&bak_file).unwrap();
+        writeln!(f, r#"{{"version":3}}"#).unwrap();
+        writeln!(f, r#"[0.1,"o","original"]"#).unwrap();
+
+        // Create another .bak file without .cast prefix
+        let other_bak = agent_dir.join("other.bak");
+        let mut f = fs::File::create(&other_bak).unwrap();
+        writeln!(f, "some backup data").unwrap();
+
+        // List sessions
+        let config = create_test_config(storage_dir);
+        let manager = StorageManager::new(config);
+        let sessions = manager.list_sessions(None).unwrap();
+
+        // Should only find the .cast file, not any .bak files
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].filename, "session.cast");
+
+        // Verify .bak files still exist on disk but aren't listed
+        assert!(bak_file.exists());
+        assert!(other_bak.exists());
+    }
+
+    /// Test that list_sessions only includes files with .cast extension.
+    #[test]
+    fn list_sessions_only_includes_cast_extension() {
+        let dir = TempDir::new().unwrap();
+        let storage_dir = dir.path();
+
+        // Create agent directory
+        let agent_dir = storage_dir.join("claude");
+        fs::create_dir_all(&agent_dir).unwrap();
+
+        // Create files with various extensions
+        let extensions = [
+            "session.cast",     // Valid - should be included
+            "session.cast.bak", // Backup - should be excluded
+            "session.txt",      // Wrong extension - excluded
+            "session.json",     // Wrong extension - excluded
+            "session",          // No extension - excluded
+        ];
+
+        for filename in &extensions {
+            let path = agent_dir.join(filename);
+            let mut f = fs::File::create(&path).unwrap();
+            writeln!(f, "test content").unwrap();
+        }
+
+        // List sessions
+        let config = create_test_config(storage_dir);
+        let manager = StorageManager::new(config);
+        let sessions = manager.list_sessions(None).unwrap();
+
+        // Should only find session.cast
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].filename, "session.cast");
+    }
+
+    /// Test that list_sessions works correctly with empty directory.
+    #[test]
+    fn list_sessions_empty_directory() {
+        let dir = TempDir::new().unwrap();
+        let storage_dir = dir.path();
+
+        let config = create_test_config(storage_dir);
+        let manager = StorageManager::new(config);
+        let sessions = manager.list_sessions(None).unwrap();
+
+        assert!(sessions.is_empty());
+    }
+
+    /// Test that list_sessions filters by agent correctly.
+    #[test]
+    fn list_sessions_filters_by_agent() {
+        let dir = TempDir::new().unwrap();
+        let storage_dir = dir.path();
+
+        // Create two agent directories
+        let claude_dir = storage_dir.join("claude");
+        let codex_dir = storage_dir.join("codex");
+        fs::create_dir_all(&claude_dir).unwrap();
+        fs::create_dir_all(&codex_dir).unwrap();
+
+        // Create files in each
+        let mut f = fs::File::create(claude_dir.join("claude_session.cast")).unwrap();
+        writeln!(f, "claude data").unwrap();
+
+        let mut f = fs::File::create(codex_dir.join("codex_session.cast")).unwrap();
+        writeln!(f, "codex data").unwrap();
+
+        let config = create_test_config(storage_dir);
+        let manager = StorageManager::new(config);
+
+        // List all sessions
+        let all_sessions = manager.list_sessions(None).unwrap();
+        assert_eq!(all_sessions.len(), 2);
+
+        // List only claude sessions
+        let claude_sessions = manager.list_sessions(Some("claude")).unwrap();
+        assert_eq!(claude_sessions.len(), 1);
+        assert_eq!(claude_sessions[0].agent, "claude");
+
+        // List only codex sessions
+        let codex_sessions = manager.list_sessions(Some("codex")).unwrap();
+        assert_eq!(codex_sessions.len(), 1);
+        assert_eq!(codex_sessions[0].agent, "codex");
+    }
+}

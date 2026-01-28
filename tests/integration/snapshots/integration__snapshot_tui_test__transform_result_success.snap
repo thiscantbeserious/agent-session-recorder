@@ -1,0 +1,16 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+expression: output
+---
+                                                            
+                                                            
+  ┌ Transform Complete ─────────────────────────────────┐   
+  │File: 20240115-session.cast                          │   
+  │                                                     │   
+  │Original: 1h 1m 2s                                   │   
+  │New:      20m 34s                                    │   
+  │Saved:    40m 28s (66%)                              │   
+  │                                                     │   
+  │Backup: Created                                      │   
+  │                                                     │   
+  └─────────────────────────────────────────────────────┘

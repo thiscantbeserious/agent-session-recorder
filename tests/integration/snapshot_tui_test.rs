@@ -544,10 +544,23 @@ fn render_explorer_with_preview(
     width: u16,
     height: u16,
 ) -> String {
+    render_explorer_with_preview_and_backup(explorer, preview, false, width, height)
+}
+
+/// Render a file explorer widget with a session preview and backup indicator.
+fn render_explorer_with_preview_and_backup(
+    explorer: &mut FileExplorer,
+    preview: Option<&agr::tui::widgets::SessionPreview>,
+    has_backup: bool,
+    width: u16,
+    height: u16,
+) -> String {
     let area = Rect::new(0, 0, width, height);
     let mut buf = Buffer::empty(area);
 
-    let widget = FileExplorerWidget::new(explorer).session_preview(preview);
+    let widget = FileExplorerWidget::new(explorer)
+        .session_preview(preview)
+        .has_backup(has_backup);
     widget.render(area, &mut buf);
 
     let mut output = String::new();
@@ -604,4 +617,250 @@ fn snapshot_file_explorer_with_session_preview() {
 
     let output = render_explorer_with_preview(&mut explorer, Some(&preview), 100, 20);
     insta::assert_snapshot!("file_explorer_with_session_preview", output);
+}
+
+#[test]
+fn snapshot_file_explorer_preview_with_backup() {
+    use agr::terminal_buffer::{Cell, CellStyle, StyledLine};
+    use agr::tui::widgets::SessionPreview;
+
+    let mut explorer = FileExplorer::new(create_test_file_items());
+
+    // Create a mock session preview
+    let preview = SessionPreview {
+        duration_secs: 300.0, // 5m 0s
+        marker_count: 2,
+        styled_preview: vec![StyledLine {
+            cells: "$ echo hello"
+                .chars()
+                .map(|c| Cell {
+                    char: c,
+                    style: CellStyle::default(),
+                })
+                .collect(),
+        }],
+    };
+
+    // Render with backup indicator
+    let output =
+        render_explorer_with_preview_and_backup(&mut explorer, Some(&preview), true, 100, 20);
+    insta::assert_snapshot!("file_explorer_preview_with_backup", output);
+}
+
+#[test]
+fn snapshot_file_explorer_preview_without_backup() {
+    use agr::terminal_buffer::{Cell, CellStyle, StyledLine};
+    use agr::tui::widgets::SessionPreview;
+
+    let mut explorer = FileExplorer::new(create_test_file_items());
+
+    // Create a mock session preview
+    let preview = SessionPreview {
+        duration_secs: 300.0, // 5m 0s
+        marker_count: 2,
+        styled_preview: vec![StyledLine {
+            cells: "$ echo hello"
+                .chars()
+                .map(|c| Cell {
+                    char: c,
+                    style: CellStyle::default(),
+                })
+                .collect(),
+        }],
+    };
+
+    // Render without backup indicator
+    let output =
+        render_explorer_with_preview_and_backup(&mut explorer, Some(&preview), false, 100, 20);
+    insta::assert_snapshot!("file_explorer_preview_without_backup", output);
+}
+
+// ============================================================================
+// Context Menu Modal Snapshots
+// ============================================================================
+
+use agr::tui::list_app::ListApp;
+
+/// Render the context menu modal to a buffer and return as string.
+fn render_context_menu_to_string(selected_idx: usize, backup_exists: bool) -> String {
+    let width = 60u16;
+    let height = 15u16;
+    let area = Rect::new(0, 0, width, height);
+
+    // Create a mock terminal backend
+    let backend = ratatui::backend::TestBackend::new(width, height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| {
+            ListApp::render_context_menu_modal(frame, area, selected_idx, backup_exists);
+        })
+        .unwrap();
+
+    // Extract the buffer content
+    let backend = terminal.backend();
+    let mut output = String::new();
+    for y in 0..height {
+        for x in 0..width {
+            let cell = backend.buffer()[(x, y)].symbol();
+            output.push_str(cell);
+        }
+        output.push('\n');
+    }
+    output
+}
+
+#[test]
+fn snapshot_context_menu_first_item_selected() {
+    let output = render_context_menu_to_string(0, true);
+    insta::assert_snapshot!("context_menu_first_item", output);
+}
+
+#[test]
+fn snapshot_context_menu_transform_selected() {
+    let output = render_context_menu_to_string(1, true);
+    insta::assert_snapshot!("context_menu_transform_selected", output);
+}
+
+#[test]
+fn snapshot_context_menu_restore_selected_with_backup() {
+    let output = render_context_menu_to_string(2, true);
+    insta::assert_snapshot!("context_menu_restore_with_backup", output);
+}
+
+#[test]
+fn snapshot_context_menu_restore_selected_no_backup() {
+    let output = render_context_menu_to_string(2, false);
+    insta::assert_snapshot!("context_menu_restore_no_backup", output);
+}
+
+#[test]
+fn snapshot_context_menu_delete_selected() {
+    let output = render_context_menu_to_string(3, true);
+    insta::assert_snapshot!("context_menu_delete_selected", output);
+}
+
+#[test]
+fn snapshot_context_menu_last_item_selected() {
+    let output = render_context_menu_to_string(4, true);
+    insta::assert_snapshot!("context_menu_last_item", output);
+}
+
+// ============================================================================
+// Transform Result Modal Snapshots
+// ============================================================================
+
+use agr::asciicast::TransformResult;
+use agr::tui::list_app::TransformResultState;
+use std::path::PathBuf;
+
+/// Render the transform result modal to a buffer and return as string.
+fn render_transform_result_to_string(result_state: &TransformResultState) -> String {
+    let width = 60u16;
+    let height = 15u16;
+    let area = Rect::new(0, 0, width, height);
+
+    // Create a mock terminal backend
+    let backend = ratatui::backend::TestBackend::new(width, height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| {
+            ListApp::render_transform_result_modal(frame, area, result_state);
+        })
+        .unwrap();
+
+    // Extract the buffer content
+    let backend = terminal.backend();
+    let mut output = String::new();
+    for y in 0..height {
+        for x in 0..width {
+            let cell = backend.buffer()[(x, y)].symbol();
+            output.push_str(cell);
+        }
+        output.push('\n');
+    }
+    output
+}
+
+#[test]
+fn snapshot_transform_result_success() {
+    let result_state = TransformResultState {
+        filename: "20240115-session.cast".to_string(),
+        result: Ok(TransformResult {
+            original_duration: 3661.5, // 1h 1m 1s
+            new_duration: 1234.0,      // 20m 34s
+            backup_path: Some(PathBuf::from("/tmp/test.cast.bak")),
+            backup_created: true,
+        }),
+    };
+
+    let output = render_transform_result_to_string(&result_state);
+    insta::assert_snapshot!("transform_result_success", output);
+}
+
+#[test]
+fn snapshot_transform_result_success_existing_backup() {
+    let result_state = TransformResultState {
+        filename: "session.cast".to_string(),
+        result: Ok(TransformResult {
+            original_duration: 300.0, // 5m
+            new_duration: 180.0,      // 3m
+            backup_path: Some(PathBuf::from("/tmp/test.cast.bak")),
+            backup_created: false, // Using existing backup
+        }),
+    };
+
+    let output = render_transform_result_to_string(&result_state);
+    insta::assert_snapshot!("transform_result_existing_backup", output);
+}
+
+#[test]
+fn snapshot_transform_result_error() {
+    let result_state = TransformResultState {
+        filename: "broken.cast".to_string(),
+        result: Err("Failed to parse asciicast: invalid JSON at line 5".to_string()),
+    };
+
+    let output = render_transform_result_to_string(&result_state);
+    insta::assert_snapshot!("transform_result_error", output);
+}
+
+// ============================================================================
+// Help Modal Snapshots
+// ============================================================================
+
+/// Render the help modal to a buffer and return as string.
+fn render_help_modal_to_string() -> String {
+    let width = 70u16;
+    let height = 30u16;
+    let area = Rect::new(0, 0, width, height);
+
+    // Create a mock terminal backend
+    let backend = ratatui::backend::TestBackend::new(width, height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| {
+            ListApp::render_help_modal(frame, area);
+        })
+        .unwrap();
+
+    // Extract the buffer content
+    let backend = terminal.backend();
+    let mut output = String::new();
+    for y in 0..height {
+        for x in 0..width {
+            let cell = backend.buffer()[(x, y)].symbol();
+            output.push_str(cell);
+        }
+        output.push('\n');
+    }
+    output
+}
+
+#[test]
+fn snapshot_help_modal() {
+    let output = render_help_modal_to_string();
+    insta::assert_snapshot!("help_modal", output);
 }

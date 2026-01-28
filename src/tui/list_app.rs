@@ -21,6 +21,7 @@ use super::event::Event;
 use super::preview_cache::PreviewCache;
 use super::theme::current_theme;
 use super::widgets::{FileExplorer, FileExplorerWidget, FileItem};
+use crate::asciicast::{apply_transforms, has_backup, restore_from_backup, TransformResult};
 
 /// UI mode for the list application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -36,6 +37,62 @@ pub enum Mode {
     Help,
     /// Confirm delete mode
     ConfirmDelete,
+    /// Context menu mode - showing actions for selected file
+    ContextMenu,
+    /// Transform result mode - showing transform results or error
+    TransformResult,
+}
+
+/// Context menu item definition
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContextMenuItem {
+    Play,
+    Transform,
+    Restore,
+    Delete,
+    AddMarker,
+}
+
+impl ContextMenuItem {
+    /// All menu items in display order
+    pub const ALL: [ContextMenuItem; 5] = [
+        ContextMenuItem::Play,
+        ContextMenuItem::Transform,
+        ContextMenuItem::Restore,
+        ContextMenuItem::Delete,
+        ContextMenuItem::AddMarker,
+    ];
+
+    /// Get the display label for this menu item
+    pub fn label(&self) -> &'static str {
+        match self {
+            ContextMenuItem::Play => "Play",
+            ContextMenuItem::Transform => "Transform (remove silence)",
+            ContextMenuItem::Restore => "Restore from backup",
+            ContextMenuItem::Delete => "Delete",
+            ContextMenuItem::AddMarker => "Add marker",
+        }
+    }
+
+    /// Get the shortcut key hint for this menu item
+    pub fn shortcut(&self) -> &'static str {
+        match self {
+            ContextMenuItem::Play => "p",
+            ContextMenuItem::Transform => "t",
+            ContextMenuItem::Restore => "r",
+            ContextMenuItem::Delete => "d",
+            ContextMenuItem::AddMarker => "m",
+        }
+    }
+}
+
+/// Holds the result of a transform operation for display in modal.
+#[derive(Debug, Clone)]
+pub struct TransformResultState {
+    /// The filename that was transformed
+    pub filename: String,
+    /// The result (Ok with data or Err with message)
+    pub result: Result<TransformResult, String>,
 }
 
 /// List application state
@@ -56,6 +113,10 @@ pub struct ListApp {
     status_message: Option<String>,
     /// Preview cache with async loading
     preview_cache: PreviewCache,
+    /// Context menu selected index
+    context_menu_idx: usize,
+    /// Transform result for modal display
+    transform_result: Option<TransformResultState>,
 }
 
 impl ListApp {
@@ -81,6 +142,8 @@ impl ListApp {
             available_agents,
             status_message: None,
             preview_cache: PreviewCache::default(),
+            context_menu_idx: 0,
+            transform_result: None,
         })
     }
 
@@ -136,12 +199,20 @@ impl ListApp {
         let status = self.status_message.clone();
         let agent_filter_idx = self.agent_filter_idx;
         let available_agents = &self.available_agents;
+        let context_menu_idx = self.context_menu_idx;
+        let transform_result = self.transform_result.clone();
 
         // Get preview for current selection from cache
         let current_path = explorer.selected_item().map(|i| i.path.clone());
         let preview = current_path
             .as_ref()
             .and_then(|p| self.preview_cache.get(p));
+
+        // Check if backup exists for selected file (for context menu)
+        let backup_exists = current_path
+            .as_ref()
+            .map(|p| has_backup(std::path::Path::new(p)))
+            .unwrap_or(false);
 
         self.app.draw(|frame| {
             let area = frame.area();
@@ -157,7 +228,8 @@ impl ListApp {
             // Render file explorer (no checkboxes in list view - it's single-select)
             let widget = FileExplorerWidget::new(explorer)
                 .show_checkboxes(false)
-                .session_preview(preview);
+                .session_preview(preview)
+                .has_backup(backup_exists);
             frame.render_widget(widget, chunks[0]);
 
             // Render status line
@@ -173,6 +245,8 @@ impl ListApp {
                     }
                     Mode::ConfirmDelete => "Delete this session? (y/n)".to_string(),
                     Mode::Help => String::new(),
+                    Mode::ContextMenu => String::new(),
+                    Mode::TransformResult => String::new(),
                     Mode::Normal => {
                         // Show current filters if any
                         let mut parts = vec![];
@@ -200,8 +274,10 @@ impl ListApp {
                 Mode::AgentFilter => "←/→: change agent | Enter: apply | Esc: cancel",
                 Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
                 Mode::Help => "Press any key to close help",
+                Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
+                Mode::TransformResult => "Enter/Esc: dismiss",
                 Mode::Normal => {
-                    "↑↓: navigate | Enter: play | /: search | f: filter | d: delete | m: marker | ?: help | q: quit"
+                    "↑↓: navigate | Enter: menu | p: play | t: transform | r: restore | d: delete | ?: help | q: quit"
                 }
             };
             let footer = Paragraph::new(footer_text)
@@ -215,6 +291,14 @@ impl ListApp {
                 Mode::ConfirmDelete => {
                     if let Some(item) = explorer.selected_item() {
                         Self::render_confirm_delete_modal(frame, area, item);
+                    }
+                }
+                Mode::ContextMenu => {
+                    Self::render_context_menu_modal(frame, area, context_menu_idx, backup_exists);
+                }
+                Mode::TransformResult => {
+                    if let Some(ref result_state) = transform_result {
+                        Self::render_transform_result_modal(frame, area, result_state);
                     }
                 }
                 _ => {}
@@ -232,6 +316,8 @@ impl ListApp {
             Mode::AgentFilter => self.handle_agent_filter_key(key)?,
             Mode::Help => self.handle_help_key(key)?,
             Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
+            Mode::ContextMenu => self.handle_context_menu_key(key)?,
+            Mode::TransformResult => self.handle_transform_result_key(key)?,
         }
         Ok(())
     }
@@ -248,7 +334,12 @@ impl ListApp {
             KeyCode::End => self.explorer.end(),
 
             // Actions
-            KeyCode::Enter => self.play_session()?,
+            KeyCode::Enter => {
+                if self.explorer.selected_item().is_some() {
+                    self.context_menu_idx = 0; // Reset to first item (Play)
+                    self.mode = Mode::ContextMenu;
+                }
+            }
             KeyCode::Char('/') => {
                 self.mode = Mode::Search;
                 self.search_input.clear();
@@ -267,11 +358,15 @@ impl ListApp {
                     self.agent_filter_idx = 0; // "All"
                 }
             }
+            // Direct shortcuts (bypass context menu)
+            KeyCode::Char('p') => self.play_session()?,
+            KeyCode::Char('t') => self.transform_session()?,
             KeyCode::Char('d') => {
                 if self.explorer.selected_item().is_some() {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
+            KeyCode::Char('r') => self.restore_session()?,
             KeyCode::Char('m') => self.add_marker()?,
             KeyCode::Char('?') => self.mode = Mode::Help,
 
@@ -384,6 +479,65 @@ impl ListApp {
         Ok(())
     }
 
+    /// Handle keys in context menu mode.
+    fn handle_context_menu_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            // Navigation
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.context_menu_idx > 0 {
+                    self.context_menu_idx -= 1;
+                } else {
+                    self.context_menu_idx = ContextMenuItem::ALL.len() - 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.context_menu_idx = (self.context_menu_idx + 1) % ContextMenuItem::ALL.len();
+            }
+
+            // Execute selected action
+            KeyCode::Enter => {
+                self.execute_context_menu_action()?;
+            }
+
+            // Close menu
+            KeyCode::Esc => {
+                self.mode = Mode::Normal;
+            }
+
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys in transform result mode.
+    fn handle_transform_result_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Enter or Esc dismisses the modal
+        if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
+            self.mode = Mode::Normal;
+            self.transform_result = None;
+        }
+        Ok(())
+    }
+
+    /// Execute the currently selected context menu action.
+    fn execute_context_menu_action(&mut self) -> Result<()> {
+        let action = ContextMenuItem::ALL[self.context_menu_idx];
+        self.mode = Mode::Normal; // Close menu first
+
+        match action {
+            ContextMenuItem::Play => self.play_session()?,
+            ContextMenuItem::Transform => self.transform_session()?,
+            ContextMenuItem::Restore => self.restore_session()?,
+            ContextMenuItem::Delete => {
+                if self.explorer.selected_item().is_some() {
+                    self.mode = Mode::ConfirmDelete;
+                }
+            }
+            ContextMenuItem::AddMarker => self.add_marker()?,
+        }
+        Ok(())
+    }
+
     /// Play the selected session with asciinema.
     fn play_session(&mut self) -> Result<()> {
         use crate::player;
@@ -418,6 +572,59 @@ impl ListApp {
                 self.explorer.remove_item(&path);
                 self.status_message = Some(format!("Deleted: {}", name));
             }
+        }
+        Ok(())
+    }
+
+    /// Restore the selected session from its backup.
+    fn restore_session(&mut self) -> Result<()> {
+        if let Some(item) = self.explorer.selected_item() {
+            let path = std::path::Path::new(&item.path);
+            let name = item.name.clone();
+
+            // Check if backup exists
+            if !has_backup(path) {
+                self.status_message = Some(format!("No backup exists for: {}", name));
+                return Ok(());
+            }
+
+            // Attempt restore
+            match restore_from_backup(path) {
+                Ok(()) => {
+                    // Invalidate the preview cache for this file
+                    self.preview_cache.invalidate(path);
+                    self.status_message = Some(format!("Restored from backup: {}", name));
+                }
+                Err(e) => {
+                    self.status_message = Some(format!("Failed to restore: {}", e));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Transform the selected session (apply silence removal).
+    fn transform_session(&mut self) -> Result<()> {
+        if let Some(item) = self.explorer.selected_item() {
+            let path = std::path::Path::new(&item.path);
+            let name = item.name.clone();
+
+            // Apply transforms and store result for modal display
+            let result = match apply_transforms(path) {
+                Ok(result) => {
+                    // Invalidate the preview cache for this file
+                    self.preview_cache.invalidate(path);
+                    Ok(result)
+                }
+                Err(e) => Err(e.to_string()),
+            };
+
+            // Store result and show modal
+            self.transform_result = Some(TransformResultState {
+                filename: name,
+                result,
+            });
+            self.mode = Mode::TransformResult;
         }
         Ok(())
     }
@@ -461,12 +668,13 @@ impl ListApp {
     }
 
     /// Render the help modal overlay.
-    fn render_help_modal(frame: &mut Frame, area: Rect) {
+    /// Public for snapshot testing.
+    pub fn render_help_modal(frame: &mut Frame, area: Rect) {
         let theme = current_theme();
 
         // Center the modal
         let modal_width = 60.min(area.width.saturating_sub(4));
-        let modal_height = 16.min(area.height.saturating_sub(4));
+        let modal_height = 27.min(area.height.saturating_sub(4)); // Updated for sectioned layout
         let x = (area.width - modal_width) / 2;
         let y = (area.height - modal_height) / 2;
         let modal_area = Rect::new(x, y, modal_width, modal_height);
@@ -482,45 +690,76 @@ impl ListApp {
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
+            // Navigation section
+            Line::from(Span::styled(
+                "Navigation",
+                Style::default().fg(theme.text_secondary),
+            )),
             Line::from(vec![
-                Span::styled("↑/↓ or j/k", Style::default().fg(theme.accent)),
-                Span::raw("  Navigate up/down"),
+                Span::styled("  ↑/↓ j/k", Style::default().fg(theme.accent)),
+                Span::raw("    Navigate"),
             ]),
             Line::from(vec![
-                Span::styled("PgUp/PgDn", Style::default().fg(theme.accent)),
-                Span::raw("   Page up/down"),
+                Span::styled("  PgUp/Dn", Style::default().fg(theme.accent)),
+                Span::raw("    Page up/down"),
             ]),
             Line::from(vec![
-                Span::styled("Home/End", Style::default().fg(theme.accent)),
-                Span::raw("     Go to first/last"),
+                Span::styled("  Home/End", Style::default().fg(theme.accent)),
+                Span::raw("   First/last"),
+            ]),
+            Line::from(""),
+            // Actions section
+            Line::from(Span::styled(
+                "Actions",
+                Style::default().fg(theme.text_secondary),
+            )),
+            Line::from(vec![
+                Span::styled("  Enter", Style::default().fg(theme.accent)),
+                Span::raw("       Context menu"),
             ]),
             Line::from(vec![
-                Span::styled("Enter", Style::default().fg(theme.accent)),
-                Span::raw("        Play session with asciinema"),
+                Span::styled("  p", Style::default().fg(theme.accent)),
+                Span::raw("           Play session"),
             ]),
             Line::from(vec![
-                Span::styled("/", Style::default().fg(theme.accent)),
-                Span::raw("            Search by filename"),
+                Span::styled("  t", Style::default().fg(theme.accent)),
+                Span::raw("           Transform (remove silence)"),
             ]),
             Line::from(vec![
-                Span::styled("f", Style::default().fg(theme.accent)),
-                Span::raw("            Filter by agent"),
+                Span::styled("  r", Style::default().fg(theme.accent)),
+                Span::raw("           Restore from backup"),
             ]),
             Line::from(vec![
-                Span::styled("d", Style::default().fg(theme.accent)),
-                Span::raw("            Delete session"),
+                Span::styled("  d", Style::default().fg(theme.accent)),
+                Span::raw("           Delete session"),
+            ]),
+            Line::from(""),
+            // Filter section
+            Line::from(Span::styled(
+                "Filtering",
+                Style::default().fg(theme.text_secondary),
+            )),
+            Line::from(vec![
+                Span::styled("  /", Style::default().fg(theme.accent)),
+                Span::raw("           Search by filename"),
             ]),
             Line::from(vec![
-                Span::styled("m", Style::default().fg(theme.accent)),
-                Span::raw("            Add marker (coming soon)"),
+                Span::styled("  f", Style::default().fg(theme.accent)),
+                Span::raw("           Filter by agent"),
             ]),
             Line::from(vec![
-                Span::styled("Esc", Style::default().fg(theme.accent)),
-                Span::raw("          Clear filters"),
+                Span::styled("  Esc", Style::default().fg(theme.accent)),
+                Span::raw("         Clear filters"),
+            ]),
+            Line::from(""),
+            // Other section
+            Line::from(vec![
+                Span::styled("  ?", Style::default().fg(theme.accent)),
+                Span::raw("           This help"),
             ]),
             Line::from(vec![
-                Span::styled("q", Style::default().fg(theme.accent)),
-                Span::raw("            Quit"),
+                Span::styled("  q", Style::default().fg(theme.accent)),
+                Span::raw("           Quit"),
             ]),
             Line::from(""),
             Line::from(Span::styled(
@@ -584,6 +823,224 @@ impl ListApp {
 
         frame.render_widget(confirm, modal_area);
     }
+
+    /// Render the context menu modal overlay.
+    ///
+    /// This function is public to allow snapshot testing.
+    pub fn render_context_menu_modal(
+        frame: &mut Frame,
+        area: Rect,
+        selected_idx: usize,
+        backup_exists: bool,
+    ) {
+        let theme = current_theme();
+
+        // Center the modal
+        let modal_width = 40.min(area.width.saturating_sub(4));
+        let modal_height = (ContextMenuItem::ALL.len() + 4) as u16; // items + title + padding + footer
+        let modal_height = modal_height.min(area.height.saturating_sub(4));
+        let x = (area.width - modal_width) / 2;
+        let y = (area.height - modal_height) / 2;
+        let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+        // Clear the area behind the modal
+        frame.render_widget(Clear, modal_area);
+
+        // Build menu lines
+        let mut lines = vec![
+            Line::from(Span::styled(
+                "Actions",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+        ];
+
+        for (idx, item) in ContextMenuItem::ALL.iter().enumerate() {
+            let is_selected = idx == selected_idx;
+            let is_restore = matches!(item, ContextMenuItem::Restore);
+            let is_disabled = is_restore && !backup_exists;
+
+            // Build the label with shortcut hint
+            let label = if is_restore && !backup_exists {
+                format!("  {} ({}) - no backup", item.label(), item.shortcut())
+            } else {
+                format!("  {} ({})", item.label(), item.shortcut())
+            };
+
+            let style = if is_selected {
+                Style::default()
+                    .fg(theme.background)
+                    .bg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_disabled {
+                Style::default().fg(theme.text_secondary)
+            } else {
+                Style::default().fg(theme.text_primary)
+            };
+
+            // Add selection indicator
+            let prefix = if is_selected { "> " } else { "  " };
+            lines.push(Line::from(Span::styled(
+                format!("{}{}", prefix, label),
+                style,
+            )));
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "↑↓: navigate | Enter: select | Esc: cancel",
+            Style::default().fg(theme.text_secondary),
+        )));
+
+        let menu = Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme.accent))
+                    .title(" Menu "),
+            )
+            .alignment(Alignment::Left);
+
+        frame.render_widget(menu, modal_area);
+    }
+
+    /// Render the transform result modal overlay.
+    ///
+    /// This function is public to allow snapshot testing.
+    pub fn render_transform_result_modal(
+        frame: &mut Frame,
+        area: Rect,
+        result_state: &TransformResultState,
+    ) {
+        let theme = current_theme();
+
+        // Determine modal size based on success or error
+        let is_success = result_state.result.is_ok();
+        let modal_width = 55.min(area.width.saturating_sub(4));
+        let modal_height = if is_success { 10 } else { 8 };
+        let modal_height = modal_height.min(area.height.saturating_sub(4));
+
+        // Center the modal
+        let x = (area.width - modal_width) / 2;
+        let y = (area.height - modal_height) / 2;
+        let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+        // Clear the area behind the modal
+        frame.render_widget(Clear, modal_area);
+
+        // Build content based on success or error
+        let (title, border_color, lines) = match &result_state.result {
+            Ok(result) => {
+                let title = " Transform Complete ";
+                let border_color = theme.success;
+
+                let lines = vec![
+                    Line::from(Span::styled(
+                        format!("File: {}", result_state.filename),
+                        Style::default().fg(theme.text_primary),
+                    )),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("Original: ", Style::default().fg(theme.text_secondary)),
+                        Span::styled(
+                            format_duration(result.original_duration),
+                            Style::default().fg(theme.text_primary),
+                        ),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("New:      ", Style::default().fg(theme.text_secondary)),
+                        Span::styled(
+                            format_duration(result.new_duration),
+                            Style::default().fg(theme.text_primary),
+                        ),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Saved:    ", Style::default().fg(theme.text_secondary)),
+                        Span::styled(
+                            format!(
+                                "{} ({:.0}%)",
+                                format_duration(result.time_saved()),
+                                result.percent_saved()
+                            ),
+                            Style::default()
+                                .fg(theme.success)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    ]),
+                    Line::from(""),
+                    Line::from(vec![
+                        Span::styled("Backup: ", Style::default().fg(theme.text_secondary)),
+                        Span::styled(
+                            if result.backup_created {
+                                "Created"
+                            } else {
+                                "Using existing"
+                            },
+                            Style::default().fg(theme.text_primary),
+                        ),
+                    ]),
+                ];
+                (title, border_color, lines)
+            }
+            Err(error) => {
+                let title = " Transform Failed ";
+                let border_color = theme.error;
+
+                let lines = vec![
+                    Line::from(Span::styled(
+                        format!("File: {}", result_state.filename),
+                        Style::default().fg(theme.text_primary),
+                    )),
+                    Line::from(""),
+                    Line::from(Span::styled(
+                        "Error:",
+                        Style::default()
+                            .fg(theme.error)
+                            .add_modifier(Modifier::BOLD),
+                    )),
+                    Line::from(Span::styled(
+                        error.to_string(),
+                        Style::default().fg(theme.error),
+                    )),
+                ];
+                (title, border_color, lines)
+            }
+        };
+
+        let modal = Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(border_color))
+                    .title(title),
+            )
+            .wrap(Wrap { trim: false });
+
+        frame.render_widget(modal, modal_area);
+    }
+}
+
+/// Format a duration in seconds as human-readable string.
+///
+/// Examples:
+/// - 65.5 -> "1m 5s"
+/// - 3661.0 -> "1h 1m 1s"
+/// - 30.0 -> "30s"
+fn format_duration(seconds: f64) -> String {
+    let total_secs = seconds.round() as u64;
+    let hours = total_secs / 3600;
+    let minutes = (total_secs % 3600) / 60;
+    let secs = total_secs % 60;
+
+    if hours > 0 {
+        format!("{}h {}m {}s", hours, minutes, secs)
+    } else if minutes > 0 {
+        format!("{}m {}s", minutes, secs)
+    } else {
+        format!("{}s", secs)
+    }
 }
 
 #[cfg(test)]
@@ -615,5 +1072,67 @@ mod tests {
         let mode = Mode::ConfirmDelete;
         let debug = format!("{:?}", mode);
         assert!(debug.contains("ConfirmDelete"));
+    }
+
+    #[test]
+    fn context_menu_has_five_items() {
+        assert_eq!(ContextMenuItem::ALL.len(), 5);
+    }
+
+    #[test]
+    fn context_menu_items_have_labels() {
+        for item in ContextMenuItem::ALL {
+            assert!(!item.label().is_empty());
+        }
+    }
+
+    #[test]
+    fn context_menu_items_have_shortcuts() {
+        for item in ContextMenuItem::ALL {
+            assert!(!item.shortcut().is_empty());
+        }
+    }
+
+    #[test]
+    fn context_menu_item_order() {
+        // Verify expected order: Play, Transform, Restore, Delete, AddMarker
+        assert_eq!(ContextMenuItem::ALL[0], ContextMenuItem::Play);
+        assert_eq!(ContextMenuItem::ALL[1], ContextMenuItem::Transform);
+        assert_eq!(ContextMenuItem::ALL[2], ContextMenuItem::Restore);
+        assert_eq!(ContextMenuItem::ALL[3], ContextMenuItem::Delete);
+        assert_eq!(ContextMenuItem::ALL[4], ContextMenuItem::AddMarker);
+    }
+
+    #[test]
+    fn context_menu_mode_is_context_menu() {
+        assert_eq!(Mode::ContextMenu, Mode::ContextMenu);
+        assert_ne!(Mode::ContextMenu, Mode::Normal);
+    }
+
+    #[test]
+    fn format_duration_seconds_only() {
+        assert_eq!(format_duration(30.0), "30s");
+        assert_eq!(format_duration(0.0), "0s");
+        assert_eq!(format_duration(59.4), "59s"); // rounds down
+    }
+
+    #[test]
+    fn format_duration_minutes_and_seconds() {
+        assert_eq!(format_duration(60.0), "1m 0s");
+        assert_eq!(format_duration(90.0), "1m 30s");
+        assert_eq!(format_duration(3599.0), "59m 59s");
+    }
+
+    #[test]
+    fn format_duration_hours() {
+        assert_eq!(format_duration(3600.0), "1h 0m 0s");
+        assert_eq!(format_duration(3661.0), "1h 1m 1s");
+        assert_eq!(format_duration(7322.0), "2h 2m 2s");
+    }
+
+    #[test]
+    fn transform_result_mode_exists() {
+        assert_eq!(Mode::TransformResult, Mode::TransformResult);
+        assert_ne!(Mode::TransformResult, Mode::Normal);
     }
 }

@@ -1,0 +1,16 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+expression: output
+---
+                                                            
+                                                            
+                                                            
+          ┌ Menu ────────────────────────────────┐          
+          │Actions                               │          
+          │                                      │          
+          │>   Play (p)                          │          
+          │    Transform (remove silence) (t)    │          
+          │    Restore from backup (r)           │          
+          │    Delete (d)                        │          
+          │    Add marker (m)                    │          
+          └──────────────────────────────────────┘

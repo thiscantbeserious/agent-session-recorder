@@ -1,0 +1,15 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+expression: output
+---
+                                                            
+                                                            
+                                                            
+  ┌ Transform Failed ───────────────────────────────────┐   
+  │File: broken.cast                                    │   
+  │                                                     │   
+  │Error:                                               │   
+  │Failed to parse asciicast: invalid JSON at line 5    │   
+  │                                                     │   
+  │                                                     │   
+  └─────────────────────────────────────────────────────┘

@@ -173,6 +173,34 @@ jobs:
       - name: Run e2e tests
         run: ./tests/e2e_test.sh
 
+  # 5. Snapshot Tests - verify UI snapshots match committed versions
+  snapshot-tests:
+    name: Snapshot Tests
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-insta
+        run: cargo install cargo-insta
+
+      - name: Run snapshot tests
+        run: cargo insta test --check
+
   # Lint - runs in parallel, fast-fail for style issues
   lint:
     name: Lint
@@ -194,7 +222,7 @@ jobs:
   # Release artifacts - only on main push, after all checks pass
   release:
     name: Release (${{ matrix.artifact }})
-    needs: [build, unit-tests, coverage, e2e-tests, lint]
+    needs: [build, unit-tests, coverage, e2e-tests, snapshot-tests, lint]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     strategy:
