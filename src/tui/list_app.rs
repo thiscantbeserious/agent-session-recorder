@@ -21,7 +21,9 @@ use super::event::Event;
 use super::preview_cache::PreviewCache;
 use super::theme::current_theme;
 use super::widgets::{FileExplorer, FileExplorerWidget, FileItem};
-use crate::asciicast::{apply_transforms, has_backup, restore_from_backup, TransformResult};
+use crate::asciicast::{
+    apply_transforms, backup_path_for, has_backup, restore_from_backup, TransformResult,
+};
 
 /// UI mode for the list application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -366,7 +368,18 @@ impl ListApp {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
-            KeyCode::Char('r') => self.restore_session()?,
+            KeyCode::Char('r') => {
+                // Guard: check if backup exists before restoring
+                if let Some(item) = self.explorer.selected_item() {
+                    let path = std::path::Path::new(&item.path);
+                    if !has_backup(path) {
+                        self.status_message =
+                            Some(format!("No backup exists for: {}", item.name.clone()));
+                    } else {
+                        self.restore_session()?;
+                    }
+                }
+            }
             KeyCode::Char('m') => self.add_marker()?,
             KeyCode::Char('?') => self.mode = Mode::Help,
 
@@ -522,6 +535,20 @@ impl ListApp {
     /// Execute the currently selected context menu action.
     fn execute_context_menu_action(&mut self) -> Result<()> {
         let action = ContextMenuItem::ALL[self.context_menu_idx];
+
+        // Guard: check if Restore is disabled (no backup)
+        if matches!(action, ContextMenuItem::Restore) {
+            if let Some(item) = self.explorer.selected_item() {
+                let path = std::path::Path::new(&item.path);
+                if !has_backup(path) {
+                    self.mode = Mode::Normal;
+                    self.status_message =
+                        Some(format!("No backup exists for: {}", item.name.clone()));
+                    return Ok(());
+                }
+            }
+        }
+
         self.mode = Mode::Normal; // Close menu first
 
         match action {
@@ -568,9 +595,19 @@ impl ListApp {
             if let Err(e) = std::fs::remove_file(&path) {
                 self.status_message = Some(format!("Failed to delete: {}", e));
             } else {
+                // Also delete backup if it exists (remove_file returns Err if not found)
+                let backup = backup_path_for(std::path::Path::new(&path));
+                let backup_deleted = std::fs::remove_file(&backup).is_ok();
+
                 // Remove from explorer to keep UI in sync
                 self.explorer.remove_item(&path);
-                self.status_message = Some(format!("Deleted: {}", name));
+
+                // Update status message
+                self.status_message = Some(if backup_deleted {
+                    format!("Deleted: {} (and backup)", name)
+                } else {
+                    format!("Deleted: {}", name)
+                });
             }
         }
         Ok(())
@@ -582,13 +619,7 @@ impl ListApp {
             let path = std::path::Path::new(&item.path);
             let name = item.name.clone();
 
-            // Check if backup exists
-            if !has_backup(path) {
-                self.status_message = Some(format!("No backup exists for: {}", name));
-                return Ok(());
-            }
-
-            // Attempt restore
+            // Attempt restore (restore_from_backup handles missing backup case)
             match restore_from_backup(path) {
                 Ok(()) => {
                     // Invalidate the preview cache for this file

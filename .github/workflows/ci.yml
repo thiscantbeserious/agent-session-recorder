@@ -196,7 +196,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install cargo-insta
-        run: cargo install cargo-insta --version 1.43.1
+        run: cargo install cargo-insta --version 1.46.1
 
       - name: Run snapshot tests
         run: cargo insta test --check
