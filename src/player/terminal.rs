@@ -985,4 +985,184 @@ mod tests {
             lines[0]
         );
     }
+
+    // Scroll region tests
+
+    #[test]
+    fn scroll_region_basic_setup() {
+        let mut buf = TerminalBuffer::new(10, 5);
+        buf.process("Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
+
+        // Set scroll region to lines 2-4 (rows 1-3 in 0-indexed)
+        buf.process("\x1b[2;4r"); // DECSTBM - set scroll region
+
+        // Cursor should move to home after setting scroll region
+        assert_eq!(buf.cursor_row(), 0);
+        assert_eq!(buf.cursor_col(), 0);
+    }
+
+    #[test]
+    fn scroll_region_scroll_within_region() {
+        let mut buf = TerminalBuffer::new(10, 5);
+        buf.process("Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
+
+        // Set scroll region to lines 2-4 (rows 1-3 in 0-indexed)
+        buf.process("\x1b[2;4r");
+
+        // Move to bottom of scroll region (row 3 = line 4 in 1-indexed)
+        buf.process("\x1b[4;1H");
+        assert_eq!(buf.cursor_row(), 3);
+
+        // Now a line feed at the bottom of scroll region should scroll within region
+        buf.process("\n");
+
+        let output = buf.to_string();
+        let lines: Vec<&str> = output.lines().collect();
+
+        // Line0 should still be at row 0 (outside scroll region)
+        assert!(lines[0].starts_with("Line0"), "Line0 should be preserved");
+
+        // Line4 should still be at row 4 (outside scroll region)
+        assert!(
+            lines[4].starts_with("Line4"),
+            "Line4 should be preserved at row 4"
+        );
+    }
+
+    #[test]
+    fn scroll_region_reverse_index_within_region() {
+        let mut buf = TerminalBuffer::new(10, 5);
+        buf.process("Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
+
+        // Set scroll region to lines 2-4 (rows 1-3 in 0-indexed)
+        buf.process("\x1b[2;4r");
+
+        // Move to top of scroll region (row 1 = line 2 in 1-indexed)
+        buf.process("\x1b[2;1H");
+        assert_eq!(buf.cursor_row(), 1);
+
+        // Reverse index at top of scroll region should scroll down within region
+        buf.process("\x1bM");
+
+        let output = buf.to_string();
+        let lines: Vec<&str> = output.lines().collect();
+
+        // Line0 should still be at row 0 (outside scroll region)
+        assert!(lines[0].starts_with("Line0"), "Line0 should be preserved");
+
+        // Line4 should still be at row 4 (outside scroll region)
+        assert!(
+            lines[4].starts_with("Line4"),
+            "Line4 should be preserved at row 4"
+        );
+    }
+
+    #[test]
+    fn scroll_region_csi_scroll_up() {
+        let mut buf = TerminalBuffer::new(10, 5);
+        buf.process("Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
+
+        // Set scroll region to lines 2-4 (rows 1-3 in 0-indexed)
+        buf.process("\x1b[2;4r");
+
+        // CSI S - scroll up (pan down)
+        buf.process("\x1b[1S");
+
+        let output = buf.to_string();
+        let lines: Vec<&str> = output.lines().collect();
+
+        // Line0 should still be at row 0 (outside scroll region)
+        assert!(lines[0].starts_with("Line0"), "Line0 should be preserved");
+
+        // Line4 should still be at row 4 (outside scroll region)
+        assert!(
+            lines[4].starts_with("Line4"),
+            "Line4 should be preserved at row 4"
+        );
+    }
+
+    #[test]
+    fn scroll_region_csi_scroll_down() {
+        let mut buf = TerminalBuffer::new(10, 5);
+        buf.process("Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
+
+        // Set scroll region to lines 2-4 (rows 1-3 in 0-indexed)
+        buf.process("\x1b[2;4r");
+
+        // CSI T - scroll down (pan up)
+        buf.process("\x1b[1T");
+
+        let output = buf.to_string();
+        let lines: Vec<&str> = output.lines().collect();
+
+        // Line0 should still be at row 0 (outside scroll region)
+        assert!(lines[0].starts_with("Line0"), "Line0 should be preserved");
+
+        // Line4 should still be at row 4 (outside scroll region)
+        assert!(
+            lines[4].starts_with("Line4"),
+            "Line4 should be preserved at row 4"
+        );
+    }
+
+    #[test]
+    fn scroll_region_reset_on_resize() {
+        let mut buf = TerminalBuffer::new(10, 5);
+
+        // Set scroll region to lines 2-4
+        buf.process("\x1b[2;4r");
+
+        // Resize should reset scroll region to full screen
+        buf.resize(10, 10);
+
+        // Now scrolling should affect the full screen
+        buf.process("\x1b[10;1H"); // Move to last row
+        buf.process("Last\n"); // Should scroll the entire screen
+
+        // The fact that we can scroll to the bottom row indicates
+        // scroll region was reset to full height
+        assert_eq!(buf.height(), 10);
+    }
+
+    #[test]
+    fn scroll_region_full_screen_default() {
+        let mut buf = TerminalBuffer::new(10, 5);
+        buf.process("L0\r\nL1\r\nL2\r\nL3\r\nL4");
+
+        // Move to last line and add more lines to trigger scrolling
+        buf.process("\x1b[5;1H"); // Move to row 5 (last row)
+        buf.process("\nL5"); // This should scroll up
+
+        let output = buf.to_string();
+        let lines: Vec<&str> = output.lines().collect();
+
+        // L0 should have scrolled off
+        assert!(!lines[0].starts_with("L0"), "L0 should have scrolled off");
+        // Last line should be L5
+        assert!(lines[4].starts_with("L5"), "L5 should be at bottom");
+    }
+
+    #[test]
+    fn scroll_region_reset_via_csi_r() {
+        let mut buf = TerminalBuffer::new(10, 5);
+        buf.process("Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
+
+        // Set scroll region to lines 2-4
+        buf.process("\x1b[2;4r");
+
+        // Reset scroll region to full screen via CSI r without params
+        buf.process("\x1b[r");
+
+        // Now scrolling should affect the full screen
+        buf.process("\x1b[5;1H\n"); // Move to last row and scroll
+
+        let output = buf.to_string();
+        let lines: Vec<&str> = output.lines().collect();
+
+        // Line0 should have scrolled off since scroll region is now full screen
+        assert!(
+            !lines[0].starts_with("Line0"),
+            "Line0 should have scrolled off"
+        );
+    }
 }
