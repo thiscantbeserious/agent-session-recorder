@@ -36,3 +36,21 @@ git log --oneline -5
 - SDLC role system improvements with ADR/PLAN separation (PR #56 merged)
 - Skills restructured into roles and instructions (PR #54 merged)
 - Install script fix (PR #55 merged)
+
+## Completed Work
+
+Historical context for all state directories:
+
+| Directory | Description |
+|-----------|-------------|
+| silence-removal | Silence/pause removal for recordings |
+| fix-player-scroll-region-bug | Terminal scroll region support in player |
+| refactor-terminal-module-cleanup | Terminal module code organization |
+| refactor-asciicast-module | Asciicast types extraction and Transform trait |
+| fix-transform-backup-bugs | Backup reliability fixes for transform ops |
+| file-explorer-transform | Transform integration in TUI file explorer |
+| feature-two-phase-review-workflow | Two-phase SDLC review process |
+| feature-optimize-ui-improvements | TUI polish: rename transform to optimize, contrast fixes |
+| chore-improve-roles-sdlc | ADR/PLAN separation pattern |
+| chore-improve-orchestrator-sdlc | Orchestrator documentation and boundaries |
+| release-workflow-changelog | Release workflow and changelog automation |
