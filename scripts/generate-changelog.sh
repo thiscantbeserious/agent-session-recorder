@@ -18,9 +18,10 @@ capitalize() {
 }
 
 # Get the primary module for a commit based on file count
-# Priority: src/ modules first, then tests/docs only if no src/ files
+# Priority: src/ modules > commit scope fallback > tests/docs
 get_primary_module() {
     local sha="$1"
+    local scope="$2"
     local max_count=0
     local primary=""
 
@@ -50,7 +51,15 @@ get_primary_module() {
         fi
     done
 
-    # Only check tests/docs if NO src/ module was found
+    # Fallback: use commit scope if no src/ module found
+    if [[ -z "$primary" && -n "$scope" ]]; then
+        # Only use if it's a valid module
+        if echo "$MODULES" | grep -qw "$scope"; then
+            primary="$scope"
+        fi
+    fi
+
+    # Last resort: tests/docs only if still nothing
     if [[ -z "$primary" ]]; then
         local test_count=$(echo "$files" | grep -c "^tests/" 2>/dev/null || echo 0)
         if [[ $test_count -gt 0 ]]; then
@@ -75,9 +84,9 @@ get_commits() {
         cliff_args="--tag $TAG"
     fi
 
-    # Get commits with their SHAs and messages
-    # Using git-cliff's template to extract commit info
-    git cliff $cliff_args --body "{% for commit in commits %}{{ commit.id }}|{{ commit.message | upper_first }}
+    # Get commits with their SHAs, scopes, and messages
+    # Format: sha|scope|message
+    git cliff $cliff_args --body "{% for commit in commits %}{{ commit.id }}|{{ commit.scope | default(value='') }}|{{ commit.message | upper_first }}
 {% endfor %}" 2>/dev/null | grep -v "^$" || true
 }
 
@@ -90,10 +99,10 @@ declare_module_commits() {
         echo "" > "/tmp/changelog_$mod.txt"
     done
 
-    # Process each commit
-    while IFS='|' read -r sha message; do
+    # Process each commit (format: sha|scope|message)
+    while IFS='|' read -r sha scope message; do
         [[ -z "$sha" ]] && continue
-        local primary=$(get_primary_module "$sha")
+        local primary=$(get_primary_module "$sha" "$scope")
         if [[ -n "$primary" ]]; then
             echo "- $message" >> "/tmp/changelog_$primary.txt"
         fi
