@@ -41,3 +41,18 @@ mod snapshot_terminal_test;
 
 #[path = "integration/transform_test.rs"]
 mod transform_test;
+
+#[path = "integration/terminal_test.rs"]
+mod terminal_test;
+
+#[path = "integration/terminal_cursor_test.rs"]
+mod terminal_cursor_test;
+
+#[path = "integration/terminal_scroll_test.rs"]
+mod terminal_scroll_test;
+
+#[path = "integration/terminal_editing_test.rs"]
+mod terminal_editing_test;
+
+#[path = "integration/terminal_style_test.rs"]
+mod terminal_style_test;

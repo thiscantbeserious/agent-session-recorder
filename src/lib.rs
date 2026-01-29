@@ -11,6 +11,7 @@ pub mod player;
 pub mod recording;
 pub mod shell;
 pub mod storage;
+pub mod terminal;
 pub mod tui;
 
 pub use analyzer::Analyzer;
