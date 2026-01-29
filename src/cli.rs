@@ -25,11 +25,9 @@ pub fn build_cli_styles() -> Styles {
 
 #[derive(Parser)]
 #[command(name = "agr")]
+#[command(about = "[ Agent Session Recorder ] - Record, replay, and understand AI agent sessions.")]
 #[command(
-    about = "[ Agent Session Recorder ] - auto-record agent sessions and handle the recordings with AI!"
-)]
-#[command(
-    long_about = "Agent Session Recorder (AGR) - Record AI agent terminal sessions with asciinema.
+    long_about = "[ Agent Session Recorder ] - Record, replay, and understand AI agent sessions.
 
 AGR automatically records your AI coding agent sessions (Claude, Codex, Gemini, etc.)
 to ~/recorded_agent_sessions/ in asciicast v3 format. Recordings can be played back

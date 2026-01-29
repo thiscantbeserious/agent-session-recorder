@@ -9,7 +9,7 @@
 ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝
  ⏺ REC ───────────────────────────────────────────────────────────────────────────────────────
 
-[ Agent Session Recorder ] - auto-record agent sessions and handle the recordings with AI!
+[ Agent Session Recorder ] - Record, replay, and understand AI agent sessions.
 ```
 
 [![CI](https://github.com/thiscantbeserious/agent-session-recorder/actions/workflows/ci.yml/badge.svg)](https://github.com/thiscantbeserious/agent-session-recorder/actions/workflows/ci.yml)
@@ -71,7 +71,7 @@ agr status
 asciinema play ~/recorded_agent_sessions/claude/session.cast
 
 # Remove long pauses from a recording (e.g., lunch breaks):
-agr transform --remove-silence session.cast
+agr optimize --remove-silence session.cast
 
 # Add a marker to highlight an important moment:
 agr marker add session.cast 45.2 "Build failed - missing dependency"
@@ -81,17 +81,17 @@ agr marker add session.cast 45.2 "Build failed - missing dependency"
 
 ### Silence Removal
 
-Long pauses in recordings (coffee breaks, lunch, thinking time) can make playback tedious. The transform command removes these silences by capping intervals at a configurable threshold.
+Long pauses in recordings (coffee breaks, lunch, thinking time) can make playback tedious. The optimize command removes these silences by capping intervals at a configurable threshold.
 
 ```bash
 # Use default threshold (2.0 seconds) or header's idle_time_limit:
-agr transform --remove-silence session.cast
+agr optimize --remove-silence session.cast
 
 # Use a custom threshold (1.5 seconds):
-agr transform --remove-silence=1.5 session.cast
+agr optimize --remove-silence=1.5 session.cast
 
 # Write to a new file instead of modifying in-place:
-agr transform --remove-silence --output fast.cast session.cast
+agr optimize --remove-silence --output fast.cast session.cast
 ```
 
 **Threshold Resolution Order:**
