@@ -3,7 +3,6 @@
 //! Provides functionality for playing back asciicast recordings:
 //!
 //! - `native`: Full-featured native player (seeking, markers, viewport scrolling)
-//! - `terminal`: Virtual terminal buffer for rendering escape sequences
 //! - `asciinema`: Legacy wrapper for shelling out to asciinema CLI
 //!
 //! # Usage
