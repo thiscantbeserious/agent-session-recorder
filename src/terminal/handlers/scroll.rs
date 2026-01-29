@@ -11,18 +11,25 @@ use super::super::performer::TerminalPerformer;
 impl TerminalPerformer<'_> {
     /// Handle DECSTBM - Set Top and Bottom Margins (CSI r).
     /// Parameters are 1-indexed, converted to 0-indexed internally.
-    /// Default is full screen.
+    /// Parameter 0 means "use default" (1 for top, height for bottom).
+    /// After setting, cursor moves to top of scroll region (not absolute row 0).
     pub fn handle_set_scroll_region(&mut self, top: usize, bottom: usize) {
+        // Treat 0 as "use default": top defaults to 1, bottom defaults to height
+        let effective_top = if top == 0 { 1 } else { top };
+        let effective_bottom = if bottom == 0 { self.height } else { bottom };
+
         // Convert from 1-indexed to 0-indexed
-        let new_top = top.saturating_sub(1);
-        let new_bottom = bottom.saturating_sub(1).min(self.height.saturating_sub(1));
+        let new_top = effective_top.saturating_sub(1);
+        let new_bottom = effective_bottom
+            .saturating_sub(1)
+            .min(self.height.saturating_sub(1));
 
         // Validate: top must be less than bottom, both must be in bounds
         if new_top < new_bottom && new_bottom < self.height {
             self.scroll_top = new_top;
             self.scroll_bottom = new_bottom;
-            // Move cursor to home position after setting scroll region
-            *self.cursor_row = 0;
+            // Move cursor to top of scroll region (DECSTBM spec)
+            *self.cursor_row = self.scroll_top;
             *self.cursor_col = 0;
         }
     }

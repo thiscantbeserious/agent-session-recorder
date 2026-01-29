@@ -33,9 +33,11 @@ fn scroll_region_basic_setup() {
     let mut buf = TerminalBuffer::new(10, 5);
     buf.process("Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
 
+    // Set scroll region to rows 2-4 (1-indexed), which is rows 1-3 (0-indexed)
     buf.process("\x1b[2;4r");
 
-    assert_eq!(buf.cursor_row(), 0);
+    // Cursor moves to top of scroll region (scroll_top), not absolute row 0
+    assert_eq!(buf.cursor_row(), 1); // scroll_top = 1 (0-indexed)
     assert_eq!(buf.cursor_col(), 0);
 }
 
@@ -176,9 +178,13 @@ fn line_feed_cursor_above_scroll_region() {
     // Fill all lines
     buf.process("Row0\r\nRow1\r\nRow2\r\nRow3\r\nRow4\r\nRow5");
 
-    // Set scroll region to rows 3-5 (0-indexed: 2-4)
+    // Set scroll region to rows 3-5 (1-indexed), which is rows 2-4 (0-indexed)
     buf.process("\x1b[3;5r");
-    // Cursor moves to home (0,0) after setting scroll region
+    // Cursor moves to top of scroll region (scroll_top = 2)
+    assert_eq!(buf.cursor_row(), 2);
+
+    // Move cursor to row 0 to test line feed from above region
+    buf.process("\x1b[1;1H");
     assert_eq!(buf.cursor_row(), 0);
 
     // Now do line feeds to move through and into the scroll region
@@ -212,10 +218,10 @@ fn scroll_region_invalid_top_greater_than_bottom() {
     let mut buf = TerminalBuffer::new(10, 5);
     buf.process("Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
 
-    // First set a valid scroll region
+    // First set a valid scroll region (rows 2-4, 1-indexed = rows 1-3, 0-indexed)
     buf.process("\x1b[2;4r");
-    // Cursor moves to home
-    assert_eq!(buf.cursor_row(), 0);
+    // Cursor moves to top of scroll region (scroll_top = 1)
+    assert_eq!(buf.cursor_row(), 1);
 
     // Move cursor somewhere else
     buf.process("\x1b[3;5H"); // Row 3, col 5
@@ -225,7 +231,7 @@ fn scroll_region_invalid_top_greater_than_bottom() {
     // Try to set invalid region: top(5) > bottom(3)
     buf.process("\x1b[5;3r");
 
-    // Cursor should NOT move to home (invalid region ignored)
+    // Cursor should NOT move (invalid region ignored)
     // Note: Per DECSTBM spec, invalid regions are typically ignored
     // but cursor position behavior varies. We verify region is preserved.
 
@@ -250,9 +256,10 @@ fn scroll_region_invalid_top_equals_bottom() {
     let mut buf = TerminalBuffer::new(10, 5);
     buf.process("Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
 
-    // First set a valid scroll region
+    // First set a valid scroll region (rows 2-4, 1-indexed = rows 1-3, 0-indexed)
     buf.process("\x1b[2;4r");
-    assert_eq!(buf.cursor_row(), 0);
+    // Cursor moves to top of scroll region (scroll_top = 1)
+    assert_eq!(buf.cursor_row(), 1);
 
     // Try to set invalid region: top(3) == bottom(3)
     buf.process("\x1b[3;3r");
@@ -283,9 +290,10 @@ fn scroll_region_preserves_on_invalid_params() {
     let mut buf = TerminalBuffer::new(10, 5);
     buf.process("Line0\r\nLine1\r\nLine2\r\nLine3\r\nLine4");
 
-    // Set a valid scroll region rows 2-3 (0-indexed: 1-2)
+    // Set a valid scroll region rows 2-3 (1-indexed = rows 1-2, 0-indexed)
     buf.process("\x1b[2;3r");
-    assert_eq!(buf.cursor_row(), 0);
+    // Cursor moves to top of scroll region (scroll_top = 1)
+    assert_eq!(buf.cursor_row(), 1);
 
     // Move to row 3 (scroll_bottom), write and newline
     buf.process("\x1b[3;1HX\n");
