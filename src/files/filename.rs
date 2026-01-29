@@ -286,10 +286,7 @@ fn truncate_to_length(s: &str, max_len: usize) -> String {
     }
 
     // Split on word boundaries
-    let words: Vec<&str> = s
-        .split(['-', '_', '.'])
-        .filter(|w| !w.is_empty())
-        .collect();
+    let words: Vec<&str> = s.split(['-', '_', '.']).filter(|w| !w.is_empty()).collect();
 
     // Single word: just hard truncate (char-based)
     if words.len() <= 1 {

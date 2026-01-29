@@ -303,7 +303,12 @@ fn sanitize_directory_truncates_to_max_length() {
     let result = filename::sanitize_directory(long_name, &config);
 
     // Verify hard truncation respects limit
-    assert!(result.chars().count() <= 10, "Expected <= 10 chars, got {} ('{}')", result.chars().count(), result);
+    assert!(
+        result.chars().count() <= 10,
+        "Expected <= 10 chars, got {} ('{}')",
+        result.chars().count(),
+        result
+    );
 }
 
 #[test]
@@ -787,10 +792,23 @@ fn first_syllable_agent_session_recorder_at_8() {
     let config = Config::new(8);
     let result = filename::sanitize_directory("agent-session-recorder", &config);
 
-    assert!(result.len() <= 8, "Expected <= 8, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 8,
+        "Expected <= 8, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 2, "Expected 2 hyphens in '{}', got {}", result, hyphen_count);
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert_eq!(
+        hyphen_count, 2,
+        "Expected 2 hyphens in '{}', got {}",
+        result, hyphen_count
+    );
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 #[test]
@@ -820,10 +838,23 @@ fn first_syllable_hello_world_at_7() {
     let config = Config::new(7);
     let result = filename::sanitize_directory("hello-world", &config);
 
-    assert!(result.len() <= 7, "Expected <= 7, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 7,
+        "Expected <= 7, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 1, "Expected 1 hyphen in '{}', got {}", result, hyphen_count);
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert_eq!(
+        hyphen_count, 1,
+        "Expected 1 hyphen in '{}', got {}",
+        result, hyphen_count
+    );
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 #[test]
@@ -855,9 +886,18 @@ fn first_syllable_my_cool_project_at_9() {
     let config = Config::new(9);
     let result = filename::sanitize_directory("my-cool-project", &config);
 
-    assert!(result.len() <= 9, "Expected <= 9, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 9,
+        "Expected <= 9, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 2, "Expected 2 hyphens in '{}', got {}", result, hyphen_count);
+    assert_eq!(
+        hyphen_count, 2,
+        "Expected 2 hyphens in '{}', got {}",
+        result, hyphen_count
+    );
 }
 
 #[test]
@@ -927,9 +967,18 @@ fn first_syllable_one_two_three_four_at_15() {
     let config = Config::new(15);
     let result = filename::sanitize_directory("one-two-three-four", &config);
 
-    assert!(result.len() <= 15, "Expected <= 15, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 15,
+        "Expected <= 15, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 3, "Expected 3 hyphens in '{}', got {}", result, hyphen_count);
+    assert_eq!(
+        hyphen_count, 3,
+        "Expected 3 hyphens in '{}', got {}",
+        result, hyphen_count
+    );
 }
 
 // --- Unchanged when fits tests ---
@@ -986,9 +1035,18 @@ fn first_syllable_very_tight_two_words() {
     let config = Config::new(5);
     let result = filename::sanitize_directory("hello-world", &config);
 
-    assert!(result.len() <= 5, "Expected <= 5, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 5,
+        "Expected <= 5, got {} ('{}')",
+        result.len(),
+        result
+    );
     // Should try to preserve word structure
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 #[test]
@@ -1008,9 +1066,18 @@ fn first_syllable_three_words_at_10() {
     let config = Config::new(10);
     let result = filename::sanitize_directory("one-two-three", &config);
 
-    assert!(result.len() <= 10, "Expected <= 10, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 10,
+        "Expected <= 10, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 2, "Expected 2 hyphens in '{}', got {}", result, hyphen_count);
+    assert_eq!(
+        hyphen_count, 2,
+        "Expected 2 hyphens in '{}', got {}",
+        result, hyphen_count
+    );
 }
 
 #[test]
@@ -1029,7 +1096,12 @@ fn first_syllable_with_underscores() {
     let config = Config::new(12);
     let result = filename::sanitize_directory("my_cool_project", &config);
 
-    assert!(result.len() <= 12, "Expected <= 12, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 12,
+        "Expected <= 12, got {} ('{}')",
+        result.len(),
+        result
+    );
 }
 
 #[test]
@@ -1038,7 +1110,12 @@ fn first_syllable_with_dots() {
     let config = Config::new(12);
     let result = filename::sanitize_directory("my.cool.project", &config);
 
-    assert!(result.len() <= 12, "Expected <= 12, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 12,
+        "Expected <= 12, got {} ('{}')",
+        result.len(),
+        result
+    );
 }
 
 #[test]
@@ -1059,7 +1136,12 @@ fn first_syllable_mixed_separators() {
     let config = Config::new(18);
     let result = filename::sanitize_directory("one-two_three.four", &config);
 
-    assert!(result.len() <= 18, "Expected <= 18, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 18,
+        "Expected <= 18, got {} ('{}')",
+        result.len(),
+        result
+    );
 }
 
 // --- Negative/Edge Cases (same as before but with smarter behavior) ---
@@ -1142,28 +1224,44 @@ fn abbrev_mixed_case_preserved() {
     let config = Config::new(8);
     let result = filename::sanitize_directory("Hello-World", &config);
     assert!(result.len() <= 8);
-    assert!(result.starts_with('H'), "Expected uppercase H at start of '{}'", result);
+    assert!(
+        result.starts_with('H'),
+        "Expected uppercase H at start of '{}'",
+        result
+    );
 }
 
 #[test]
 fn abbrev_result_no_double_hyphens() {
     let config = Config::new(10);
     let result = filename::sanitize_directory("one-two-three", &config);
-    assert!(!result.contains("--"), "Result '{}' should not contain double hyphens", result);
+    assert!(
+        !result.contains("--"),
+        "Result '{}' should not contain double hyphens",
+        result
+    );
 }
 
 #[test]
 fn abbrev_result_no_leading_hyphen() {
     let config = Config::new(10);
     let result = filename::sanitize_directory("--test-name", &config);
-    assert!(!result.starts_with('-'), "Result '{}' should not start with hyphen", result);
+    assert!(
+        !result.starts_with('-'),
+        "Result '{}' should not start with hyphen",
+        result
+    );
 }
 
 #[test]
 fn abbrev_result_no_trailing_hyphen() {
     let config = Config::new(10);
     let result = filename::sanitize_directory("test-name--", &config);
-    assert!(!result.ends_with('-'), "Result '{}' should not end with hyphen", result);
+    assert!(
+        !result.ends_with('-'),
+        "Result '{}' should not end with hyphen",
+        result
+    );
 }
 
 #[test]
@@ -1213,9 +1311,18 @@ fn syllable_specific_testing_example_at_6() {
     let config = Config::new(6);
     let result = filename::sanitize_directory("testing-example", &config);
 
-    assert!(result.len() <= 6, "Expected <= 6, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 6,
+        "Expected <= 6, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 1, "Expected 1 hyphen in '{}', got {}", result, hyphen_count);
+    assert_eq!(
+        hyphen_count, 1,
+        "Expected 1 hyphen in '{}', got {}",
+        result, hyphen_count
+    );
 }
 
 #[test]
@@ -1244,9 +1351,18 @@ fn syllable_specific_five_words_at_20() {
     let config = Config::new(20);
     let result = filename::sanitize_directory("one-two-three-four-five", &config);
 
-    assert!(result.len() <= 20, "Expected <= 20, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 20,
+        "Expected <= 20, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 4, "Expected 4 hyphens (5 words) in '{}', got {}", result, hyphen_count);
+    assert_eq!(
+        hyphen_count, 4,
+        "Expected 4 hyphens (5 words) in '{}', got {}",
+        result, hyphen_count
+    );
 }
 
 // --- Tests that verify no trailing/leading hyphens ---
@@ -1258,7 +1374,11 @@ fn syllable_no_trailing_hyphen_at_tight_limit() {
     let config = Config::new(6);
     let result = filename::sanitize_directory("hello-world", &config);
 
-    assert!(!result.ends_with('-'), "Result '{}' should not end with hyphen", result);
+    assert!(
+        !result.ends_with('-'),
+        "Result '{}' should not end with hyphen",
+        result
+    );
     assert!(result.len() <= 6);
 }
 
@@ -1271,7 +1391,8 @@ fn syllable_never_produces_trailing_hyphen() {
         assert!(
             !result.ends_with('-'),
             "Limit {} produced '{}' which ends with hyphen",
-            limit, result
+            limit,
+            result
         );
     }
 }
@@ -1284,7 +1405,8 @@ fn syllable_never_produces_leading_hyphen() {
         assert!(
             !result.starts_with('-'),
             "Limit {} produced '{}' which starts with hyphen",
-            limit, result
+            limit,
+            result
         );
     }
 }
@@ -1313,15 +1435,29 @@ fn syllable_my_cool_project_structure() {
     let config = Config::new(9);
     let result = filename::sanitize_directory("my-cool-project", &config);
 
-    assert!(result.len() <= 9, "Expected <= 9, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 9,
+        "Expected <= 9, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 2, "Expected 2 hyphens in '{}', got {}", result, hyphen_count);
+    assert_eq!(
+        hyphen_count, 2,
+        "Expected 2 hyphens in '{}', got {}",
+        result, hyphen_count
+    );
 
     // Each word should have at least some chars
     let parts: Vec<&str> = result.split('-').collect();
     assert_eq!(parts.len(), 3);
     for (i, part) in parts.iter().enumerate() {
-        assert!(!part.is_empty(), "Word {} should not be empty in '{}'", i, result);
+        assert!(
+            !part.is_empty(),
+            "Word {} should not be empty in '{}'",
+            i,
+            result
+        );
     }
 }
 
@@ -1359,9 +1495,18 @@ fn syllable_realistic_long_directory_at_14() {
     let config = Config::new(14);
     let result = filename::sanitize_directory("my-really-awesome-cool-project", &config);
 
-    assert!(result.len() <= 14, "Expected <= 14, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 14,
+        "Expected <= 14, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 4, "Expected 4 hyphens (5 words) in '{}', got {}", result, hyphen_count);
+    assert_eq!(
+        hyphen_count, 4,
+        "Expected 4 hyphens (5 words) in '{}', got {}",
+        result, hyphen_count
+    );
 }
 
 // ============================================================================
@@ -1433,10 +1578,23 @@ fn four_words_my_cool_rust_project_at_14() {
     let config = Config::new(14);
     let result = filename::sanitize_directory("my-cool-rust-project", &config);
 
-    assert!(result.len() <= 14, "Expected <= 14, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 14,
+        "Expected <= 14, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 3, "Expected 3 hyphens (4 words) in '{}', got {}", result, hyphen_count);
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert_eq!(
+        hyphen_count, 3,
+        "Expected 3 hyphens (4 words) in '{}', got {}",
+        result, hyphen_count
+    );
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 #[test]
@@ -1447,10 +1605,23 @@ fn four_words_my_cool_rust_project_at_10() {
     let config = Config::new(10);
     let result = filename::sanitize_directory("my-cool-rust-project", &config);
 
-    assert!(result.len() <= 10, "Expected <= 10, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 10,
+        "Expected <= 10, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 3, "Expected 3 hyphens (4 words) in '{}', got {}", result, hyphen_count);
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert_eq!(
+        hyphen_count, 3,
+        "Expected 3 hyphens (4 words) in '{}', got {}",
+        result, hyphen_count
+    );
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 #[test]
@@ -1470,10 +1641,23 @@ fn four_words_one_two_three_four_at_14() {
     let config = Config::new(14);
     let result = filename::sanitize_directory("one-two-three-four", &config);
 
-    assert!(result.len() <= 14, "Expected <= 14, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 14,
+        "Expected <= 14, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 3, "Expected 3 hyphens (4 words) in '{}', got {}", result, hyphen_count);
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert_eq!(
+        hyphen_count, 3,
+        "Expected 3 hyphens (4 words) in '{}', got {}",
+        result, hyphen_count
+    );
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 #[test]
@@ -1483,10 +1667,23 @@ fn four_words_one_two_three_four_at_10() {
     let config = Config::new(10);
     let result = filename::sanitize_directory("one-two-three-four", &config);
 
-    assert!(result.len() <= 10, "Expected <= 10, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 10,
+        "Expected <= 10, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 3, "Expected 3 hyphens (4 words) in '{}', got {}", result, hyphen_count);
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert_eq!(
+        hyphen_count, 3,
+        "Expected 3 hyphens (4 words) in '{}', got {}",
+        result, hyphen_count
+    );
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 // ============================================================================
@@ -1524,10 +1721,23 @@ fn five_words_agent_session_recorder_for_cli_at_15() {
     let config = Config::new(15);
     let result = filename::sanitize_directory("agent-session-recorder-for-cli", &config);
 
-    assert!(result.len() <= 15, "Expected <= 15, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 15,
+        "Expected <= 15, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 4, "Expected 4 hyphens (5 words) in '{}', got {}", result, hyphen_count);
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert_eq!(
+        hyphen_count, 4,
+        "Expected 4 hyphens (5 words) in '{}', got {}",
+        result, hyphen_count
+    );
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 #[test]
@@ -1546,10 +1756,23 @@ fn five_words_this_is_a_long_name_at_15() {
     let config = Config::new(15);
     let result = filename::sanitize_directory("this-is-a-long-name", &config);
 
-    assert!(result.len() <= 15, "Expected <= 15, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 15,
+        "Expected <= 15, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 4, "Expected 4 hyphens (5 words) in '{}', got {}", result, hyphen_count);
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert_eq!(
+        hyphen_count, 4,
+        "Expected 4 hyphens (5 words) in '{}', got {}",
+        result, hyphen_count
+    );
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 #[test]
@@ -1572,7 +1795,12 @@ fn five_words_single_char_words_a_b_c_d_e_at_7() {
     let result = filename::sanitize_directory("a-b-c-d-e", &config);
 
     // Verify hard truncation respects limit
-    assert!(result.chars().count() <= 7, "Expected <= 7 chars, got {} ('{}')", result.chars().count(), result);
+    assert!(
+        result.chars().count() <= 7,
+        "Expected <= 7 chars, got {} ('{}')",
+        result.chars().count(),
+        result
+    );
 }
 
 // ============================================================================
@@ -1604,10 +1832,23 @@ fn six_words_one_two_three_four_five_six_at_20() {
     let config = Config::new(20);
     let result = filename::sanitize_directory("one-two-three-four-five-six", &config);
 
-    assert!(result.len() <= 20, "Expected <= 20, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 20,
+        "Expected <= 20, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 5, "Expected 5 hyphens (6 words) in '{}', got {}", result, hyphen_count);
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert_eq!(
+        hyphen_count, 5,
+        "Expected 5 hyphens (6 words) in '{}', got {}",
+        result, hyphen_count
+    );
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 #[test]
@@ -1629,7 +1870,12 @@ fn seven_words_single_char_a_b_c_d_e_f_g_at_10() {
     let result = filename::sanitize_directory("a-b-c-d-e-f-g", &config);
 
     // Verify hard truncation respects limit
-    assert!(result.chars().count() <= 10, "Expected <= 10 chars, got {} ('{}')", result.chars().count(), result);
+    assert!(
+        result.chars().count() <= 10,
+        "Expected <= 10 chars, got {} ('{}')",
+        result.chars().count(),
+        result
+    );
 }
 
 #[test]
@@ -1651,10 +1897,23 @@ fn eight_words_at_30() {
     let config = Config::new(30);
     let result = filename::sanitize_directory("one-two-three-four-five-six-seven-eight", &config);
 
-    assert!(result.len() <= 30, "Expected <= 30, got {} ('{}')", result.len(), result);
+    assert!(
+        result.len() <= 30,
+        "Expected <= 30, got {} ('{}')",
+        result.len(),
+        result
+    );
     let hyphen_count = result.chars().filter(|&c| c == '-').count();
-    assert_eq!(hyphen_count, 7, "Expected 7 hyphens (8 words) in '{}', got {}", result, hyphen_count);
-    assert!(!result.ends_with('-'), "Should not end with hyphen: '{}'", result);
+    assert_eq!(
+        hyphen_count, 7,
+        "Expected 7 hyphens (8 words) in '{}', got {}",
+        result, hyphen_count
+    );
+    assert!(
+        !result.ends_with('-'),
+        "Should not end with hyphen: '{}'",
+        result
+    );
 }
 
 #[test]
