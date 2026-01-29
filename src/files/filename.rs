@@ -319,9 +319,10 @@ fn truncate_to_length(s: &str, max_len: usize) -> String {
     let joined = truncated.join("-");
     let cleaned = joined.trim_end_matches('-').to_string();
 
-    // Final safety: hard truncate if still over limit
+    // Final safety: hard truncate if still over limit, then trim any trailing hyphen
     if cleaned.chars().count() > max_len {
-        cleaned.chars().take(max_len).collect()
+        let truncated: String = cleaned.chars().take(max_len).collect();
+        truncated.trim_end_matches('-').to_string()
     } else {
         cleaned
     }
