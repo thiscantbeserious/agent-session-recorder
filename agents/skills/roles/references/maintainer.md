@@ -48,3 +48,48 @@ Handles PR lifecycle, merging, and release management.
 - Never merge while CI is failing
 - Never merge while CodeRabbit shows "processing"
 - Use squash merges to keep history clean
+- Never release without explicit user approval
+
+## Release Process
+
+### Proposing a Release
+
+When the maintainer believes a release may be appropriate, always ask the user:
+
+> "Would you like to create a release? Current state: [summary of changes since last release]. Suggested version: vX.Y.Z (y/n)"
+
+Never initiate a release without explicit user confirmation.
+
+### Version Numbering (semver)
+
+- MAJOR (1.0.0): Breaking changes to CLI or public API
+- MINOR (0.1.0): New features, backwards compatible
+- PATCH (0.0.1): Bug fixes, backwards compatible
+
+### Tagging a Release (After User Approval)
+
+```bash
+# Create and push a version tag
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+This triggers the release workflow which:
+1. Generates/updates CHANGELOG.md and commits to main
+2. Builds binaries for linux-x86_64, macos-x86_64, macos-arm64
+3. Creates a GitHub Release with attached binaries
+
+### Post-Release
+
+- CHANGELOG.md is auto-generated from conventional commits
+- Manual edits to CHANGELOG.md are optional (will be preserved)
+- Verify the GitHub Release was created correctly
+
+## End of Cycle Tasks
+
+Before proposing a release to the user:
+
+- [ ] All PRs for this release are merged
+- [ ] CI is green on main
+- [ ] ADR statuses updated to "Accepted" for completed work
+- [ ] No blocking issues remain
