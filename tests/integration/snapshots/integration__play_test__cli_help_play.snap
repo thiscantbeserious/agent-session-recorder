@@ -1,6 +1,6 @@
 ---
 source: tests/integration/play_test.rs
-assertion_line: 62
+assertion_line: 46
 expression: output
 ---
 === agr play --help ===
@@ -22,7 +22,7 @@ PLAYER CONTROLS:
     q, Esc      [37mQuit[0m
     Space       [37mPause/resume[0m
     +/-         [37mAdjust playback speed[0m
-    <, >        Seek backward/forward 5s
+    <, > or ,, .  Seek backward/forward 5s
     m           [37mJump to next marker[0m
     ?           [37mShow help overlay[0m
 
