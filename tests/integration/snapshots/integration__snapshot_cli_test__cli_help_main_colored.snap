@@ -1,5 +1,6 @@
 ---
 source: tests/integration/snapshot_cli_test.rs
+assertion_line: 205
 expression: output
 ---
 === agr --help (colored) ===
@@ -41,6 +42,7 @@ Commands:
   cleanup   ESC[37mInteractive cleanup of old sessionsESC[0m
   list      ESC[37mList recorded sessions [aliases: ls]ESC[0m
   analyze   ESC[37mAnalyze a recording with AIESC[0m
+  play      ESC[37mPlay a recording with the native playerESC[0m
   marker    ESC[37mManage markers in cast filesESC[0m
   agents    ESC[37mManage configured agentsESC[0m
   config    ESC[37mConfiguration managementESC[0m

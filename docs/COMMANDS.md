@@ -9,6 +9,7 @@ This document is auto-generated from the CLI definitions.
 - [cleanup](#agr-cleanup)
 - [list](#agr-list)
 - [analyze](#agr-analyze)
+- [play](#agr-play)
 - [marker](#agr-marker)
 - [agents](#agr-agents)
 - [config](#agr-config)
@@ -186,6 +187,39 @@ SUPPORTED AGENTS:
     claude      Claude Code CLI
     codex       OpenAI Codex CLI
     gemini  Google Gemini CLI
+```
+
+---
+
+## agr play
+
+Play a recording with the native player
+
+### Arguments
+
+- `<FILE>`: Path to the .cast recording file
+
+### Description
+
+```
+Play an asciicast recording using the native player.
+
+The native player supports seeking, speed control, and marker navigation.
+Recordings can be specified by absolute path, short format (agent/file.cast),
+or just filename (fuzzy matches across all agents).
+
+EXAMPLES:
+    agr play session.cast                 Play by filename (fuzzy match)
+    agr play claude/session.cast          Play using short format
+    agr play /path/to/session.cast        Play by absolute path
+
+PLAYER CONTROLS:
+    q, Esc      Quit
+    Space       Pause/resume
+    +/-         Adjust playback speed
+    <, >        Seek backward/forward 5s
+    m           Jump to next marker
+    ?           Show help overlay
 ```
 
 ---

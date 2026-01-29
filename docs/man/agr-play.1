@@ -1,0 +1,33 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH play 1  "play " 
+.SH NAME
+play \- Play a recording with the native player
+.SH SYNOPSIS
+\fBplay\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIFILE\fR> 
+.SH DESCRIPTION
+Play an asciicast recording using the native player.
+.PP
+The native player supports seeking, speed control, and marker navigation.
+Recordings can be specified by absolute path, short format (agent/file.cast),
+or just filename (fuzzy matches across all agents).
+.PP
+EXAMPLES:
+    agr play session.cast                 Play by filename (fuzzy match)
+    agr play claude/session.cast          Play using short format
+    agr play /path/to/session.cast        Play by absolute path
+.PP
+PLAYER CONTROLS:
+    q, Esc      Quit
+    Space       Pause/resume
+    +/\-         Adjust playback speed
+    <, >        Seek backward/forward 5s
+    m           Jump to next marker
+    ?           Show help overlay
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+<\fIFILE\fR>
+Path to the .cast recording file

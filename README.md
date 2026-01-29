@@ -67,8 +67,8 @@ agr list
 # Check storage usage:
 agr status
 
-# Play back a recording:
-asciinema play ~/recorded_agent_sessions/claude/session.cast
+# Play back a recording with the native player:
+agr play session.cast
 
 # Remove long pauses from a recording (e.g., lunch breaks):
 agr optimize --remove-silence session.cast
@@ -76,6 +76,37 @@ agr optimize --remove-silence session.cast
 # Add a marker to highlight an important moment:
 agr marker add session.cast 45.2 "Build failed - missing dependency"
 ```
+
+## Playing Recordings
+
+AGR includes a native player with seeking, speed control, and marker navigation.
+
+```bash
+# Play by filename (fuzzy matches across agents)
+agr play session.cast
+
+# Play using short format
+agr play claude/session.cast
+
+# Play by absolute path
+agr play ~/recorded_agent_sessions/claude/session.cast
+```
+
+### Player Controls
+
+| Key | Action |
+|-----|--------|
+| `Space` | Pause / Resume |
+| `+` / `-` | Adjust playback speed |
+| `<` / `>` or `,` / `.` | Seek backward/forward 5s |
+| `Home` / `End` | Go to start/end |
+| `m` | Jump to next marker |
+| `v` | Toggle viewport mode (for large recordings) |
+| `r` | Resize terminal to match recording |
+| `?` | Show help overlay |
+| `q` / `Esc` | Quit player |
+
+**Viewport Mode**: When the recording is larger than your terminal, press `v` to enter viewport mode. Use arrow keys to scroll around the recording, and press `Esc` to exit viewport mode.
 
 ## Post-Processing Recordings
 

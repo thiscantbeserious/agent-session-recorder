@@ -10,6 +10,7 @@ pub mod completions;
 pub mod config;
 pub mod list;
 pub mod marker;
+pub mod play;
 pub mod record;
 pub mod shell;
 pub mod status;
