@@ -17,18 +17,56 @@ pub(crate) struct TerminalPerformer<'a> {
     pub cursor_row: &'a mut usize,
     pub current_style: &'a mut CellStyle,
     pub saved_cursor: &'a mut Option<(usize, usize)>,
+    /// Top margin of scroll region (0-indexed, inclusive)
+    pub scroll_top: usize,
+    /// Bottom margin of scroll region (0-indexed, inclusive)
+    pub scroll_bottom: usize,
 }
 
 impl<'a> TerminalPerformer<'a> {
     /// Move cursor down one line, scrolling if necessary.
+    /// Respects the scroll region (DECSTBM).
     /// Note: This does NOT move to column 0 (that's carriage return).
     fn line_feed(&mut self) {
-        if *self.cursor_row + 1 < self.height {
+        if *self.cursor_row < self.scroll_bottom {
+            // Within scroll region and not at bottom - just move down
             *self.cursor_row += 1;
+        } else if *self.cursor_row == self.scroll_bottom {
+            // At bottom of scroll region - scroll the region up
+            self.scroll_up_region(1);
         } else {
-            // Scroll up - remove first row and add empty row at bottom
-            self.buffer.remove(0);
-            self.buffer.push(vec![Cell::default(); self.width]);
+            // Below scroll region - just move down if possible
+            if *self.cursor_row + 1 < self.height {
+                *self.cursor_row += 1;
+            }
+        }
+    }
+
+    /// Scroll the scroll region up by n lines.
+    /// Removes lines from scroll_top and adds empty lines at scroll_bottom.
+    fn scroll_up_region(&mut self, n: usize) {
+        for _ in 0..n {
+            if self.scroll_top < self.height && self.scroll_bottom < self.height {
+                // Remove the line at scroll_top
+                self.buffer.remove(self.scroll_top);
+                // Insert a new blank line at scroll_bottom
+                self.buffer
+                    .insert(self.scroll_bottom, vec![Cell::default(); self.width]);
+            }
+        }
+    }
+
+    /// Scroll the scroll region down by n lines.
+    /// Removes lines from scroll_bottom and adds empty lines at scroll_top.
+    fn scroll_down_region(&mut self, n: usize) {
+        for _ in 0..n {
+            if self.scroll_top < self.height && self.scroll_bottom < self.height {
+                // Remove the line at scroll_bottom
+                self.buffer.remove(self.scroll_bottom);
+                // Insert a new blank line at scroll_top
+                self.buffer
+                    .insert(self.scroll_top, vec![Cell::default(); self.width]);
+            }
         }
     }
 
@@ -147,23 +185,34 @@ impl<'a> TerminalPerformer<'a> {
         }
     }
 
-    /// Delete n lines at cursor, scrolling up.
+    /// Delete n lines at cursor, scrolling up within scroll region.
     fn delete_lines(&mut self, n: usize) {
-        for _ in 0..n {
-            if *self.cursor_row < self.height {
-                self.buffer.remove(*self.cursor_row);
-                self.buffer.push(vec![Cell::default(); self.width]);
+        // Only operates if cursor is within scroll region
+        if *self.cursor_row >= self.scroll_top && *self.cursor_row <= self.scroll_bottom {
+            for _ in 0..n {
+                if *self.cursor_row <= self.scroll_bottom {
+                    // Remove the line at cursor position
+                    self.buffer.remove(*self.cursor_row);
+                    // Insert a new blank line at scroll_bottom
+                    self.buffer
+                        .insert(self.scroll_bottom, vec![Cell::default(); self.width]);
+                }
             }
         }
     }
 
-    /// Insert n blank lines at cursor, scrolling down.
+    /// Insert n blank lines at cursor, scrolling down within scroll region.
     fn insert_lines(&mut self, n: usize) {
-        for _ in 0..n {
-            if *self.cursor_row < self.height {
-                self.buffer.pop();
-                self.buffer
-                    .insert(*self.cursor_row, vec![Cell::default(); self.width]);
+        // Only operates if cursor is within scroll region
+        if *self.cursor_row >= self.scroll_top && *self.cursor_row <= self.scroll_bottom {
+            for _ in 0..n {
+                if *self.cursor_row <= self.scroll_bottom {
+                    // Remove the line at scroll_bottom
+                    self.buffer.remove(self.scroll_bottom);
+                    // Insert a new blank line at cursor position
+                    self.buffer
+                        .insert(*self.cursor_row, vec![Cell::default(); self.width]);
+                }
             }
         }
     }
@@ -453,6 +502,38 @@ impl Perform for TerminalPerformer<'_> {
                 // SGR (Select Graphic Rendition) - handle colors and styles
                 self.handle_sgr(&params);
             }
+            'r' => {
+                // DECSTBM - Set Top and Bottom Margins (scroll region)
+                // CSI Pt ; Pb r - Set scrolling region from line Pt to Pb
+                // Default is full screen
+                let top = params.first().copied().unwrap_or(1) as usize;
+                let bottom = params.get(1).copied().unwrap_or(self.height as u16) as usize;
+
+                // Convert from 1-indexed to 0-indexed
+                let new_top = top.saturating_sub(1);
+                let new_bottom = bottom.saturating_sub(1).min(self.height.saturating_sub(1));
+
+                // Validate: top must be less than bottom, both must be in bounds
+                if new_top < new_bottom && new_bottom < self.height {
+                    self.scroll_top = new_top;
+                    self.scroll_bottom = new_bottom;
+                    // Move cursor to home position after setting scroll region
+                    *self.cursor_row = 0;
+                    *self.cursor_col = 0;
+                }
+            }
+            'S' => {
+                // SU - Scroll Up (pan down)
+                // CSI n S - Scroll up n lines (default 1)
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.scroll_up_region(n);
+            }
+            'T' => {
+                // SD - Scroll Down (pan up)
+                // CSI n T - Scroll down n lines (default 1)
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.scroll_down_region(n);
+            }
             _ => {}
         }
     }
@@ -471,13 +552,17 @@ impl Perform for TerminalPerformer<'_> {
                 }
             }
             b'M' => {
-                // RI - Reverse Index (move cursor up, scroll if at top)
-                if *self.cursor_row > 0 {
+                // RI - Reverse Index (move cursor up, scroll if at top of scroll region)
+                if *self.cursor_row > self.scroll_top {
                     *self.cursor_row -= 1;
+                } else if *self.cursor_row == self.scroll_top {
+                    // At top of scroll region - scroll the region down
+                    self.scroll_down_region(1);
                 } else {
-                    // Scroll down - add empty row at top, remove bottom
-                    self.buffer.pop();
-                    self.buffer.insert(0, vec![Cell::default(); self.width]);
+                    // Above scroll region - just move up if possible
+                    if *self.cursor_row > 0 {
+                        *self.cursor_row -= 1;
+                    }
                 }
             }
             _ => {}

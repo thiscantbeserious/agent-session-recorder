@@ -36,6 +36,10 @@ pub struct TerminalBuffer {
     parser: Parser,
     /// Saved cursor position (for CSI s/u)
     saved_cursor: Option<(usize, usize)>,
+    /// Top margin of scroll region (0-indexed, inclusive)
+    scroll_top: usize,
+    /// Bottom margin of scroll region (0-indexed, inclusive)
+    scroll_bottom: usize,
 }
 
 impl TerminalBuffer {
@@ -51,6 +55,8 @@ impl TerminalBuffer {
             current_style: CellStyle::default(),
             parser: Parser::new(),
             saved_cursor: None,
+            scroll_top: 0,
+            scroll_bottom: height.saturating_sub(1),
         }
     }
 
@@ -66,8 +72,13 @@ impl TerminalBuffer {
             cursor_row: &mut self.cursor_row,
             current_style: &mut self.current_style,
             saved_cursor: &mut self.saved_cursor,
+            scroll_top: self.scroll_top,
+            scroll_bottom: self.scroll_bottom,
         };
         self.parser.advance(&mut perf, data.as_bytes());
+        // Update scroll region in case it was changed by DECSTBM
+        self.scroll_top = perf.scroll_top;
+        self.scroll_bottom = perf.scroll_bottom;
     }
 
     /// Resize the terminal buffer to new dimensions.
@@ -98,6 +109,10 @@ impl TerminalBuffer {
         // Clamp cursor to new bounds
         self.cursor_col = self.cursor_col.min(new_width.saturating_sub(1));
         self.cursor_row = self.cursor_row.min(new_height.saturating_sub(1));
+
+        // Reset scroll region to full screen on resize
+        self.scroll_top = 0;
+        self.scroll_bottom = new_height.saturating_sub(1);
 
         // Invalidate saved cursor if it's now out of bounds
         if let Some((row, col)) = self.saved_cursor {
