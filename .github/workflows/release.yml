@@ -13,47 +13,6 @@ permissions:
   contents: write
 
 jobs:
-  # Generate changelog and commit to main
-  changelog:
-    name: Generate Changelog
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          ref: main
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install git-cliff
-        run: |
-          curl -sSL https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/git-cliff-${GIT_CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz | tar xz
-          sudo mv git-cliff-${GIT_CLIFF_VERSION}/git-cliff /usr/local/bin/
-
-      - name: Generate changelog
-        run: git-cliff --output CHANGELOG.md
-
-      - name: Check for changes
-        id: changes
-        run: |
-          if git diff --quiet CHANGELOG.md 2>/dev/null; then
-            echo "changed=false" >> $GITHUB_OUTPUT
-          else
-            echo "changed=true" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Get version from tag
-        id: version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Commit and push changelog
-        if: steps.changes.outputs.changed == 'true'
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add CHANGELOG.md
-          git commit -m "chore(changelog): update for ${{ steps.version.outputs.version }} [skip ci]"
-          git push
-
   # Build release binaries for all platforms
   build:
     name: Build (${{ matrix.artifact }})
@@ -101,12 +60,14 @@ jobs:
   # Create GitHub Release with binaries attached
   release:
     name: Create Release
-    needs: [changelog, build]
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download all artifacts
         uses: actions/download-artifact@v5
@@ -132,9 +93,30 @@ jobs:
           curl -sSL https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/git-cliff-${GIT_CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz | tar xz
           sudo mv git-cliff-${GIT_CLIFF_VERSION}/git-cliff /usr/local/bin/
 
-      - name: Generate release notes
+      - name: Generate changelog
+        run: git-cliff --output CHANGELOG.md
+
+      - name: Check for changelog changes
+        id: changes
         run: |
-          git-cliff --latest --strip header > RELEASE_NOTES.md
+          if git diff --quiet CHANGELOG.md 2>/dev/null; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changelog
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add CHANGELOG.md
+          git commit -m "chore(changelog): update for ${{ steps.version.outputs.version }} [skip ci]"
+          git pull --rebase
+          git push
+
+      - name: Generate release notes
+        run: git-cliff --latest --strip header > RELEASE_NOTES.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
