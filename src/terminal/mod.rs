@@ -6,6 +6,7 @@
 //! This module is designed as a general-purpose VT emulator that can be used
 //! by the player, TUI widgets, and future analysis features.
 
+mod handlers;
 mod performer;
 mod types;
 

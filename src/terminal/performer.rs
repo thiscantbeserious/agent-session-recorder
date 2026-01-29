@@ -6,7 +6,8 @@
 use unicode_width::UnicodeWidthChar;
 use vte::Perform;
 
-use super::types::{Cell, CellStyle, Color};
+use super::handlers::{log_unhandled_csi, log_unhandled_esc};
+use super::types::Cell;
 
 /// Performer that handles VTE callbacks and updates the buffer.
 pub(crate) struct TerminalPerformer<'a> {
@@ -15,7 +16,7 @@ pub(crate) struct TerminalPerformer<'a> {
     pub height: usize,
     pub cursor_col: &'a mut usize,
     pub cursor_row: &'a mut usize,
-    pub current_style: &'a mut CellStyle,
+    pub current_style: &'a mut super::types::CellStyle,
     pub saved_cursor: &'a mut Option<(usize, usize)>,
     /// Top margin of scroll region (0-indexed, inclusive)
     pub scroll_top: usize,
@@ -44,7 +45,7 @@ impl<'a> TerminalPerformer<'a> {
 
     /// Scroll the scroll region up by n lines.
     /// Removes lines from scroll_top and adds empty lines at scroll_bottom.
-    fn scroll_up_region(&mut self, n: usize) {
+    pub(crate) fn scroll_up_region(&mut self, n: usize) {
         for _ in 0..n {
             if self.scroll_top < self.height && self.scroll_bottom < self.height {
                 // Remove the line at scroll_top
@@ -58,7 +59,7 @@ impl<'a> TerminalPerformer<'a> {
 
     /// Scroll the scroll region down by n lines.
     /// Removes lines from scroll_bottom and adds empty lines at scroll_top.
-    fn scroll_down_region(&mut self, n: usize) {
+    pub(crate) fn scroll_down_region(&mut self, n: usize) {
         for _ in 0..n {
             if self.scroll_top < self.height && self.scroll_bottom < self.height {
                 // Remove the line at scroll_bottom
@@ -118,7 +119,7 @@ impl<'a> TerminalPerformer<'a> {
     }
 
     /// Erase from cursor to end of line.
-    fn erase_to_eol(&mut self) {
+    pub(crate) fn erase_to_eol(&mut self) {
         if *self.cursor_row < self.height {
             for col in *self.cursor_col..self.width {
                 self.buffer[*self.cursor_row][col] = Cell::default();
@@ -127,7 +128,7 @@ impl<'a> TerminalPerformer<'a> {
     }
 
     /// Erase entire line.
-    fn erase_line(&mut self) {
+    pub(crate) fn erase_entire_line(&mut self) {
         if *self.cursor_row < self.height {
             for col in 0..self.width {
                 self.buffer[*self.cursor_row][col] = Cell::default();
@@ -136,7 +137,7 @@ impl<'a> TerminalPerformer<'a> {
     }
 
     /// Erase from start of line to cursor (inclusive).
-    fn erase_from_sol(&mut self) {
+    pub(crate) fn erase_from_sol(&mut self) {
         if *self.cursor_row < self.height {
             let end_col = (*self.cursor_col).min(self.width - 1);
             for col in 0..=end_col {
@@ -146,7 +147,7 @@ impl<'a> TerminalPerformer<'a> {
     }
 
     /// Erase from start of screen to cursor.
-    fn erase_from_sos(&mut self) {
+    pub(crate) fn erase_from_sos(&mut self) {
         // Erase all rows before current
         for row in 0..*self.cursor_row {
             for col in 0..self.width {
@@ -158,7 +159,7 @@ impl<'a> TerminalPerformer<'a> {
     }
 
     /// Delete n characters at cursor, shifting remaining left.
-    fn delete_chars(&mut self, n: usize) {
+    pub(crate) fn delete_chars(&mut self, n: usize) {
         if *self.cursor_row < self.height {
             let row = &mut self.buffer[*self.cursor_row];
             for i in *self.cursor_col..self.width {
@@ -172,7 +173,7 @@ impl<'a> TerminalPerformer<'a> {
     }
 
     /// Insert n blank characters at cursor, shifting existing right.
-    fn insert_chars(&mut self, n: usize) {
+    pub(crate) fn insert_chars(&mut self, n: usize) {
         if *self.cursor_row < self.height {
             let row = &mut self.buffer[*self.cursor_row];
             for i in ((*self.cursor_col + n)..self.width).rev() {
@@ -186,7 +187,7 @@ impl<'a> TerminalPerformer<'a> {
     }
 
     /// Delete n lines at cursor, scrolling up within scroll region.
-    fn delete_lines(&mut self, n: usize) {
+    pub(crate) fn delete_lines(&mut self, n: usize) {
         // Only operates if cursor is within scroll region
         if *self.cursor_row >= self.scroll_top && *self.cursor_row <= self.scroll_bottom {
             for _ in 0..n {
@@ -202,7 +203,7 @@ impl<'a> TerminalPerformer<'a> {
     }
 
     /// Insert n blank lines at cursor, scrolling down within scroll region.
-    fn insert_lines(&mut self, n: usize) {
+    pub(crate) fn insert_lines(&mut self, n: usize) {
         // Only operates if cursor is within scroll region
         if *self.cursor_row >= self.scroll_top && *self.cursor_row <= self.scroll_bottom {
             for _ in 0..n {
@@ -218,7 +219,7 @@ impl<'a> TerminalPerformer<'a> {
     }
 
     /// Erase from cursor to end of screen.
-    fn erase_to_eos(&mut self) {
+    pub(crate) fn erase_to_eos(&mut self) {
         self.erase_to_eol();
         for row in (*self.cursor_row + 1)..self.height {
             for col in 0..self.width {
@@ -228,7 +229,7 @@ impl<'a> TerminalPerformer<'a> {
     }
 
     /// Clear entire screen.
-    fn clear_screen(&mut self) {
+    pub(crate) fn clear_screen(&mut self) {
         for row in 0..self.height {
             for col in 0..self.width {
                 self.buffer[row][col] = Cell::default();
@@ -236,114 +237,6 @@ impl<'a> TerminalPerformer<'a> {
         }
         *self.cursor_row = 0;
         *self.cursor_col = 0;
-    }
-
-    /// Parse SGR (Select Graphic Rendition) parameters and update current style.
-    fn handle_sgr(&mut self, params: &[u16]) {
-        let mut iter = params.iter().peekable();
-
-        while let Some(&param) = iter.next() {
-            match param {
-                0 => *self.current_style = CellStyle::default(), // Reset
-                1 => self.current_style.bold = true,
-                2 => self.current_style.dim = true,
-                3 => self.current_style.italic = true,
-                4 => self.current_style.underline = true,
-                7 => self.current_style.reverse = true,
-                22 => {
-                    self.current_style.bold = false;
-                    self.current_style.dim = false;
-                }
-                23 => self.current_style.italic = false,
-                24 => self.current_style.underline = false,
-                27 => self.current_style.reverse = false,
-                // Standard foreground colors (30-37)
-                30 => self.current_style.fg = Color::Black,
-                31 => self.current_style.fg = Color::Red,
-                32 => self.current_style.fg = Color::Green,
-                33 => self.current_style.fg = Color::Yellow,
-                34 => self.current_style.fg = Color::Blue,
-                35 => self.current_style.fg = Color::Magenta,
-                36 => self.current_style.fg = Color::Cyan,
-                37 => self.current_style.fg = Color::White,
-                38 => {
-                    // Extended foreground color
-                    if let Some(&&mode) = iter.peek() {
-                        iter.next();
-                        match mode {
-                            5 => {
-                                // 256-color mode
-                                if let Some(&&idx) = iter.peek() {
-                                    iter.next();
-                                    self.current_style.fg = Color::Indexed(idx as u8);
-                                }
-                            }
-                            2 => {
-                                // RGB mode
-                                let r = iter.next().copied().unwrap_or(0) as u8;
-                                let g = iter.next().copied().unwrap_or(0) as u8;
-                                let b = iter.next().copied().unwrap_or(0) as u8;
-                                self.current_style.fg = Color::Rgb(r, g, b);
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                39 => self.current_style.fg = Color::Default,
-                // Standard background colors (40-47)
-                40 => self.current_style.bg = Color::Black,
-                41 => self.current_style.bg = Color::Red,
-                42 => self.current_style.bg = Color::Green,
-                43 => self.current_style.bg = Color::Yellow,
-                44 => self.current_style.bg = Color::Blue,
-                45 => self.current_style.bg = Color::Magenta,
-                46 => self.current_style.bg = Color::Cyan,
-                47 => self.current_style.bg = Color::White,
-                48 => {
-                    // Extended background color
-                    if let Some(&&mode) = iter.peek() {
-                        iter.next();
-                        match mode {
-                            5 => {
-                                // 256-color mode
-                                if let Some(&&idx) = iter.peek() {
-                                    iter.next();
-                                    self.current_style.bg = Color::Indexed(idx as u8);
-                                }
-                            }
-                            2 => {
-                                // RGB mode
-                                let r = iter.next().copied().unwrap_or(0) as u8;
-                                let g = iter.next().copied().unwrap_or(0) as u8;
-                                let b = iter.next().copied().unwrap_or(0) as u8;
-                                self.current_style.bg = Color::Rgb(r, g, b);
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                49 => self.current_style.bg = Color::Default,
-                // Bright foreground colors (90-97)
-                90 => self.current_style.fg = Color::BrightBlack,
-                91 => self.current_style.fg = Color::BrightRed,
-                92 => self.current_style.fg = Color::BrightGreen,
-                93 => self.current_style.fg = Color::BrightYellow,
-                94 => self.current_style.fg = Color::BrightBlue,
-                95 => self.current_style.fg = Color::BrightMagenta,
-                96 => self.current_style.fg = Color::BrightCyan,
-                97 => self.current_style.fg = Color::BrightWhite,
-                // Bright background colors (100-107)
-                100 => self.current_style.bg = Color::BrightBlack,
-                101 => self.current_style.bg = Color::BrightRed,
-                102 => self.current_style.bg = Color::BrightGreen,
-                103 => self.current_style.bg = Color::BrightYellow,
-                104 => self.current_style.bg = Color::BrightBlue,
-                105 => self.current_style.bg = Color::BrightMagenta,
-                106 => self.current_style.bg = Color::BrightCyan,
-                107 => self.current_style.bg = Color::BrightWhite,
-                _ => {}
-            }
-        }
     }
 }
 
@@ -397,175 +290,97 @@ impl Perform for TerminalPerformer<'_> {
         }
 
         match action {
-            // Cursor movement
+            // Cursor movement (handlers/cursor.rs)
             'A' => {
-                // Cursor up - default to 1 if no param or param is 0
                 let n = params.first().copied().filter(|&x| x != 0).unwrap_or(1) as usize;
-                *self.cursor_row = self.cursor_row.saturating_sub(n);
+                self.handle_cursor_up(n);
             }
             'B' => {
-                // Cursor down - default to 1 if no param or param is 0
                 let n = params.first().copied().filter(|&x| x != 0).unwrap_or(1) as usize;
-                *self.cursor_row = (*self.cursor_row + n).min(self.height - 1);
+                self.handle_cursor_down(n);
             }
             'C' => {
-                // Cursor forward - default to 1 if no param or param is 0
                 let n = params.first().copied().filter(|&x| x != 0).unwrap_or(1) as usize;
-                *self.cursor_col = (*self.cursor_col + n).min(self.width - 1);
+                self.handle_cursor_forward(n);
             }
             'D' => {
-                // Cursor back - default to 1 if no param or param is 0
                 let n = params.first().copied().filter(|&x| x != 0).unwrap_or(1) as usize;
-                *self.cursor_col = self.cursor_col.saturating_sub(n);
+                self.handle_cursor_back(n);
             }
             'H' | 'f' => {
-                // Cursor position (row;col)
                 let row = params.first().copied().unwrap_or(1) as usize;
                 let col = params.get(1).copied().unwrap_or(1) as usize;
-                *self.cursor_row = row.saturating_sub(1).min(self.height - 1);
-                *self.cursor_col = col.saturating_sub(1).min(self.width - 1);
-            }
-            'J' => {
-                // Erase in display
-                let mode = params.first().copied().unwrap_or(0);
-                match mode {
-                    0 => self.erase_to_eos(),
-                    1 => self.erase_from_sos(),
-                    2 | 3 => self.clear_screen(),
-                    _ => {}
-                }
-            }
-            'K' => {
-                // Erase in line
-                let mode = params.first().copied().unwrap_or(0);
-                match mode {
-                    0 => self.erase_to_eol(),
-                    1 => self.erase_from_sol(),
-                    2 => self.erase_line(),
-                    _ => {}
-                }
-            }
-            'L' => {
-                // Insert lines
-                let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                self.insert_lines(n);
-            }
-            'M' => {
-                // Delete lines
-                let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                self.delete_lines(n);
-            }
-            'P' => {
-                // Delete characters
-                let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                self.delete_chars(n);
-            }
-            '@' => {
-                // Insert blank characters
-                let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                self.insert_chars(n);
-            }
-            'X' => {
-                // Erase characters (replace with spaces, don't move cursor)
-                let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                if *self.cursor_row < self.height {
-                    for i in 0..n {
-                        let col = *self.cursor_col + i;
-                        if col < self.width {
-                            self.buffer[*self.cursor_row][col] = Cell::default();
-                        }
-                    }
-                }
-            }
-            's' => {
-                // Save cursor position
-                *self.saved_cursor = Some((*self.cursor_row, *self.cursor_col));
-            }
-            'u' => {
-                // Restore cursor position
-                if let Some((row, col)) = *self.saved_cursor {
-                    *self.cursor_row = row.min(self.height - 1);
-                    *self.cursor_col = col.min(self.width - 1);
-                }
+                self.handle_cursor_position(row, col);
             }
             'G' => {
-                // Cursor horizontal absolute
                 let col = params.first().copied().unwrap_or(1) as usize;
-                *self.cursor_col = col.saturating_sub(1).min(self.width - 1);
+                self.handle_cursor_horizontal_absolute(col);
             }
             'd' => {
-                // Cursor vertical absolute
                 let row = params.first().copied().unwrap_or(1) as usize;
-                *self.cursor_row = row.saturating_sub(1).min(self.height - 1);
+                self.handle_cursor_vertical_absolute(row);
             }
-            'm' => {
-                // SGR (Select Graphic Rendition) - handle colors and styles
-                self.handle_sgr(&params);
+            's' => self.handle_save_cursor(),
+            'u' => self.handle_restore_cursor(),
+
+            // Editing (handlers/editing.rs)
+            'J' => {
+                let mode = params.first().copied().unwrap_or(0);
+                self.handle_erase_display(mode);
             }
+            'K' => {
+                let mode = params.first().copied().unwrap_or(0);
+                self.handle_erase_line(mode);
+            }
+            'L' => {
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.handle_insert_lines(n);
+            }
+            'M' => {
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.handle_delete_lines(n);
+            }
+            'P' => {
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.handle_delete_chars(n);
+            }
+            '@' => {
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.handle_insert_chars(n);
+            }
+            'X' => {
+                let n = params.first().copied().unwrap_or(1).max(1) as usize;
+                self.handle_erase_chars(n);
+            }
+
+            // Style (handlers/style.rs)
+            'm' => self.handle_sgr(&params),
+
+            // Scroll region (handlers/scroll.rs)
             'r' => {
-                // DECSTBM - Set Top and Bottom Margins (scroll region)
-                // CSI Pt ; Pb r - Set scrolling region from line Pt to Pb
-                // Default is full screen
                 let top = params.first().copied().unwrap_or(1) as usize;
                 let bottom = params.get(1).copied().unwrap_or(self.height as u16) as usize;
-
-                // Convert from 1-indexed to 0-indexed
-                let new_top = top.saturating_sub(1);
-                let new_bottom = bottom.saturating_sub(1).min(self.height.saturating_sub(1));
-
-                // Validate: top must be less than bottom, both must be in bounds
-                if new_top < new_bottom && new_bottom < self.height {
-                    self.scroll_top = new_top;
-                    self.scroll_bottom = new_bottom;
-                    // Move cursor to home position after setting scroll region
-                    *self.cursor_row = 0;
-                    *self.cursor_col = 0;
-                }
+                self.handle_set_scroll_region(top, bottom);
             }
             'S' => {
-                // SU - Scroll Up (pan down)
-                // CSI n S - Scroll up n lines (default 1)
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                self.scroll_up_region(n);
+                self.handle_scroll_up(n);
             }
             'T' => {
-                // SD - Scroll Down (pan up)
-                // CSI n T - Scroll down n lines (default 1)
                 let n = params.first().copied().unwrap_or(1).max(1) as usize;
-                self.scroll_down_region(n);
+                self.handle_scroll_down(n);
             }
-            _ => {}
+
+            _ => log_unhandled_csi(action, &params, intermediates),
         }
     }
 
-    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, byte: u8) {
+    fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, byte: u8) {
         match byte {
-            b'7' => {
-                // DECSC - DEC save cursor
-                *self.saved_cursor = Some((*self.cursor_row, *self.cursor_col));
-            }
-            b'8' => {
-                // DECRC - DEC restore cursor
-                if let Some((row, col)) = *self.saved_cursor {
-                    *self.cursor_row = row.min(self.height - 1);
-                    *self.cursor_col = col.min(self.width - 1);
-                }
-            }
-            b'M' => {
-                // RI - Reverse Index (move cursor up, scroll if at top of scroll region)
-                if *self.cursor_row > self.scroll_top {
-                    *self.cursor_row -= 1;
-                } else if *self.cursor_row == self.scroll_top {
-                    // At top of scroll region - scroll the region down
-                    self.scroll_down_region(1);
-                } else {
-                    // Above scroll region - just move up if possible
-                    if *self.cursor_row > 0 {
-                        *self.cursor_row -= 1;
-                    }
-                }
-            }
-            _ => {}
+            b'7' => self.handle_dec_save_cursor(),
+            b'8' => self.handle_dec_restore_cursor(),
+            b'M' => self.handle_reverse_index(),
+            _ => log_unhandled_esc(byte, intermediates),
         }
     }
 }
