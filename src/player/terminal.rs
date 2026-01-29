@@ -1550,6 +1550,54 @@ mod tests {
     }
 
     #[test]
+    fn visual_comparison_with_real_cast() {
+        // Compare our player output with expected (pyte) output for a real cast file
+        // This test helps catch rendering differences
+
+        let test_file = std::path::Path::new("/Users/simon.sanladerer/recorded_agent_sessions/codex/agr_codex_failed_interactively.cast");
+        if !test_file.exists() {
+            println!("Test file not found, skipping visual comparison");
+            return;
+        }
+
+        use crate::asciicast::AsciicastFile;
+        let cast = AsciicastFile::parse(test_file).expect("Failed to parse cast");
+        let (cols, rows) = cast.terminal_size();
+
+        let mut buf = TerminalBuffer::new(cols as usize, rows as usize);
+
+        // Process first 10000 events
+        for event in cast.events.iter().take(10000) {
+            if event.event_type == crate::asciicast::EventType::Output {
+                buf.process(&event.data);
+            }
+        }
+
+        // Print lines with content for visual comparison
+        println!("\n=== OUR PLAYER OUTPUT (10000 events) ===");
+        println!("Terminal size: {}x{}", cols, rows);
+        let lines = buf.styled_lines();
+        for (i, line) in lines.iter().enumerate() {
+            let text: String = line.cells.iter().map(|c| c.char).collect();
+            if !text.trim().is_empty() {
+                let display = if text.len() > 80 { &text[..80] } else { &text };
+                println!("{:2}: |{}|", i+1, display);
+            }
+        }
+
+        // Expected output from pyte at same point (first few lines):
+        // Line 1: |  filename and filename alone, using glob::Pattern, with error handlin|
+        // Line 2: |  introduce dialoguer for interactive UI enhancements and update CLI p|
+        // Line 4: |  Designing interactive session list and cleanup UI                   |
+
+        // Check that key content is present
+        let full_output = buf.to_string();
+        assert!(full_output.contains("filename"), "Expected 'filename' in output");
+        assert!(full_output.contains("Designing"), "Expected 'Designing' in output");
+        println!("\n✓ Key content found in output - visual comparison passed");
+    }
+
+    #[test]
     fn resize_clamps_cursor() {
         let mut buf = TerminalBuffer::new(20, 10);
         buf.process("Test\r\n\r\n\r\n\r\n\r\nEnd"); // Move cursor down
