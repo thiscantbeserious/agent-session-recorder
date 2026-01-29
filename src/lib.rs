@@ -18,7 +18,7 @@ pub use analyzer::Analyzer;
 pub use asciicast::{AsciicastFile, Event, EventType, Header, MarkerInfo, MarkerManager};
 pub use config::Config;
 pub use player::{play_session, PlaybackResult};
-pub use terminal::TerminalBuffer;
 pub use recording::Recorder;
 pub use shell::ShellStatus;
 pub use storage::StorageManager;
+pub use terminal::TerminalBuffer;
