@@ -28,9 +28,15 @@ impl<'a> TerminalPerformer<'a> {
     /// Move cursor down one line, scrolling if necessary.
     /// Respects the scroll region (DECSTBM).
     /// Note: This does NOT move to column 0 (that's carriage return).
+    ///
+    /// Behavior:
+    /// - Cursor above scroll_top: moves down normally (will enter region)
+    /// - Cursor within region (not at bottom): moves down normally
+    /// - Cursor at scroll_bottom: scrolls region up, cursor stays
+    /// - Cursor below scroll_bottom: moves down if room, else stays
     fn line_feed(&mut self) {
         if *self.cursor_row < self.scroll_bottom {
-            // Within scroll region and not at bottom - just move down
+            // Above or within scroll region but not at bottom - just move down
             *self.cursor_row += 1;
         } else if *self.cursor_row == self.scroll_bottom {
             // At bottom of scroll region - scroll the region up
@@ -138,6 +144,9 @@ impl<'a> TerminalPerformer<'a> {
 
     /// Erase from start of line to cursor (inclusive).
     pub(crate) fn erase_from_sol(&mut self) {
+        if self.width == 0 {
+            return;
+        }
         if *self.cursor_row < self.height {
             let end_col = (*self.cursor_col).min(self.width - 1);
             for col in 0..=end_col {
