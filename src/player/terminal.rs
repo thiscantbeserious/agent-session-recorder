@@ -9,66 +9,8 @@ use std::fmt;
 use unicode_width::UnicodeWidthChar;
 use vte::{Parser, Perform};
 
-/// ANSI color codes
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Color {
-    #[default]
-    Default,
-    Black,
-    Red,
-    Green,
-    Yellow,
-    Blue,
-    Magenta,
-    Cyan,
-    White,
-    BrightBlack,
-    BrightRed,
-    BrightGreen,
-    BrightYellow,
-    BrightBlue,
-    BrightMagenta,
-    BrightCyan,
-    BrightWhite,
-    /// 256-color palette index
-    Indexed(u8),
-    /// RGB color
-    Rgb(u8, u8, u8),
-}
-
-/// Style attributes for a terminal cell
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CellStyle {
-    pub fg: Color,
-    pub bg: Color,
-    pub bold: bool,
-    pub dim: bool,
-    pub italic: bool,
-    pub underline: bool,
-    pub reverse: bool,
-}
-
-/// A single cell in the terminal buffer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Cell {
-    pub char: char,
-    pub style: CellStyle,
-}
-
-impl Default for Cell {
-    fn default() -> Self {
-        Self {
-            char: ' ',
-            style: CellStyle::default(),
-        }
-    }
-}
-
-/// A styled line for rendering
-#[derive(Debug, Clone)]
-pub struct StyledLine {
-    pub cells: Vec<Cell>,
-}
+// Re-export types from the new terminal module for backward compatibility
+pub use crate::terminal::{Cell, CellStyle, Color, StyledLine};
 
 /// A virtual terminal buffer that processes ANSI escape sequences.
 ///
@@ -1581,7 +1523,7 @@ mod tests {
             let text: String = line.cells.iter().map(|c| c.char).collect();
             if !text.trim().is_empty() {
                 let display = if text.len() > 80 { &text[..80] } else { &text };
-                println!("{:2}: |{}|", i+1, display);
+                println!("{:2}: |{}|", i + 1, display);
             }
         }
 
@@ -1592,8 +1534,14 @@ mod tests {
 
         // Check that key content is present
         let full_output = buf.to_string();
-        assert!(full_output.contains("filename"), "Expected 'filename' in output");
-        assert!(full_output.contains("Designing"), "Expected 'Designing' in output");
+        assert!(
+            full_output.contains("filename"),
+            "Expected 'filename' in output"
+        );
+        assert!(
+            full_output.contains("Designing"),
+            "Expected 'Designing' in output"
+        );
         println!("\n✓ Key content found in output - visual comparison passed");
     }
 
