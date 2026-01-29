@@ -33,9 +33,9 @@ git log --oneline -5
 **Current focus:** None (phase complete)
 
 **Recently completed:**
-- SDLC role system improvements with ADR/PLAN separation (PR #56 merged)
-- Skills restructured into roles and instructions (PR #54 merged)
-- Install script fix (PR #55 merged)
+- Release workflow and changelog automation (PR #75)
+- Terminal scroll region support (PR #73)
+- Terminal module re-export cleanup (PR #74)
 
 ## Completed Work
 
