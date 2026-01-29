@@ -28,4 +28,5 @@ tarpaulin-report.html
 # Local agent settings (not to be committed)
 agents/settings.local.json
 docs/wiki/
+.wiki/
 .archive/

@@ -4,6 +4,7 @@
 //!
 //! Commands:
 //! - gen-docs: Generate documentation (man pages, COMMANDS.md, wiki)
+//! - update-wiki: Clone/update wiki repo, generate docs, and optionally push
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -46,6 +47,30 @@ enum XtaskCommand {
         #[arg(long)]
         all: bool,
     },
+
+    /// Update the GitHub wiki with generated documentation
+    #[command(name = "update-wiki")]
+    UpdateWiki {
+        /// Wiki repository URL (default: inferred from origin)
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Directory to clone wiki into (default: .wiki)
+        #[arg(long, default_value = ".wiki")]
+        wiki_dir: PathBuf,
+
+        /// Commit message for wiki update
+        #[arg(long, short, default_value = "docs: update wiki from gen-docs")]
+        message: String,
+
+        /// Push changes after committing
+        #[arg(long)]
+        push: bool,
+
+        /// Only generate and copy, don't commit
+        #[arg(long)]
+        no_commit: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -71,6 +96,15 @@ fn main() -> Result<()> {
             if gen_all || wiki {
                 generate_wiki(&output)?;
             }
+        }
+        XtaskCommand::UpdateWiki {
+            repo,
+            wiki_dir,
+            message,
+            push,
+            no_commit,
+        } => {
+            update_wiki(repo, &wiki_dir, &message, push, no_commit)?;
         }
     }
 
@@ -467,5 +501,159 @@ fn generate_wiki(output: &Path) -> Result<()> {
     }
 
     println!("Wiki pages generated in {}", wiki_dir.display());
+    Ok(())
+}
+
+/// Update the GitHub wiki repository
+fn update_wiki(
+    repo: Option<String>,
+    wiki_dir: &Path,
+    message: &str,
+    push: bool,
+    no_commit: bool,
+) -> Result<()> {
+    use std::process::Command;
+
+    // Determine wiki repo URL
+    let wiki_repo = if let Some(url) = repo {
+        url
+    } else {
+        // Try to infer from git remote
+        let output = Command::new("git")
+            .args(["remote", "get-url", "origin"])
+            .output()
+            .context("Failed to get git remote URL")?;
+
+        if !output.status.success() {
+            anyhow::bail!("Failed to get origin remote URL. Please specify --repo manually.");
+        }
+
+        let origin_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        // Convert to wiki URL (SSH or HTTPS)
+        if origin_url.contains("git@github.com:") {
+            // SSH format: git@github.com:user/repo.git -> git@github.com:user/repo.wiki.git
+            origin_url.replace(".git", ".wiki.git")
+        } else if origin_url.contains("github.com") {
+            // HTTPS format: https://github.com/user/repo.git -> https://github.com/user/repo.wiki.git
+            origin_url.replace(".git", ".wiki.git")
+        } else {
+            anyhow::bail!(
+                "Could not infer wiki URL from origin: {}. Please specify --repo manually.",
+                origin_url
+            );
+        }
+    };
+
+    println!("Wiki repository: {}", wiki_repo);
+
+    // Clone or update wiki repo
+    if wiki_dir.exists() {
+        println!("Updating existing wiki clone at {}", wiki_dir.display());
+        let status = Command::new("git")
+            .args(["-C", &wiki_dir.to_string_lossy(), "pull", "--rebase"])
+            .status()
+            .context("Failed to pull wiki updates")?;
+
+        if !status.success() {
+            anyhow::bail!("Failed to update wiki repository");
+        }
+    } else {
+        println!("Cloning wiki to {}", wiki_dir.display());
+        let status = Command::new("git")
+            .args(["clone", &wiki_repo, &wiki_dir.to_string_lossy()])
+            .status()
+            .context("Failed to clone wiki repository")?;
+
+        if !status.success() {
+            anyhow::bail!("Failed to clone wiki repository. Make sure the wiki exists on GitHub.");
+        }
+    }
+
+    // Generate wiki pages to temp location
+    let temp_wiki = PathBuf::from("docs");
+    generate_wiki(&temp_wiki)?;
+
+    // Copy generated files to wiki directory
+    let source_dir = temp_wiki.join("wiki");
+    println!(
+        "Copying generated pages from {} to {}",
+        source_dir.display(),
+        wiki_dir.display()
+    );
+
+    for entry in fs::read_dir(&source_dir).context("Failed to read generated wiki directory")? {
+        let entry = entry?;
+        let source_path = entry.path();
+        if source_path.is_file() {
+            let file_name = source_path.file_name().unwrap();
+            let dest_path = wiki_dir.join(file_name);
+            fs::copy(&source_path, &dest_path).with_context(|| {
+                format!(
+                    "Failed to copy {} to {}",
+                    source_path.display(),
+                    dest_path.display()
+                )
+            })?;
+            println!("  Copied: {}", file_name.to_string_lossy());
+        }
+    }
+
+    if no_commit {
+        println!("\nWiki files updated (no commit due to --no-commit)");
+        println!("Wiki directory: {}", wiki_dir.display());
+        return Ok(());
+    }
+
+    // Stage all changes
+    let status = Command::new("git")
+        .args(["-C", &wiki_dir.to_string_lossy(), "add", "-A"])
+        .status()
+        .context("Failed to stage wiki changes")?;
+
+    if !status.success() {
+        anyhow::bail!("Failed to stage wiki changes");
+    }
+
+    // Check if there are changes to commit
+    let output = Command::new("git")
+        .args(["-C", &wiki_dir.to_string_lossy(), "status", "--porcelain"])
+        .output()
+        .context("Failed to check wiki status")?;
+
+    if output.stdout.is_empty() {
+        println!("\nNo changes to commit - wiki is up to date");
+        return Ok(());
+    }
+
+    // Commit changes
+    let status = Command::new("git")
+        .args(["-C", &wiki_dir.to_string_lossy(), "commit", "-m", message])
+        .status()
+        .context("Failed to commit wiki changes")?;
+
+    if !status.success() {
+        anyhow::bail!("Failed to commit wiki changes");
+    }
+
+    println!("\nCommitted wiki changes: {}", message);
+
+    if push {
+        println!("Pushing to remote...");
+        let status = Command::new("git")
+            .args(["-C", &wiki_dir.to_string_lossy(), "push"])
+            .status()
+            .context("Failed to push wiki changes")?;
+
+        if !status.success() {
+            anyhow::bail!("Failed to push wiki changes");
+        }
+        println!("Wiki pushed successfully!");
+    } else {
+        println!("\nTo push the wiki changes, run:");
+        println!("  cd {} && git push", wiki_dir.display());
+        println!("Or use --push flag next time");
+    }
+
     Ok(())
 }
