@@ -293,6 +293,7 @@ fn main() -> Result<()> {
         }
         Commands::List { agent } => commands::list::handle(agent.as_deref()),
         Commands::Analyze { file, agent } => commands::analyze::handle(&file, agent.as_deref()),
+        Commands::Play { file } => commands::play::handle(&file),
         Commands::Marker(cmd) => match cmd {
             MarkerCommands::Add { file, time, label } => {
                 commands::marker::handle_add(&file, time, &label)
@@ -708,6 +709,39 @@ mod tests {
         match cli.command {
             Commands::Status => {}
             _ => panic!("Expected Status command"),
+        }
+    }
+
+    #[test]
+    fn cli_play_parses_with_file() {
+        let cli = Cli::try_parse_from(["agr", "play", "session.cast"]).unwrap();
+        match cli.command {
+            Commands::Play { file } => {
+                assert_eq!(file, "session.cast");
+            }
+            _ => panic!("Expected Play command"),
+        }
+    }
+
+    #[test]
+    fn cli_play_parses_with_path() {
+        let cli = Cli::try_parse_from(["agr", "play", "/path/to/session.cast"]).unwrap();
+        match cli.command {
+            Commands::Play { file } => {
+                assert_eq!(file, "/path/to/session.cast");
+            }
+            _ => panic!("Expected Play command"),
+        }
+    }
+
+    #[test]
+    fn cli_play_parses_with_short_format() {
+        let cli = Cli::try_parse_from(["agr", "play", "claude/session.cast"]).unwrap();
+        match cli.command {
+            Commands::Play { file } => {
+                assert_eq!(file, "claude/session.cast");
+            }
+            _ => panic!("Expected Play command"),
         }
     }
 }

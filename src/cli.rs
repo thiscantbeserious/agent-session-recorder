@@ -169,6 +169,31 @@ SUPPORTED AGENTS:
         agent: Option<String>,
     },
 
+    /// Play a recording with the native player
+    #[command(long_about = "Play an asciicast recording using the native player.
+
+The native player supports seeking, speed control, and marker navigation.
+Recordings can be specified by absolute path, short format (agent/file.cast),
+or just filename (fuzzy matches across all agents).
+
+EXAMPLES:
+    agr play session.cast                 Play by filename (fuzzy match)
+    agr play claude/session.cast          Play using short format
+    agr play /path/to/session.cast        Play by absolute path
+
+PLAYER CONTROLS:
+    q, Esc      Quit
+    Space       Pause/resume
+    +/-         Adjust playback speed
+    <, > or ,, .  Seek backward/forward 5s
+    m           Jump to next marker
+    ?           Show help overlay")]
+    Play {
+        /// Path to the .cast file to play
+        #[arg(help = "Path to the .cast recording file")]
+        file: String,
+    },
+
     /// Manage markers in cast files
     #[command(
         subcommand,

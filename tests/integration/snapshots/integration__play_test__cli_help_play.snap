@@ -1,0 +1,38 @@
+---
+source: tests/integration/play_test.rs
+assertion_line: 46
+expression: output
+---
+=== agr play --help ===
+Exit code: 0
+
+--- stdout ---
+Play an asciicast recording using the native player.
+
+The native player supports seeking, speed control, and marker navigation.
+Recordings can be specified by absolute path, short format (agent/file.cast),
+or just filename (fuzzy matches across all agents).
+
+EXAMPLES:
+    agr play session.cast                 [37mPlay by filename (fuzzy match)[0m
+    agr play claude/session.cast          [37mPlay using short format[0m
+    agr play /path/to/session.cast        [37mPlay by absolute path[0m
+
+PLAYER CONTROLS:
+    q, Esc      [37mQuit[0m
+    Space       [37mPause/resume[0m
+    +/-         [37mAdjust playback speed[0m
+    <, > or ,, .  Seek backward/forward 5s
+    m           [37mJump to next marker[0m
+    ?           [37mShow help overlay[0m
+
+Usage: agr play <FILE>
+
+Arguments:
+  <FILE>
+          Path to the .cast recording file
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+--- stderr ---

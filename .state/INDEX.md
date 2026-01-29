@@ -33,6 +33,7 @@ git log --oneline -5
 **Current focus:** None (phase complete)
 
 **Recently completed:**
+- Play command for direct recording playback (PR #81)
 - Release workflow and changelog automation (PR #75)
 - Terminal scroll region support (PR #73)
 - Terminal module re-export cleanup (PR #74)
@@ -43,6 +44,7 @@ Historical context for all state directories:
 
 | Directory | Description |
 |-----------|-------------|
+| feature-play-command | Play command for direct recording playback |
 | silence-removal | Silence/pause removal for recordings |
 | fix-player-scroll-region-bug | Terminal scroll region support in player |
 | refactor-terminal-module-cleanup | Terminal module code organization |
