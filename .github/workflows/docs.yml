@@ -69,7 +69,8 @@ jobs:
       - name: Check for wiki changes
         id: wiki-changes
         run: |
-          if git diff --quiet docs/wiki/; then
+          # Check for both modified and untracked files
+          if [ -z "$(git status --porcelain docs/wiki/)" ]; then
             echo "changed=false" >> $GITHUB_OUTPUT
           else
             echo "changed=true" >> $GITHUB_OUTPUT
