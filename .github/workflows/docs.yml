@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ssh-key: ${{ secrets.DOCS_DEPLOY_KEY }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
