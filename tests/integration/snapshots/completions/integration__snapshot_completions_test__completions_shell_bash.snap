@@ -689,7 +689,7 @@ _agr() {
             return 0
             ;;
         agr__completions)
-            opts="-h --shell --shell-init --files --limit --help [PREFIX]"
+            opts="-h --shell --shell-init --debug --files --limit --help [PREFIX]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

@@ -3,6 +3,9 @@
 #[path = "integration/helpers/mod.rs"]
 pub mod helpers;
 
+#[path = "integration/shell/mod.rs"]
+mod shell;
+
 #[path = "integration/analyzer_test.rs"]
 mod analyzer_test;
 

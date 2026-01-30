@@ -9,8 +9,7 @@ pub mod minify;
 pub mod paths;
 pub mod status;
 
-// minify.rs
-pub use minify::minify;
+// minify.rs - use as minify::exec() or minify::debug()
 
 // Re-export public items for backward compatibility
 // paths.rs

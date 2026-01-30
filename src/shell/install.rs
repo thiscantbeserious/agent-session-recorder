@@ -8,7 +8,7 @@ use std::io;
 use std::path::Path;
 
 use super::completions::{generate_bash_init, generate_zsh_init};
-use super::minify::minify;
+use super::minify;
 use super::status::{is_installed_in, MARKER_END, MARKER_START};
 
 /// Warning comment included in the shell integration section
@@ -49,14 +49,15 @@ fn detect_shell_from_rc(rc_file: &Path) -> Shell {
 /// The combined script is minified to reduce the size of the RC file.
 pub fn generate_section(shell: Shell) -> String {
     // Generate shell-specific init code with embedded completions
+    // Use debug=false for minified output in RC files
     let init_code = match shell {
-        Shell::Zsh => generate_zsh_init(),
-        Shell::Bash => generate_bash_init(),
+        Shell::Zsh => generate_zsh_init(false),
+        Shell::Bash => generate_bash_init(false),
     };
 
-    // Combine wrapper script with completions
+    // Combine wrapper script with completions and minify
     let combined = format!("{}\n{}", SHELL_SCRIPT, init_code);
-    let minified = minify(&combined);
+    let minified = minify::exec(&combined);
 
     format!("{MARKER_START}\n{MARKER_WARNING}\n{minified}\n{MARKER_END}")
 }

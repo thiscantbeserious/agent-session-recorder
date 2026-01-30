@@ -484,6 +484,7 @@ _arguments "${_arguments_options[@]}" : \
 '--shell=[Shell to generate completions for (clap native)]:SHELL:(bash elvish fish powershell zsh)' \
 '--shell-init=[Output shell initialization code with embedded completions]:SHELL_INIT:(bash elvish fish powershell zsh)' \
 '--limit=[Limit number of files returned]:LIMIT:_default' \
+'--debug[Output uncompressed shell code for debugging]' \
 '--files[List cast files for completion (outputs agent/filename.cast format)]' \
 '-h[Print help]' \
 '--help[Print help]' \

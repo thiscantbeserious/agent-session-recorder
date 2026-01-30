@@ -16,6 +16,7 @@ Arguments:
 Options:
       --shell <SHELL>            Shell to generate completions for (clap native) [possible values: bash, elvish, fish, powershell, zsh]
       --shell-init <SHELL_INIT>  Output shell initialization code with embedded completions [possible values: bash, elvish, fish, powershell, zsh]
+      --debug                    Output uncompressed shell code for debugging
       --files                    List cast files for completion (outputs agent/filename.cast format)
       --limit <LIMIT>            Limit number of files returned [default: 10]
   -h, --help                     Print help
