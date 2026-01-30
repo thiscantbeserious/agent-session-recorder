@@ -217,7 +217,7 @@ PLAYER CONTROLS:
     q, Esc      Quit
     Space       Pause/resume
     +/-         Adjust playback speed
-    <, >        Seek backward/forward 5s
+    <, > or ,, .  Seek backward/forward 5s
     m           Jump to next marker
     ?           Show help overlay
 ```
@@ -422,6 +422,28 @@ Config file location: ~/.config/agr/config.toml
 EXAMPLE:
     agr config edit
     EDITOR=nano agr config edit
+```
+
+#### agr config migrate
+
+Add missing fields to config file
+
+- `-y, --yes`: Skip confirmation prompt
+
+```
+Add missing fields to your config file.
+
+Scans your config file and adds any fields that exist in the current
+version but are missing from your file. Preserves your existing values,
+comments, and formatting.
+
+This is useful after upgrading AGR to a new version that introduces
+new configuration options. The command shows a preview of changes
+and asks for confirmation before writing.
+
+EXAMPLES:
+    agr config migrate              Interactive mode (shows preview, asks confirmation)
+    agr config migrate --yes        Apply changes without confirmation (for scripts/CI)
 ```
 
 ---
