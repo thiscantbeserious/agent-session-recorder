@@ -1,0 +1,22 @@
+---
+source: tests/integration/snapshot_completions_test.rs
+expression: output
+---
+=== agr completions --help ===
+Exit code: 0
+
+--- stdout ---
+Generate shell completions (internal use)
+
+Usage: agr completions [OPTIONS] [PREFIX]
+
+Arguments:
+  [PREFIX]  [37mFilter prefix for file listing [default: ][0m
+
+Options:
+      --shell <SHELL>            Shell to generate completions for (clap native) [possible values: bash, elvish, fish, powershell, zsh]
+      --shell-init <SHELL_INIT>  Output shell initialization code with embedded completions [possible values: bash, elvish, fish, powershell, zsh]
+      --files                    List cast files for completion (outputs agent/filename.cast format)
+      --limit <LIMIT>            Limit number of files returned [default: 10]
+  -h, --help                     Print help
+--- stderr ---

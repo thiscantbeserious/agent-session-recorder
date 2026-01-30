@@ -141,12 +141,12 @@ else
     fail "embedded completions missing command list"
 fi
 
-# Test: embedded completions contain ghost text function
-test_header "embedded completions contain ghost text function"
-if /usr/bin/grep -q "_agr_show_ghost" "$HOME/.zshrc"; then
-    pass "embedded completions contain ghost text function"
+# Test: embedded completions contain menu select styling
+test_header "embedded completions contain menu select styling"
+if /usr/bin/grep -q "menu select" "$HOME/.zshrc"; then
+    pass "embedded completions contain menu select styling"
 else
-    fail "embedded completions missing ghost text function"
+    fail "embedded completions missing menu select styling"
 fi
 
 # Test: shell uninstall cleans up old completion files if they exist
