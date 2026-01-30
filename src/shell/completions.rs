@@ -145,39 +145,42 @@ export _AGR_LOADED=1
 _agr_commands=({cmd_array})
 _agr_file_cmds="{file_cmds_space}"
 {subcmd_arrays}
-# Enable menu selection for completions (Tab cycles through options)
-zstyle ':completion:*:*:agr:*' menu select
-zstyle ':completion:*:*:agr:*' format '%F{{8}}-- %d --%f'
+# Zsh-specific completion setup (skip if sourced by bash for testing)
+if [[ -n "$ZSH_VERSION" ]]; then
+    # Enable menu selection for completions (Tab cycles through options)
+    zstyle ':completion:*:*:agr:*' menu select
+    zstyle ':completion:*:*:agr:*' format '%F{{8}}-- %d --%f'
 
-# Helper: complete with cast files
-_agr_complete_files() {{
-    local cur="$1"
-    local -a files
-    files=(${{(f)"$(agr completions --files --limit 20 "$cur" 2>/dev/null)"}})
-    (( $#files )) && _describe 'recordings' files
-}}
+    # Helper: complete with cast files
+    _agr_complete_files() {{
+        local cur="$1"
+        local -a files
+        files=(${{(f)"$(agr completions --files --limit 20 "$cur" 2>/dev/null)"}})
+        (( $#files )) && _describe 'recordings' files
+    }}
 
-# Multi-layer completion: commands, subcommands, files
-_agr_complete() {{
-    local cur="${{words[CURRENT]}}"
-    local cmd="${{words[2]}}"
-    local subcmd="${{words[3]}}"
+    # Multi-layer completion: commands, subcommands, files
+    _agr_complete() {{
+        local cur="${{words[CURRENT]}}"
+        local cmd="${{words[2]}}"
+        local subcmd="${{words[3]}}"
 
-    if (( CURRENT == 2 )); then
-        _describe 'commands' _agr_commands
-    elif (( CURRENT == 3 )); then
-        case "$cmd" in
-{subcmd_cases}        *) [[ " $_agr_file_cmds " =~ " $cmd " ]] && _agr_complete_files "$cur" ;;
-        esac
-    elif (( CURRENT >= 4 )); then
-        # Position 4+: files for marker add/list, or other file-accepting contexts
-        if [[ "$cmd" == "marker" ]]; then
-            _agr_complete_files "$cur"
+        if (( CURRENT == 2 )); then
+            _describe 'commands' _agr_commands
+        elif (( CURRENT == 3 )); then
+            case "$cmd" in
+{subcmd_cases}            *) [[ " $_agr_file_cmds " =~ " $cmd " ]] && _agr_complete_files "$cur" ;;
+            esac
+        elif (( CURRENT >= 4 )); then
+            # Position 4+: files for marker add/list, or other file-accepting contexts
+            if [[ "$cmd" == "marker" ]]; then
+                _agr_complete_files "$cur"
+            fi
         fi
-    fi
-}}
+    }}
 
-compdef _agr_complete agr
+    compdef _agr_complete agr
+fi
 "#
     )
 }
