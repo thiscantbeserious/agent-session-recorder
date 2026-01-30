@@ -20,6 +20,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           path: main
+          fetch-depth: 2  # Need history to detect what changed
 
       - name: Checkout wiki
         run: |
@@ -31,21 +32,77 @@ jobs:
             git remote add origin git@github.com:${{ github.repository }}.wiki.git
           }
 
-      - name: Sync wiki content
+      - name: Merge wiki changes (preserve human edits)
         run: |
-          # Copy generated pages to wiki
-          cp -r main/docs/wiki/* wiki/
-
           cd wiki
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
 
+          # Get list of changed files in docs/wiki/ from the push
+          cd ../main
+          CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD -- docs/wiki/ | sed 's|docs/wiki/||')
+          cd ../wiki
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No wiki files changed in this push"
+            exit 0
+          fi
+
+          echo "Files to sync: $CHANGED_FILES"
+
+          # For each changed file, attempt a 3-way merge
+          for file in $CHANGED_FILES; do
+            src="../main/docs/wiki/$file"
+
+            if [ ! -f "$src" ]; then
+              # File was deleted in main repo
+              if [ -f "$file" ]; then
+                echo "Removing deleted file: $file"
+                git rm "$file" 2>/dev/null || rm -f "$file"
+              fi
+              continue
+            fi
+
+            if [ ! -f "$file" ]; then
+              # New file - just copy
+              echo "Adding new file: $file"
+              cp "$src" "$file"
+            else
+              # File exists in both - check if wiki version differs from what we'd generate
+              if cmp -s "$src" "$file"; then
+                echo "No changes needed: $file"
+              else
+                # Try to merge: use ours (wiki) as base, theirs (generated) as new
+                # This preserves human edits while adding new generated content
+                echo "Merging changes: $file"
+
+                # Create backup of wiki version
+                cp "$file" "$file.wiki"
+
+                # Copy new generated version
+                cp "$src" "$file.generated"
+
+                # Attempt merge (wiki version takes precedence on conflicts)
+                if git merge-file -p "$file.wiki" "$file.wiki" "$file.generated" > "$file.merged" 2>/dev/null; then
+                  mv "$file.merged" "$file"
+                  echo "  Merged successfully"
+                else
+                  # Conflict - keep wiki version (human edits), log warning
+                  echo "  Conflict detected - keeping wiki version (human edits preserved)"
+                  mv "$file.wiki" "$file"
+                fi
+
+                rm -f "$file.wiki" "$file.generated" "$file.merged"
+              fi
+            fi
+          done
+
           # Check for changes
-          if git diff --quiet && git diff --cached --quiet; then
+          git add -A
+          if git diff --cached --quiet; then
             echo "No wiki changes to sync"
             exit 0
           fi
 
-          git add -A
-          git commit -m "docs: sync wiki from main repo"
+          git commit -m "docs: sync wiki from main repo (preserving human edits)"
           git push origin HEAD:master || git push origin HEAD:main
