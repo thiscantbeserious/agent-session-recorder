@@ -293,8 +293,7 @@ fn fix_semicolons_before_fi(input: &str) -> String {
 
         // Check word boundary after "fi"
         let after_fi = &result[abs_pos + 3..];
-        let is_word_boundary =
-            after_fi.is_empty() || after_fi.starts_with([' ', ';', '\n', '}']);
+        let is_word_boundary = after_fi.is_empty() || after_fi.starts_with([' ', ';', '\n', '}']);
 
         if !is_word_boundary {
             i = abs_pos + 3;

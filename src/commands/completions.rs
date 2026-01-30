@@ -14,6 +14,7 @@ use agr::{shell, Config, StorageManager};
 pub fn handle<C: CommandFactory>(
     shell_arg: Option<CompletionShell>,
     shell_init: Option<CompletionShell>,
+    debug: bool,
     files: bool,
     limit: usize,
     prefix: &str,
@@ -21,8 +22,8 @@ pub fn handle<C: CommandFactory>(
     // Handle --shell-init first (new dynamic generation)
     if let Some(shell) = shell_init {
         let output = match shell {
-            CompletionShell::Zsh => shell::generate_zsh_init(),
-            CompletionShell::Bash => shell::generate_bash_init(),
+            CompletionShell::Zsh => shell::generate_zsh_init(debug),
+            CompletionShell::Bash => shell::generate_bash_init(debug),
             _ => return Err(anyhow!("Only zsh and bash are supported for --shell-init")),
         };
         println!("{}", output);

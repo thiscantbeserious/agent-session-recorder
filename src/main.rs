@@ -347,10 +347,11 @@ fn main() -> Result<()> {
         Commands::Completions {
             shell,
             shell_init,
+            debug,
             files,
             limit,
             prefix,
-        } => commands::completions::handle::<Cli>(shell, shell_init, files, limit, &prefix),
+        } => commands::completions::handle::<Cli>(shell, shell_init, debug, files, limit, &prefix),
     }
 }
 
@@ -546,12 +547,14 @@ mod tests {
             Commands::Completions {
                 shell,
                 shell_init,
+                debug,
                 files,
                 limit,
                 prefix,
             } => {
                 assert!(shell.is_none());
                 assert_eq!(shell_init, Some(CompletionShell::Zsh));
+                assert!(!debug);
                 assert!(!files);
                 assert_eq!(limit, 10);
                 assert_eq!(prefix, "");

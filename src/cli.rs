@@ -311,6 +311,10 @@ EXAMPLES:
         #[arg(long, value_enum)]
         shell_init: Option<CompletionShell>,
 
+        /// Output uncompressed shell code for debugging
+        #[arg(long)]
+        debug: bool,
+
         /// List cast files for completion (outputs agent/filename.cast format)
         #[arg(long)]
         files: bool,
