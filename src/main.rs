@@ -346,9 +346,11 @@ fn main() -> Result<()> {
         }
         Commands::Completions {
             shell,
+            shell_init,
             files,
+            limit,
             prefix,
-        } => commands::completions::handle::<Cli>(shell, files, &prefix),
+        } => commands::completions::handle::<Cli>(shell, shell_init, files, limit, &prefix),
     }
 }
 
@@ -491,6 +493,7 @@ mod tests {
                 shell,
                 files,
                 prefix,
+                ..
             } => {
                 assert_eq!(shell, Some(CompletionShell::Bash));
                 assert!(!files);
@@ -508,6 +511,7 @@ mod tests {
                 shell,
                 files,
                 prefix,
+                ..
             } => {
                 assert!(shell.is_none());
                 assert!(files);
@@ -525,10 +529,66 @@ mod tests {
                 shell,
                 files,
                 prefix,
+                ..
             } => {
                 assert!(shell.is_none());
                 assert!(files);
                 assert_eq!(prefix, "claude/");
+            }
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn cli_completions_parses_with_shell_init_zsh() {
+        let cli = Cli::try_parse_from(["agr", "completions", "--shell-init", "zsh"]).unwrap();
+        match cli.command {
+            Commands::Completions {
+                shell,
+                shell_init,
+                files,
+                limit,
+                prefix,
+            } => {
+                assert!(shell.is_none());
+                assert_eq!(shell_init, Some(CompletionShell::Zsh));
+                assert!(!files);
+                assert_eq!(limit, 10);
+                assert_eq!(prefix, "");
+            }
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn cli_completions_parses_with_shell_init_bash() {
+        let cli = Cli::try_parse_from(["agr", "completions", "--shell-init", "bash"]).unwrap();
+        match cli.command {
+            Commands::Completions { shell_init, .. } => {
+                assert_eq!(shell_init, Some(CompletionShell::Bash));
+            }
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn cli_completions_parses_with_limit() {
+        let cli = Cli::try_parse_from(["agr", "completions", "--files", "--limit", "20"]).unwrap();
+        match cli.command {
+            Commands::Completions { files, limit, .. } => {
+                assert!(files);
+                assert_eq!(limit, 20);
+            }
+            _ => panic!("Expected Completions command"),
+        }
+    }
+
+    #[test]
+    fn cli_completions_limit_defaults_to_10() {
+        let cli = Cli::try_parse_from(["agr", "completions", "--files"]).unwrap();
+        match cli.command {
+            Commands::Completions { limit, .. } => {
+                assert_eq!(limit, 10);
             }
             _ => panic!("Expected Completions command"),
         }

@@ -36,6 +36,9 @@ mod snapshot_tui_test;
 #[path = "integration/snapshot_cli_test.rs"]
 mod snapshot_cli_test;
 
+#[path = "integration/snapshot_completions_test.rs"]
+mod snapshot_completions_test;
+
 #[path = "integration/play_test.rs"]
 mod play_test;
 

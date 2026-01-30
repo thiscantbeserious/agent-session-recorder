@@ -615,3 +615,37 @@ fn find_cast_file_by_name_partial_match_not_supported() {
     let found = manager.find_cast_file_by_name("my-session");
     assert!(found.is_none(), "Missing extension should not match");
 }
+
+#[test]
+fn list_cast_files_short_sorted_by_mtime_descending() {
+    let temp = TempDir::new().unwrap();
+    let config = create_test_config(&temp);
+    let manager = StorageManager::new(config);
+
+    // Create sessions with different modification times
+    // Oldest file first
+    create_test_session(temp.path(), "claude", "oldest.cast", "oldest content");
+
+    // Sleep to ensure different modification times
+    // Use 1100ms to handle filesystems with 1-second timestamp granularity
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+
+    create_test_session(temp.path(), "claude", "middle.cast", "middle content");
+
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+
+    // Newest file last
+    create_test_session(temp.path(), "codex", "newest.cast", "newest content");
+
+    // Get files - should be sorted by mtime descending (newest first)
+    let files = manager.list_cast_files_short(None).unwrap();
+    assert_eq!(files.len(), 3);
+
+    // Most recent first
+    assert_eq!(files[0], "codex/newest.cast", "Newest file should be first");
+    assert_eq!(
+        files[1], "claude/middle.cast",
+        "Middle file should be second"
+    );
+    assert_eq!(files[2], "claude/oldest.cast", "Oldest file should be last");
+}

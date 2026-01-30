@@ -1,7 +1,7 @@
 //! Unit tests for shell module
 
 use agr::shell::{
-    extract_script_path, generate_section, install, is_installed_in, uninstall, SHELL_SCRIPT,
+    extract_script_path, generate_section, install, is_installed_in, uninstall, Shell, SHELL_SCRIPT,
 };
 use agr::ShellStatus;
 use std::fs;
@@ -15,7 +15,7 @@ const MARKER_WARNING: &str = "# DO NOT EDIT - managed by 'agr shell install/unin
 
 #[test]
 fn test_generate_section_contains_markers() {
-    let section = generate_section();
+    let section = generate_section(Shell::Zsh);
 
     assert!(section.contains(MARKER_START));
     assert!(section.contains(MARKER_END));
@@ -24,15 +24,16 @@ fn test_generate_section_contains_markers() {
 
 #[test]
 fn test_generate_section_embeds_full_script() {
-    let section = generate_section();
+    let section = generate_section(Shell::Zsh);
 
     // Should contain the full embedded script content, not a source line
     assert!(section.contains("_agr_record_session"));
     assert!(section.contains("_agr_setup_wrappers"));
     assert!(section.contains("_AGR_LOADED=1"));
     // Should NOT contain the old-style external source line pattern
-    // (but may contain source lines within the embedded script for completions)
-    assert!(!section.contains("[ -f \"") || section.contains("_agr_setup_completions"));
+    assert!(!section.contains("[ -f \""));
+    // Should contain dynamic completion function
+    assert!(section.contains("_agr_complete"));
 }
 
 #[test]

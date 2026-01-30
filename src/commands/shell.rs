@@ -67,25 +67,14 @@ pub fn handle_install() -> Result<()> {
     Ok(())
 }
 
-/// Install shell completions for bash and zsh.
+/// Clean up old static completion files from previous installations.
+///
+/// Completions are now embedded in the RC file section (generated dynamically),
+/// so old static completion files are no longer needed.
 pub(crate) fn install_completions() -> Result<()> {
-    let theme = current_theme();
-    if let Some(path) = agr::shell::install_bash_completions()
-        .map_err(|e| anyhow::anyhow!("Failed to install bash completions: {}", e))?
-    {
-        println!(
-            "{}",
-            theme.primary_text(&format!("Installed bash completions: {}", path.display()))
-        );
-    }
-    if let Some(path) = agr::shell::install_zsh_completions()
-        .map_err(|e| anyhow::anyhow!("Failed to install zsh completions: {}", e))?
-    {
-        println!(
-            "{}",
-            theme.primary_text(&format!("Installed zsh completions: {}", path.display()))
-        );
-    }
+    // Clean up old completion files - completions are now embedded in RC file
+    agr::shell::cleanup_old_completions()
+        .map_err(|e| anyhow::anyhow!("Failed to clean up old completions: {}", e))?;
     Ok(())
 }
 
@@ -164,29 +153,15 @@ pub fn handle_uninstall() -> Result<()> {
     Ok(())
 }
 
-/// Remove shell completions for bash and zsh.
+/// Remove any leftover static completion files.
+///
+/// Completions are now embedded in the RC file section (generated dynamically),
+/// so old static completion files should be removed during uninstall.
 pub(crate) fn remove_completions() -> Result<()> {
-    let theme = current_theme();
-    if agr::shell::uninstall_bash_completions()
-        .map_err(|e| anyhow::anyhow!("Failed to remove bash completions: {}", e))?
-    {
-        if let Some(path) = agr::shell::bash_completion_path() {
-            println!(
-                "{}",
-                theme.primary_text(&format!("Removed bash completions: {}", path.display()))
-            );
-        }
-    }
-    if agr::shell::uninstall_zsh_completions()
-        .map_err(|e| anyhow::anyhow!("Failed to remove zsh completions: {}", e))?
-    {
-        if let Some(path) = agr::shell::zsh_completion_path() {
-            println!(
-                "{}",
-                theme.primary_text(&format!("Removed zsh completions: {}", path.display()))
-            );
-        }
-    }
+    // Clean up old completion files - this is the same as install
+    // since completions are now embedded in RC file
+    agr::shell::cleanup_old_completions()
+        .map_err(|e| anyhow::anyhow!("Failed to clean up old completions: {}", e))?;
     Ok(())
 }
 
