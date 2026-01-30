@@ -177,17 +177,18 @@ fi
 
 section "agr.sh Completion Setup Tests"
 
-# Test: Embedded script contains completion setup function
-test_header "Embedded script contains _agr_setup_completions function"
+# Test: Embedded script contains dynamic completion function
+test_header "Embedded script contains _agr_complete function"
 # Re-install to get the shell integration (script is now embedded in .zshrc)
 touch "$HOME/.zshrc"
 $AGR shell install 2>&1
 
-# The script is now embedded directly in .zshrc, not in an external file
-if /usr/bin/grep -q "_agr_setup_completions" "$HOME/.zshrc"; then
-    pass "Embedded script contains _agr_setup_completions function"
+# The script is now embedded directly in .zshrc with dynamic completions
+# Check for the completion function generated from clap definitions
+if /usr/bin/grep -q "_agr_complete" "$HOME/.zshrc"; then
+    pass "Embedded script contains _agr_complete function"
 else
-    fail "Embedded script missing _agr_setup_completions function"
+    fail "Embedded script missing _agr_complete function"
 fi
 
 # Clean up for next test suite

@@ -303,13 +303,21 @@ EXAMPLES:
     /// Generate shell completions (internal use)
     #[command(hide = true)]
     Completions {
-        /// Shell to generate completions for
+        /// Shell to generate completions for (clap native)
         #[arg(long, value_enum)]
         shell: Option<CompletionShell>,
+
+        /// Output shell initialization code with embedded completions
+        #[arg(long, value_enum)]
+        shell_init: Option<CompletionShell>,
 
         /// List cast files for completion (outputs agent/filename.cast format)
         #[arg(long)]
         files: bool,
+
+        /// Limit number of files returned
+        #[arg(long, default_value = "10")]
+        limit: usize,
 
         /// Filter prefix for file listing
         #[arg(default_value = "")]

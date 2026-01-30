@@ -360,9 +360,13 @@ impl StorageManager {
 
     /// List all cast files in short format (agent/filename.cast)
     ///
+    /// Returns files sorted by modification time (most recent first).
     /// Optionally filter by a prefix (e.g., "claude/" to list only claude sessions)
     pub fn list_cast_files_short(&self, prefix: Option<&str>) -> Result<Vec<String>> {
-        let sessions = self.list_sessions(None)?;
+        let mut sessions = self.list_sessions(None)?;
+
+        // Sort by modification time (most recent first)
+        sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
 
         let mut files: Vec<String> = sessions
             .iter()
@@ -373,9 +377,6 @@ impl StorageManager {
         if let Some(prefix) = prefix {
             files.retain(|f| f.starts_with(prefix));
         }
-
-        // Sort alphabetically
-        files.sort();
 
         Ok(files)
     }

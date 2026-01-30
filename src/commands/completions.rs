@@ -1,43 +1,63 @@
 //! Completions command handler
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::CommandFactory;
 use clap_complete::{generate, Shell as CompletionShell};
 use std::io;
 
-use agr::{Config, StorageManager};
+use agr::{shell, Config, StorageManager};
 
 /// Handle completions command.
 ///
 /// Generates shell completion scripts or lists cast files for dynamic completion.
 #[cfg(not(tarpaulin_include))]
 pub fn handle<C: CommandFactory>(
-    shell: Option<CompletionShell>,
+    shell_arg: Option<CompletionShell>,
+    shell_init: Option<CompletionShell>,
     files: bool,
+    limit: usize,
     prefix: &str,
 ) -> Result<()> {
-    if files {
-        return list_cast_files(prefix);
+    // Handle --shell-init first (new dynamic generation)
+    if let Some(shell) = shell_init {
+        let output = match shell {
+            CompletionShell::Zsh => shell::generate_zsh_init(),
+            CompletionShell::Bash => shell::generate_bash_init(),
+            _ => return Err(anyhow!("Only zsh and bash are supported for --shell-init")),
+        };
+        println!("{}", output);
+        return Ok(());
     }
 
-    if let Some(shell) = shell {
+    // Handle --files (dynamic file listing)
+    if files {
+        return list_cast_files(prefix, limit);
+    }
+
+    // Handle --shell (clap native completions)
+    if let Some(shell) = shell_arg {
         return generate_completions::<C>(shell);
     }
 
     // No arguments - show usage
     eprintln!("Usage: agr completions --shell <bash|zsh|fish|powershell>");
+    eprintln!("       agr completions --shell-init <bash|zsh>");
     eprintln!("       agr completions --files [prefix]");
     std::process::exit(1);
 }
 
 /// List cast files for dynamic completion.
-fn list_cast_files(prefix: &str) -> Result<()> {
+fn list_cast_files(prefix: &str, limit: usize) -> Result<()> {
     let config = Config::load()?;
-    list_cast_files_with_config(prefix, &config)
+    list_cast_files_with_config(prefix, limit, &config)
 }
 
 /// List cast files using the provided config (for testing).
-pub(crate) fn list_cast_files_with_config(prefix: &str, config: &Config) -> Result<()> {
+pub(crate) fn list_cast_files_with_config(
+    prefix: &str,
+    limit: usize,
+    config: &Config,
+) -> Result<()> {
     let storage = StorageManager::new(config.clone());
 
     let prefix_filter = if prefix.is_empty() {
@@ -47,7 +67,7 @@ pub(crate) fn list_cast_files_with_config(prefix: &str, config: &Config) -> Resu
     };
 
     let files = storage.list_cast_files_short(prefix_filter)?;
-    for file in files {
+    for file in files.into_iter().take(limit) {
         println!("{}", file);
     }
     Ok(())
@@ -84,7 +104,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let config = create_test_config(&temp);
 
-        let result = list_cast_files_with_config("", &config);
+        let result = list_cast_files_with_config("", 10, &config);
         assert!(result.is_ok());
     }
 
@@ -96,7 +116,7 @@ mod tests {
         create_test_session(temp.path(), "claude", "session1.cast");
         create_test_session(temp.path(), "codex", "session2.cast");
 
-        let result = list_cast_files_with_config("", &config);
+        let result = list_cast_files_with_config("", 10, &config);
         assert!(result.is_ok());
     }
 
@@ -108,7 +128,7 @@ mod tests {
         create_test_session(temp.path(), "claude", "session1.cast");
         create_test_session(temp.path(), "codex", "session2.cast");
 
-        let result = list_cast_files_with_config("claude/", &config);
+        let result = list_cast_files_with_config("claude/", 10, &config);
         assert!(result.is_ok());
     }
 
@@ -119,7 +139,22 @@ mod tests {
 
         create_test_session(temp.path(), "claude", "session1.cast");
 
-        let result = list_cast_files_with_config("nonexistent/", &config);
+        let result = list_cast_files_with_config("nonexistent/", 10, &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn list_cast_files_with_config_respects_limit() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+
+        // Create more files than the limit
+        for i in 0..5 {
+            create_test_session(temp.path(), "claude", &format!("session{}.cast", i));
+        }
+
+        // We can't easily capture stdout in tests, but we can at least verify it runs
+        let result = list_cast_files_with_config("", 3, &config);
         assert!(result.is_ok());
     }
 }
