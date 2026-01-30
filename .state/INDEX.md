@@ -33,10 +33,10 @@ git log --oneline -5
 **Current focus:** None (phase complete)
 
 **Recently completed:**
+- Aggressive shell minification for RC file embedding (PR #90)
 - Native player modular refactor with state guards (PR #88)
 - Configurable filename templates for recordings (PR #83)
 - Play command for direct recording playback (PR #81)
-- Release workflow and changelog automation (PR #75)
 
 ## Completed Work
 
@@ -44,6 +44,7 @@ Historical context for all state directories:
 
 | Directory | Description |
 |-----------|-------------|
+| enhance-shell-minification | Aggressive shell script minification for compact RC file embedding |
 | refactor-native-player-modules | Native player modular refactor with state guards and bug fixes |
 | feature-naming-template | Configurable filename templates for recordings |
 | feature-play-command | Play command for direct recording playback |
