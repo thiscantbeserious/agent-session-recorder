@@ -125,28 +125,25 @@ _agr_file_cmds_space="{file_cmds_space}"
 zstyle ':completion:*:*:agr:*' menu select
 zstyle ':completion:*:*:agr:*' format '%F{{8}}-- %d --%f'
 
+# Helper: complete with cast files
+_agr_complete_files() {{
+    local cur="$1"
+    local -a files
+    files=(${{(f)"$(agr completions --files --limit 20 "$cur" 2>/dev/null)"}})
+    (( $#files )) && _describe 'recordings' files
+}}
+
 # Two-layer completion: commands first, then files for file-accepting commands
 _agr_complete() {{
     local cur="${{words[CURRENT]}}"
     local cmd="${{words[2]}}"
 
     if (( CURRENT == 2 )); then
-        # First argument: complete command names with descriptions
         _describe 'commands' _agr_commands
     elif [[ " $_agr_file_cmds_space " =~ " $cmd " ]]; then
-        # File-accepting command: complete with cast files
-        local -a files
-        files=(${{(f)"$(agr completions --files --limit 20 "$cur" 2>/dev/null)"}})
-        if (( $#files )); then
-            _describe 'cast files' files
-        fi
+        _agr_complete_files "$cur"
     elif [[ "$cmd" == "marker" ]] && (( CURRENT == 4 )); then
-        # marker add/list <file>: complete with cast files
-        local -a files
-        files=(${{(f)"$(agr completions --files --limit 20 "$cur" 2>/dev/null)"}})
-        if (( $#files )); then
-            _describe 'cast files' files
-        fi
+        _agr_complete_files "$cur"
     fi
 }}
 
@@ -184,23 +181,24 @@ export _AGR_LOADED=1
 _agr_commands="{cmd_list}"
 _agr_file_cmds="{file_cmd_pattern}"
 
+# Helper: complete with cast files
+_agr_complete_files() {{
+    local cur="$1"
+    local files
+    files=$(agr completions --files --limit 20 "$cur" 2>/dev/null)
+    COMPREPLY=($(compgen -W "$files" -- "$cur"))
+}}
+
 _agr_complete() {{
     local cur="${{COMP_WORDS[COMP_CWORD]}}"
     local cmd="${{COMP_WORDS[1]}}"
 
     if [[ $COMP_CWORD -eq 1 ]]; then
-        # First argument: complete command names
         COMPREPLY=($(compgen -W "$_agr_commands" -- "$cur"))
     elif [[ " $_agr_file_cmds " =~ " $cmd " ]]; then
-        # File-accepting command: complete with cast files
-        local files
-        files=$(agr completions --files --limit 20 "$cur" 2>/dev/null)
-        COMPREPLY=($(compgen -W "$files" -- "$cur"))
+        _agr_complete_files "$cur"
     elif [[ "$cmd" == "marker" ]] && [[ $COMP_CWORD -eq 3 ]]; then
-        # marker add/list <file>: complete with cast files
-        local files
-        files=$(agr completions --files --limit 20 "$cur" 2>/dev/null)
-        COMPREPLY=($(compgen -W "$files" -- "$cur"))
+        _agr_complete_files "$cur"
     fi
 }}
 
