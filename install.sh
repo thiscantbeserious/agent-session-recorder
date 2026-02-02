@@ -76,19 +76,25 @@ if ! version_ge "$RUST_VERSION" "$MIN_RUST_VERSION"; then
     echo "Your version: $RUST_VERSION"
     echo
     if command -v rustup &>/dev/null; then
-        echo "Would you like to update Rust now? [y/N]"
-        read -r response
-        if [[ "$response" =~ ^[Yy]$ ]]; then
-            echo "Updating Rust..."
-            rustup update stable
-            # Re-check version after update
-            RUST_VERSION=$(rustc --version | sed 's/rustc \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/')
-            echo "Updated to Rust version: $RUST_VERSION"
-            if ! version_ge "$RUST_VERSION" "$MIN_RUST_VERSION"; then
-                echo "Error: Update failed to reach minimum version. Please update manually."
+        if [ -t 0 ]; then
+            echo "Would you like to update Rust now? [y/N]"
+            read -r response
+            if [[ "$response" =~ ^[Yy]$ ]]; then
+                echo "Updating Rust..."
+                rustup update stable
+                # Re-check version after update
+                RUST_VERSION=$(rustc --version | sed 's/rustc \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/')
+                echo "Updated to Rust version: $RUST_VERSION"
+                if ! version_ge "$RUST_VERSION" "$MIN_RUST_VERSION"; then
+                    echo "Error: Update failed to reach minimum version. Please update manually."
+                    exit 1
+                fi
+            else
+                echo "Please update Rust manually: rustup update stable"
                 exit 1
             fi
         else
+            echo "Non-interactive environment detected."
             echo "Please update Rust manually: rustup update stable"
             exit 1
         fi
