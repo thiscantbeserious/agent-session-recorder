@@ -294,6 +294,7 @@ fn main() -> Result<()> {
         Commands::List { agent } => commands::list::handle(agent.as_deref()),
         Commands::Analyze { file, agent } => commands::analyze::handle(&file, agent.as_deref()),
         Commands::Play { file } => commands::play::handle(&file),
+        Commands::Copy { file } => commands::copy::handle(&file),
         Commands::Marker(cmd) => match cmd {
             MarkerCommands::Add { file, time, label } => {
                 commands::marker::handle_add(&file, time, &label)
@@ -840,5 +841,45 @@ mod tests {
             }
             _ => panic!("Expected Play command"),
         }
+    }
+
+    #[test]
+    fn cli_copy_parses_with_file() {
+        let cli = Cli::try_parse_from(["agr", "copy", "session.cast"]).unwrap();
+        match cli.command {
+            Commands::Copy { file } => {
+                assert_eq!(file, "session.cast");
+            }
+            _ => panic!("Expected Copy command"),
+        }
+    }
+
+    #[test]
+    fn cli_copy_parses_with_path() {
+        let cli = Cli::try_parse_from(["agr", "copy", "/path/to/session.cast"]).unwrap();
+        match cli.command {
+            Commands::Copy { file } => {
+                assert_eq!(file, "/path/to/session.cast");
+            }
+            _ => panic!("Expected Copy command"),
+        }
+    }
+
+    #[test]
+    fn cli_copy_parses_with_short_format() {
+        let cli = Cli::try_parse_from(["agr", "copy", "claude/session.cast"]).unwrap();
+        match cli.command {
+            Commands::Copy { file } => {
+                assert_eq!(file, "claude/session.cast");
+            }
+            _ => panic!("Expected Copy command"),
+        }
+    }
+
+    #[test]
+    fn cli_copy_requires_file_argument() {
+        // `agr copy` without file should fail
+        let result = Cli::try_parse_from(["agr", "copy"]);
+        assert!(result.is_err());
     }
 }

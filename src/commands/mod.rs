@@ -8,6 +8,7 @@ pub mod analyze;
 pub mod cleanup;
 pub mod completions;
 pub mod config;
+pub mod copy;
 pub mod list;
 pub mod marker;
 pub mod play;
