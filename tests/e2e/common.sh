@@ -17,9 +17,17 @@ TESTS_DIR="$(dirname "$SCRIPT_DIR")"
 PROJECT_DIR="$(dirname "$TESTS_DIR")"
 AGR="$PROJECT_DIR/target/release/agr"
 
-# Test directory setup - only create once
+# Detect platform and set shell RC file
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    SHELL_RC=".zshrc"
+else
+    SHELL_RC=".bashrc"
+fi
+export SHELL_RC
+
+# Test directory setup - create unique per job using PID and random suffix
 if [ -z "$_AGR_TEST_DIR_CREATED" ]; then
-    TEST_DIR=$(mktemp -d)
+    TEST_DIR=$(mktemp -d -t "agr-e2e-$$-XXXXXX")
     ORIGINAL_HOME="$HOME"
     export HOME="$TEST_DIR"
     mkdir -p "$HOME/recorded_agent_sessions"
@@ -85,16 +93,58 @@ agent_installed() {
     command -v "$AGENT" &>/dev/null
 }
 
-# Reset config for clean test state
+# Reset config for clean test state, then recreate CI config with nanosecond timestamps
 reset_config() {
     rm -f "$HOME/.config/agr/config.toml"
+    create_ci_config
 }
 
-# Create config with specific content
+# Create config with specific content, always including CI filename template
 create_config() {
     mkdir -p "$HOME/.config/agr"
-    cat > "$HOME/.config/agr/config.toml"
+    # Read the custom content from stdin
+    local custom_content
+    custom_content=$(cat)
+
+    # If custom content has [recording], merge with our filename_template
+    # Otherwise prepend our recording section
+    if echo "$custom_content" | grep -q '^\[recording\]'; then
+        # Insert filename_template after [recording] line
+        echo "$custom_content" | awk '
+            /^\[recording\]/ {
+                print
+                print "filename_template = \"{directory}_{date}_{time:%H%M%S%f}\""
+                next
+            }
+            { print }
+        ' > "$HOME/.config/agr/config.toml"
+    else
+        # Prepend recording section with filename_template
+        cat > "$HOME/.config/agr/config.toml" << 'CIEOF'
+[recording]
+filename_template = "{directory}_{date}_{time:%H%M%S%f}"
+
+CIEOF
+        echo "$custom_content" >> "$HOME/.config/agr/config.toml"
+    fi
 }
+
+# Create CI-optimized config with unique filenames (nanosecond timestamps via %f)
+# This creates a COMPLETE config - recording settings + default agents
+create_ci_config() {
+    mkdir -p "$HOME/.config/agr"
+    cat > "$HOME/.config/agr/config.toml" << 'EOF'
+[recording]
+filename_template = "{directory}_{date}_{time:%H%M%S%f}"
+directory_max_length = 50
+
+[agents]
+agents = ["claude", "codex", "gemini"]
+auto_wrap = true
+no_wrap = []
+EOF
+}
+
 
 # Print section header
 section() {

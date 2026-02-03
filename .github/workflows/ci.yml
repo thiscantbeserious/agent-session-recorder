@@ -3,14 +3,30 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'build.rs'
+      - '.github/**'
   pull_request:
     branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'build.rs'
+      - '.github/**'
 
 env:
   CARGO_TERM_COLOR: always
+  ASCIINEMA_VERSION: "3.1.0"
+  CARGO_INSTA_VERSION: "1.46.1"
 
 jobs:
-  # 1. Build - ensure it compiles
+  # 1. Build - ensure it compiles and share artifacts
   build:
     name: Build (${{ matrix.os == 'ubuntu-latest' && 'Linux' || 'macOS' }})
     runs-on: ${{ matrix.os }}
@@ -20,10 +36,19 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Cache compiled binary
+        id: cache-binary
+        uses: actions/cache@v5
+        with:
+          path: target/release/agr
+          key: ${{ runner.os }}-agr-${{ hashFiles('src/**', 'Cargo.toml', 'Cargo.lock') }}
+
       - name: Install Rust
+        if: steps.cache-binary.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo
+        if: steps.cache-binary.outputs.cache-hit != 'true'
         uses: actions/cache@v5
         with:
           path: |
@@ -35,9 +60,17 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build release
+        if: steps.cache-binary.outputs.cache-hit != 'true'
         run: cargo build --release
 
-  # 2. Unit Tests - verify logic
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agr-${{ runner.os }}
+          path: target/release/agr
+          retention-days: 1
+
+  # 2. Unit Tests - verify logic (uses cached build)
   unit-tests:
     name: Unit Tests (${{ matrix.os == 'ubuntu-latest' && 'Linux' || 'macOS' }})
     needs: build
@@ -133,10 +166,10 @@ jobs:
           version: v11.2.6
           skip_validation: true
 
-  # 4. E2E Tests - verify integration
+  # 4. E2E Tests - verify integration (uses build artifacts, runs parallel with unit tests)
   e2e-tests:
     name: E2E Tests (${{ matrix.os == 'ubuntu-latest' && 'Linux' || 'macOS' }})
-    needs: unit-tests
+    needs: build
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -144,40 +177,50 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: actions/cache@v5
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          name: agr-${{ runner.os }}
+          path: target/release/
+
+      - name: Make binary executable
+        run: chmod +x target/release/agr
 
       - name: Install asciinema (macOS)
         if: runner.os == 'macOS'
         run: brew install asciinema
+
+      - name: Cache asciinema binary (Linux)
+        if: runner.os == 'Linux'
+        id: cache-asciinema
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/asciinema
+          key: ${{ runner.os }}-asciinema-${{ env.ASCIINEMA_VERSION }}
+
+      - name: Install Rust (for asciinema)
+        if: runner.os == 'Linux' && steps.cache-asciinema.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install asciinema v3 and clipboard tools (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y xclip xsel xvfb
-          cargo install asciinema
+          if [ ! -f ~/.cargo/bin/asciinema ]; then
+            cargo install asciinema --version ${{ env.ASCIINEMA_VERSION }}
+          fi
 
       - name: Check asciinema version
-        run: asciinema --version
-
-      - name: Build release
-        run: cargo build --release
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          asciinema --version
 
       - name: Run e2e tests (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum ./tests/e2e_test.sh
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          xvfb-run --auto-servernum ./tests/e2e_test.sh
 
       - name: Run e2e tests (macOS)
         if: runner.os == 'macOS'
@@ -205,8 +248,16 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Cache cargo-insta
+        id: cache-insta
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/cargo-insta
+          key: ${{ runner.os }}-cargo-insta-${{ env.CARGO_INSTA_VERSION }}
+
       - name: Install cargo-insta
-        run: cargo install cargo-insta --version 1.46.1
+        if: steps.cache-insta.outputs.cache-hit != 'true'
+        run: cargo install cargo-insta --version ${{ env.CARGO_INSTA_VERSION }}
 
       - name: Run snapshot tests
         run: cargo insta test --check

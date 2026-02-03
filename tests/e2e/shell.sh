@@ -16,7 +16,7 @@ fi
 test_header "Shell status (before install)"
 # Reset config and shell files for clean state
 reset_config
-rm -f "$HOME/.zshrc" "$HOME/.bashrc"
+rm -f "$HOME/$SHELL_RC"
 # Also clean up old-style external script if it exists (for backward compat)
 rm -f "$HOME/.config/agr/agr.sh"
 SHELL_OUTPUT=$($AGR shell status 2>&1)
@@ -28,21 +28,21 @@ fi
 
 # Test: Shell install
 test_header "Shell install"
-# Create a .zshrc for testing
-touch "$HOME/.zshrc"
+# Create a $SHELL_RC for testing
+touch "$HOME/$SHELL_RC"
 $AGR shell install
-if /usr/bin/grep -q "AGR (Agent Session Recorder)" "$HOME/.zshrc"; then
-    pass "Shell install added marked section to .zshrc"
+if /usr/bin/grep -q "AGR (Agent Session Recorder)" "$HOME/$SHELL_RC"; then
+    pass "Shell install added marked section to $SHELL_RC"
 else
-    fail "Shell install did not modify .zshrc"
-    cat "$HOME/.zshrc"
+    fail "Shell install did not modify $SHELL_RC"
+    cat "$HOME/$SHELL_RC"
 fi
-# New embedded style: script should be embedded directly in .zshrc, not in external file
-if /usr/bin/grep -q "_agr_record_session" "$HOME/.zshrc"; then
-    pass "Shell install embedded script directly in .zshrc"
+# New embedded style: script should be embedded directly in $SHELL_RC, not in external file
+if /usr/bin/grep -q "_agr_record_session" "$HOME/$SHELL_RC"; then
+    pass "Shell install embedded script directly in $SHELL_RC"
 else
-    fail "Shell install did not embed script in .zshrc"
-    cat "$HOME/.zshrc"
+    fail "Shell install did not embed script in $SHELL_RC"
+    cat "$HOME/$SHELL_RC"
 fi
 
 # Test: Config.toml created during shell install
@@ -105,11 +105,11 @@ fi
 # Test: Shell uninstall
 test_header "Shell uninstall"
 $AGR shell uninstall
-if ! /usr/bin/grep -q "AGR (Agent Session Recorder)" "$HOME/.zshrc"; then
-    pass "Shell uninstall removed marked section from .zshrc"
+if ! /usr/bin/grep -q "AGR (Agent Session Recorder)" "$HOME/$SHELL_RC"; then
+    pass "Shell uninstall removed marked section from $SHELL_RC"
 else
-    fail "Shell uninstall did not clean .zshrc"
-    cat "$HOME/.zshrc"
+    fail "Shell uninstall did not clean $SHELL_RC"
+    cat "$HOME/$SHELL_RC"
 fi
 
 # Test: Auto-wrap config toggle
@@ -122,25 +122,25 @@ else
 fi
 
 # Test: Shell install with existing content preserves it
-test_header "Shell install preserves existing .zshrc content"
-echo "# My existing config" > "$HOME/.zshrc"
-echo "export MY_VAR=test" >> "$HOME/.zshrc"
+test_header "Shell install preserves existing $SHELL_RC content"
+echo "# My existing config" > "$HOME/$SHELL_RC"
+echo "export MY_VAR=test" >> "$HOME/$SHELL_RC"
 $AGR shell install
-if /usr/bin/grep -q "MY_VAR=test" "$HOME/.zshrc" && /usr/bin/grep -q "AGR (Agent Session Recorder)" "$HOME/.zshrc"; then
+if /usr/bin/grep -q "MY_VAR=test" "$HOME/$SHELL_RC" && /usr/bin/grep -q "AGR (Agent Session Recorder)" "$HOME/$SHELL_RC"; then
     pass "Shell install preserved existing content"
 else
     fail "Shell install did not preserve existing content"
-    cat "$HOME/.zshrc"
+    cat "$HOME/$SHELL_RC"
 fi
 
 # Test: Shell uninstall preserves other content
 test_header "Shell uninstall preserves other content"
 $AGR shell uninstall
-if /usr/bin/grep -q "MY_VAR=test" "$HOME/.zshrc" && ! /usr/bin/grep -q "AGR (Agent Session Recorder)" "$HOME/.zshrc"; then
+if /usr/bin/grep -q "MY_VAR=test" "$HOME/$SHELL_RC" && ! /usr/bin/grep -q "AGR (Agent Session Recorder)" "$HOME/$SHELL_RC"; then
     pass "Shell uninstall preserved other content"
 else
     fail "Shell uninstall did not preserve other content"
-    cat "$HOME/.zshrc"
+    cat "$HOME/$SHELL_RC"
 fi
 
 # ============================================
@@ -149,8 +149,8 @@ fi
 
 section "Shell Wrapper Function Tests"
 
-# Helper: Source .zshrc in a subshell to test wrapper functions
-# The AGR script is now embedded directly in .zshrc
+# Helper: Source shell RC file in a subshell to test wrapper functions
+# The AGR script is now embedded directly in the shell RC file
 test_agr_sh() {
     local test_script="$1"
     # Run in a subshell with a clean environment
@@ -159,11 +159,11 @@ test_agr_sh() {
         export PATH="$PROJECT_DIR/target/release:$PATH"
         export HOME="$TEST_DIR"
 
-        # Source the .zshrc which now contains the embedded AGR script
-        ZSHRC="$HOME/.zshrc"
-        if [ -f "$ZSHRC" ]; then
+        # Source the shell RC file which now contains the embedded AGR script
+        RC_FILE="$HOME/$SHELL_RC"
+        if [ -f "$RC_FILE" ]; then
             # Use bash to source and run test
-            bash -c "source '$ZSHRC'; $test_script"
+            bash -c "source '$RC_FILE'; $test_script"
             return $?
         else
             return 1
@@ -174,6 +174,10 @@ test_agr_sh() {
 
 # Re-install shell integration for wrapper tests
 $AGR shell install
+
+# Restore CI-optimized recording config (shell install overwrites it)
+# Use create_ci_config which creates a complete valid config
+create_ci_config
 
 # Test: agr.sh defines _agr_record_session function
 test_header "agr.sh defines _agr_record_session function"
@@ -295,7 +299,7 @@ run_with_timeout 30 bash -c "
     export PATH='$MOCK_AGENT_DIR:$PROJECT_DIR/target/release:$ASCIINEMA_DIR:$ORIG_PATH'
     export HOME='$TEST_DIR'
     unset ASCIINEMA_REC
-    source \"\$HOME/.zshrc\" && mock-agent test-arg
+    source \"\$HOME/$SHELL_RC\" && mock-agent test-arg
 " </dev/null
 AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
 if [ "$AFTER_COUNT" -gt "$BEFORE_COUNT" ]; then
@@ -311,8 +315,8 @@ BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null 
     export PATH="$MOCK_AGENT_DIR:$PROJECT_DIR/target/release:$ASCIINEMA_DIR:$PATH"
     export HOME="$TEST_DIR"
     export ASCIINEMA_REC="/tmp/fake-recording.cast"
-    # The AGR script is now embedded in .zshrc
-    bash -c "source '$HOME/.zshrc' && mock-agent skip-test" </dev/null 2>/dev/null
+    # The AGR script is now embedded in $SHELL_RC
+    bash -c "source '$HOME/$SHELL_RC' && mock-agent skip-test" </dev/null 2>/dev/null
 )
 AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
 if [ "$AFTER_COUNT" -eq "$BEFORE_COUNT" ]; then
@@ -329,8 +333,8 @@ BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null 
 (
     export PATH="$MOCK_AGENT_DIR:$PROJECT_DIR/target/release:$ASCIINEMA_DIR:$PATH"
     export HOME="$TEST_DIR"
-    # The AGR script is now embedded in .zshrc
-    bash -c "source '$HOME/.zshrc' && mock-agent nowrap-test" </dev/null 2>/dev/null
+    # The AGR script is now embedded in $SHELL_RC
+    bash -c "source '$HOME/$SHELL_RC' && mock-agent nowrap-test" </dev/null 2>/dev/null
 )
 AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
 if [ "$AFTER_COUNT" -eq "$BEFORE_COUNT" ]; then
@@ -345,8 +349,8 @@ $AGR agents no-wrap remove mock-agent
 test_header "Default agents are wrapped when no config"
 # Test that default agent names result in wrapper functions
 # Note: we can't easily test this in isolation without removing config
-# Instead, check that the embedded script in .zshrc has fallback logic
-if /usr/bin/grep -q 'agents="claude codex gemini"' "$HOME/.zshrc"; then
+# Instead, check that the embedded script in $SHELL_RC has fallback logic
+if /usr/bin/grep -q 'agents="claude codex gemini"' "$HOME/$SHELL_RC"; then
     pass "Embedded script has default agent fallback"
 else
     fail "Embedded script missing default agent fallback"
@@ -356,13 +360,13 @@ fi
 test_header "Invalid agent names are rejected in wrapper setup"
 # The wrapper should not create functions for agents with special characters
 # This is tested implicitly by the regex check in _agr_setup_wrappers
-# The script is now embedded in .zshrc
-if /usr/bin/grep -q '\[\[ ! "\$agent" =~' "$HOME/.zshrc" || \
-   /usr/bin/grep -q 'alphanumeric.*dash.*underscore' "$HOME/.zshrc"; then
+# The script is now embedded in $SHELL_RC
+if /usr/bin/grep -q '\[\[ ! "\$agent" =~' "$HOME/$SHELL_RC" || \
+   /usr/bin/grep -q 'alphanumeric.*dash.*underscore' "$HOME/$SHELL_RC"; then
     pass "Embedded script validates agent names"
 else
     # Check for the actual regex pattern
-    if /usr/bin/grep -q '\^.*\-.*\+\$' "$HOME/.zshrc"; then
+    if /usr/bin/grep -q '\^.*\-.*\+\$' "$HOME/$SHELL_RC"; then
         pass "Embedded script validates agent names (regex found)"
     else
         fail "Embedded script missing agent name validation"

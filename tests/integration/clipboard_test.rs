@@ -715,6 +715,7 @@ mod platform_tools_tests {
 mod public_api_tests {
     use agr::clipboard::{copy_file_to_clipboard, ClipboardError};
     use std::path::Path;
+    #[cfg(target_os = "macos")]
     use tempfile::NamedTempFile;
 
     #[test]

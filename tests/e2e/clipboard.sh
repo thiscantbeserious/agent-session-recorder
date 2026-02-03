@@ -74,11 +74,16 @@ test_copy_command() {
 test_clipboard_content() {
     if [[ "$OSTYPE" == "darwin"* ]]; then
         "$AGR" copy "$TEST_CAST" 2>/dev/null
+        # Small delay to ensure clipboard is updated (CI can be slow)
+        sleep 0.5
         # On macOS, check clipboard has file URL type
         local clip_info
-        clip_info=$(osascript -e 'clipboard info' 2>/dev/null)
+        clip_info=$(osascript -e 'clipboard info' 2>/dev/null || echo "osascript_failed")
         if [[ "$clip_info" == *"furl"* ]] || [[ "$clip_info" == *"public.file-url"* ]]; then
             pass "macOS clipboard contains file reference"
+        elif [[ "$clip_info" == "osascript_failed" ]] || [[ -z "$clip_info" ]]; then
+            # macOS CI clipboard may not be accessible - skip gracefully
+            skip "macOS clipboard info not accessible in CI (osascript returned: '$clip_info')"
         else
             fail "macOS clipboard does not contain file reference: $clip_info"
         fi
