@@ -18,7 +18,7 @@ pub fn count_digits(n: usize) -> usize {
     if n == 0 {
         1
     } else {
-        (n as f64).log10().floor() as usize + 1
+        n.ilog10() as usize + 1
     }
 }
 
