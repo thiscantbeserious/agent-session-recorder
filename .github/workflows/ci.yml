@@ -100,6 +100,30 @@ jobs:
       - name: Run unit tests
         run: cargo test --verbose
 
+  # 2b. Miri - detect undefined behavior (Linux only, macOS has FFI limitations)
+  miri:
+    name: Undefined Behavior (Miri)
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust nightly with Miri
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+
+      - name: Setup Miri
+        run: cargo miri setup
+
+      - name: Run Miri tests
+        env:
+          MIRIFLAGS: "-Zmiri-disable-isolation"
+        run: |
+          # Skip transform_ops tests - they use macOS-specific FFI (fclonefileat, chmod)
+          # that Miri doesn't support even on Linux due to cross-compilation constraints
+          cargo miri test -- --skip transform_ops
+
   # 3. Coverage - generate test coverage and upload to Codecov
   coverage:
     name: Coverage
