@@ -149,8 +149,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Rust nightly
+      - name: Install Rust nightly with ASan support
         uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: x86_64-unknown-linux-gnu
+          components: rust-src
 
       - name: Get rustc version for cache key
         id: rustc
@@ -170,11 +173,13 @@ jobs:
 
       - name: Run tests with AddressSanitizer
         env:
-          RUSTFLAGS: "-Z sanitizer=address"
+          # Use target-specific RUSTFLAGS to avoid applying to build scripts
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: "-Z sanitizer=address"
         run: |
+          # Build std with sanitizer support via -Zbuild-std
           # Only run lib tests - integration tests spawn processes
           # Skip transform_ops tests - they use filesystem operations
-          cargo +nightly test --lib -- --skip transform_ops
+          cargo +nightly test --lib -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip transform_ops
 
   # 3. Coverage - generate test coverage and upload to Codecov
   coverage:
