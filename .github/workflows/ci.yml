@@ -133,11 +133,14 @@ jobs:
           version: v11.2.6
           skip_validation: true
 
-  # 4. E2E Tests - verify integration (macOS only for asciinema v3)
+  # 4. E2E Tests - verify integration
   e2e-tests:
-    name: E2E Tests
+    name: E2E Tests (${{ matrix.os == 'ubuntu-latest' && 'Linux' || 'macOS' }})
     needs: unit-tests
-    runs-on: macos-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v5
 
@@ -155,8 +158,15 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install asciinema
+      - name: Install asciinema (macOS)
+        if: runner.os == 'macOS'
         run: brew install asciinema
+
+      - name: Install asciinema and clipboard tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y asciinema xclip xsel xvfb
 
       - name: Check asciinema version
         run: asciinema --version
@@ -164,7 +174,12 @@ jobs:
       - name: Build release
         run: cargo build --release
 
-      - name: Run e2e tests
+      - name: Run e2e tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum ./tests/e2e_test.sh
+
+      - name: Run e2e tests (macOS)
+        if: runner.os == 'macOS'
         run: ./tests/e2e_test.sh
 
   # 5. Snapshot Tests - verify UI snapshots match committed versions

@@ -55,6 +55,10 @@ echo
 echo "Running completions tests..."
 source "$E2E_DIR/completions.sh"
 
+echo
+echo "Running clipboard tests..."
+source "$E2E_DIR/clipboard.sh"
+
 # Print final summary
 echo
 echo "=== Test Summary ==="
