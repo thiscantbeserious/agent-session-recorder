@@ -67,7 +67,18 @@ echo "Detected Rust version: $RUST_VERSION (minimum required: $MIN_RUST_VERSION)
 
 # Compare versions (returns 0 if $1 >= $2)
 version_ge() {
-    printf '%s\n%s\n' "$2" "$1" | sort -V -C
+    local IFS=.
+    local i
+    local ver1=($1) ver2=($2)
+    for ((i=0; i<${`#ver1`[@]} || i<${`#ver2`[@]}; i++)); do
+        local a=${ver1[i]:-0} b=${ver2[i]:-0}
+        if ((10#$a > 10#$b)); then
+            return 0
+        elif ((10#$a < 10#$b)); then
+            return 1
+        fi
+    done
+    return 0
 }
 
 if ! version_ge "$RUST_VERSION" "$MIN_RUST_VERSION"; then
