@@ -34,7 +34,21 @@ AGR is a lightweight CLI tool that automatically records your terminal sessions 
 
 ### Prerequisites
 
-- [asciinema](https://asciinema.org/) must be installed (`brew install asciinema` or `apt install asciinema`)
+- **asciinema v3+** is required (v2 won't work)
+
+  ```bash
+  # macOS
+  brew install asciinema
+
+  # Linux (via pipx - recommended, apt has outdated v2)
+  pipx install asciinema
+
+  # Linux (via pip)
+  pip install --user asciinema
+
+  # Verify version (must be 3.x)
+  asciinema --version
+  ```
 
 ### From Source
 
