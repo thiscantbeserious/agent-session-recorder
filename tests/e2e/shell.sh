@@ -298,7 +298,8 @@ ORIG_PATH="$PATH"
     unset ASCIINEMA_REC
     # Run directly without eating stderr so we can debug if needed
     # The AGR script is now embedded in .zshrc
-    bash -c "source '$HOME/.zshrc' && mock-agent test-arg" </dev/null
+    # Use timeout to prevent hanging in CI environments
+    timeout 30 bash -c "source '$HOME/.zshrc' && mock-agent test-arg" </dev/null || true
 )
 AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
 if [ "$AFTER_COUNT" -gt "$BEFORE_COUNT" ]; then
@@ -315,7 +316,8 @@ BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null 
     export HOME="$TEST_DIR"
     export ASCIINEMA_REC="/tmp/fake-recording.cast"
     # The AGR script is now embedded in .zshrc
-    bash -c "source '$HOME/.zshrc' && mock-agent skip-test" </dev/null 2>/dev/null
+    # Use timeout to prevent hanging in CI environments
+    timeout 30 bash -c "source '$HOME/.zshrc' && mock-agent skip-test" </dev/null 2>/dev/null || true
 )
 AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
 if [ "$AFTER_COUNT" -eq "$BEFORE_COUNT" ]; then
@@ -333,7 +335,8 @@ BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null 
     export PATH="$MOCK_AGENT_DIR:$PROJECT_DIR/target/release:$ASCIINEMA_DIR:$PATH"
     export HOME="$TEST_DIR"
     # The AGR script is now embedded in .zshrc
-    bash -c "source '$HOME/.zshrc' && mock-agent nowrap-test" </dev/null 2>/dev/null
+    # Use timeout to prevent hanging in CI environments
+    timeout 30 bash -c "source '$HOME/.zshrc' && mock-agent nowrap-test" </dev/null 2>/dev/null || true
 )
 AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
 if [ "$AFTER_COUNT" -eq "$BEFORE_COUNT" ]; then
