@@ -40,6 +40,10 @@ Shell out to native OS clipboard tools at runtime. No Rust clipboard crates - th
 
 Tools are tried in order and allowed to fail naturally. No explicit X11 vs Wayland detection.
 
+**Availability detection (hybrid approach):**
+- **macOS tools**: Compile-time `cfg!(target_os = "macos")` — osascript/pbcopy are always present on macOS
+- **Linux tools**: Runtime `tool_exists()` check — xclip/xsel/wl-copy may not be installed
+
 ### Keybinding: `c` for Copy
 
 Natural and intuitive ("c for copy"), consistent with desktop conventions.

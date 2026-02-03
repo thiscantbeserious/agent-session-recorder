@@ -18,7 +18,7 @@ Users can copy a `.cast` recording file to their system clipboard with a single 
 
 ### In Scope
 
-1. **CLI command** - New `asr copy <recording>` command to copy a recording file to clipboard
+1. **CLI command** - New `agr copy <recording>` command to copy a recording file to clipboard
 2. **TUI integration** - Copy option in the file explorer:
    - Added to the action dialog (appears when pressing Enter on a recording in `ls`)
    - Keybinding shortcut for quick access
@@ -38,9 +38,9 @@ Users can copy a `.cast` recording file to their system clipboard with a single 
 
 ## Acceptance Criteria
 
-### CLI Command (`asr copy`)
+### CLI Command (`agr copy`)
 
-1. `asr copy <recording-name>` copies the specified `.cast` file to clipboard
+1. `agr copy <recording-name>` copies the specified `.cast` file to clipboard
 2. Recording can be specified by name (with or without `.cast` extension)
 3. On success, displays: "Copied <filename>.cast to clipboard"
 4. On fallback (content copy), displays: "Copied <filename>.cast content to clipboard (file copy not supported on this platform)"
@@ -70,7 +70,7 @@ Users can copy a `.cast` recording file to their system clipboard with a single 
 ### Documentation
 
 1. README updated with copy feature usage
-2. CLI help text documents `asr copy` command
+2. CLI help text documents `agr copy` command
 3. TUI help text documents copy keybinding
 
 ## Constraints

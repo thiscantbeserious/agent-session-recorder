@@ -81,6 +81,7 @@ struct MockTool {
 ```
 
 **Tests:**
+- [ ] MockTool compiles and implements CopyTool trait (static verification)
 - [ ] `Copy::with_tools()` accepts empty vec
 - [ ] `file()` returns `FileNotFound` for non-existent path
 - [ ] `file()` tries file copy first when tool supports it
@@ -239,12 +240,14 @@ struct MockTool {
 #### Green Phase
 - [ ] Add `Copy { file: String }` variant to `Commands` enum in `src/cli.rs`
   - **Critical**: Name the argument `file`, not `recording`
+  - **Note**: `Copy` as variant name is valid but potentially confusing (Rust `Copy` trait exists). Acceptable.
 - [ ] Add help text and long_about with examples
 - [ ] Create `src/commands/copy.rs` with `handle(file: &str) -> Result<()>`
   - Load config
   - Use `resolve_file_path()` for path resolution
   - Validate file exists with helpful error
   - Call `clipboard::copy_file_to_clipboard()`
+  - **Strip `.cast` extension** from filename before calling `result.message()` (it appends `.cast` internally)
   - Print themed result message
 - [ ] Export module in `src/commands/mod.rs`
 - [ ] Add match arm for `Commands::Copy { file }` in `main.rs`
