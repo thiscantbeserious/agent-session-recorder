@@ -449,7 +449,7 @@ mod osascript_tests {
         let script = OsaScript::build_file_script(Path::new("/some/file.cast"));
         assert_eq!(
             script,
-            "set the clipboard to POSIX file \"/some/file.cast\""
+            "tell application \"Finder\" to set the clipboard to (POSIX file \"/some/file.cast\" as alias)"
         );
     }
 

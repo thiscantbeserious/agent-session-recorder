@@ -26,9 +26,12 @@ impl OsaScript {
     }
 
     /// Build the AppleScript command for file copy.
+    ///
+    /// Uses Finder to set clipboard as alias, which is the format
+    /// that Finder, Slack, and other apps expect for paste operations.
     pub fn build_file_script(path: &Path) -> String {
         format!(
-            "set the clipboard to POSIX file \"{}\"",
+            "tell application \"Finder\" to set the clipboard to (POSIX file \"{}\" as alias)",
             Self::escape_path(path)
         )
     }
