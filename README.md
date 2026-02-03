@@ -132,8 +132,8 @@ agr copy ~/recorded_agent_sessions/claude/session.cast
 ```
 
 **Platform Behavior:**
-- **macOS**: Copies the file as a file reference - paste directly into Slack, email, etc. as an attachment
-- **Linux**: Copies the file content as text (file reference copy not widely supported)
+- **macOS**: Copies as file reference (POSIX file) - paste directly into Slack, email, etc. as an attachment
+- **Linux**: Copies as file URI (`text/uri-list`) - works in modern DEs (GNOME, KDE) for file paste
 
 ## Interactive File Browser
 
