@@ -489,7 +489,10 @@ mod osascript_tests {
     #[test]
     fn build_file_script_creates_correct_applescript() {
         let script = OsaScript::build_file_script(Path::new("/some/file.cast"));
-        assert_eq!(script, "set the clipboard to POSIX file \"/some/file.cast\"");
+        assert_eq!(
+            script,
+            "set the clipboard to POSIX file \"/some/file.cast\""
+        );
     }
 
     #[test]
@@ -593,10 +596,7 @@ mod xclip_tests {
         // Japanese characters: UTF-8 encoding
         let uri = Xclip::build_file_uri(Path::new("/path/日本語/file.cast"));
         // 日 = E6 97 A5, 本 = E6 9C AC, 語 = E8 AA 9E
-        assert_eq!(
-            uri,
-            "file:///path/%E6%97%A5%E6%9C%AC%E8%AA%9E/file.cast"
-        );
+        assert_eq!(uri, "file:///path/%E6%97%A5%E6%9C%AC%E8%AA%9E/file.cast");
     }
 
     #[test]
