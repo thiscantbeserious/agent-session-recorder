@@ -9,6 +9,7 @@ COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
 VALID_SCOPES=(
     # Directories
     "asciicast"
+    "clipboard"
     "commands"
     "player"
     "terminal"
@@ -47,7 +48,7 @@ if [[ "$COMMIT_MSG" =~ ^[a-z]+\(([a-z0-9-]+)\): ]]; then
         echo "ERROR: Invalid scope '($SCOPE)' in commit message."
         echo ""
         echo "Valid scopes (from src/ modules):"
-        echo "  asciicast, commands, player, terminal, tui"
+        echo "  asciicast, clipboard, commands, player, terminal, tui"
         echo "  analyzer, branding, cli, config, recording, shell, storage"
         echo ""
         echo "Meta scopes:"
