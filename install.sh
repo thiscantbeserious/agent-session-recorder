@@ -70,7 +70,7 @@ version_ge() {
     local IFS=.
     local i
     local ver1=($1) ver2=($2)
-    for ((i=0; i<${`#ver1`[@]} || i<${`#ver2`[@]}; i++)); do
+    for ((i=0; i<${#ver1[@]} || i<${#ver2[@]}; i++)); do
         local a=${ver1[i]:-0} b=${ver2[i]:-0}
         if ((10#$a > 10#$b)); then
             return 0
