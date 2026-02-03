@@ -166,9 +166,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y xclip xsel xvfb pipx
-          pipx install asciinema
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          sudo apt-get install -y xclip xsel xvfb
+          cargo install asciinema
 
       - name: Check asciinema version
         run: asciinema --version
