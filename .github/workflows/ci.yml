@@ -113,6 +113,23 @@ jobs:
         with:
           components: miri
 
+      - name: Get rustc version for cache key
+        id: rustc
+        run: echo "version=$(rustc --version | cut -d' ' -f2)" >> $GITHUB_OUTPUT
+
+      - name: Cache cargo registry and Miri sysroot
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            ~/.cache/miri/
+          key: miri-${{ steps.rustc.outputs.version }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            miri-${{ steps.rustc.outputs.version }}-
+            miri-
+
       - name: Setup Miri
         run: cargo miri setup
 
