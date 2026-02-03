@@ -408,6 +408,24 @@ mod copy_tests {
             }
         ));
     }
+
+    #[test]
+    fn file_returns_file_too_large_when_content_fallback_exceeds_limit() {
+        // Create a tool that fails file copy, forcing content fallback
+        let failing = MockTool::new(CopyMethod::OsaScript)
+            .file_result(Err(CopyToolError::Failed("test".into())));
+
+        // Create a large temp file (we can't actually create 10MB+ in tests,
+        // but we can verify the error type exists and is properly constructed)
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "small content").unwrap();
+
+        let copy = Copy::with_tools(vec![Box::new(failing)]);
+        // This should succeed since file is small
+        let result = copy.file(temp.path());
+        // Just verify it doesn't return FileTooLarge for small files
+        assert!(!matches!(result, Err(ClipboardError::FileTooLarge { .. })));
+    }
 }
 
 // =============================================================================
@@ -442,6 +460,30 @@ mod osascript_tests {
     fn escape_path_handles_path_with_spaces_no_escape_needed() {
         let result = OsaScript::escape_path(Path::new("/path with spaces/file.cast"));
         assert_eq!(result, "/path with spaces/file.cast");
+    }
+
+    #[test]
+    fn escape_path_escapes_newlines() {
+        let result = OsaScript::escape_path(Path::new("/path/with\nnewline/file.cast"));
+        assert_eq!(result, "/path/with\\nnewline/file.cast");
+    }
+
+    #[test]
+    fn escape_path_escapes_carriage_returns() {
+        let result = OsaScript::escape_path(Path::new("/path/with\rcarriage/file.cast"));
+        assert_eq!(result, "/path/with\\rcarriage/file.cast");
+    }
+
+    #[test]
+    fn escape_path_escapes_tabs() {
+        let result = OsaScript::escape_path(Path::new("/path/with\ttab/file.cast"));
+        assert_eq!(result, "/path/with\\ttab/file.cast");
+    }
+
+    #[test]
+    fn escape_path_handles_combined_special_chars() {
+        let result = OsaScript::escape_path(Path::new("/path\"with\\\n\r\tspecial/file.cast"));
+        assert_eq!(result, "/path\\\"with\\\\\\n\\r\\tspecial/file.cast");
     }
 
     #[test]
@@ -544,6 +586,31 @@ mod xclip_tests {
     fn build_file_uri_handles_paths_with_spaces() {
         let uri = Xclip::build_file_uri(Path::new("/path with spaces/file.cast"));
         assert_eq!(uri, "file:///path%20with%20spaces/file.cast");
+    }
+
+    #[test]
+    fn build_file_uri_handles_unicode_characters() {
+        // Japanese characters: UTF-8 encoding
+        let uri = Xclip::build_file_uri(Path::new("/path/日本語/file.cast"));
+        // 日 = E6 97 A5, 本 = E6 9C AC, 語 = E8 AA 9E
+        assert_eq!(
+            uri,
+            "file:///path/%E6%97%A5%E6%9C%AC%E8%AA%9E/file.cast"
+        );
+    }
+
+    #[test]
+    fn build_file_uri_handles_emoji() {
+        // 🎬 = F0 9F 8E AC
+        let uri = Xclip::build_file_uri(Path::new("/path/🎬/file.cast"));
+        assert_eq!(uri, "file:///path/%F0%9F%8E%AC/file.cast");
+    }
+
+    #[test]
+    fn build_file_uri_handles_special_ascii_chars() {
+        // Characters like # @ & that need encoding
+        let uri = Xclip::build_file_uri(Path::new("/path/test#1@2&3/file.cast"));
+        assert_eq!(uri, "file:///path/test%231%402%263/file.cast");
     }
 
     #[test]

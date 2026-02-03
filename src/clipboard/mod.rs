@@ -35,7 +35,7 @@ use std::path::Path;
 /// # Errors
 /// - `ClipboardError::FileNotFound` - file doesn't exist
 /// - `ClipboardError::NoToolAvailable` - no clipboard tool found
-/// - `ClipboardError::ToolFailed` - clipboard operation failed
+/// - `ClipboardError::FileTooLarge` - file exceeds size limit for content fallback
 pub fn copy_file_to_clipboard(path: &Path) -> Result<CopyResult, ClipboardError> {
     Copy::new().file(path)
 }

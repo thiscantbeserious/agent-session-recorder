@@ -18,11 +18,18 @@ impl OsaScript {
     }
 
     /// Escape a path for use in AppleScript string.
+    ///
+    /// Escapes backslashes, double quotes, and control characters
+    /// (newlines, carriage returns, tabs) to prevent AppleScript injection
+    /// or syntax errors.
     pub fn escape_path(path: &Path) -> String {
         path.display()
             .to_string()
             .replace('\\', "\\\\")
             .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('\t', "\\t")
     }
 
     /// Build the AppleScript command for file copy.

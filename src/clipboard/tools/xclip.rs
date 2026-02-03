@@ -19,22 +19,23 @@ impl Xclip {
 
     /// Build a file:// URI for the given path.
     ///
-    /// Spaces and special characters are percent-encoded.
+    /// Spaces and special characters are percent-encoded per RFC 3986.
+    /// Non-ASCII characters are encoded as UTF-8 bytes.
     pub fn build_file_uri(path: &Path) -> String {
         let path_str = path.display().to_string();
-        let encoded = path_str
-            .chars()
-            .map(|c| {
-                if c == ' ' {
-                    "%20".to_string()
-                } else if c.is_ascii_alphanumeric() || c == '/' || c == '.' || c == '-' || c == '_'
-                {
-                    c.to_string()
-                } else {
-                    format!("%{:02X}", c as u32)
+        let mut encoded = String::new();
+
+        for c in path_str.chars() {
+            if c.is_ascii_alphanumeric() || c == '/' || c == '.' || c == '-' || c == '_' {
+                encoded.push(c);
+            } else {
+                // Encode as UTF-8 bytes per RFC 3986
+                for byte in c.to_string().as_bytes() {
+                    encoded.push_str(&format!("%{:02X}", byte));
                 }
-            })
-            .collect::<String>();
+            }
+        }
+
         format!("file://{}", encoded)
     }
 
