@@ -283,7 +283,7 @@ impl ListApp {
                 Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
                 Mode::OptimizeResult => "Enter/Esc: dismiss",
                 Mode::Normal => {
-                    "↑↓: navigate | Enter: menu | p: play | t: optimize | d: delete | ?: help | q: quit"
+                    "↑↓: navigate | Enter: menu | p: play | c: copy | t: optimize | d: delete | ?: help | q: quit"
                 }
             };
             let footer = Paragraph::new(footer_text)
