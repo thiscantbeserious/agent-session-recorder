@@ -33,6 +33,7 @@ git log --oneline -5
 **Current focus:** None (phase complete)
 
 **Recently completed:**
+- CI optimization with caching, path filters, and E2E test fixes (PR #104)
 - Clipboard copy for recordings (PR #103)
 - Aggressive shell minification for RC file embedding (PR #90)
 - Native player modular refactor with state guards (PR #88)
