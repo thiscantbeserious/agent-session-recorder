@@ -5,16 +5,14 @@
 COMMIT_MSG_FILE="$1"
 COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
 
-# Valid scopes from src/ structure
-VALID_SCOPES=(
-    # Directories
+# Valid scopes from src/ structure (directories and single-file modules)
+SRC_SCOPES=(
     "asciicast"
     "clipboard"
     "commands"
     "player"
     "terminal"
     "tui"
-    # Single-file modules
     "analyzer"
     "branding"
     "cli"
@@ -22,7 +20,10 @@ VALID_SCOPES=(
     "recording"
     "shell"
     "storage"
-    # Meta scopes (not in src/ but valid for certain commits)
+)
+
+# Meta scopes (not in src/ but valid for certain commits)
+META_SCOPES=(
     "deps"      # dependency updates
     "ci"        # CI/CD changes
     "docs"      # documentation
@@ -30,6 +31,9 @@ VALID_SCOPES=(
     "release"   # release automation
     "changelog" # changelog config
 )
+
+# Combine all valid scopes
+VALID_SCOPES=("${SRC_SCOPES[@]}" "${META_SCOPES[@]}")
 
 # Extract scope from conventional commit: type(scope): message
 if [[ "$COMMIT_MSG" =~ ^[a-z]+\(([a-z0-9-]+)\): ]]; then
@@ -48,11 +52,10 @@ if [[ "$COMMIT_MSG" =~ ^[a-z]+\(([a-z0-9-]+)\): ]]; then
         echo "ERROR: Invalid scope '($SCOPE)' in commit message."
         echo ""
         echo "Valid scopes (from src/ modules):"
-        echo "  asciicast, clipboard, commands, player, terminal, tui"
-        echo "  analyzer, branding, cli, config, recording, shell, storage"
+        echo "  $(IFS=', '; echo "${SRC_SCOPES[*]}")"
         echo ""
         echo "Meta scopes:"
-        echo "  deps, ci, docs, tests, release"
+        echo "  $(IFS=', '; echo "${META_SCOPES[*]}")"
         echo ""
         echo "Your commit: $COMMIT_MSG"
         exit 1
