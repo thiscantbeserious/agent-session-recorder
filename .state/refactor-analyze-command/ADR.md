@@ -153,9 +153,9 @@ It's not just ANSI codes. Terminal output contains many categories of noise:
 | **Excessive Whitespace** | `\n\n\n\n\n\n` | Adds nothing |
 | **Binary Garbage** | Non-UTF8, image data, base64 blobs | Corrupted or embedded data |
 
-#### The Critical Mapping Problem
+#### The Timestamp Preservation Problem
 
-When we strip content, we lose the direct connection to timestamps. But we NEED this connection to place markers accurately.
+When we strip content, we must maintain the connection to timestamps for accurate marker placement.
 
 **Example Problem:**
 ```
@@ -167,58 +167,78 @@ Original events:
   [15.2, "o", "\r✓ Build complete\n"]
   [15.3, "o", "Running tests..."]
 
-After naive stripping:
+After naive string concatenation:
   "Starting build...✓ Build completeRunning tests..."
 
 Problem: If LLM says "marker at character 30", which timestamp is that?
-We collapsed 500+ events - the mapping is LOST.
 ```
 
-**Solution: Content Spans with Position Tracking**
+**Solution: Transform Pipeline Preserves Events**
 
-Every piece of extracted text must track WHERE it came from.
+Using the Transform trait, we modify events in-place rather than concatenating into a string. Each event retains its original timestamp:
+
+```rust
+// After transform pipeline, events still have timestamps:
+  [10.0, "o", "Starting build..."]
+  [15.2, "o", "✓ Build complete\n"]    // Spinner events removed
+  [15.3, "o", "Running tests..."]
+```
+
+For chunking, we create `AnalysisSegment` structs that group transformed events by time range while preserving the mapping back to original timestamps.
 
 #### Core Data Structures
 
 ```rust
-/// A span of meaningful content extracted from source events.
-/// Tracks the bidirectional mapping between output positions and source timestamps.
+/// A segment of analysis content with time range mapping.
+/// Created from transformed events for chunking and LLM analysis.
 #[derive(Debug, Clone)]
-pub struct ContentSpan {
-    /// The cleaned text content
-    pub text: String,
+pub struct AnalysisSegment {
+    /// Start timestamp (absolute, from recording start)
+    pub start_time: f64,
 
-    /// Start position in combined output (byte offset)
-    pub output_start: usize,
+    /// End timestamp (absolute)
+    pub end_time: f64,
 
-    /// End position in combined output (byte offset)
-    pub output_end: usize,
+    /// Cleaned text content for this segment
+    pub content: String,
 
-    /// Original event timestamp (absolute, from recording start)
-    pub source_timestamp: f64,
+    /// Estimated token count for this segment
+    pub estimated_tokens: usize,
 
-    /// Index of source event in original cast file
-    pub source_event_index: usize,
+    /// Range of event indices in original cast file (for reverse mapping)
+    pub event_range: (usize, usize),
 }
 
-/// Extracted content with full mapping information.
+/// Complete analysis content extracted from a cast file.
 #[derive(Debug)]
-pub struct ExtractedContent {
-    /// Combined cleaned text (sent to LLM)
-    pub text: String,
-
-    /// Spans mapping output positions → source timestamps
-    /// Sorted by output_start, non-overlapping
-    pub spans: Vec<ContentSpan>,
+pub struct AnalysisContent {
+    /// Segments with time ranges and content
+    pub segments: Vec<AnalysisSegment>,
 
     /// Total recording duration
     pub total_duration: f64,
 
-    /// Estimated token count
-    pub estimated_tokens: usize,
+    /// Total estimated tokens across all segments
+    pub total_tokens: usize,
 
-    /// Extraction statistics
+    /// Extraction statistics for transparency
     pub stats: ExtractionStats,
+}
+
+impl AnalysisContent {
+    /// Find the segment containing a given timestamp.
+    pub fn segment_at_time(&self, timestamp: f64) -> Option<&AnalysisSegment> {
+        self.segments.iter().find(|s|
+            s.start_time <= timestamp && timestamp < s.end_time
+        )
+    }
+
+    /// Get segments within a time range (for chunking).
+    pub fn segments_in_range(&self, start: f64, end: f64) -> Vec<&AnalysisSegment> {
+        self.segments.iter()
+            .filter(|s| s.end_time > start && s.start_time < end)
+            .collect()
+    }
 }
 
 /// Extraction statistics for transparency
@@ -230,73 +250,91 @@ pub struct ExtractionStats {
     pub control_chars_stripped: usize,
     pub progress_lines_deduplicated: usize,
     pub events_processed: usize,
-    pub events_with_content: usize,
+    pub events_retained: usize,
 }
 ```
 
-#### Reverse Mapping: Position → Timestamp
+#### LLM Response Mapping
+
+When the LLM returns markers, they include timestamps relative to the chunk. The `AnalysisChunk` handles mapping back to absolute timestamps:
 
 ```rust
-impl ExtractedContent {
-    /// Map a byte position in extracted text back to source timestamp.
-    /// Used when LLM returns a marker position.
-    pub fn position_to_timestamp(&self, byte_position: usize) -> Option<f64> {
-        // Binary search through spans (they're sorted by output_start)
-        self.spans
-            .iter()
-            .find(|span| span.output_start <= byte_position
-                      && byte_position < span.output_end)
-            .map(|span| span.source_timestamp)
-    }
-
-    /// Map a character offset to timestamp (handles UTF-8).
-    pub fn char_offset_to_timestamp(&self, char_offset: usize) -> Option<f64> {
-        let byte_position = self.text
-            .char_indices()
-            .nth(char_offset)
-            .map(|(i, _)| i)?;
-        self.position_to_timestamp(byte_position)
-    }
-
-    /// Get spans within a time range (for chunking).
-    pub fn spans_in_range(&self, start: f64, end: f64) -> Vec<&ContentSpan> {
-        self.spans
-            .iter()
-            .filter(|s| s.source_timestamp >= start && s.source_timestamp < end)
-            .collect()
-    }
-}
-```
-
-#### Chunking Preserves Mappings
-
-```rust
-/// A chunk ready for analysis, with its own mapping.
-#[derive(Debug)]
-pub struct AnalysisChunk {
-    pub id: usize,
-    pub text: String,
-    pub time_range: TimeRange,
-    /// Spans with positions RELATIVE TO THIS CHUNK's text
-    pub spans: Vec<ContentSpan>,
-    pub estimated_tokens: usize,
+/// Marker position types the LLM can return
+pub enum MarkerPosition {
+    /// Relative timestamp within chunk (seconds from chunk start)
+    RelativeTimestamp(f64),
+    /// Search for text and use its timestamp
+    TextSearch(String),
 }
 
 impl AnalysisChunk {
-    /// Map LLM marker response to absolute timestamp.
-    pub fn map_marker_to_timestamp(&self, position: &MarkerPosition) -> Option<f64> {
+    /// Map LLM marker to absolute timestamp in original recording.
+    pub fn resolve_marker_timestamp(&self, position: &MarkerPosition) -> Option<f64> {
         match position {
-            MarkerPosition::CharOffset(offset) => {
-                self.char_offset_to_timestamp(*offset)
-            }
-            MarkerPosition::RelativeTimestamp(ts) => {
-                Some(self.time_range.start + ts)
+            MarkerPosition::RelativeTimestamp(rel_ts) => {
+                Some(self.time_range.start + rel_ts)
             }
             MarkerPosition::TextSearch(needle) => {
-                self.text.find(needle)
-                    .and_then(|pos| self.position_to_timestamp(pos))
+                // Find the segment containing the text
+                self.segments.iter()
+                    .find(|s| s.content.contains(needle))
+                    .map(|s| s.start_time)
             }
         }
+    }
+}
+```
+
+#### Chunking with Segment Preservation
+
+```rust
+/// A chunk ready for parallel analysis.
+#[derive(Debug)]
+pub struct AnalysisChunk {
+    /// Unique chunk identifier
+    pub id: usize,
+
+    /// Time range this chunk covers
+    pub time_range: TimeRange,
+
+    /// Segments within this chunk (preserves timestamp mapping)
+    pub segments: Vec<AnalysisSegment>,
+
+    /// Combined text for LLM (concatenated segment content)
+    pub text: String,
+
+    /// Estimated token count
+    pub estimated_tokens: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct TimeRange {
+    pub start: f64,
+    pub end: f64,
+}
+
+impl AnalysisChunk {
+    /// Create chunk from content segments within a time range.
+    pub fn from_content(
+        id: usize,
+        content: &AnalysisContent,
+        time_range: TimeRange,
+    ) -> Self {
+        let segments: Vec<_> = content.segments_in_range(time_range.start, time_range.end)
+            .into_iter()
+            .cloned()
+            .collect();
+
+        let text = segments.iter()
+            .map(|s| s.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let estimated_tokens = segments.iter()
+            .map(|s| s.estimated_tokens)
+            .sum();
+
+        Self { id, time_range, segments, text, estimated_tokens }
     }
 }
 ```
