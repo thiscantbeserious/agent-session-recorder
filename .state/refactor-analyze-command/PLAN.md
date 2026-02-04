@@ -2,6 +2,22 @@
 
 References: ADR.md, SPEC.md, REQUIREMENTS.md
 
+## TDD Approach
+
+**All implementation follows Test-Driven Development (TDD):**
+
+1. **Test First**: Write failing tests before implementation
+2. **Snapshot Tests**: Use `cargo insta` for before/after transformation verification
+3. **Real Data**: Test fixtures derived from real cast files (Claude, Codex, Gemini)
+4. **Property Tests**: Use `proptest` for invariant validation
+
+See **SPEC.md Section 6** for detailed TDD strategy, snapshot workflow, and test categories.
+
+**Per-stage workflow:**
+```
+Write snapshot/unit tests → Run (fails) → Implement → Run (passes) → Refactor
+```
+
 ## Open Questions
 
 Implementation challenges to solve (architect identifies, implementer resolves):
@@ -18,19 +34,49 @@ Implementation challenges to solve (architect identifies, implementer resolves):
 
 Goal: Implement content extraction using the existing Transform trait pattern.
 
-- [ ] Create `src/analyzer/mod.rs` with module structure
-- [ ] Implement `StripAnsiCodes` transform in `src/analyzer/content.rs`
-- [ ] Implement `StripControlCharacters` transform
-- [ ] Implement `DeduplicateProgressLines` transform
-- [ ] Implement `NormalizeWhitespace` transform
-- [ ] Implement `FilterEmptyEvents` transform
-- [ ] Create `ExtractionConfig` with `build_pipeline()` method
-- [ ] Create `ContentExtractor` that uses the pipeline and produces `AnalysisContent`
-- [ ] Create `AnalysisSegment` struct with start_time, end_time, content, estimated_tokens
-- [ ] Add comprehensive tests for each transform
-- [ ] Test full pipeline with real cast files of various sizes
+**TDD Order** (tests before implementation):
 
-Files: `src/analyzer/mod.rs`, `src/analyzer/content.rs`
+- [ ] Create `src/analyzer/mod.rs` with module structure
+- [ ] Create `tests/fixtures/` with sample events from real cast files (Section 1.7 of SPEC.md)
+- [ ] **StripAnsiCodes**:
+  - [ ] Write snapshot test with real ANSI sequences → fails
+  - [ ] Implement transform → passes
+- [ ] **StripControlCharacters**:
+  - [ ] Write snapshot test → fails
+  - [ ] Implement transform → passes
+- [ ] **StripBoxDrawing**:
+  - [ ] Write unit test for box chars (─│┌┐└┘├┤┬┴┼╭╮╰╯═) → fails
+  - [ ] Implement transform → passes
+- [ ] **StripSpinnerChars**:
+  - [ ] Write unit test for Claude spinners (✻✳✢✶✽) → fails
+  - [ ] Write unit test for Gemini braille (⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏) → fails
+  - [ ] Implement transform → passes
+- [ ] **StripProgressBlocks**:
+  - [ ] Write unit test for block chars (█░▒▓) → fails
+  - [ ] Implement transform → passes
+- [ ] **DeduplicateProgressLines**:
+  - [ ] Write snapshot test with \r-based progress → fails
+  - [ ] Implement transform (see ADR algorithm) → passes
+- [ ] **NormalizeWhitespace**:
+  - [ ] Write unit tests → fails
+  - [ ] Implement transform → passes
+- [ ] **FilterEmptyEvents**:
+  - [ ] Write unit tests → fails
+  - [ ] Implement transform → passes
+- [ ] **TokenEstimator**:
+  - [ ] Write unit test for chars/4 estimation → fails
+  - [ ] Implement `TokenEstimator` struct → passes
+- [ ] **StatsCollector**:
+  - [ ] Write unit test for stats accumulation → fails
+  - [ ] Implement `StatsCollector` → passes
+- [ ] **Full Pipeline**:
+  - [ ] Write integration snapshot test → fails
+  - [ ] Create `ExtractionConfig` with `build_pipeline()` method
+  - [ ] Create `ContentExtractor` with segment creation → passes
+- [ ] Create `AnalysisSegment` struct with start_time, end_time, content, estimated_tokens
+- [ ] Verify compression ratios match SPEC.md expectations (55-89% reduction)
+
+Files: `src/analyzer/mod.rs`, `src/analyzer/content.rs`, `tests/fixtures/`
 
 References:
 - Prior art: `src/asciicast/transform.rs` (Transform trait, TransformChain)
@@ -46,15 +92,27 @@ Considerations:
 
 Goal: Implement dynamic chunking based on agent token limits.
 
-- [ ] Create `TokenBudget` struct with agent-specific limits (Claude 160K, Codex 150K, Gemini 800K)
-- [ ] Implement token estimation (chars/4 heuristic with safety margin)
-- [ ] Implement `ChunkCalculator` that divides `AnalysisContent` into chunks
+**TDD Order**:
+
+- [ ] **TokenBudget**:
+  - [ ] Write unit tests for budget calculation → fails
+  - [ ] Create `TokenBudget` struct with agent-specific limits → passes
+- [ ] **Token Estimation**:
+  - [ ] Write property test (chars/4 ≈ tokens) → fails
+  - [ ] Implement estimation with safety margin → passes
+- [ ] **Chunk Calculation**:
+  - [ ] Write test: single chunk when content < budget → fails
+  - [ ] Write test: multi-chunk when content > budget → fails
+  - [ ] Write test: verify chunks match SPEC.md scaling table → fails
+  - [ ] Implement `ChunkCalculator` → passes
 - [ ] Create `AnalysisChunk` struct with id, time_range, segments, text, estimated_tokens
 - [ ] Create `TimeRange` struct for chunk boundaries
-- [ ] Implement `AnalysisChunk::from_content()` to create chunks from segments
-- [ ] Implement `resolve_marker_timestamp()` for mapping LLM responses back to absolute time
-- [ ] Add chunk overlap logic for context continuity (configurable overlap percentage)
-- [ ] Test chunk sizing with various content sizes
+- [ ] **Overlap Logic**:
+  - [ ] Write test for overlap percentage → fails
+  - [ ] Implement `AnalysisChunk::from_content()` with overlap → passes
+- [ ] **Timestamp Resolution**:
+  - [ ] Write property test: absolute timestamp always in valid range → fails
+  - [ ] Implement `resolve_marker_timestamp()` → passes
 
 Files: `src/analyzer/chunk.rs`
 
@@ -68,22 +126,28 @@ Considerations:
 
 Goal: Create extensible agent backend trait with implementations (Strategy pattern).
 
+**TDD Order**:
+
 - [ ] Create `src/analyzer/backend/mod.rs` with `AgentBackend` trait and `AgentType` enum
-- [ ] Implement `ClaudeBackend` in `src/analyzer/backend/claude.rs`
-  - `--print` mode, `--output-format json`, `--json-schema`
-  - `--dangerously-skip-permissions` flag handling
-- [ ] Implement `CodexBackend` in `src/analyzer/backend/codex.rs`
-  - `exec` mode, text output (needs JSON extraction from response)
-  - `--dangerously-bypass-approvals-and-sandbox` flag handling
-- [ ] Implement `GeminiBackend` in `src/analyzer/backend/gemini.rs`
-  - Positional prompt, `--output-format json`
-  - `--yolo` flag handling
-- [ ] Define analysis prompt template with engineering-focused categories
-- [ ] Define JSON schema for marker responses (timestamp, label, category)
+- [ ] **JSON Parsing** (test with mock responses):
+  - [ ] Write tests for valid JSON parsing → fails
+  - [ ] Write tests for Codex text extraction (SPEC.md Section 2.4) → fails
+  - [ ] Write tests for malformed JSON handling → fails
+  - [ ] Implement `extract_json()` and Rust types → passes
 - [ ] Create `RawMarker` struct for parsing agent responses
-- [ ] Create `MarkerPosition` enum (RelativeTimestamp, TextSearch)
-- [ ] Add `is_available()` check for each backend
-- [ ] Test each backend with mock responses
+- [ ] **ClaudeBackend**:
+  - [ ] Write mock response test → fails
+  - [ ] Implement in `src/analyzer/backend/claude.rs` → passes
+- [ ] **CodexBackend**:
+  - [ ] Write mock response test (text with embedded JSON) → fails
+  - [ ] Implement in `src/analyzer/backend/codex.rs` → passes
+- [ ] **GeminiBackend**:
+  - [ ] Write mock response test → fails
+  - [ ] Implement in `src/analyzer/backend/gemini.rs` → passes
+- [ ] **Availability Check**:
+  - [ ] Write tests for `is_available()` → fails
+  - [ ] Implement per-backend availability → passes
+- [ ] Define analysis prompt template with engineering-focused categories
 
 Files: `src/analyzer/backend/mod.rs`, `src/analyzer/backend/claude.rs`,
        `src/analyzer/backend/codex.rs`, `src/analyzer/backend/gemini.rs`

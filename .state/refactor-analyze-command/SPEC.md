@@ -4,76 +4,224 @@ This document contains implementation specifications derived from real-world ana
 
 ## 1. Noise Patterns (From Real Cast Files)
 
-Analysis of 73MB+ Claude sessions and Codex sessions reveals:
+Analysis performed on:
+- Claude: 73MB session (`20260114-152743-6732.cast`)
+- Codex: 4.3MB session (`codex-pattern-analysis.cast`)
+- Gemini: 176MB session (`gemini-pattern-analysis.cast`)
 
-### 1.1 ANSI Escape Sequences
+### 1.1 ANSI Escape Sequences (Common to All)
 
-| Pattern | Description | Frequency in 73MB Claude file |
-|---------|-------------|-------------------------------|
-| `\x1b[?2026h/l` | Synchronized output mode | ~20K occurrences |
-| `\x1b[2K` | Erase entire line | High |
-| `\x1b[1A` | Cursor up one line | High |
-| `\x1b[G` | Cursor to column 1 | High |
-| `\x1b[38;5;NNNm` | 256-color foreground | High |
-| `\x1b[48;5;NNNm` | 256-color background | High |
-| `\x1b[2m` | Dim text | High |
-| `\x1b[22m` | Normal intensity | High |
-| `\x1b[7m` | Reverse video | Medium |
-| `\x1b[27m` | Reverse video off | Medium |
-| `\x1b[?25h/l` | Show/hide cursor | Low |
-| `\x1b[?2004h/l` | Bracketed paste mode | Low |
-| `\x1b[?1004h/l` | Focus tracking | Low |
-| `\x1b[J` | Erase display | Medium |
-| `\x1b[H` | Cursor home | Medium |
-| `\x1b[Nr` | Set scroll region | Low |
-| `\x1bM` | Reverse index | Low |
+| Pattern | Description | Notes |
+|---------|-------------|-------|
+| `\x1b[?2026h/l` | Synchronized output mode | All agents use heavily |
+| `\x1b[2K` | Erase entire line | High frequency |
+| `\x1b[1A` | Cursor up one line | High frequency |
+| `\x1b[G` | Cursor to column 1 | High frequency |
+| `\x1b[38;5;NNNm` | 256-color foreground | Gemini uses extensively |
+| `\x1b[48;5;NNNm` | 256-color background | Codex: `234` (dark bg) |
+| `\x1b[2m` / `\x1b[22m` | Dim / Normal intensity | All agents |
+| `\x1b[?25h/l` | Show/hide cursor | All agents |
+| `\x1b[J` | Erase display | All agents |
 
-### 1.2 Claude-Specific Indicators
+### 1.2 Claude-Specific Patterns
 
-| Character | Meaning | Occurrences |
-|-----------|---------|-------------|
-| `⎿` | Command result/continuation | 17,703 |
-| `⏺` | Activity indicator (tool call) | 17,533 |
-| `⏸` | Plan mode indicator | 5,148 |
-| `▖▗▘▝` | Claude logo animation blocks | 676 each |
-| `❯` | Prompt indicator | High |
+**Indicators (from 73MB session):**
 
-**Claude "Cerebrating" Spinner Characters:**
+| Char | Unicode | Count | Meaning |
+|------|---------|-------|---------|
+| `─` | U+2500 | 3,381,205 | Horizontal line |
+| `│` | U+2502 | 121,244 | Vertical line |
+| `╌` | U+254C | 69,680 | Dashed line |
+| `→` | U+2192 | 27,449 | Arrow |
+| `·` | U+00B7 | 27,630 | Middle dot |
+| `┼` | U+253C | 25,675 | Cross |
+| `⎿` | U+23BF | 17,703 | Result continuation |
+| `⏺` | U+23FA | 17,533 | Activity indicator (tool call) |
+| `❯` | U+276F | 15,030 | Prompt indicator |
+| `…` | U+2026 | 9,604 | Ellipsis |
+| `├` `┤` | U+251C/2524 | 9,125 | T-junctions |
+| `┬` `┴` | U+252C/2534 | 6,755 | T-junctions |
+| `⏵` | U+23F5 | 5,822 | Play indicator |
+| `⏸` | U+23F8 | 5,148 | Plan mode indicator |
+| `↓` | U+2193 | 3,240 | Down arrow |
+| `┌┐└┘` | U+250C etc | 2,365 | Corners |
+| `╭╮╰╯` | U+256D etc | 955 | Rounded corners |
+
+**Claude "Cerebrating" Spinner (cycles with color-wave):**
+
+| Char | Unicode | Count |
+|------|---------|-------|
+| `✻` | U+273B | 1,772 |
+| `✳` | U+2733 | 1,575 |
+| `✢` | U+2722 | 1,436 |
+| `✶` | U+2736 | 1,428 |
+| `✽` | U+273D | 1,067 |
+
+**Logo Animation Blocks:**
+
+| Char | Unicode | Count |
+|------|---------|-------|
+| `▖▗▘▝` | U+2596-259D | 676 each |
+
+### 1.3 Codex-Specific Patterns
+
+**Indicators (from 4.3MB session):**
+
+| Char | Unicode | Count | Meaning |
+|------|---------|-------|---------|
+| `─` | U+2500 | 1,060 | Horizontal line |
+| `·` | U+00B7 | 719 | Middle dot |
+| `•` | U+2022 | 544 | Bullet point |
+| `›` | U+203A | 286 | Prompt/selection |
+| `◦` | U+25E6 | 256 | Open bullet |
+| `━` | U+2501 | 80 | Heavy horizontal |
+| `│` | U+2502 | 76 | Vertical line |
+| `└` | U+2514 | 49 | Corner |
+| `…` | U+2026 | 39 | Ellipsis |
+| `✔` | U+2714 | 15 | Checkmark |
+| `⋮` | U+22EE | 4 | Vertical ellipsis |
+| `╭╮╰╯` | U+256D etc | 2 | Rounded corners |
+| `⚠` | U+26A0 | 2 | Warning |
+
+### 1.4 Gemini-Specific Patterns
+
+**Indicators (from 176MB session):**
+
+| Char | Unicode | Count | Meaning |
+|------|---------|-------|---------|
+| `─` | U+2500 | 12,722,194 | Horizontal line (MASSIVE) |
+| `█` | U+2588 | 779,841 | Full block (progress bars) |
+| `│` | U+2502 | 688,101 | Vertical line |
+| `░` | U+2591 | 390,874 | Light shade (progress) |
+| `✦` | U+2726 | 73,083 | Four-pointed star |
+| `╭╰` | U+256D/2570 | 66,103 | Rounded corners |
+| `╮╯` | U+256E/256F | 65,965 | Rounded corners |
+| `═` | U+2550 | 62,419 | Double horizontal |
+| `✓` | U+2713 | 61,394 | Check mark |
+| `…` | U+2026 | 24,856 | Ellipsis |
+| `ℹ` | U+2139 | 3,191 | Info symbol |
+| `☐` | U+2610 | 2,973 | Unchecked box |
+| `»` | U+00BB | 2,925 | Double angle quote |
+| `▼` | U+25BC | 632 | Down triangle |
+| `→` | U+2192 | 406 | Arrow |
+| `●` | U+25CF | 334 | Filled circle |
+| `▲` | U+25B2 | 317 | Up triangle |
+| `✕` | U+2715 | 164 | X mark |
+| `┌┐└┘` | U+250C etc | 136 | Sharp corners |
+
+**Gemini Braille Spinner (standard Braille pattern):**
+
+| Char | Unicode | Count |
+|------|---------|-------|
+| `⠋` | U+280B | 588 |
+| `⠙` | U+2819 | 574 |
+| `⠹` | U+2839 | 575 |
+| `⠸` | U+2838 | 574 |
+| `⠼` | U+283C | 600 |
+| `⠴` | U+2834 | 581 |
+| `⠦` | U+2826 | 560 |
+| `⠧` | U+2827 | 563 |
+| `⠇` | U+2807 | 592 |
+| `⠏` | U+280F | 613 |
+
+### 1.5 Summary: What to Strip
+
+**All Agents:**
+- ANSI escape sequences (colors, cursor movement, erase)
+- Box drawing characters (`─│┌┐└┘├┤┬┴┼╭╮╰╯═`)
+- Block characters (`█░▒▓`)
+
+**Claude-specific:**
+- Cerebrating spinner: `· ✢ ✳ ✶ ✻ ✽`
+- Logo blocks: `▖▗▘▝`
+- Indicators: `⏺ ⏸ ⏵ ⎿`
+
+**Codex-specific:**
+- Indicators: `› • ◦ ⋮`
+
+**Gemini-specific:**
+- Braille spinner: `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`
+- Progress blocks: `█░`
+- Indicators: `✦ ✓ ✕ ● ▼ ▲ ℹ ☐`
+
+### 1.6 Progress/Status Patterns
+
+These lines repeat heavily and should be deduplicated:
+
 ```
-· ✢ ✳ ✶ ✻ ✽
-```
-These cycle with color-wave animation on the word "Cerebrating..."
-
-### 1.3 Codex-Specific Indicators
-
-| Character | Meaning |
-|-----------|---------|
-| `›` | Prompt/selection indicator |
-| `■` | Error/interrupt indicator |
-| `•` | Bullet/section marker |
-
-### 1.4 Box Drawing Characters
-
-```
-Corners: ╭ ╮ ╰ ╯
-Lines:   ─ │ ┌ ┐ └ ┘
-Joins:   ├ ┤ ┬ ┴ ┼
-Tables:  ┌───┬───┐
-         │   │   │
-         └───┴───┘
+Claude: "· Cerebrating..." → "✢ Cerebrating..." → "✳ Cerebrating..." (repeats)
+Gemini: "⠋ Waiting..." → "⠙ Waiting..." → "⠹ Waiting..." (Braille cycle)
+Codex: Menu selection cycling with › indicator
 ```
 
-### 1.5 Progress/Status Patterns
+### 1.7 Before/After Examples (Real Data)
 
-These entire lines should be deduplicated (keep final state):
+These examples demonstrate the transformation from raw cast events to clean content.
 
+#### Codex Example
+
+**Raw Event (631 bytes):**
 ```
-Pattern: \r followed by repeated content
-Example: \r⠋ Building... \r⠙ Building... \r✓ Done
-
-Claude thinking animation:
-  "· Cerebrating..." → "✢ Cerebrating..." → "✳ Cerebrating..." (repeats)
+\x1b[?2026h\x1b[1;61H\x1b[0m\x1b[49m\x1b[K\x1b[?25l\x1b[1;61H\x1b[48;5;234m\x1b[38;5;7m
+\x1b[2m\x1b[38;5;8m \x1b[22m› 1. Allow Codex to work in this folder without asking for approval
+\x1b[2m\x1b[38;5;8m \x1b[22m  2. Require approval of edits and commands
+\x1b[?25h\x1b[?2026l
 ```
+
+**Clean Output (110 bytes):**
+```
+› 1. Allow Codex to work in this folder without asking for approval  2. Require approval of edits and commands
+```
+
+**Compression: 82% reduction**
+
+#### Gemini Example
+
+**Raw Event (290 bytes):**
+```
+\x1b[2K\x1b[1A\x1b[2K\x1b[1A\x1b[2K\x1b[G\x1b[38;5;35m?\x1b[39m \x1b[1mEnter your
+message\x1b[22m\x1b[38;5;239m (Ctrl+C to quit)\x1b[39m\x1b[57G\x1b[38;5;239m\x1b[39m
+\x1b[G\x1b[2K\x1b[1A\x1b[2K\x1b[G\x1b[38;5;6m>\x1b[39m can you understand the
+current project? i want to have a detailed session to\n  ahve all kind of weird
+output that you can produce
+```
+
+**Clean Output (131 bytes):**
+```
+> can you understand the current project? i want to have a detailed session to
+  ahve all kind of weird output that you can produce
+```
+
+**Compression: 55% reduction**
+
+#### Claude Example
+
+**Raw Event (847 bytes):**
+```
+\x1b[?2026h\x1b[16;3H\x1b[0m\x1b[38;5;174m\x1b[1m  ╭─\x1b[0m\x1b[38;5;174m───────
+\x1b[48;5;174m\x1b[38;5;16m API Request \x1b[0m\x1b[38;5;174m───────────────────────
+\x1b[1m─╮\x1b[0m\x1b[17;3H\x1b[38;5;174m\x1b[1m  │\x1b[0m\x1b[38;5;174m
+This tool call will make an API request   \x1b[1m │\x1b[0m\x1b[18;3H\x1b[38;5;174m
+\x1b[1m  │\x1b[0m\x1b[38;5;174m  POST https://api.anthropic.com/v1/messages
+\x1b[1m │\x1b[0m\x1b[19;3H\x1b[38;5;174m\x1b[1m  ╰─\x1b[0m\x1b[38;5;174m──────────
+───────────────────────────────────\x1b[1m─╯\x1b[0m
+```
+
+**Clean Output (89 bytes):**
+```
+API Request
+This tool call will make an API request
+POST https://api.anthropic.com/v1/messages
+```
+
+**Compression: 89% reduction**
+
+#### Key Observations
+
+1. **ANSI sequences dominate file size**: Raw events are 55-89% escape sequences
+2. **Semantic content is small**: The actual text is a fraction of the raw data
+3. **Box drawing adds noise**: Claude's UI elements (╭╮╰╯│─) add visual structure but no semantic value
+4. **Timestamps preserved**: The transformation keeps timestamp associations intact for marker positioning
 
 ---
 
@@ -618,3 +766,265 @@ pub fn deduplicate_markers(
     deduplicated
 }
 ```
+
+---
+
+## 6. Test-Driven Development (TDD) Approach
+
+### 6.1 Philosophy
+
+All transforms and extraction logic MUST be developed test-first:
+
+1. **Write test first** → Define expected behavior
+2. **Run test** → Verify it fails (red)
+3. **Implement** → Minimal code to pass
+4. **Refactor** → Clean up while tests stay green
+5. **Snapshot** → Capture complex outputs for regression testing
+
+### 6.2 Snapshot Testing Strategy
+
+Snapshot tests capture the "before/after" of transformations for regression detection.
+
+```rust
+// In tests/snapshots/transform_tests.rs
+
+use insta::assert_snapshot;
+
+#[test]
+fn snapshot_claude_ansi_stripping() {
+    let raw = include_str!("fixtures/claude_raw_event.txt");
+    let clean = strip_ansi_codes(raw);
+    assert_snapshot!("claude_ansi_stripped", clean);
+}
+
+#[test]
+fn snapshot_gemini_progress_dedupe() {
+    let events = load_test_events("fixtures/gemini_progress_sequence.json");
+    let mut deduped = events.clone();
+    DeduplicateProgressLines.transform(&mut deduped);
+    assert_snapshot!("gemini_progress_deduped", format_events(&deduped));
+}
+
+#[test]
+fn snapshot_full_pipeline_codex() {
+    let cast = load_cast_file("fixtures/codex_sample.cast");
+    let config = ExtractionConfig::default();
+    let content = ContentExtractor::new(config).extract(&cast);
+    assert_snapshot!("codex_full_pipeline", content.text);
+}
+```
+
+### 6.3 Test Fixtures
+
+Create minimal but representative test fixtures from real files:
+
+```
+tests/
+├── fixtures/
+│   ├── claude/
+│   │   ├── raw_spinner_event.txt       # Single spinner animation
+│   │   ├── raw_box_drawing.txt         # Box-drawn dialog
+│   │   ├── sample_session_100kb.cast   # Small representative sample
+│   │   └── expected_clean_output.txt   # Expected transformation result
+│   ├── codex/
+│   │   ├── raw_menu_selection.txt      # Menu with indicators
+│   │   ├── raw_progress_output.txt     # Build progress
+│   │   └── sample_session_50kb.cast
+│   └── gemini/
+│       ├── raw_braille_spinner.txt     # Braille animation sequence
+│       ├── raw_progress_bar.txt        # Progress bar sequence
+│       └── sample_session_100kb.cast
+├── snapshots/
+│   └── transform_tests/                # insta snapshot files
+│       ├── claude_ansi_stripped.snap
+│       ├── gemini_progress_deduped.snap
+│       └── codex_full_pipeline.snap
+```
+
+### 6.4 Test Categories
+
+#### Unit Tests (per transform)
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Each transform has dedicated unit tests
+
+    mod strip_ansi {
+        #[test]
+        fn removes_color_codes() { ... }
+
+        #[test]
+        fn removes_cursor_movement() { ... }
+
+        #[test]
+        fn preserves_plain_text() { ... }
+
+        #[test]
+        fn handles_malformed_sequences() { ... }
+
+        #[test]
+        fn handles_utf8_content() { ... }
+    }
+
+    mod deduplicate_progress {
+        #[test]
+        fn collapses_spinner_frames() { ... }
+
+        #[test]
+        fn keeps_non_progress_lines() { ... }
+
+        #[test]
+        fn handles_empty_input() { ... }
+    }
+}
+```
+
+#### Integration Tests (full pipeline)
+
+```rust
+// tests/integration/content_extraction.rs
+
+#[test]
+fn extracts_content_from_claude_fixture() {
+    // Use fixture extracted from real session, NOT the actual 73MB file
+    let cast = load_fixture("claude/sample_session_100kb.cast");
+    let extractor = ContentExtractor::default();
+
+    let content = extractor.extract(&cast);
+
+    // Verify significant size reduction
+    assert!(content.text.len() < cast.raw_size() / 5);
+
+    // Verify no ANSI codes remain
+    assert!(!content.text.contains("\x1b["));
+
+    // Verify timestamps preserved
+    assert!(content.segments.iter().all(|s| s.end_time >= s.start_time));
+}
+```
+
+#### Property-Based Tests
+
+```rust
+use proptest::prelude::*;
+
+proptest! {
+    #[test]
+    fn strip_ansi_never_adds_bytes(input in ".*") {
+        let result = strip_ansi_codes(&input);
+        prop_assert!(result.len() <= input.len());
+    }
+
+    #[test]
+    fn strip_ansi_is_idempotent(input in ".*") {
+        let once = strip_ansi_codes(&input);
+        let twice = strip_ansi_codes(&once);
+        prop_assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn timestamp_resolution_in_bounds(
+        chunk_start in 0.0f64..1000.0,
+        chunk_end in 0.0f64..1000.0,
+        relative in 0.0f64..100.0,
+    ) {
+        let chunk_end = chunk_start + chunk_end.abs();
+        let chunk = AnalysisChunk {
+            time_range: TimeRange { start: chunk_start, end: chunk_end },
+            ..Default::default()
+        };
+
+        let absolute = chunk.resolve_timestamp(relative);
+
+        prop_assert!(absolute >= chunk_start);
+        prop_assert!(absolute <= chunk_end + relative);
+    }
+}
+```
+
+### 6.5 Test-First Implementation Order
+
+For each stage, write tests BEFORE implementation:
+
+#### Stage 1: Content Extraction
+
+```
+1. Write snapshot test for StripAnsiCodes → Run (fails) → Implement → Passes
+2. Write unit tests for edge cases → Run (fails) → Implement → Passes
+3. Write snapshot test for StripControlCharacters → ...
+4. Write snapshot test for DeduplicateProgressLines → ...
+5. Write integration test for full pipeline → ...
+```
+
+#### Stage 2: Chunking
+
+```
+1. Write test for single-chunk case → Implement
+2. Write test for multi-chunk splitting → Implement
+3. Write test for overlap calculation → Implement
+4. Write property test for chunk boundaries → Implement
+```
+
+### 6.6 Snapshot Review Workflow
+
+Using `cargo insta`:
+
+```bash
+# Run tests, snapshots that differ are marked as pending
+cargo insta test
+
+# Review pending snapshots
+cargo insta review
+
+# Accept or reject changes
+# - Accept: New snapshot becomes the expected value
+# - Reject: Test fails until code is fixed
+```
+
+### 6.7 CI Integration
+
+```yaml
+# In .github/workflows/ci.yml
+
+test:
+  steps:
+    - name: Run tests
+      run: cargo test
+
+    - name: Check snapshots
+      run: cargo insta test --check
+      # Fails CI if snapshots don't match
+```
+
+### 6.8 Coverage Goals
+
+| Component | Unit Test Coverage | Integration Coverage |
+|-----------|-------------------|---------------------|
+| Transforms | 90%+ | Via full pipeline |
+| Chunking | 80%+ | Via large file tests |
+| JSON parsing | 95%+ | Via mock responses |
+| Backends | Mock-based | Manual (real CLIs) |
+| Worker scaling | 70%+ | Via parallel tests |
+
+### 6.9 Test Data Management
+
+**DO:**
+- Create small, focused fixtures extracted from real data
+- Document what each fixture tests
+- Keep fixtures in version control (< 100KB each)
+- Update snapshots deliberately
+
+**DON'T:**
+- **NEVER reference real user cast files in tests** (e.g., `~/.local/share/asciinema/...`)
+- Commit full 100MB cast files as fixtures
+- Auto-accept snapshot changes without review
+- Skip tests for "obvious" code
+
+**Fixture Creation Process:**
+1. Analyze real cast file to identify representative patterns
+2. Extract minimal events that demonstrate the pattern (10-100 events)
+3. Save as `tests/fixtures/<agent>/<pattern_name>.cast` or `.txt`
+4. Document in fixture what real file it was derived from (as comment only)

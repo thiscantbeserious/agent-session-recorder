@@ -94,7 +94,135 @@ The current implementation:
 | Codex | 192K-400K tokens | ~150K tokens |
 | Gemini | 1M-2M tokens | ~800K tokens |
 
-Token estimation: ~4 characters per token (rough heuristic).
+### Token Estimation Strategy
+
+#### Options Considered
+
+##### Option A: tiktoken-rs (Accurate, External Dependency)
+
+```rust
+// Using tiktoken-rs crate
+use tiktoken_rs::cl100k_base;
+
+pub fn count_tokens_accurate(text: &str) -> usize {
+    let bpe = cl100k_base().unwrap();
+    bpe.encode_with_special_tokens(text).len()
+}
+```
+
+- **Pros**: Exact token count matching OpenAI tokenizers, battle-tested
+- **Cons**:
+  - Additional dependency (~5MB)
+  - Only accurate for OpenAI models (Claude/Gemini may differ)
+  - Slower than heuristic
+
+See: [tiktoken-rs on crates.io](https://crates.io/crates/tiktoken-rs)
+
+##### Option B: rs-bpe (Fastest, External Dependency)
+
+```rust
+// Using rs-bpe crate
+use bpe::Tokenizer;
+
+pub fn count_tokens_fast(text: &str) -> usize {
+    let tokenizer = Tokenizer::cl100k();
+    tokenizer.count(text)
+}
+```
+
+- **Pros**: 15x faster than tiktoken, constant-time counting for substrings
+- **Cons**: Newer library, additional dependency
+
+See: [rs-bpe performance analysis](https://dev.to/gweidart/rs-bpe-outperforms-tiktoken-tokenizers-2h3j)
+
+##### Option C: Character Heuristic (Simple, No Dependency) [SELECTED]
+
+```rust
+/// Estimate token count from text content.
+/// Uses chars/4 heuristic - simple, fast, no dependencies.
+pub struct TokenEstimator {
+    /// Base ratio: characters per token (default: 4.0)
+    chars_per_token: f64,
+    /// Safety margin to avoid exceeding limits (default: 0.85 = 15% buffer)
+    safety_factor: f64,
+}
+
+impl TokenEstimator {
+    pub fn estimate(&self, text: &str) -> usize {
+        let char_count = text.chars().count();
+        let raw_estimate = (char_count as f64 / self.chars_per_token).ceil() as usize;
+        (raw_estimate as f64 * self.safety_factor) as usize
+    }
+
+    /// Estimate with whitespace bonus (code has more tokens per char)
+    pub fn estimate_code(&self, text: &str) -> usize {
+        let char_count = text.chars().count();
+        let whitespace_count = text.chars().filter(|c| c.is_whitespace()).count();
+        let whitespace_ratio = whitespace_count as f64 / char_count.max(1) as f64;
+
+        // Code typically has 3.0-3.5 chars per token due to short identifiers
+        let adjusted_ratio = if whitespace_ratio > 0.15 {
+            3.5 // Code-like content
+        } else {
+            self.chars_per_token // Prose-like content
+        };
+
+        let raw_estimate = (char_count as f64 / adjusted_ratio).ceil() as usize;
+        (raw_estimate as f64 * self.safety_factor) as usize
+    }
+}
+
+impl Default for TokenEstimator {
+    fn default() -> Self {
+        Self {
+            chars_per_token: 4.0,
+            safety_factor: 0.85, // 15% safety buffer (conservative)
+        }
+    }
+}
+```
+
+**Decision**: Option C (character heuristic) selected because:
+1. **No external dependency** - keeps the tool lightweight
+2. **Agent-agnostic** - tiktoken is OpenAI-specific, but we support Claude/Codex/Gemini
+3. **15% safety margin** - compensates for estimation errors
+4. **Good enough** - we're chunking, not billing. Slight overestimate is fine.
+5. **Fast** - O(n) character count vs tokenizer regex parsing
+
+**When estimation happens (AFTER cleanup):**
+
+```
+Raw Cast File (100MB)
+        │
+        ▼
+┌───────────────────┐
+│ Transform Pipeline │  ← ANSI stripped, spinners removed, progress deduped
+└───────────────────┘
+        │
+        ▼
+  Cleaned Events (~15MB)
+        │
+        ▼
+┌───────────────────┐
+│  Segment Creation  │  ← Token estimation happens HERE on clean content
+└───────────────────┘
+        │
+        ▼
+  AnalysisContent with accurate token counts
+        │
+        ▼
+┌───────────────────┐
+│  Chunk Calculator  │  ← Uses token counts to split into chunks
+└───────────────────┘
+```
+
+**Critical**: Token estimation MUST happen after cleanup. Raw content is 55-89% noise (ANSI codes, spinners, progress bars). Estimating on raw content would massively overcount tokens.
+
+1. Transform pipeline runs → cleans events in-place
+2. Segment creation → estimates tokens on `segment.content` (already clean)
+3. Chunk calculation → sums segment tokens to determine boundaries
+
+**Future consideration**: If estimation proves too inaccurate, upgrade to tiktoken-rs or rs-bpe.
 
 ### Research: Agent CLI Capabilities
 
@@ -105,6 +233,76 @@ Token estimation: ~4 characters per token (rough heuristic).
 | Structured schema | `--json-schema <schema>` | N/A | N/A |
 | Permission bypass | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--yolo` |
 | Stdin input | Yes (pipe) | Yes (pipe) | Yes (pipe) |
+
+> **See SPEC.md Section 4** for complete CLI invocation examples with all flags.
+
+### AgentBackend Trait Definition
+
+```rust
+use std::time::Duration;
+
+/// Result type for agent backend operations
+pub type BackendResult<T> = Result<T, BackendError>;
+
+/// Trait for AI agent backends (Strategy pattern)
+pub trait AgentBackend: Send + Sync {
+    /// Human-readable name for logging
+    fn name(&self) -> &'static str;
+
+    /// Check if the agent CLI is available on the system
+    fn is_available(&self) -> bool;
+
+    /// Invoke the agent with a prompt and return raw response
+    fn invoke(&self, prompt: &str, timeout: Duration) -> BackendResult<String>;
+
+    /// Parse raw response into markers (handles JSON extraction)
+    fn parse_response(&self, response: &str) -> BackendResult<Vec<RawMarker>>;
+
+    /// Get the token budget for this agent
+    fn token_budget(&self) -> TokenBudget;
+}
+
+/// Agent types supported
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentType {
+    Claude,
+    Codex,
+    Gemini,
+}
+
+impl AgentType {
+    /// Create the appropriate backend for this agent type
+    pub fn create_backend(&self) -> Box<dyn AgentBackend> {
+        match self {
+            AgentType::Claude => Box::new(ClaudeBackend::new()),
+            AgentType::Codex => Box::new(CodexBackend::new()),
+            AgentType::Gemini => Box::new(GeminiBackend::new()),
+        }
+    }
+}
+
+/// Errors from agent backends
+#[derive(Debug, thiserror::Error)]
+pub enum BackendError {
+    #[error("Agent CLI not found: {0}")]
+    NotAvailable(String),
+
+    #[error("Agent timed out after {0:?}")]
+    Timeout(Duration),
+
+    #[error("Agent returned non-zero exit code: {code}")]
+    ExitCode { code: i32, stderr: String },
+
+    #[error("Failed to parse response as JSON: {0}")]
+    JsonParse(#[from] serde_json::Error),
+
+    #[error("Failed to extract JSON from response")]
+    JsonExtraction { response: String },
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+}
+```
 
 ---
 
@@ -124,19 +322,49 @@ pub fn build_extraction_pipeline() -> TransformChain {
     TransformChain::new()
         .with(StripAnsiCodes::new())           // Remove escape sequences
         .with(StripControlCharacters::new())   // Remove BEL, BS, NUL, etc.
+        .with(StripBoxDrawing::new())          // Remove ─│┌┐└┘ etc.
+        .with(StripSpinnerChars::new())        // Remove ⠋⠙⠹ etc.
+        .with(StripProgressBlocks::new())      // Remove █░ etc.
         .with(DeduplicateProgressLines::new()) // Keep only final state of \r lines
         .with(NormalizeWhitespace::new())      // Collapse excessive newlines
-        .with(StripBinaryGarbage::new())       // Remove non-UTF8 data
+        .with(FilterEmptyEvents)               // Remove events with no content
 }
 
-/// Each transform implements the existing Transform trait
-struct StripAnsiCodes { /* state for tracking partial sequences */ }
+/// Each transform implements the existing Transform trait.
+/// Transforms MUST preserve non-output events (markers, input).
+
+struct StripAnsiCodes {
+    // Regex compiled once, reused for all events
+    ansi_regex: regex::Regex,
+}
+
+impl StripAnsiCodes {
+    pub fn new() -> Self {
+        // Matches all ANSI escape sequences:
+        // - CSI sequences: \x1b[ ... (params) ... (final byte)
+        // - OSC sequences: \x1b] ... \x07 or \x1b\\
+        // - Simple escapes: \x1b followed by single char
+        let pattern = concat!(
+            r"\x1b\[[0-9;?]*[A-Za-z]",      // CSI sequences (most common)
+            r"|\x1b\][^\x07]*(?:\x07|\x1b\\)", // OSC sequences (hyperlinks, titles)
+            r"|\x1b[PX^_][^\x1b]*\x1b\\",   // DCS, SOS, PM, APC sequences
+            r"|\x1b[@-Z\\-_]",              // Simple escape sequences
+            r"|\x1b\([0-9A-Za-z]",          // Character set selection
+        );
+        Self {
+            ansi_regex: regex::Regex::new(pattern).unwrap(),
+        }
+    }
+}
 
 impl Transform for StripAnsiCodes {
     fn transform(&mut self, events: &mut Vec<Event>) {
         for event in events.iter_mut() {
-            if let Some(data) = event.data_mut() {
-                *data = strip_ansi_from_string(data);
+            // Only modify output events, preserve markers/input
+            if event.is_output() {
+                if let Some(data) = event.data_mut() {
+                    *data = self.ansi_regex.replace_all(data, "").into_owned();
+                }
             }
         }
     }
@@ -147,7 +375,9 @@ impl Transform for StripAnsiCodes {
 
 #### What is "Useless" for LLMs?
 
-It's not just ANSI codes. Terminal output contains many categories of noise:
+It's not just ANSI codes. Terminal output contains many categories of noise.
+
+> **See SPEC.md Section 1** for comprehensive noise patterns discovered from real cast file analysis (Claude 73MB, Codex 4.3MB, Gemini 176MB sessions).
 
 | Category | Examples | Why Useless |
 |----------|----------|-------------|
@@ -158,6 +388,8 @@ It's not just ANSI codes. Terminal output contains many categories of noise:
 | **Box Drawing** | `┌─┐│└─┘├┤┬┴┼` | Decorative framing |
 | **Excessive Whitespace** | `\n\n\n\n\n\n` | Adds nothing |
 | **Binary Garbage** | Non-UTF8, image data, base64 blobs | Corrupted or embedded data |
+
+> **See SPEC.md Section 1.7** for before/after examples showing 55-89% compression ratios.
 
 #### The Timestamp Preservation Problem
 
@@ -248,7 +480,7 @@ impl AnalysisContent {
 }
 
 /// Extraction statistics for transparency
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ExtractionStats {
     pub original_bytes: usize,
     pub extracted_bytes: usize,
@@ -258,6 +490,36 @@ pub struct ExtractionStats {
     pub events_processed: usize,
     pub events_retained: usize,
 }
+
+/// Stats are collected via a shared accumulator passed to transforms
+pub struct StatsCollector {
+    stats: std::cell::RefCell<ExtractionStats>,
+}
+
+impl StatsCollector {
+    pub fn new() -> Self {
+        Self { stats: RefCell::new(ExtractionStats::default()) }
+    }
+
+    pub fn record_ansi_stripped(&self, count: usize) {
+        self.stats.borrow_mut().ansi_sequences_stripped += count;
+    }
+
+    pub fn record_control_stripped(&self, count: usize) {
+        self.stats.borrow_mut().control_chars_stripped += count;
+    }
+
+    pub fn record_progress_deduped(&self, count: usize) {
+        self.stats.borrow_mut().progress_lines_deduplicated += count;
+    }
+
+    pub fn finalize(self, original_bytes: usize, extracted_bytes: usize) -> ExtractionStats {
+        let mut stats = self.stats.into_inner();
+        stats.original_bytes = original_bytes;
+        stats.extracted_bytes = extracted_bytes;
+        stats
+    }
+}
 ```
 
 #### LLM Response Mapping
@@ -266,6 +528,7 @@ When the LLM returns markers, they include timestamps relative to the chunk. The
 
 ```rust
 /// Marker position types the LLM can return
+/// See SPEC.md Section 2 for JSON response schema and Rust types
 pub enum MarkerPosition {
     /// Relative timestamp within chunk (seconds from chunk start)
     RelativeTimestamp(f64),
@@ -292,6 +555,28 @@ impl AnalysisChunk {
 ```
 
 #### Chunking with Segment Preservation
+
+**Event Boundary Alignment (NDJSON)**
+
+Asciicast files are NDJSON - each line is one complete event:
+```json
+[0.1, "o", "hello"]
+[0.5, "o", " world\n"]
+[1.2, "m", "marker label"]
+```
+
+Chunking **always respects event boundaries**:
+- Segments group whole events (never split mid-event)
+- Chunks contain whole segments (never split mid-segment)
+- This ensures timestamp integrity and valid JSON structure
+
+```
+Events:  [E1] [E2] [E3] [E4] [E5] [E6] [E7] [E8] [E9]
+           └────┬────┘  └────┬────┘  └─────┬─────┘
+Segments:     Seg 1        Seg 2         Seg 3
+              └─────┬──────┘              │
+Chunks:          Chunk 1              Chunk 2
+```
 
 ```rust
 /// A chunk ready for parallel analysis.
@@ -353,9 +638,260 @@ Each transform implements the existing `Transform` trait from `src/asciicast/tra
 |-------|-----------|---------|----------------|
 | 1 | `StripAnsiCodes` | Remove escape sequences | Regex or state machine |
 | 2 | `StripControlCharacters` | Remove BEL, BS, NUL, etc. | Filter non-printable |
-| 3 | `DeduplicateProgressLines` | Keep only final state of `\r`-rewritten lines | Track last line per event |
+| 3 | `DeduplicateProgressLines` | Keep only final state of `\r`-rewritten lines | See algorithm below |
 | 4 | `NormalizeWhitespace` | Collapse excessive newlines/spaces | Limit consecutive chars |
 | 5 | `FilterEmptyEvents` | Remove events with no remaining content | `events.retain()` |
+| 6 | `StripBoxDrawing` | Remove decorative box characters | Unicode ranges (see below) |
+| 7 | `StripSpinnerChars` | Remove spinner/progress indicators | From SPEC.md Section 1 |
+
+#### Transform Algorithms
+
+**StripControlCharacters**: Remove non-printable control characters.
+```rust
+impl Transform for StripControlCharacters {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        for event in events.iter_mut() {
+            if event.is_output() {
+                if let Some(data) = event.data_mut() {
+                    // Remove C0 controls except \t, \n, \r (needed for structure)
+                    // Remove C1 controls (0x80-0x9F)
+                    data.retain(|c| {
+                        !matches!(c, '\x00'..='\x08' | '\x0B'..='\x0C' | '\x0E'..='\x1F' | '\x7F')
+                            && !(c >= '\u{0080}' && c <= '\u{009F}')
+                    });
+                }
+            }
+        }
+    }
+}
+```
+
+**StripBoxDrawing**: Remove Unicode box drawing characters (SPEC.md Section 1.5).
+```rust
+impl Transform for StripBoxDrawing {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        for event in events.iter_mut() {
+            if event.is_output() {
+                if let Some(data) = event.data_mut() {
+                    data.retain(|c| !matches!(c,
+                        // Box Drawing block (U+2500-U+257F)
+                        '\u{2500}'..='\u{257F}' |
+                        // Block Elements (U+2580-U+259F) - includes ▖▗▘▝
+                        '\u{2580}'..='\u{259F}'
+                    ));
+                }
+            }
+        }
+    }
+}
+```
+
+**StripSpinnerChars**: Remove spinner characters per SPEC.md Section 1.2-1.4.
+```rust
+impl Transform for StripSpinnerChars {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        for event in events.iter_mut() {
+            if event.is_output() {
+                if let Some(data) = event.data_mut() {
+                    data.retain(|c| !matches!(c,
+                        // Claude spinners (Section 1.2)
+                        '✻' | '✳' | '✢' | '✶' | '✽' |
+                        // Claude indicators
+                        '⎿' | '⏺' | '⏸' | '⏵' |
+                        // Gemini braille spinner (Section 1.4)
+                        '⠋' | '⠙' | '⠹' | '⠸' | '⠼' | '⠴' | '⠦' | '⠧' | '⠇' | '⠏' |
+                        // Gemini indicators
+                        '✦' | '✓' | '✕' | 'ℹ' | '☐' |
+                        // Codex indicators (Section 1.3)
+                        '•' | '›' | '◦' | '✔' | '⋮'
+                    ));
+                }
+            }
+        }
+    }
+}
+```
+
+**StripProgressBlocks**: Remove progress bar block characters.
+```rust
+impl Transform for StripProgressBlocks {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        for event in events.iter_mut() {
+            if event.is_output() {
+                if let Some(data) = event.data_mut() {
+                    data.retain(|c| !matches!(c,
+                        '█' | '░' | '▒' | '▓' |  // Block elements
+                        '▼' | '▲' | '●' | '○'    // Geometric shapes used in progress
+                    ));
+                }
+            }
+        }
+    }
+}
+```
+
+**NormalizeWhitespace**: Collapse excessive whitespace.
+```rust
+struct NormalizeWhitespace {
+    max_consecutive_newlines: usize,
+}
+
+impl Transform for NormalizeWhitespace {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        for event in events.iter_mut() {
+            if event.is_output() {
+                if let Some(data) = event.data_mut() {
+                    // Collapse multiple spaces to single space
+                    let mut result = String::with_capacity(data.len());
+                    let mut prev_space = false;
+                    let mut newline_count = 0;
+
+                    for c in data.chars() {
+                        if c == '\n' {
+                            newline_count += 1;
+                            if newline_count <= self.max_consecutive_newlines {
+                                result.push(c);
+                            }
+                            prev_space = false;
+                        } else if c.is_whitespace() {
+                            newline_count = 0;
+                            if !prev_space {
+                                result.push(' ');
+                                prev_space = true;
+                            }
+                        } else {
+                            newline_count = 0;
+                            prev_space = false;
+                            result.push(c);
+                        }
+                    }
+                    *data = result;
+                }
+            }
+        }
+    }
+}
+```
+
+**FilterEmptyEvents**: Remove events with no content.
+```rust
+struct FilterEmptyEvents;
+
+impl Transform for FilterEmptyEvents {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        events.retain(|event| {
+            // Always keep non-output events (markers, input)
+            if !event.is_output() {
+                return true;
+            }
+            // Keep output events only if they have content
+            event.data().map(|d| !d.trim().is_empty()).unwrap_or(false)
+        });
+    }
+}
+
+#### Progress Line Deduplication Algorithm
+
+Terminal progress bars use `\r` (carriage return) to overwrite the same line repeatedly. This creates thousands of events that all represent the same conceptual line.
+
+```rust
+/// Deduplicates progress lines that use \r to overwrite themselves.
+///
+/// Algorithm:
+/// 1. Track "current line buffer" with timestamp of FIRST char
+/// 2. When \r is encountered, clear buffer but DON'T update timestamp yet
+/// 3. When \n is encountered, emit with timestamp of line START
+/// 4. Non-output events (markers, input) pass through unchanged
+struct DeduplicateProgressLines {
+    current_line: String,
+    line_start_time: f64,      // Timestamp when current line started
+    is_progress_line: bool,
+    deduped_count: usize,
+}
+
+impl DeduplicateProgressLines {
+    pub fn new() -> Self {
+        Self {
+            current_line: String::new(),
+            line_start_time: 0.0,
+            is_progress_line: false,
+            deduped_count: 0,
+        }
+    }
+}
+
+impl Transform for DeduplicateProgressLines {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        let mut output_events = Vec::with_capacity(events.len());
+
+        for event in events.drain(..) {
+            // Preserve non-output events (markers, input)
+            if !event.is_output() {
+                output_events.push(event);
+                continue;
+            }
+
+            if let Some(data) = event.data() {
+                for ch in data.chars() {
+                    match ch {
+                        '\r' => {
+                            // Carriage return: line will be overwritten
+                            // Keep line_start_time - we want timestamp of FINAL content
+                            self.is_progress_line = true;
+                            self.current_line.clear();
+                            // Update start time to current event (progress shows final state time)
+                            self.line_start_time = event.time;
+                        }
+                        '\n' => {
+                            // Newline: emit current line with appropriate timestamp
+                            if !self.current_line.is_empty() {
+                                output_events.push(Event::output(
+                                    self.line_start_time,
+                                    format!("{}\n", self.current_line),
+                                ));
+                            }
+                            if self.is_progress_line {
+                                self.deduped_count += 1;
+                            }
+                            self.current_line.clear();
+                            self.is_progress_line = false;
+                        }
+                        _ => {
+                            // First char of new line sets the timestamp
+                            if self.current_line.is_empty() {
+                                self.line_start_time = event.time;
+                            }
+                            self.current_line.push(ch);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Don't forget trailing content without \n
+        if !self.current_line.is_empty() {
+            output_events.push(Event::output(
+                self.line_start_time,
+                self.current_line.clone(),
+            ));
+        }
+
+        *events = output_events;
+    }
+}
+```
+
+**Example transformation:**
+```
+Input events:
+  [10.5, "o", "\r⠋ Building..."]
+  [10.6, "o", "\r⠙ Building..."]
+  [10.7, "o", "\r⠹ Building..."]
+  [15.2, "o", "\r✓ Build complete\n"]
+
+Output events:
+  [15.2, "o", "✓ Build complete\n"]  // Only final state
+```
 
 ```rust
 /// Configuration for the extraction pipeline
@@ -365,20 +901,55 @@ pub struct ExtractionConfig {
     pub dedupe_progress_lines: bool,         // True (critical for size reduction)
     pub normalize_whitespace: bool,          // True
     pub max_consecutive_newlines: usize,     // 2
-    pub strip_box_drawing: bool,             // False (may have meaning)
+    pub strip_box_drawing: bool,             // True (decorative framing, no semantic value)
+    pub strip_spinner_chars: bool,           // True (visual animation, no content)
+    pub strip_progress_blocks: bool,         // True (█░ etc, visual only)
     pub preserve_hyperlink_urls: bool,       // True (URLs can be useful)
 }
 
 impl ExtractionConfig {
-    /// Build transform chain based on configuration
+    /// Build transform chain based on configuration.
+    ///
+    /// ## Pipeline Order Rationale
+    ///
+    /// The order is critical for correctness:
+    ///
+    /// 1. **StripAnsiCodes FIRST** - ANSI codes can contain characters that look
+    ///    like spinners or box drawing. Strip escape sequences before content filtering.
+    ///
+    /// 2. **StripControlCharacters** - Remove non-printable chars that might interfere
+    ///    with text processing.
+    ///
+    /// 3. **StripBoxDrawing, StripSpinnerChars, StripProgressBlocks** - These operate
+    ///    on clean text. Order among these doesn't matter (independent character sets).
+    ///
+    /// 4. **DeduplicateProgressLines AFTER character stripping** - Progress lines may
+    ///    contain spinners. Strip spinners first so deduplication sees clean content.
+    ///    This ensures "⠋ Building..." and "⠙ Building..." collapse to just "Building...".
+    ///
+    /// 5. **NormalizeWhitespace** - Clean up any excess whitespace from previous steps.
+    ///
+    /// 6. **FilterEmptyEvents LAST** - Only filter after all content processing.
+    ///    Earlier transforms may empty out events that should be removed.
+    ///
     pub fn build_pipeline(&self) -> TransformChain {
         let mut chain = TransformChain::new();
 
+        // Order matters - see rationale above
         if self.strip_ansi {
             chain = chain.with(StripAnsiCodes::new());
         }
         if self.strip_control_chars {
             chain = chain.with(StripControlCharacters::new());
+        }
+        if self.strip_box_drawing {
+            chain = chain.with(StripBoxDrawing::new());
+        }
+        if self.strip_spinner_chars {
+            chain = chain.with(StripSpinnerChars::new());
+        }
+        if self.strip_progress_blocks {
+            chain = chain.with(StripProgressBlocks::new());
         }
         if self.dedupe_progress_lines {
             chain = chain.with(DeduplicateProgressLines::new());
@@ -389,6 +960,22 @@ impl ExtractionConfig {
 
         // Always filter empty events at the end
         chain.with(FilterEmptyEvents)
+    }
+}
+
+impl Default for ExtractionConfig {
+    fn default() -> Self {
+        Self {
+            strip_ansi: true,
+            strip_control_chars: true,
+            dedupe_progress_lines: true,
+            normalize_whitespace: true,
+            max_consecutive_newlines: 2,
+            strip_box_drawing: true,
+            strip_spinner_chars: true,
+            strip_progress_blocks: true,
+            preserve_hyperlink_urls: true,
+        }
     }
 }
 ```
@@ -419,9 +1006,60 @@ impl ContentExtractor {
     }
 
     fn create_segments(&self, events: &[Event]) -> AnalysisContent {
-        // Group events into time-based segments
-        // Each segment tracks its time range and event indices
-        // ...
+        // Group consecutive events into segments based on time gaps
+        // A new segment starts when gap between events exceeds threshold (e.g., 2.0s)
+        let mut segments = Vec::new();
+        let mut current_segment_start = 0;
+        let mut current_segment_content = String::new();
+        let mut last_time = 0.0;
+        const TIME_GAP_THRESHOLD: f64 = 2.0; // seconds
+
+        for (i, event) in events.iter().enumerate() {
+            let gap = event.time - last_time;
+
+            // Start new segment on significant time gap
+            if gap > TIME_GAP_THRESHOLD && !current_segment_content.is_empty() {
+                segments.push(AnalysisSegment {
+                    start_time: events[current_segment_start].time,
+                    end_time: last_time,
+                    content: std::mem::take(&mut current_segment_content),
+                    estimated_tokens: 0, // Calculated below
+                    event_range: (current_segment_start, i),
+                });
+                current_segment_start = i;
+            }
+
+            if let Some(data) = event.data() {
+                current_segment_content.push_str(data);
+            }
+            last_time = event.time;
+        }
+
+        // Don't forget final segment
+        if !current_segment_content.is_empty() {
+            segments.push(AnalysisSegment {
+                start_time: events[current_segment_start].time,
+                end_time: last_time,
+                content: current_segment_content,
+                estimated_tokens: 0,
+                event_range: (current_segment_start, events.len()),
+            });
+        }
+
+        // Calculate token estimates for each segment
+        let estimator = TokenEstimator::default();
+        for segment in &mut segments {
+            segment.estimated_tokens = estimator.estimate(&segment.content);
+        }
+
+        let total_tokens = segments.iter().map(|s| s.estimated_tokens).sum();
+
+        AnalysisContent {
+            segments,
+            total_duration: last_time,
+            total_tokens,
+            stats: self.stats.clone(),
+        }
     }
 }
 ```
@@ -498,6 +1136,30 @@ Hard-coded chunk durations (e.g., 5 minutes).
 - Cons: Ignores content density, may exceed limits or waste capacity
 
 **Decision**: Option A. Dynamic token-budget chunking adapts to actual content and respects agent-specific context limits.
+
+#### Chunk Overlap Strategy
+
+Adjacent chunks should overlap to provide context continuity. Without overlap, the LLM might miss important context at chunk boundaries.
+
+```rust
+pub struct ChunkConfig {
+    /// Overlap as percentage of chunk size (0.0 - 0.2)
+    pub overlap_pct: f64,    // Default: 0.10 (10%)
+    /// Minimum overlap in tokens
+    pub min_overlap_tokens: usize,  // Default: 500
+}
+```
+
+**Example**: With 160K available tokens and 10% overlap:
+- Chunk 1: tokens 0-160K
+- Chunk 2: tokens 144K-304K (16K overlap)
+- Chunk 3: tokens 288K-448K (16K overlap)
+
+**Deduplication**: Overlapping chunks may produce duplicate markers. Deduplicate by:
+1. Sort all markers by timestamp
+2. For markers within a time window (e.g., 2 seconds) with same category, keep only the first
+
+> **See SPEC.md Section 5** for complete overlap implementation and deduplication code.
 
 ---
 
@@ -642,6 +1304,8 @@ std::thread::scope(|s| {
 2. No recent security vulnerabilities (unlike crossbeam)
 3. Battle-tested in production
 4. Clean API for parallel iteration
+
+> **See SPEC.md Section 3** for detailed parallelization logic, chunk count calculation, worker scaling formulas, and execution flow code.
 
 ---
 
@@ -790,6 +1454,63 @@ src/
 | ResultAggregator | **Builder** | Step-by-step construction of marker set |
 | TokenTracker | **Observer** | Collects metrics from workers |
 | ExtractionConfig | **Builder** | Configurable pipeline construction |
+
+---
+
+## Testing Strategy
+
+All implementation follows **Test-Driven Development (TDD)**:
+- Write failing tests before implementation
+- Use `cargo insta` for snapshot testing of transformations
+- Test fixtures derived from real cast files (not actual user files)
+- Property-based testing with `proptest` for invariants
+
+> **See SPEC.md Section 6** for complete TDD strategy, snapshot workflow, test categories, and coverage goals.
+
+### Required Test Cases per Transform
+
+| Transform | Test Cases |
+|-----------|------------|
+| **StripAnsiCodes** | CSI color codes, cursor movement, OSC hyperlinks, nested sequences, partial sequences at boundaries, UTF-8 + ANSI mix |
+| **StripControlCharacters** | BEL (0x07), BS (0x08), NUL, preserves \t \n \r, C1 controls |
+| **StripBoxDrawing** | All box chars (─│┌┐└┘), rounded corners (╭╮╰╯), block elements (▖▗▘▝), preserves normal text |
+| **StripSpinnerChars** | Claude spinners (✻✳✢✶✽), Gemini braille (⠋⠙⠹...), Codex indicators (›•◦), preserves similar-looking content |
+| **StripProgressBlocks** | Full blocks (█), shaded (░▒▓), triangles (▼▲), preserves text |
+| **DeduplicateProgressLines** | Simple \r overwrite, multiple \r in sequence, \r without \n, preserves markers, timestamp correctness |
+| **NormalizeWhitespace** | Multiple spaces → single, multiple \n → max 2, mixed whitespace |
+| **FilterEmptyEvents** | Removes empty/whitespace-only, preserves markers, preserves non-empty |
+| **Full Pipeline** | SPEC.md Section 1.7 before/after examples, compression ratio 55-89% |
+
+### Property-Based Test Invariants
+
+```rust
+// All transforms must satisfy:
+
+#[test]
+fn transform_preserves_markers() {
+    // Markers must never be modified or removed
+}
+
+#[test]
+fn transform_never_increases_size() {
+    // Output size <= input size (stripping only removes)
+}
+
+#[test]
+fn transform_is_idempotent() {
+    // Running twice produces same result as running once
+}
+
+#[test]
+fn transform_preserves_event_order() {
+    // Events remain in timestamp order
+}
+
+#[test]
+fn timestamps_remain_valid() {
+    // All timestamps >= 0, in non-decreasing order
+}
+```
 
 ---
 
