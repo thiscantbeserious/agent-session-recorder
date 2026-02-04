@@ -104,7 +104,40 @@ Token estimation: ~4 characters per token (rough heuristic).
 
 ## Options Considered
 
-### Content Extraction: Deep Analysis
+### Content Extraction: Transform Pipeline Approach
+
+Building on the existing `Transform` trait, content extraction is implemented as a pipeline of composable transforms that strip noise while preserving timestamp mappings.
+
+#### Transform Pipeline Design
+
+```rust
+use crate::asciicast::{Transform, TransformChain, Event};
+
+/// Content extraction pipeline using existing Transform infrastructure
+pub fn build_extraction_pipeline() -> TransformChain {
+    TransformChain::new()
+        .with(StripAnsiCodes::new())           // Remove escape sequences
+        .with(StripControlCharacters::new())   // Remove BEL, BS, NUL, etc.
+        .with(DeduplicateProgressLines::new()) // Keep only final state of \r lines
+        .with(NormalizeWhitespace::new())      // Collapse excessive newlines
+        .with(StripBinaryGarbage::new())       // Remove non-UTF8 data
+}
+
+/// Each transform implements the existing Transform trait
+struct StripAnsiCodes { /* state for tracking partial sequences */ }
+
+impl Transform for StripAnsiCodes {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        for event in events.iter_mut() {
+            if let Some(data) = event.data_mut() {
+                *data = strip_ansi_from_string(data);
+            }
+        }
+    }
+}
+```
+
+**Key insight**: The Transform trait works on `Vec<Event>`, preserving timestamps naturally. We don't need a separate mapping system - the events retain their original timestamps throughout the pipeline.
 
 #### What is "Useless" for LLMs?
 
@@ -457,7 +490,7 @@ Standard threads with crossbeam's lock-free channels.
   - [Materialize analysis](https://materialize.com/blog/rust-concurrency-bug-unbounded-channels/) shows bug was undetected for over a year
   - Manual thread cleanup still required
 
-#### Option C: Rayon [PENDING CONFIRMATION - RECOMMENDED]
+#### Option C: Rayon [SELECTED]
 Data parallelism library with work-stealing thread pool.
 
 ```rust
@@ -522,7 +555,7 @@ std::thread::scope(|s| {
 - Pros: Automatic cleanup, no external dependencies
 - Cons: Less ergonomic than Rayon, no work-stealing
 
-**Decision**: [PENDING CONFIRMATION] Rayon (Option C) recommended for:
+**Decision**: Rayon (Option C) selected for:
 1. Automatic thread cleanup (critical for reliability)
 2. No recent security vulnerabilities (unlike crossbeam)
 3. Battle-tested in production
@@ -620,7 +653,7 @@ src/
 | Content Extraction | Streaming with span tracking | Preserves position→timestamp mapping for accurate marker placement |
 | Chunking | Token-budget based | Adapts to content, respects agent context limits |
 | Worker Scaling | Content-based heuristic | Dynamic scaling 1-8 workers based on content |
-| Parallelism | [PENDING] Rayon | Reliability, automatic thread cleanup |
+| Parallelism | Rayon | Reliability, automatic thread cleanup, no security vulnerabilities |
 | Module Structure | Option B (nested backend/) | Clean extension point for agents |
 
 ### Architecture Overview
@@ -711,6 +744,12 @@ src/
 5. **In-memory only processing** - No temp files. Even 400MB files should be processed entirely in memory via chunking.
 
 6. **Subscription-based resource tracking** - Token tracking is for smart decisions (when to parallelize, retry strategies), not billing.
+
+7. **Transform trait pattern adopted** - Existing `src/asciicast/transform.rs` provides the foundation for content extraction. The `Transform` trait and `TransformChain` enable composable, in-place event processing that naturally preserves timestamps.
+
+8. **Rayon confirmed for parallelism** - Selected over std::thread (manual cleanup), crossbeam (security vulnerability RUSTSEC-2025-0024), and tokio (overkill for subprocess spawning).
+
+9. **Module Structure Option B confirmed** - Nested `backend/` submodule provides clean extension point for adding new agent backends.
 
 ---
 
