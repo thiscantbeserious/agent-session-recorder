@@ -783,15 +783,39 @@ pub fn deduplicate_markers(
 
 ## 6. Test-Driven Development (TDD) Approach
 
-### 6.1 Philosophy
+### 6.1 Philosophy: RED → GREEN → REFACTOR
 
-All transforms and extraction logic MUST be developed test-first:
+All transforms and extraction logic MUST be developed test-first using the classic TDD cycle:
 
-1. **Write test first** → Define expected behavior
-2. **Run test** → Verify it fails (red)
-3. **Implement** → Minimal code to pass
-4. **Refactor** → Clean up while tests stay green
-5. **Snapshot** → Capture complex outputs for regression testing
+```
+    ┌─────────────────────────────────────────────────────────┐
+    │                                                         │
+    │   ┌─────────┐      ┌─────────┐      ┌──────────────┐   │
+    │   │  RED    │ ───▶ │  GREEN  │ ───▶ │   REFACTOR   │   │
+    │   │ (test   │      │ (make   │      │ (clean up,   │   │
+    │   │  fails) │      │  pass)  │      │  tests stay  │   │
+    │   └─────────┘      └─────────┘      │  green)      │   │
+    │        ▲                            └──────┬───────┘   │
+    │        │                                   │           │
+    │        └───────────────────────────────────┘           │
+    │                    (next test)                         │
+    └─────────────────────────────────────────────────────────┘
+```
+
+| Phase | What | Why |
+|-------|------|-----|
+| 🔴 **RED** | Write test that fails | Proves test actually checks something |
+| 🟢 **GREEN** | Write minimal code to pass | No premature optimization, just make it work |
+| 🔵 **REFACTOR** | Clean up code, tests stay green | Improve design without changing behavior |
+
+**The cycle repeats for each new behavior.**
+
+**Key principles:**
+1. **Never write production code without a failing test first**
+2. **Write the simplest code that makes the test pass**
+3. **Refactor only when tests are green**
+4. **Run tests after every change**
+5. **Snapshot tests** capture complex outputs for regression detection
 
 ### 6.2 Snapshot Testing Strategy
 

@@ -13,10 +13,16 @@ References: ADR.md, SPEC.md, REQUIREMENTS.md
 
 See **SPEC.md Section 6** for detailed TDD strategy, snapshot workflow, and test categories.
 
-**Per-stage workflow:**
+**Per-stage workflow (RED → GREEN → REFACTOR):**
 ```
-Write snapshot/unit tests → Run (fails) → Implement → Run (passes) → Refactor
+┌──────────────────────────────────────────────────────────────────┐
+│  🔴 RED          │  🟢 GREEN        │  🔵 REFACTOR               │
+│  Write test      │  Write minimal   │  Clean up code,            │
+│  (must fail)     │  code to pass    │  tests stay green          │
+└──────────────────────────────────────────────────────────────────┘
 ```
+
+See **SPEC.md Section 6.1** for detailed TDD philosophy.
 
 ## Open Questions
 
@@ -40,43 +46,48 @@ Goal: Implement content extraction using the existing Transform trait pattern.
 - [ ] Create `tests/fixtures/` with sample events from real cast files (Section 1.7 of SPEC.md)
 
 **ContentCleaner (Optimized Single-Pass - see ADR Performance section):**
-- [ ] Write unit tests for ANSI stripping (CSI, OSC, simple escapes) → fails
-- [ ] Write unit tests for control char stripping → fails
-- [ ] Write unit tests for box drawing removal → fails
-- [ ] Write unit tests for spinner removal (Claude, Gemini, Codex) → fails
-- [ ] Write unit tests for **semantic char preservation** (✓✔✕⚠ℹ☐☑) → fails
-- [ ] Write unit tests for progress block removal → fails
-- [ ] Implement `ContentCleaner` with state machine → all pass
-- [ ] Benchmark: verify single-pass is 5x+ faster than naive approach
+- [ ] 🔴 Write unit tests for ANSI stripping (CSI, OSC, simple escapes)
+- [ ] 🔴 Write unit tests for control char stripping
+- [ ] 🔴 Write unit tests for box drawing removal
+- [ ] 🔴 Write unit tests for spinner removal (Claude, Gemini, Codex)
+- [ ] 🔴 Write unit tests for **semantic char preservation** (✓✔✕⚠ℹ☐☑)
+- [ ] 🔴 Write unit tests for progress block removal
+- [ ] 🟢 Implement `ContentCleaner` with state machine
+- [ ] 🔵 Refactor for clarity, verify 5x+ faster than naive approach
 
 **DeduplicateProgressLines** (separate transform, runs after ContentCleaner):
-- [ ] Write snapshot test with \r-based progress → fails
-- [ ] Write test for timestamp preservation → fails
-- [ ] Write test for marker preservation → fails
-- [ ] Implement transform (see ADR algorithm) → passes
+- [ ] 🔴 Write snapshot test with \r-based progress
+- [ ] 🔴 Write test for timestamp preservation
+- [ ] 🔴 Write test for marker preservation
+- [ ] 🟢 Implement transform (see ADR algorithm)
+- [ ] 🔵 Refactor if needed
 
 **NormalizeWhitespace:**
-- [ ] Write unit tests → fails
-- [ ] Implement transform → passes
+- [ ] 🔴 Write unit tests
+- [ ] 🟢 Implement transform
+- [ ] 🔵 Refactor if needed
 
 **FilterEmptyEvents:**
-- [ ] Write unit tests (preserves markers) → fails
-- [ ] Implement transform → passes
+- [ ] 🔴 Write unit tests (preserves markers)
+- [ ] 🟢 Implement transform
+- [ ] 🔵 Refactor if needed
 
 **TokenEstimator:**
-- [ ] Write unit test for chars/4 estimation → fails
-- [ ] Write test for estimation AFTER cleanup → fails
-- [ ] Implement `TokenEstimator` struct → passes
+- [ ] 🔴 Write unit test for chars/4 estimation
+- [ ] 🔴 Write test for estimation AFTER cleanup
+- [ ] 🟢 Implement `TokenEstimator` struct
+- [ ] 🔵 Refactor if needed
 
 **StatsCollector:**
-- [ ] Write unit test for stats accumulation → fails
-- [ ] Implement `StatsCollector` → passes
+- [ ] 🔴 Write unit test for stats accumulation
+- [ ] 🟢 Implement `StatsCollector`
+- [ ] 🔵 Refactor if needed
 
 **Full Pipeline:**
-- [ ] Write integration snapshot test → fails
-- [ ] Create `ExtractionConfig` with `build_pipeline()` method
-- [ ] Create `ContentExtractor` with segment creation → passes
-- [ ] **Benchmark with real 70MB+ cast file** - target <5s extraction time
+- [ ] 🔴 Write integration snapshot test
+- [ ] 🟢 Create `ExtractionConfig` with `build_pipeline()` method
+- [ ] 🟢 Create `ContentExtractor` with segment creation
+- [ ] 🔵 **Benchmark with real 70MB+ cast file** - target <5s extraction time
 
 - [ ] Create `AnalysisSegment` struct with start_time, end_time, content, estimated_tokens
 - [ ] Verify compression ratios match SPEC.md expectations (55-89% reduction)
