@@ -341,13 +341,18 @@ impl AnalysisChunk {
 
 #### Content Transformations (Ordered Pipeline)
 
-1. **ANSI Stripping**: Remove all escape sequences
-2. **Control Character Removal**: Strip BEL, BS, NUL, etc.
-3. **Progress Line Deduplication**: Keep only final state of `\r`-rewritten lines
-4. **Whitespace Normalization**: Collapse excessive newlines/spaces
-5. **Span Position Adjustment**: Update span positions after each transform
+Each transform implements the existing `Transform` trait from `src/asciicast/transform.rs`:
+
+| Order | Transform | Purpose | Implementation |
+|-------|-----------|---------|----------------|
+| 1 | `StripAnsiCodes` | Remove escape sequences | Regex or state machine |
+| 2 | `StripControlCharacters` | Remove BEL, BS, NUL, etc. | Filter non-printable |
+| 3 | `DeduplicateProgressLines` | Keep only final state of `\r`-rewritten lines | Track last line per event |
+| 4 | `NormalizeWhitespace` | Collapse excessive newlines/spaces | Limit consecutive chars |
+| 5 | `FilterEmptyEvents` | Remove events with no remaining content | `events.retain()` |
 
 ```rust
+/// Configuration for the extraction pipeline
 pub struct ExtractionConfig {
     pub strip_ansi: bool,                    // Always true
     pub strip_control_chars: bool,           // Always true
@@ -355,36 +360,67 @@ pub struct ExtractionConfig {
     pub normalize_whitespace: bool,          // True
     pub max_consecutive_newlines: usize,     // 2
     pub strip_box_drawing: bool,             // False (may have meaning)
-    pub extract_hyperlink_urls: bool,        // True (URLs can be useful)
+    pub preserve_hyperlink_urls: bool,       // True (URLs can be useful)
+}
+
+impl ExtractionConfig {
+    /// Build transform chain based on configuration
+    pub fn build_pipeline(&self) -> TransformChain {
+        let mut chain = TransformChain::new();
+
+        if self.strip_ansi {
+            chain = chain.with(StripAnsiCodes::new());
+        }
+        if self.strip_control_chars {
+            chain = chain.with(StripControlCharacters::new());
+        }
+        if self.dedupe_progress_lines {
+            chain = chain.with(DeduplicateProgressLines::new());
+        }
+        if self.normalize_whitespace {
+            chain = chain.with(NormalizeWhitespace::new(self.max_consecutive_newlines));
+        }
+
+        // Always filter empty events at the end
+        chain.with(FilterEmptyEvents)
+    }
 }
 ```
 
 #### Memory Efficiency for 100MB+ Files
 
 For a 100MB cast file:
-- **Original**: 100MB of events with ANSI codes
-- **After extraction**: ~10-20MB clean text + ~2-4MB span metadata
-- **Spans**: ~40 bytes each, ~100K spans = ~4MB
-- **Total in-memory**: ~15-25MB (**75-85% reduction**)
+- **Original**: 100MB of events with ANSI codes (~500K-1M events)
+- **After transform pipeline**: Events modified in-place (same vector, smaller strings)
+- **After filtering**: ~10-20% of original events retained
+- **Peak memory**: Original size + minimal transform state
+- **Final memory**: ~15-25MB (**75-85% reduction**)
 
 ```rust
 impl ContentExtractor {
-    pub fn extract(&self, cast: &AsciicastFile) -> ExtractedContent {
-        // Pre-allocate based on estimated output size (20% of original)
-        let estimated_size = self.estimate_output_size(cast);
-        let mut output = String::with_capacity(estimated_size);
-        let mut spans = Vec::with_capacity(cast.events.len() / 10);
+    pub fn extract(&self, cast: &mut AsciicastFile, config: &ExtractionConfig) -> AnalysisContent {
+        // Build pipeline from config
+        let mut pipeline = config.build_pipeline();
 
-        // ... extraction logic ...
+        // Transform events IN-PLACE (no allocation of new vector)
+        pipeline.transform(&mut cast.events);
 
-        // Shrink to actual size
-        output.shrink_to_fit();
-        spans.shrink_to_fit();
+        // Shrink vector after filtering removed events
+        cast.events.shrink_to_fit();
 
-        ExtractedContent { text: output, spans, ... }
+        // Create analysis segments from cleaned events
+        self.create_segments(&cast.events)
+    }
+
+    fn create_segments(&self, events: &[Event]) -> AnalysisContent {
+        // Group events into time-based segments
+        // Each segment tracks its time range and event indices
+        // ...
     }
 }
 ```
+
+**Key insight**: The Transform trait's in-place mutation design was specifically created for handling 100MB+ files efficiently (see `transform.rs` documentation).
 
 #### Options Considered
 
@@ -400,20 +436,22 @@ Pre-compiled regex to match and remove patterns.
 - Pros: Fast, one-liner
 - Cons: No span tracking, pattern maintenance, no progress deduplication
 
-##### Option C: Streaming Extraction with Span Tracking [SELECTED]
-Character-by-character processing with full position→timestamp mapping.
+##### Option C: Transform Pipeline with Event Preservation [SELECTED]
+Use existing Transform trait to build composable extraction pipeline that modifies events in-place.
 
 - Pros:
-  - Preserves bidirectional mapping (critical for marker placement)
-  - Handles progress line deduplication
-  - Memory efficient (streaming, pre-allocated)
-  - Configurable transforms
+  - **Leverages existing infrastructure** (`src/asciicast/transform.rs`)
+  - Timestamps preserved naturally (events retain their time field)
+  - Handles progress line deduplication via transform
+  - Memory efficient (in-place mutation, no copies)
+  - Composable and extensible (add/remove transforms easily)
+  - Well-tested pattern already in codebase
   - Zero external dependencies
 - Cons:
-  - More complex than naive stripping (~200 lines vs ~50)
-  - Span metadata adds memory overhead (~4MB for large files)
+  - Pipeline design requires careful ordering of transforms
+  - Events that become empty need filtering
 
-**Decision**: Option C. The mapping problem is fundamental - we MUST track where content came from to place markers accurately.
+**Decision**: Option C. The Transform trait provides a proven foundation. Events naturally preserve their timestamps, eliminating complex position→timestamp mapping.
 
 ---
 
