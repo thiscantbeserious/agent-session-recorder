@@ -726,7 +726,7 @@ src/
 
 | Component | Decision | Rationale |
 |-----------|----------|-----------|
-| Content Extraction | Streaming with span tracking | Preserves position→timestamp mapping for accurate marker placement |
+| Content Extraction | Transform Pipeline (existing trait) | Leverages proven infrastructure, in-place mutation, natural timestamp preservation |
 | Chunking | Token-budget based | Adapts to content, respects agent context limits |
 | Worker Scaling | Content-based heuristic | Dynamic scaling 1-8 workers based on content |
 | Parallelism | Rayon | Reliability, automatic thread cleanup, no security vulnerabilities |
@@ -777,11 +777,13 @@ src/
 
 | Component | Pattern | Justification |
 |-----------|---------|---------------|
+| Transform/TransformChain | **Pipeline** | Composable, ordered processing stages (existing infrastructure) |
 | AgentBackend | **Strategy** | Interchangeable agent implementations |
 | AnalyzerService | **Facade** | Simple public API hiding complexity |
 | ContentExtractor | **Adapter** | Transforms raw events to analysis format |
 | ResultAggregator | **Builder** | Step-by-step construction of marker set |
 | TokenTracker | **Observer** | Collects metrics from workers |
+| ExtractionConfig | **Builder** | Configurable pipeline construction |
 
 ---
 
