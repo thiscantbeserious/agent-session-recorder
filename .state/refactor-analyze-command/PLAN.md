@@ -1,6 +1,6 @@
 # Plan: Refactor Analyze Command
 
-References: ADR.md
+References: ADR.md, SPEC.md, REQUIREMENTS.md
 
 ## Open Questions
 

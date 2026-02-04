@@ -4,6 +4,12 @@
 
 **Approved** - Ready for implementation
 
+## Related Documents
+
+- **REQUIREMENTS.md**: Business requirements and acceptance criteria
+- **SPEC.md**: Implementation specifications (JSON schema, parallelization logic, noise patterns)
+- **PLAN.md**: Implementation stages and tasks
+
 ## Prior Art: Existing Infrastructure
 
 This refactor leverages existing patterns already established in the codebase:
