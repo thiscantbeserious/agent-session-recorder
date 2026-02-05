@@ -52,6 +52,12 @@ Options:
       --curate
           Auto-curate to 8-12 markers without prompting
 
+      --debug
+          Save cleaned content to a file and stop before analysis
+
+  -o, --output <FILE>
+          Path to save cleaned content
+
   -h, --help
           Print help (see a summary with '-h')
 --- stderr ---

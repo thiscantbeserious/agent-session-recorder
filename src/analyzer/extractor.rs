@@ -30,72 +30,49 @@ impl ContentExtractor {
         let original_bytes: usize = events.iter().map(|e| e.data.len()).sum();
         let original_event_count = events.len();
 
+        let stats = self.apply_transforms(events, original_bytes, original_event_count);
+
+        // Create segments from events
+        self.create_segments(events, stats)
+    }
+
+    /// Apply all configured cleaning and deduplication transforms.
+    fn apply_transforms(
+        &self,
+        events: &mut Vec<Event>,
+        original_bytes: usize,
+        original_event_count: usize,
+    ) -> ExtractionStats {
         // 1. Basic Cleaning (ANSI, Controls, Visual noise)
         let mut cleaner = ContentCleaner::new(&self.config);
         cleaner.transform(events);
 
         // 2. Event Coalescing (Rapid, similar events)
-        let mut events_coalesced = 0;
-        if self.config.coalesce_events {
-            let mut coalescer = EventCoalescer::new(
-                self.config.similarity_threshold,
-                self.config.coalesce_time_threshold,
-            );
-            coalescer.transform(events);
-            events_coalesced = coalescer.coalesced_count();
-        }
+        let events_coalesced = self.apply_coalescing(events);
 
         // 3. Global Deduplication (Frequent lines & windowed event hashing)
-        let (global_lines_deduped, window_events_deduped) = {
-            let mut global_deduper = GlobalDeduplicator::new(
-                self.config.max_line_repeats,
-                self.config.event_window_size,
-            );
-            global_deduper.transform(events);
-            global_deduper.stats()
-        };
+        let (global_lines_deduped, window_events_deduped) = self.apply_global_dedupe(events);
 
         // 4. Carriage Return Deduplication
-        let mut deduper = DeduplicateProgressLines::new();
-        if self.config.dedupe_progress_lines {
-            deduper.transform(events);
-        }
+        let deduped_count = self.apply_progress_dedupe(events);
 
-        // 3. Similarity Filtering (Consecutive redundant lines)
-        let mut lines_collapsed = 0;
-        if self.config.collapse_similar_lines {
-            let mut sim_filter = SimilarityFilter::new(self.config.similarity_threshold);
-            sim_filter.transform(events);
-            lines_collapsed = sim_filter.collapsed_count();
-        }
+        // 5. Similarity Filtering (Consecutive redundant lines)
+        let lines_collapsed = self.apply_similarity_filter(events);
 
-        // 4. Large Block Truncation
-        let mut blocks_truncated = 0;
-        if self.config.truncate_large_blocks {
-            let mut truncator = BlockTruncator::new(
-                self.config.max_block_size,
-                self.config.truncation_context_lines,
-            );
-            truncator.transform(events);
-            blocks_truncated = truncator.truncated_count();
-        }
+        // 6. Large Block Truncation
+        let blocks_truncated = self.apply_truncation(events);
 
-        // 5. Final Normalization
-        if self.config.normalize_whitespace {
-            let mut normalizer = NormalizeWhitespace::new(self.config.max_consecutive_newlines);
-            normalizer.transform(events);
-        }
+        // 7. Final Normalization
+        self.apply_normalization(events);
 
-        FilterEmptyEvents.transform(events);
-
-        // Calculate stats
+        // Calculate final stats
         let extracted_bytes: usize = events.iter().map(|e| e.data.len()).sum();
-        let stats = ExtractionStats {
+        ExtractionStats {
             original_bytes,
             extracted_bytes,
             ansi_sequences_stripped: cleaner.ansi_stripped_count(),
             control_chars_stripped: cleaner.control_stripped_count(),
-            progress_lines_deduplicated: deduper.deduped_count(),
+            progress_lines_deduplicated: deduped_count,
             events_coalesced,
             global_lines_deduped,
             window_events_deduped,
@@ -103,10 +80,68 @@ impl ContentExtractor {
             blocks_truncated,
             events_processed: original_event_count,
             events_retained: events.len(),
-        };
+        }
+    }
 
-        // Create segments from events
-        self.create_segments(events, stats)
+    fn apply_coalescing(&self, events: &mut Vec<Event>) -> usize {
+        if self.config.coalesce_events {
+            let mut coalescer = EventCoalescer::new(
+                self.config.similarity_threshold,
+                self.config.coalesce_time_threshold,
+            );
+            coalescer.transform(events);
+            coalescer.coalesced_count()
+        } else {
+            0
+        }
+    }
+
+    fn apply_global_dedupe(&self, events: &mut Vec<Event>) -> (usize, usize) {
+        let mut global_deduper = GlobalDeduplicator::new(
+            self.config.max_line_repeats,
+            self.config.event_window_size,
+        );
+        global_deduper.transform(events);
+        global_deduper.stats()
+    }
+
+    fn apply_progress_dedupe(&self, events: &mut Vec<Event>) -> usize {
+        let mut deduper = DeduplicateProgressLines::new();
+        if self.config.dedupe_progress_lines {
+            deduper.transform(events);
+        }
+        deduper.deduped_count()
+    }
+
+    fn apply_similarity_filter(&self, events: &mut Vec<Event>) -> usize {
+        if self.config.collapse_similar_lines {
+            let mut sim_filter = SimilarityFilter::new(self.config.similarity_threshold);
+            sim_filter.transform(events);
+            sim_filter.collapsed_count()
+        } else {
+            0
+        }
+    }
+
+    fn apply_truncation(&self, events: &mut Vec<Event>) -> usize {
+        if self.config.truncate_large_blocks {
+            let mut truncator = BlockTruncator::new(
+                self.config.max_block_size,
+                self.config.truncation_context_lines,
+            );
+            truncator.transform(events);
+            truncator.truncated_count()
+        } else {
+            0
+        }
+    }
+
+    fn apply_normalization(&self, events: &mut Vec<Event>) {
+        if self.config.normalize_whitespace {
+            let mut normalizer = NormalizeWhitespace::new(self.config.max_consecutive_newlines);
+            normalizer.transform(events);
+        }
+        FilterEmptyEvents.transform(events);
     }
 
     /// Group events into segments based on time gaps.

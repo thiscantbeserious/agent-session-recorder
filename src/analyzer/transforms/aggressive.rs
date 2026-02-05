@@ -8,6 +8,9 @@ use crate::asciicast::{Event, Transform};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Collapses consecutive lines that are highly similar.
+/// 
+/// Uses a Jaccard-based similarity threshold to identify redundant log lines
+/// that vary slightly (e.g. timestamps or IDs).
 pub struct SimilarityFilter {
     threshold: f64,
     last_line: Option<String>,
@@ -16,6 +19,7 @@ pub struct SimilarityFilter {
 }
 
 impl SimilarityFilter {
+    /// Create a new similarity filter with the given threshold (0.0 to 1.0).
     pub fn new(threshold: f64) -> Self {
         Self {
             threshold,
@@ -25,49 +29,72 @@ impl SimilarityFilter {
         }
     }
 
+    /// Calculate a shift-resistant similarity score between two strings.
+    /// Uses a prefix-weighted approach to prevent collapsing different commands.
     pub fn calculate_similarity(s1: &str, s2: &str) -> f64 {
         if s1 == s2 { return 1.0; }
         if s1.is_empty() || s2.is_empty() { return 0.0; }
 
-        let set1: HashSet<char> = s1.chars().collect();
-        let set2: HashSet<char> = s2.chars().collect();
-        let intersection = set1.intersection(&set2).count();
-        let union = set1.union(&set2).count();
-        if union == 0 { return 0.0; }
-        let jaccard = intersection as f64 / union as f64;
-        let len1 = s1.len();
-        let len2 = s2.len();
-        let len_ratio = len1.min(len2) as f64 / len1.max(len2) as f64;
-        (jaccard * 0.7) + (len_ratio * 0.3)
+        let len1 = s1.chars().count();
+        let len2 = s2.chars().count();
+        
+        // Don't even try to collapse short lines (likely commands or important labels)
+        if len1 < 30 || len2 < 30 {
+            return 0.0;
+        }
+
+        // Check for shared prefix length
+        let shared_prefix = s1.chars().zip(s2.chars())
+            .take_while(|(c1, c2)| c1 == c2)
+            .count();
+        
+        let prefix_ratio = shared_prefix as f64 / len1.max(len2) as f64;
+        
+        // If they share a significant prefix (e.g. same log source), 
+        // then check character distribution
+        if prefix_ratio > 0.4 {
+            let set1: HashSet<char> = s1.chars().collect();
+            let set2: HashSet<char> = s2.chars().collect();
+            let intersection = set1.intersection(&set2).count();
+            let union = set1.union(&set2).count();
+            let jaccard = intersection as f64 / union as f64;
+            
+            (prefix_ratio * 0.7) + (jaccard * 0.3)
+        } else {
+            0.0
+        }
     }
 
-    fn flush_skips(&mut self) -> Option<String> {
+    fn flush_skips(&mut self, accumulated_time: f64) -> Option<Event> {
         if self.skip_count > 0 {
             let msg = format!("\n[... collapsed {} similar lines ...]\n", self.skip_count);
             self.total_collapsed += self.skip_count;
             self.skip_count = 0;
-            Some(msg)
+            // Always return time with the skip message to preserve duration
+            Some(Event::output(accumulated_time, msg))
         } else {
             None
         }
     }
 
+    /// Get the total number of lines collapsed by this filter.
     pub fn collapsed_count(&self) -> usize {
         self.total_collapsed
     }
 }
 
 impl Transform for SimilarityFilter {
+    /// Process events and collapse similar consecutive lines.
+    /// Preserves cumulative time by adding deltas to the next kept event.
     fn transform(&mut self, events: &mut Vec<Event>) {
         let mut output_events = Vec::with_capacity(events.len());
         let mut accumulated_time = 0.0;
 
         for mut event in events.drain(..) {
             if !event.is_output() {
-                if let Some(msg) = self.flush_skips() {
-                    let mut e = Event::output(accumulated_time, msg);
+                if let Some(skip_event) = self.flush_skips(accumulated_time) {
+                    output_events.push(skip_event);
                     accumulated_time = 0.0;
-                    output_events.push(e);
                 }
                 event.time += accumulated_time;
                 accumulated_time = 0.0;
@@ -78,10 +105,7 @@ impl Transform for SimilarityFilter {
             let mut new_data = String::with_capacity(event.data.len());
             for line in event.data.split_inclusive('\n') {
                 let trimmed_line = line.trim();
-                if trimmed_line.len() < 4 {
-                    new_data.push_str(line);
-                    continue;
-                }
+                
                 let similarity = if let Some(ref last) = self.last_line {
                     Self::calculate_similarity(last, trimmed_line)
                 } else {
@@ -91,11 +115,17 @@ impl Transform for SimilarityFilter {
                 if similarity >= self.threshold {
                     self.skip_count += 1;
                 } else {
-                    if let Some(msg) = self.flush_skips() {
-                        new_data.push_str(&msg);
+                    if let Some(skip_event) = self.flush_skips(accumulated_time) {
+                        new_data.push_str(&skip_event.data);
+                        accumulated_time = 0.0;
                     }
                     new_data.push_str(line);
-                    self.last_line = Some(trimmed_line.to_string());
+                    // Only track as last_line if it was substantial
+                    if trimmed_line.len() >= 30 {
+                        self.last_line = Some(trimmed_line.to_string());
+                    } else {
+                        self.last_line = None;
+                    }
                 }
             }
 
@@ -109,8 +139,12 @@ impl Transform for SimilarityFilter {
             }
         }
 
-        if let Some(msg) = self.flush_skips() {
-            output_events.push(Event::output(accumulated_time, msg));
+        if let Some(skip_event) = self.flush_skips(accumulated_time) {
+            output_events.push(skip_event);
+        } else if accumulated_time > 0.0 {
+            if let Some(last) = output_events.last_mut() {
+                last.time += accumulated_time;
+            }
         }
 
         *events = output_events;
@@ -118,6 +152,9 @@ impl Transform for SimilarityFilter {
 }
 
 /// Truncates large contiguous blocks of output.
+/// 
+/// Preserves head and tail context while removing the middle of massive
+/// output events (e.g. large file dumps).
 pub struct BlockTruncator {
     max_size: usize,
     context_lines: usize,
@@ -125,10 +162,12 @@ pub struct BlockTruncator {
 }
 
 impl BlockTruncator {
+    /// Create a new truncator with the given size limit and context lines.
     pub fn new(max_size: usize, context_lines: usize) -> Self {
         Self { max_size, context_lines, total_truncated: 0 }
     }
 
+    /// Get the total number of blocks truncated.
     pub fn truncated_count(&self) -> usize { self.total_truncated }
 
     fn truncate(&mut self, data: &str) -> String {
@@ -148,6 +187,7 @@ impl BlockTruncator {
 }
 
 impl Transform for BlockTruncator {
+    /// Truncates individual output events that exceed size limits.
     fn transform(&mut self, events: &mut Vec<Event>) {
         for event in events.iter_mut() {
             if event.is_output() { event.data = self.truncate(&event.data); }
@@ -156,6 +196,9 @@ impl Transform for BlockTruncator {
 }
 
 /// Coalesces consecutive output events that are extremely similar.
+/// 
+/// Targets rapid TUI redrawing where multiple small events represent
+/// the same visual state updated at high frequency.
 pub struct EventCoalescer {
     threshold: f64,
     time_threshold: f64,
@@ -164,13 +207,18 @@ pub struct EventCoalescer {
 }
 
 impl EventCoalescer {
+    /// Create a new coalescer with similarity and time thresholds.
     pub fn new(threshold: f64, time_threshold: f64) -> Self {
         Self { threshold, time_threshold, last_event: None, coalesced_count: 0 }
     }
+
+    /// Get the total number of events merged.
     pub fn coalesced_count(&self) -> usize { self.coalesced_count }
 }
 
 impl Transform for EventCoalescer {
+    /// Merges rapid, similar consecutive events into one.
+    /// Sums time deltas to preserve session duration.
     fn transform(&mut self, events: &mut Vec<Event>) {
         let mut output_events = Vec::with_capacity(events.len());
         for event in events.drain(..) {
@@ -198,6 +246,9 @@ impl Transform for EventCoalescer {
 }
 
 /// Global deduplication of repetitive lines and windowed event hashing.
+/// 
+/// Implements a global frequency cap for lines and a sliding window for
+/// exact event content hashing to catch redundant TUI redraws.
 pub struct GlobalDeduplicator {
     line_counts: HashMap<String, usize>,
     max_line_repeats: usize,
@@ -208,6 +259,7 @@ pub struct GlobalDeduplicator {
 }
 
 impl GlobalDeduplicator {
+    /// Create a new global deduplicator.
     pub fn new(max_line_repeats: usize, window_size: usize) -> Self {
         Self {
             line_counts: HashMap::new(),
@@ -219,6 +271,7 @@ impl GlobalDeduplicator {
         }
     }
 
+    /// Get stats: (lines_deduped, events_deduped).
     pub fn stats(&self) -> (usize, usize) {
         (self.total_deduped_lines, self.total_deduped_events)
     }
@@ -233,6 +286,8 @@ impl GlobalDeduplicator {
 }
 
 impl Transform for GlobalDeduplicator {
+    /// Removes redundant events and repetitive lines across the entire session.
+    /// Carefully accumulates time deltas to maintain timestamp integrity.
     fn transform(&mut self, events: &mut Vec<Event>) {
         let mut output_events = Vec::with_capacity(events.len());
         let mut accumulated_time = 0.0;
@@ -284,6 +339,13 @@ impl Transform for GlobalDeduplicator {
                 accumulated_time += event.time;
             }
         }
+        
+        if accumulated_time > 0.0 {
+            if let Some(last) = output_events.last_mut() {
+                last.time += accumulated_time;
+            }
+        }
+        
         *events = output_events;
     }
 }

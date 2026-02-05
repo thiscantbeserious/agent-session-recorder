@@ -7,6 +7,10 @@
 //! - [`DeduplicateProgressLines`] - Keeps only final state of `\r`-rewritten lines
 //! - [`NormalizeWhitespace`] - Collapses excessive whitespace
 //! - [`FilterEmptyEvents`] - Removes events with no remaining content
+//! - [`SimilarityFilter`] - Collapses consecutive lines that are highly similar
+//! - [`BlockTruncator`] - Truncates large contiguous blocks of output
+//! - [`EventCoalescer`] - Merges rapid, similar consecutive events
+//! - [`GlobalDeduplicator`] - Caps global line frequency and hashes redundant redraws
 
 mod cleaner;
 mod dedupe;

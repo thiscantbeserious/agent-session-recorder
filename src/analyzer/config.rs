@@ -21,19 +21,19 @@ pub struct ExtractionConfig {
     pub strip_progress_blocks: bool,
     /// Time gap threshold for segment boundaries (seconds)
     pub segment_time_gap: f64,
-    /// Enable similarity-based line collapsing
+    /// Enable similarity-based line collapsing (targets redundant log lines)
     pub collapse_similar_lines: bool,
     /// Similarity threshold (0.0 to 1.0) for collapsing lines
     pub similarity_threshold: f64,
-    /// Enable coalescing of rapid, similar events
+    /// Enable coalescing of rapid, similar events (targets TUI redrawing)
     pub coalesce_events: bool,
     /// Time threshold for event coalescing (seconds)
     pub coalesce_time_threshold: f64,
     /// Enable truncation of large output blocks
     pub truncate_large_blocks: bool,
-    /// Max times a specific line can repeat globally
+    /// Max times a specific line can repeat globally across the session
     pub max_line_repeats: usize,
-    /// Window size for event hashing (number of events)
+    /// Window size for event hashing (number of events to check for redraws)
     pub event_window_size: usize,
     /// Maximum size of an output block before truncation (bytes)
     pub max_block_size: usize,

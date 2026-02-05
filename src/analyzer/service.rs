@@ -227,18 +227,6 @@ impl AnalyzerService {
             if !self.options.quiet {
                 eprintln!("Cleaned content written to: {}", output_path);
             }
-
-            // Return early if in debug mode
-            if self.options.debug {
-                return Ok(AnalysisResult {
-                    markers: vec![],
-                    write_report: WriteReport::default(),
-                    usage_summary: UsageSummary::default(),
-                    had_existing_markers,
-                    existing_marker_count,
-                    total_duration: content.total_duration,
-                });
-            }
         }
 
         // Show extraction stats
@@ -250,7 +238,7 @@ impl AnalyzerService {
                 0.0
             };
             eprintln!(
-                "Extracted: {}KB → {}KB ({:.0}% reduction, {} ANSI stripped, {} deduped, {} coalesced, {} global, {} window, {} collapsed, {} truncated)",
+                "Extracted: {}KB \u{2192} {}KB ({:.0}% reduction, {} ANSI stripped, {} deduped, {} coalesced, {} global, {} window, {} collapsed, {} truncated)",
                 stats.original_bytes / 1024,
                 stats.extracted_bytes / 1024,
                 compression,
@@ -262,6 +250,18 @@ impl AnalyzerService {
                 stats.lines_collapsed,
                 stats.blocks_truncated
             );
+        }
+
+        // Return early if in debug mode
+        if self.options.debug {
+            return Ok(AnalysisResult {
+                markers: vec![],
+                write_report: WriteReport::default(),
+                usage_summary: UsageSummary::default(),
+                had_existing_markers,
+                existing_marker_count,
+                total_duration: content.total_duration,
+            });
         }
 
         // 4. Calculate chunks (Stage 2)

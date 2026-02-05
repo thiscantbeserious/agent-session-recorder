@@ -78,17 +78,17 @@ pub struct ExtractionStats {
     pub ansi_sequences_stripped: usize,
     /// Number of control characters stripped
     pub control_chars_stripped: usize,
-    /// Number of progress lines deduplicated
+    /// Number of progress lines deduplicated via \r
     pub progress_lines_deduplicated: usize,
-    /// Number of rapid events coalesced
+    /// Number of rapid events coalesced (TUI redraws)
     pub events_coalesced: usize,
-    /// Number of lines removed by global frequency cap
+    /// Number of lines removed by global frequency cap (repetitive separators/logs)
     pub global_lines_deduped: usize,
-    /// Number of events removed by windowed hashing
+    /// Number of events removed by windowed hashing (exact redraw frames)
     pub window_events_deduped: usize,
-    /// Number of similar lines collapsed
+    /// Number of similar lines collapsed (consecutive redundancy)
     pub lines_collapsed: usize,
-    /// Number of large output blocks truncated
+    /// Number of large output blocks truncated (head/tail preservation)
     pub blocks_truncated: usize,
     /// Number of events processed
     pub events_processed: usize,

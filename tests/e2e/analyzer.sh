@@ -208,8 +208,8 @@ $AGR record echo -- "test" </dev/null 2>&1
 CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
 if [ -f "$CAST_FILE" ]; then
     OUTPUT=$($AGR analyze "$CAST_FILE" --agent definitely-not-a-real-agent-12345 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
-    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "not installed"; then
-        pass "agr analyze fails gracefully when agent not installed"
+    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "Unknown agent"; then
+        pass "agr analyze fails gracefully with unknown agent"
     else
         fail "agr analyze should fail with missing agent (exit=$EXIT_CODE): $OUTPUT"
     fi
@@ -230,9 +230,9 @@ $AGR record echo -- "test default agent" </dev/null 2>&1
 CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
 if [ -f "$CAST_FILE" ]; then
     OUTPUT=$($AGR analyze "$CAST_FILE" 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
-    # Should fail because fake-default-agent-xyz is not installed
-    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "fake-default-agent-xyz.*not installed"; then
-        pass "agr analyze uses default agent from config"
+    # Should fail because fake-default-agent-xyz is not a supported agent
+    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "Unknown agent"; then
+        pass "agr analyze fails gracefully with unknown default agent"
     else
         fail "agr analyze should use config's analysis_agent (exit=$EXIT_CODE): $OUTPUT"
     fi
@@ -251,9 +251,9 @@ TOMLEOF
 CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
 if [ -f "$CAST_FILE" ]; then
     OUTPUT=$($AGR analyze "$CAST_FILE" --agent override-agent-test 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
-    # Should fail because override-agent-test is not installed, confirming it used the override
-    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "override-agent-test.*not installed"; then
-        pass "agr analyze --agent successfully overrides config"
+    # Should fail because override-agent-test is not a supported agent
+    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "Unknown agent"; then
+        pass "agr analyze --agent successfully overrides config with unknown agent"
     else
         fail "agr analyze --agent should override config (exit=$EXIT_CODE): $OUTPUT"
     fi

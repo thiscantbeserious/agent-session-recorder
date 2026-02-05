@@ -467,6 +467,8 @@ mod tests {
                 timeout,
                 no_parallel,
                 curate,
+                debug,
+                output,
             } => {
                 assert_eq!(file, "session.cast");
                 assert!(agent.is_none());

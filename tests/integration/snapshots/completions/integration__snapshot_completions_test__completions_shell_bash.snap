@@ -651,7 +651,7 @@ _agr() {
             return 0
             ;;
         agr__analyze)
-            opts="-a -w -t -h --agent --workers --timeout --no-parallel --curate --help <FILE>"
+            opts="-a -w -t -o -h --agent --workers --timeout --no-parallel --curate --debug --output --help <FILE>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -678,6 +678,14 @@ _agr() {
                     return 0
                     ;;
                 -t)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                --output)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                -o)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
