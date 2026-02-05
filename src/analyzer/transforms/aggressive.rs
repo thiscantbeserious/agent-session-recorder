@@ -60,12 +60,21 @@ impl SimilarityFilter {
 impl Transform for SimilarityFilter {
     fn transform(&mut self, events: &mut Vec<Event>) {
         let mut output_events = Vec::with_capacity(events.len());
+        let mut accumulated_time = 0.0;
+
         for mut event in events.drain(..) {
             if !event.is_output() {
-                if let Some(msg) = self.flush_skips() { output_events.push(Event::output(0.0, msg)); }
+                if let Some(msg) = self.flush_skips() {
+                    let mut e = Event::output(accumulated_time, msg);
+                    accumulated_time = 0.0;
+                    output_events.push(e);
+                }
+                event.time += accumulated_time;
+                accumulated_time = 0.0;
                 output_events.push(event);
                 continue;
             }
+
             let mut new_data = String::with_capacity(event.data.len());
             for line in event.data.split_inclusive('\n') {
                 let trimmed_line = line.trim();
@@ -75,20 +84,35 @@ impl Transform for SimilarityFilter {
                 }
                 let similarity = if let Some(ref last) = self.last_line {
                     Self::calculate_similarity(last, trimmed_line)
-                } else { 0.0 };
+                } else {
+                    0.0
+                };
 
                 if similarity >= self.threshold {
                     self.skip_count += 1;
                 } else {
-                    if let Some(msg) = self.flush_skips() { new_data.push_str(&msg); }
+                    if let Some(msg) = self.flush_skips() {
+                        new_data.push_str(&msg);
+                    }
                     new_data.push_str(line);
                     self.last_line = Some(trimmed_line.to_string());
                 }
             }
-            event.data = new_data;
-            if !event.data.is_empty() { output_events.push(event); }
+
+            if !new_data.is_empty() {
+                event.data = new_data;
+                event.time += accumulated_time;
+                accumulated_time = 0.0;
+                output_events.push(event);
+            } else {
+                accumulated_time += event.time;
+            }
         }
-        if let Some(msg) = self.flush_skips() { output_events.push(Event::output(0.0, msg)); }
+
+        if let Some(msg) = self.flush_skips() {
+            output_events.push(Event::output(accumulated_time, msg));
+        }
+
         *events = output_events;
     }
 }
