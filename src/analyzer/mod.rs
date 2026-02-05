@@ -28,9 +28,11 @@
 pub mod backend;
 pub mod chunk;
 mod config;
+pub mod error;
 mod extractor;
 pub mod progress;
 pub mod result;
+pub mod tracker;
 mod transforms;
 mod types;
 pub mod worker;
@@ -52,10 +54,18 @@ pub use transforms::{
     ContentCleaner, DeduplicateProgressLines, FilterEmptyEvents, NormalizeWhitespace,
 };
 pub use types::{AnalysisContent, AnalysisSegment, ExtractionStats, TokenEstimator};
-pub use worker::{ChunkResult, ParallelExecutor, ProgressReporter, WorkerConfig, WorkerScaler};
+pub use worker::{
+    ChunkResult, ParallelExecutor, ProgressReporter, RetryExecutor, WorkerConfig, WorkerScaler,
+};
 
 // Re-export result types
 pub use result::{
     resolve_timestamp, AggregationReport, MarkerWriter, ResultAggregator, ValidatedMarker,
     WriteReport,
 };
+
+// Re-export error types
+pub use error::AnalysisError;
+
+// Re-export tracker types
+pub use tracker::{ChunkUsage, RetryCoordinator, RetryPolicy, TokenTracker, UsageSummary};

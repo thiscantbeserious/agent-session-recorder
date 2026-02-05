@@ -346,11 +346,11 @@ Considerations:
 **Output:** Retry decisions, user-friendly error messages, usage report
 
 **Definition of Done:**
-- [ ] All error scenarios tested
-- [ ] Retry logic respects max attempts (3)
-- [ ] Exponential backoff implemented
-- [ ] Fallback to sequential on repeated parallel failures
-- [ ] User sees clear error messages (no stack traces)
+- [x] All error scenarios tested
+- [x] Retry logic respects max attempts (3)
+- [x] Exponential backoff implemented
+- [x] Fallback to sequential on repeated parallel failures
+- [x] User sees clear error messages (no stack traces)
 
 **Public API:** See ADR.md for:
 - "Token Tracking & Visibility (R6)" - `TokenTracker` implementation
@@ -371,16 +371,16 @@ Considerations:
 
 **TDD Order:**
 
-- [ ] 🔴 Write test: agent not available error message
-- [ ] 🔴 Write test: timeout produces user-friendly message
-- [ ] 🔴 Write test: retry attempts capped at 3
-- [ ] 🔴 Write test: exponential backoff timing
-- [ ] 🔴 Write test: parallel→sequential fallback triggers
-- [ ] 🔴 Write test: token tracking informs retry order (small chunks first)
-- [ ] 🟢 Implement `AnalysisError` with Display trait
-- [ ] 🟢 Implement `RetryCoordinator`
-- [ ] 🟢 Implement `TokenTracker`
-- [ ] 🔵 Refactor error messages for clarity
+- [x] 🔴 Write test: agent not available error message
+- [x] 🔴 Write test: timeout produces user-friendly message
+- [x] 🔴 Write test: retry attempts capped at 3
+- [x] 🔴 Write test: exponential backoff timing
+- [x] 🔴 Write test: parallel→sequential fallback triggers
+- [x] 🔴 Write test: token tracking informs retry order (small chunks first)
+- [x] 🟢 Implement `AnalysisError` with Display trait
+- [x] 🟢 Implement `RetryCoordinator`
+- [x] 🟢 Implement `TokenTracker`
+- [x] 🔵 Refactor error messages for clarity
 
 Files: `src/analyzer/error.rs`, `src/analyzer/tracker.rs`
 
@@ -472,5 +472,5 @@ Updated by implementer as work progresses.
 | 3 | **complete** | AgentBackend trait (Strategy pattern), BackendError with RateLimitInfo, ClaudeBackend, CodexBackend, GeminiBackend. 44 tests passing. JSON extraction handles direct/embedded/code-block formats. |
 | 4 | **complete** | WorkerScaler, ParallelExecutor, ProgressReporter, ChunkResult implemented. 27 tests passing (22 worker + 5 progress). Rayon thread pool with automatic cleanup. Single-chunk optimization. |
 | 5 | **complete** | ValidatedMarker, ResultAggregator (Builder pattern), MarkerWriter implemented. 25 tests passing. Deduplication within 2s window + same category. Timestamp resolution: absolute = chunk.start + relative. Integrates with existing MarkerManager. |
-| 6 | pending | |
+| 6 | **complete** | AnalysisError enum (user-friendly messages), RetryPolicy + RetryCoordinator (exponential backoff 1s->2s->4s, capped at 60s), TokenTracker (Observer pattern for usage metrics), RetryExecutor with parallel->sequential fallback. 84 tests passing (27 error + 29 tracker + 28 worker). |
 | 7 | pending | |

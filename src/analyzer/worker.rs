@@ -8,14 +8,24 @@
 //! - `WorkerScaler` calculates optimal worker count based on content size
 //! - `ParallelExecutor` orchestrates parallel chunk processing
 //! - `ChunkResult` holds the result of analyzing a single chunk
+//! - `RetryExecutor` provides retry with fallback to sequential
 //! - Progress is reported via `ProgressReporter` callback
+//!
+//! # Retry & Fallback Strategy
+//!
+//! When parallel execution fails, the system can fall back to sequential:
+//! 1. Parallel execution attempted first
+//! 2. If all chunks fail (rate limiting), fall back to sequential
+//! 3. Sequential execution with small delay between chunks
+//! 4. Each chunk retried up to 3 times with exponential backoff
 
 use crate::analyzer::backend::{AgentBackend, BackendError, RawMarker};
 use crate::analyzer::chunk::{AnalysisChunk, TimeRange};
+use crate::analyzer::tracker::{RetryCoordinator, RetryPolicy, TokenTracker};
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Configuration for worker scaling.
 #[derive(Debug, Clone)]
@@ -287,6 +297,207 @@ impl<'a, B: AgentBackend + ?Sized> ParallelExecutor<'a, B> {
             },
             Err(e) => ChunkResult::failure(chunk.id, chunk.time_range.clone(), e),
         }
+    }
+}
+
+/// Delay between sequential chunk analysis (milliseconds).
+const SEQUENTIAL_DELAY_MS: u64 = 500;
+
+/// Executor with retry logic and fallback to sequential execution.
+///
+/// Wraps parallel execution with:
+/// - Per-chunk retry with exponential backoff
+/// - Fallback to sequential if parallel fails completely
+/// - Token tracking for visibility
+pub struct RetryExecutor<'a, B: AgentBackend + ?Sized> {
+    backend: &'a B,
+    timeout: Duration,
+    worker_count: usize,
+    retry_coordinator: RetryCoordinator,
+}
+
+impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
+    /// Create a new retry executor with default retry policy.
+    pub fn new(backend: &'a B, timeout: Duration, worker_count: usize) -> Self {
+        Self {
+            backend,
+            timeout,
+            worker_count,
+            retry_coordinator: RetryCoordinator::with_defaults(),
+        }
+    }
+
+    /// Create with custom retry policy.
+    pub fn with_policy(
+        backend: &'a B,
+        timeout: Duration,
+        worker_count: usize,
+        policy: RetryPolicy,
+    ) -> Self {
+        Self {
+            backend,
+            timeout,
+            worker_count,
+            retry_coordinator: RetryCoordinator::new(policy),
+        }
+    }
+
+    /// Execute analysis with retry and fallback logic.
+    ///
+    /// Returns tuple of (results, tracker) for visibility.
+    pub fn execute_with_retry(
+        &self,
+        chunks: Vec<AnalysisChunk>,
+        progress: &ProgressReporter,
+        prompt_builder: impl Fn(&AnalysisChunk) -> String + Sync,
+    ) -> (Vec<ChunkResult>, TokenTracker) {
+        let mut tracker = TokenTracker::new();
+
+        if chunks.is_empty() {
+            return (Vec::new(), tracker);
+        }
+
+        // Try parallel execution first
+        let parallel_executor =
+            ParallelExecutor::new(self.backend, self.timeout, self.worker_count);
+
+        let results = parallel_executor.execute(chunks.clone(), progress, &prompt_builder);
+
+        // Check if all failed (might need sequential fallback)
+        let all_failed = results.iter().all(|r| r.is_failure());
+        let has_rate_limit = results.iter().any(|r| {
+            if let Err(BackendError::RateLimited(_)) = &r.result {
+                true
+            } else {
+                false
+            }
+        });
+
+        if all_failed && has_rate_limit && chunks.len() > 1 {
+            // Fall back to sequential with retry
+            return self.execute_sequential_with_retry(chunks, &mut tracker, &prompt_builder);
+        }
+
+        // Record results in tracker
+        for result in &results {
+            let chunk = chunks.iter().find(|c| c.id == result.chunk_id);
+            let tokens = chunk.map(|c| c.estimated_tokens).unwrap_or(0);
+
+            match &result.result {
+                Ok(_) => tracker.record_success(
+                    result.chunk_id,
+                    tokens,
+                    Duration::ZERO, // Parallel doesn't track individual durations
+                    1,
+                ),
+                Err(_) => tracker.record_failure(result.chunk_id, tokens, Duration::ZERO, 1),
+            }
+        }
+
+        (results, tracker)
+    }
+
+    /// Execute chunks sequentially with retry logic.
+    fn execute_sequential_with_retry(
+        &self,
+        chunks: Vec<AnalysisChunk>,
+        tracker: &mut TokenTracker,
+        prompt_builder: &impl Fn(&AnalysisChunk) -> String,
+    ) -> (Vec<ChunkResult>, TokenTracker) {
+        let mut results = Vec::with_capacity(chunks.len());
+
+        for chunk in chunks {
+            let start = Instant::now();
+            let result = self.analyze_chunk_with_retry(&chunk, prompt_builder);
+            let duration = start.elapsed();
+
+            let attempts = match &result.result {
+                Ok(_) => 1, // If success, count as 1 attempt (simplified)
+                Err(_) => self.retry_coordinator.max_attempts(),
+            };
+
+            match &result.result {
+                Ok(_) => {
+                    tracker.record_success(chunk.id, chunk.estimated_tokens, duration, attempts)
+                }
+                Err(_) => {
+                    tracker.record_failure(chunk.id, chunk.estimated_tokens, duration, attempts)
+                }
+            }
+
+            results.push(result);
+
+            // Small delay between sequential calls
+            std::thread::sleep(Duration::from_millis(SEQUENTIAL_DELAY_MS));
+        }
+
+        // Take ownership of tracker to return
+        let tracker_copy = std::mem::take(tracker);
+        (results, tracker_copy)
+    }
+
+    /// Analyze a single chunk with retry logic.
+    fn analyze_chunk_with_retry(
+        &self,
+        chunk: &AnalysisChunk,
+        prompt_builder: &impl Fn(&AnalysisChunk) -> String,
+    ) -> ChunkResult {
+        let prompt = prompt_builder(chunk);
+        let mut last_error = None;
+
+        for attempt in 0..self.retry_coordinator.max_attempts() {
+            match self.backend.invoke(&prompt, self.timeout) {
+                Ok(response) => match self.backend.parse_response(&response) {
+                    Ok(markers) => {
+                        return ChunkResult::success(chunk.id, chunk.time_range.clone(), markers);
+                    }
+                    Err(e) => {
+                        last_error = Some(e);
+                    }
+                },
+                Err(e) => {
+                    // Check for rate limit info
+                    let retry_after = e.wait_duration(Duration::ZERO);
+                    let retry_after = if retry_after.is_zero() {
+                        None
+                    } else {
+                        Some(retry_after)
+                    };
+
+                    // Wait before retry
+                    if self.retry_coordinator.should_retry(attempt + 1) {
+                        let wait = self.retry_coordinator.wait_duration(attempt, retry_after);
+                        std::thread::sleep(wait);
+                    }
+
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        // All retries exhausted
+        ChunkResult::failure(
+            chunk.id,
+            chunk.time_range.clone(),
+            last_error.unwrap_or_else(|| BackendError::JsonExtraction {
+                response: "Unknown error".to_string(),
+            }),
+        )
+    }
+
+    /// Check if fallback to sequential should be triggered.
+    pub fn should_fallback_to_sequential(results: &[ChunkResult]) -> bool {
+        if results.is_empty() {
+            return false;
+        }
+
+        // Fall back if all failed and at least one is rate limited
+        let all_failed = results.iter().all(|r| r.is_failure());
+        let has_rate_limit = results
+            .iter()
+            .any(|r| matches!(&r.result, Err(BackendError::RateLimited(_))));
+
+        all_failed && has_rate_limit
     }
 }
 
@@ -729,5 +940,123 @@ mod tests {
 
         let results = executor.execute(chunks, &progress, |_| "test".to_string());
         assert_eq!(results.len(), 2);
+    }
+
+    // ============================================
+    // RetryExecutor Tests
+    // ============================================
+
+    #[test]
+    fn retry_executor_success_no_retry_needed() {
+        let backend = MockBackend::new(vec![Ok(
+            r#"{"markers": [{"timestamp": 5.0, "label": "Test", "category": "success"}]}"#
+                .to_string(),
+        )]);
+
+        let executor = RetryExecutor::new(&backend, Duration::from_secs(60), 1);
+        let mut chunks = vec![create_test_chunk(0, 0.0, 100.0)];
+        chunks[0].estimated_tokens = 10000;
+        let progress = ProgressReporter::new(1);
+
+        let (results, tracker) =
+            executor.execute_with_retry(chunks, &progress, |_| "test".to_string());
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_success());
+
+        let summary = tracker.summary();
+        assert_eq!(summary.successful_chunks, 1);
+    }
+
+    #[test]
+    fn retry_executor_should_fallback_all_rate_limited() {
+        use crate::analyzer::backend::RateLimitInfo;
+
+        let results = vec![
+            ChunkResult::failure(
+                0,
+                TimeRange::new(0.0, 100.0),
+                BackendError::RateLimited(RateLimitInfo {
+                    retry_after: Some(Duration::from_secs(30)),
+                    message: "Rate limited".to_string(),
+                }),
+            ),
+            ChunkResult::failure(
+                1,
+                TimeRange::new(100.0, 200.0),
+                BackendError::RateLimited(RateLimitInfo {
+                    retry_after: None,
+                    message: "Rate limited".to_string(),
+                }),
+            ),
+        ];
+
+        assert!(RetryExecutor::<MockBackend>::should_fallback_to_sequential(
+            &results
+        ));
+    }
+
+    #[test]
+    fn retry_executor_should_not_fallback_partial_success() {
+        let results = vec![
+            ChunkResult::success(0, TimeRange::new(0.0, 100.0), vec![]),
+            ChunkResult::failure(
+                1,
+                TimeRange::new(100.0, 200.0),
+                BackendError::Timeout(Duration::from_secs(60)),
+            ),
+        ];
+
+        assert!(!RetryExecutor::<MockBackend>::should_fallback_to_sequential(&results));
+    }
+
+    #[test]
+    fn retry_executor_should_not_fallback_non_rate_limit() {
+        let results = vec![ChunkResult::failure(
+            0,
+            TimeRange::new(0.0, 100.0),
+            BackendError::Timeout(Duration::from_secs(60)),
+        )];
+
+        assert!(!RetryExecutor::<MockBackend>::should_fallback_to_sequential(&results));
+    }
+
+    #[test]
+    fn retry_executor_empty_chunks() {
+        let backend = MockBackend::new(vec![]);
+        let executor = RetryExecutor::new(&backend, Duration::from_secs(60), 1);
+        let progress = ProgressReporter::new(0);
+
+        let (results, tracker) =
+            executor.execute_with_retry(vec![], &progress, |_| "test".to_string());
+
+        assert!(results.is_empty());
+        assert_eq!(tracker.summary().chunks_processed, 0);
+    }
+
+    #[test]
+    fn retry_executor_tracks_usage() {
+        let backend = MockBackend::new(vec![
+            Ok(r#"{"markers": []}"#.to_string()),
+            Ok(r#"{"markers": []}"#.to_string()),
+        ]);
+
+        let executor = RetryExecutor::new(&backend, Duration::from_secs(60), 2);
+        let mut chunks = vec![
+            create_test_chunk(0, 0.0, 100.0),
+            create_test_chunk(1, 100.0, 200.0),
+        ];
+        chunks[0].estimated_tokens = 10000;
+        chunks[1].estimated_tokens = 20000;
+        let progress = ProgressReporter::new(2);
+
+        let (results, tracker) =
+            executor.execute_with_retry(chunks, &progress, |_| "test".to_string());
+
+        assert_eq!(results.len(), 2);
+
+        let summary = tracker.summary();
+        assert_eq!(summary.chunks_processed, 2);
+        assert_eq!(summary.total_estimated_tokens, 30000);
     }
 }
