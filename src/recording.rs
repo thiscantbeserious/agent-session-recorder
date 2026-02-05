@@ -13,11 +13,11 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::analyzer::Analyzer;
 use crate::branding;
 use crate::config::Config;
 use crate::files::filename;
 use crate::storage::StorageManager;
+use crate::Analyzer;
 
 /// Session recorder that wraps asciinema
 pub struct Recorder {

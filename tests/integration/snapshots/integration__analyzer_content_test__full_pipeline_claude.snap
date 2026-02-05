@@ -1,0 +1,10 @@
+---
+source: tests/integration/analyzer_content_test.rs
+expression: output
+---
+ Task 
+ Analyzing code... 
+✓ Analysis complete
+✔ Tests passed
+✕ Build failed
+⚠ Warning: deprecated API

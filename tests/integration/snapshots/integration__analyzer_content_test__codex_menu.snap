@@ -1,0 +1,5 @@
+---
+source: tests/integration/analyzer_content_test.rs
+expression: clean
+---
+ 1. Allow Codex to work in this folder without asking for approval   2. Require approval of edits and commands

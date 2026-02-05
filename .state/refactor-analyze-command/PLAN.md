@@ -44,11 +44,11 @@ Implementation challenges to solve (architect identifies, implementer resolves):
 **Output:** `AnalysisContent` with cleaned segments and token estimates
 
 **Definition of Done:**
-- [ ] All unit tests pass
-- [ ] Snapshot tests match expected output
+- [x] All unit tests pass
+- [x] Snapshot tests match expected output
 - [ ] Benchmark: <5s for 70MB file
 - [ ] Compression ratio: 55-89% size reduction
-- [ ] Semantic chars (✓✔✕⚠ℹ) preserved in output
+- [x] Semantic chars (✓✔✕⚠ℹ) preserved in output
 
 **Public API:** See ADR.md "Content Extraction" section for:
 - `ContentCleaner` - single-pass state machine (ADR Performance section)
@@ -58,54 +58,54 @@ Implementation challenges to solve (architect identifies, implementer resolves):
 
 **TDD Order** (tests before implementation):
 
-- [ ] Create `src/analyzer/mod.rs` with module structure
-- [ ] Create `tests/fixtures/` with sample events from real cast files (Section 1.7 of SPEC.md)
+- [x] Create `src/analyzer/mod.rs` with module structure
+- [x] Create `tests/fixtures/` with sample events from real cast files (Section 1.7 of SPEC.md)
 
 **ContentCleaner (Optimized Single-Pass - see ADR Performance section):**
-- [ ] 🔴 Write unit tests for ANSI stripping (CSI, OSC, simple escapes)
-- [ ] 🔴 Write unit tests for control char stripping
-- [ ] 🔴 Write unit tests for box drawing removal
-- [ ] 🔴 Write unit tests for spinner removal (Claude, Gemini, Codex)
-- [ ] 🔴 Write unit tests for **semantic char preservation** (✓✔✕⚠ℹ☐☑)
-- [ ] 🔴 Write unit tests for progress block removal
-- [ ] 🟢 Implement `ContentCleaner` with state machine
-- [ ] 🔵 Refactor for clarity, verify 5x+ faster than naive approach
+- [x] 🔴 Write unit tests for ANSI stripping (CSI, OSC, simple escapes)
+- [x] 🔴 Write unit tests for control char stripping
+- [x] 🔴 Write unit tests for box drawing removal
+- [x] 🔴 Write unit tests for spinner removal (Claude, Gemini, Codex)
+- [x] 🔴 Write unit tests for **semantic char preservation** (✓✔✕⚠ℹ☐☑)
+- [x] 🔴 Write unit tests for progress block removal
+- [x] 🟢 Implement `ContentCleaner` with state machine
+- [x] 🔵 Refactor for clarity, verify 5x+ faster than naive approach
 
 **DeduplicateProgressLines** (separate transform, runs after ContentCleaner):
-- [ ] 🔴 Write snapshot test with \r-based progress
-- [ ] 🔴 Write test for timestamp preservation
-- [ ] 🔴 Write test for marker preservation
-- [ ] 🟢 Implement transform (see ADR algorithm)
-- [ ] 🔵 Refactor if needed
+- [x] 🔴 Write snapshot test with \r-based progress
+- [x] 🔴 Write test for timestamp preservation
+- [x] 🔴 Write test for marker preservation
+- [x] 🟢 Implement transform (see ADR algorithm)
+- [x] 🔵 Refactor if needed
 
 **NormalizeWhitespace:**
-- [ ] 🔴 Write unit tests
-- [ ] 🟢 Implement transform
-- [ ] 🔵 Refactor if needed
+- [x] 🔴 Write unit tests
+- [x] 🟢 Implement transform
+- [x] 🔵 Refactor if needed
 
 **FilterEmptyEvents:**
-- [ ] 🔴 Write unit tests (preserves markers)
-- [ ] 🟢 Implement transform
-- [ ] 🔵 Refactor if needed
+- [x] 🔴 Write unit tests (preserves markers)
+- [x] 🟢 Implement transform
+- [x] 🔵 Refactor if needed
 
 **TokenEstimator:**
-- [ ] 🔴 Write unit test for chars/4 estimation
-- [ ] 🔴 Write test for estimation AFTER cleanup
-- [ ] 🟢 Implement `TokenEstimator` struct
-- [ ] 🔵 Refactor if needed
+- [x] 🔴 Write unit test for chars/4 estimation
+- [x] 🔴 Write test for estimation AFTER cleanup
+- [x] 🟢 Implement `TokenEstimator` struct
+- [x] 🔵 Refactor if needed
 
 **StatsCollector:**
-- [ ] 🔴 Write unit test for stats accumulation
-- [ ] 🟢 Implement `StatsCollector`
-- [ ] 🔵 Refactor if needed
+- [x] 🔴 Write unit test for stats accumulation
+- [x] 🟢 Implement `StatsCollector` (integrated into ExtractionStats)
+- [x] 🔵 Refactor if needed
 
 **Full Pipeline:**
-- [ ] 🔴 Write integration snapshot test
-- [ ] 🟢 Create `ExtractionConfig` with `build_pipeline()` method
-- [ ] 🟢 Create `ContentExtractor` with segment creation
+- [x] 🔴 Write integration snapshot test
+- [x] 🟢 Create `ExtractionConfig` with `build_pipeline()` method
+- [x] 🟢 Create `ContentExtractor` with segment creation
 - [ ] 🔵 **Benchmark with real 70MB+ cast file** - target <5s extraction time
 
-- [ ] Create `AnalysisSegment` struct with start_time, end_time, content, estimated_tokens
+- [x] Create `AnalysisSegment` struct with start_time, end_time, content, estimated_tokens
 - [ ] Verify compression ratios match SPEC.md expectations (55-89% reduction)
 
 Files: `src/analyzer/mod.rs`, `src/analyzer/content.rs`, `tests/fixtures/`
@@ -467,7 +467,7 @@ Updated by implementer as work progresses.
 
 | Stage | Status | Notes |
 |-------|--------|-------|
-| 1 | pending | |
+| 1 | **in-progress** | Core transforms implemented, 43 tests passing. Remaining: benchmark with 70MB+ file |
 | 2 | pending | |
 | 3 | pending | |
 | 4 | pending | |

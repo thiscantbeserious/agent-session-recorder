@@ -80,3 +80,6 @@ mod clipboard_test;
 
 #[path = "integration/copy_test.rs"]
 mod copy_test;
+
+#[path = "integration/analyzer_content_test.rs"]
+mod analyzer_content_test;
