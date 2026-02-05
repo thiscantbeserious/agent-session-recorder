@@ -649,41 +649,58 @@ Note: With parallel processing, wall-clock time stays relatively flat as content
 ### 4.1 Claude
 
 ```bash
-# With JSON schema enforcement
+# With JSON schema enforcement (no permission bypass needed - pure text analysis)
 claude --print \
   --output-format json \
   --json-schema '{"type":"object","properties":{"markers":{"type":"array"}}}' \
-  --dangerously-skip-permissions \
   -p "$PROMPT"
 
 # Or via stdin
-echo "$PROMPT" | claude --print --output-format json --dangerously-skip-permissions
+echo "$PROMPT" | claude --print --output-format json
 ```
+
+**Note:** No `--dangerously-skip-permissions` needed. The agent receives content in the prompt and returns JSON - no file access or shell commands required.
 
 ### 4.2 Codex
 
 ```bash
 # Codex doesn't support JSON output - need text extraction
-codex exec \
-  --dangerously-bypass-approvals-and-sandbox \
-  "$PROMPT"
+# Use --full-auto for non-interactive mode without dangerous bypasses
+codex exec --full-auto "$PROMPT"
 
 # Via stdin
-echo "$PROMPT" | codex exec --dangerously-bypass-approvals-and-sandbox
+echo "$PROMPT" | codex exec --full-auto
 ```
+
+**Note:** `--full-auto` enables non-interactive mode. We avoid `--dangerously-bypass-approvals-and-sandbox` since the agent only analyzes text, no file/shell access needed.
 
 ### 4.3 Gemini
 
 ```bash
-# With JSON output
-gemini \
-  --output-format json \
-  --yolo \
-  "$PROMPT"
+# With JSON output (no special permissions needed)
+gemini --output-format json "$PROMPT"
 
 # Via stdin
-echo "$PROMPT" | gemini --output-format json --yolo
+echo "$PROMPT" | gemini --output-format json
 ```
+
+**Note:** No `--yolo` needed. The agent just processes the prompt and returns JSON.
+
+### 4.4 Permission Philosophy
+
+The analyzer is designed so agents **never need elevated permissions**:
+
+| What agents DO | What agents DON'T do |
+|----------------|---------------------|
+| Receive cast content in prompt | Read files from disk |
+| Analyze text for patterns | Write files |
+| Return structured JSON | Execute shell commands |
+| | Access filesystem |
+
+This design choice:
+- **Security**: No risk of agents modifying files or running commands
+- **Simplicity**: No permission prompts to handle
+- **Portability**: Works the same across all environments
 
 ### 4.4 Rate Limiting Detection
 

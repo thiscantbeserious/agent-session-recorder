@@ -228,13 +228,14 @@ Raw Cast File (100MB)
 
 | Feature | Claude | Codex | Gemini |
 |---------|--------|-------|--------|
-| Non-interactive mode | `--print` | `exec` | positional prompt |
+| Non-interactive mode | `--print` | `exec --full-auto` | positional prompt |
 | JSON output | `--output-format json` | N/A (text only) | `--output-format json` |
 | Structured schema | `--json-schema <schema>` | N/A | N/A |
-| Permission bypass | `--dangerously-skip-permissions` | `--dangerously-bypass-approvals-and-sandbox` | `--yolo` |
 | Stdin input | Yes (pipe) | Yes (pipe) | Yes (pipe) |
 
-> **See SPEC.md Section 4** for complete CLI invocation examples with all flags.
+**Permission Philosophy:** Agents receive content IN the prompt and return JSON. They never need to read files, write files, or execute commands. Therefore, **no permission bypass flags are required** (`--dangerously-skip-permissions`, `--dangerously-bypass-approvals-and-sandbox`, `--yolo`).
+
+> **See SPEC.md Section 4** for complete CLI invocation examples.
 
 ### AgentBackend Trait Definition
 
