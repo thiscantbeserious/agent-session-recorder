@@ -6,9 +6,6 @@ pub mod helpers;
 #[path = "integration/shell/mod.rs"]
 mod shell;
 
-#[path = "integration/analyzer_test.rs"]
-mod analyzer_test;
-
 #[path = "integration/asciicast_test.rs"]
 mod asciicast_test;
 

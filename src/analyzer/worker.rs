@@ -365,13 +365,9 @@ impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
 
         // Check if all failed (might need sequential fallback)
         let all_failed = results.iter().all(|r| r.is_failure());
-        let has_rate_limit = results.iter().any(|r| {
-            if let Err(BackendError::RateLimited(_)) = &r.result {
-                true
-            } else {
-                false
-            }
-        });
+        let has_rate_limit = results
+            .iter()
+            .any(|r| matches!(&r.result, Err(BackendError::RateLimited(_))));
 
         if all_failed && has_rate_limit && chunks.len() > 1 {
             // Fall back to sequential with retry

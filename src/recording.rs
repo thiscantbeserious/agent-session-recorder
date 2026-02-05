@@ -13,11 +13,11 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::analyzer::{AgentType, AnalyzeOptions, AnalyzerService};
 use crate::branding;
 use crate::config::Config;
 use crate::files::filename;
 use crate::storage::StorageManager;
-use crate::Analyzer;
 
 /// Session recorder that wraps asciinema
 pub struct Recorder {
@@ -245,14 +245,32 @@ impl Recorder {
             return;
         }
 
-        let agent = &self.config.recording.analysis_agent;
+        let agent_name = &self.config.recording.analysis_agent;
+
+        // Parse agent type
+        let agent = match agent_name.to_lowercase().as_str() {
+            "claude" => AgentType::Claude,
+            "codex" => AgentType::Codex,
+            "gemini" | "gemini-cli" => AgentType::Gemini,
+            _ => {
+                eprintln!(
+                    "Auto-analyze skipped: unknown agent '{}'. Supported: claude, codex, gemini",
+                    agent_name
+                );
+                return;
+            }
+        };
+
+        // Create analyzer service with quiet mode (auto-analyze is background operation)
+        let options = AnalyzeOptions::with_agent(agent).quiet();
+        let service = AnalyzerService::new(options);
 
         // Check if agent is installed
-        if !Analyzer::is_agent_installed(agent) {
+        if !service.is_agent_available() {
             println!();
             println!(
                 "Auto-analyze skipped: '{}' not installed. Install it or change analysis_agent in config.",
-                agent
+                agent_name
             );
             println!(
                 "Tip: Run 'agr list' to see recordings, then use your agent's CLI to analyze."
@@ -263,12 +281,19 @@ impl Recorder {
         println!();
         println!("Analyzing session with {}...", agent);
 
-        let analyzer = Analyzer::new(agent);
-        if let Err(e) = analyzer.analyze(filepath) {
-            eprintln!("Auto-analyze failed: {}", e);
-            println!(
-                "Tip: Run 'agr list' to see recordings, then use your agent's CLI to analyze."
-            );
+        match service.analyze(filepath) {
+            Ok(result) => {
+                println!(
+                    "Analysis complete. {} markers added.",
+                    result.markers_added()
+                );
+            }
+            Err(e) => {
+                eprintln!("Auto-analyze failed: {}", e);
+                println!(
+                    "Tip: Run 'agr list' to see recordings, then use your agent's CLI to analyze."
+                );
+            }
         }
     }
 }

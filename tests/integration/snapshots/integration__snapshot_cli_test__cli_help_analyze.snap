@@ -1,6 +1,5 @@
 ---
-source: tests/integration/cli_test.rs
-assertion_line: 69
+source: tests/integration/snapshot_cli_test.rs
 expression: output
 ---
 === agr analyze --help ===
@@ -9,21 +8,27 @@ Exit code: 0
 --- stdout ---
 Analyze a recording file using an AI agent.
 
-The analyzer reads the cast file, identifies key moments (errors, decisions,
-milestones), and adds markers using 'agr marker add'. This is the same
-analysis that runs automatically when auto_analyze is enabled.
+The analyzer reads the cast file, extracts meaningful content (removing ANSI
+codes and noise), and uses AI to identify key engineering moments. Markers
+are added directly to the file using the native asciicast v3 format.
+
+For large files, analysis is parallelized across multiple chunks, with
+automatic retry and rate limit handling.
 
 The default agent is configured in ~/.config/agr/config.toml under
 [recording].analysis_agent. Use --agent to override for a single run.
 
 EXAMPLES:
-    agr analyze session.cast              [37mAnalyze with default agent[0m
-    agr analyze session.cast --agent codex    [37mOverride agent for this run[0m
+    agr analyze session.cast                     [37mAnalyze with default agent[0m
+    agr analyze session.cast --agent codex       [37mUse Codex instead[0m
+    agr analyze session.cast --workers 4         [37mUse 4 parallel workers[0m
+    agr analyze session.cast --no-parallel       [37mSequential mode[0m
+    agr analyze session.cast --timeout 180       [37m3 minute timeout per chunk[0m
 
 SUPPORTED AGENTS:
-    claude      [37mClaude Code CLI[0m
+    claude      [37mClaude Code CLI (default)[0m
     codex       [37mOpenAI Codex CLI[0m
-    gemini  [37mGoogle Gemini CLI[0m
+    gemini      [37mGoogle Gemini CLI[0m
 
 Usage: agr analyze [OPTIONS] <FILE>
 
@@ -33,7 +38,16 @@ Arguments:
 
 Options:
   -a, --agent <AGENT>
-          Agent to use (overrides config)
+          Agent to use: claude, codex, gemini
+
+  -w, --workers <WORKERS>
+          Number of parallel workers
+
+  -t, --timeout <TIMEOUT>
+          Timeout per chunk in seconds
+
+      --no-parallel
+          Disable parallel processing
 
   -h, --help
           Print help (see a summary with '-h')

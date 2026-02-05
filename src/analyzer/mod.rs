@@ -24,6 +24,7 @@
 //! - [`worker`] - Parallel execution using Rayon
 //! - [`progress`] - Progress reporting for analysis
 //! - [`result`] - Result aggregation and marker writing
+//! - [`service`] - AnalyzerService facade (main entry point)
 
 pub mod backend;
 pub mod chunk;
@@ -32,6 +33,7 @@ pub mod error;
 mod extractor;
 pub mod progress;
 pub mod result;
+mod service;
 pub mod tracker;
 mod transforms;
 mod types;
@@ -69,3 +71,6 @@ pub use error::AnalysisError;
 
 // Re-export tracker types
 pub use tracker::{ChunkUsage, RetryCoordinator, RetryPolicy, TokenTracker, UsageSummary};
+
+// Re-export service types (main entry point)
+pub use service::{build_prompt, AnalysisResult, AnalyzeOptions, AnalyzerService};

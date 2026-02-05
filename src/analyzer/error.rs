@@ -117,9 +117,9 @@ impl fmt::Display for AnalysisError {
                 total_chunks,
                 errors,
             } => {
-                write!(f, "All {} chunks failed to analyze.\n", total_chunks)?;
+                writeln!(f, "All {} chunks failed to analyze.", total_chunks)?;
                 for (chunk_id, error) in errors.iter().take(5) {
-                    write!(f, "  - Chunk {}: {}\n", chunk_id, error)?;
+                    writeln!(f, "  - Chunk {}: {}", chunk_id, error)?;
                 }
                 if errors.len() > 5 {
                     write!(f, "  ... and {} more errors", errors.len() - 5)?;

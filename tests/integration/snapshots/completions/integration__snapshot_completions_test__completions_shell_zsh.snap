@@ -76,8 +76,13 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (analyze)
 _arguments "${_arguments_options[@]}" : \
-'-a+[Agent to use (overrides config)]:AGENT:_default' \
-'--agent=[Agent to use (overrides config)]:AGENT:_default' \
+'-a+[Agent to use\: claude, codex, gemini]:AGENT:_default' \
+'--agent=[Agent to use\: claude, codex, gemini]:AGENT:_default' \
+'-w+[Number of parallel workers]:WORKERS:_default' \
+'--workers=[Number of parallel workers]:WORKERS:_default' \
+'-t+[Timeout per chunk in seconds]:TIMEOUT:_default' \
+'--timeout=[Timeout per chunk in seconds]:TIMEOUT:_default' \
+'--no-parallel[Disable parallel processing]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 ':file -- Path to the .cast recording file:_default' \

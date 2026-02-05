@@ -2,11 +2,7 @@
 //!
 //! A Rust library for recording AI agent terminal sessions with asciinema.
 
-// Legacy analyzer module (will be replaced)
-mod analyzer_legacy;
-pub use analyzer_legacy::Analyzer;
-
-// New analyzer module with content extraction pipeline
+// Analyzer module with content extraction pipeline and AI analysis
 pub mod analyzer;
 
 pub mod asciicast;
