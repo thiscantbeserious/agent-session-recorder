@@ -114,8 +114,7 @@ impl ResultAggregator {
     pub fn new(max_timestamp: f64) -> Self {
         // Calculate window as percentage of duration
         let window = (max_timestamp * DEDUP_WINDOW_PERCENT)
-            .max(DEDUP_WINDOW_MIN_SECS)
-            .min(DEDUP_WINDOW_MAX_SECS);
+            .clamp(DEDUP_WINDOW_MIN_SECS, DEDUP_WINDOW_MAX_SECS);
 
         Self {
             dedup_window: window,

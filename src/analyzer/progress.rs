@@ -94,7 +94,13 @@ impl DefaultProgressReporter {
         markers_added: usize,
         failed_ranges: &[(f64, f64)],
     ) {
-        self.finish_partial_with_errors(successful_chunks, total_chunks, markers_added, failed_ranges, &[])
+        self.finish_partial_with_errors(
+            successful_chunks,
+            total_chunks,
+            markers_added,
+            failed_ranges,
+            &[],
+        )
     }
 
     /// Report partial success with failures and error details.

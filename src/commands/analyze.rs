@@ -28,6 +28,7 @@ const CURATION_THRESHOLD: usize = 12;
 /// Reads the cast file, extracts meaningful content, and uses AI to identify
 /// key engineering moments. Markers are added directly to the file.
 #[cfg(not(tarpaulin_include))]
+#[allow(clippy::too_many_arguments)]
 pub fn handle(
     file: &str,
     agent_override: Option<&str>,
@@ -128,7 +129,10 @@ pub fn handle(
     let final_marker_count = if result.markers.len() > CURATION_THRESHOLD {
         let should_curate = if curate {
             // Auto-curate with --curate flag
-            println!("\nAuto-curating {} markers to 8-12...", result.markers.len());
+            println!(
+                "\nAuto-curating {} markers to 8-12...",
+                result.markers.len()
+            );
             true
         } else {
             // Prompt user
@@ -171,7 +175,10 @@ pub fn handle(
         result.markers.len()
     };
 
-    println!("\nAnalysis complete. {} markers in file.", final_marker_count);
+    println!(
+        "\nAnalysis complete. {} markers in file.",
+        final_marker_count
+    );
 
     Ok(())
 }

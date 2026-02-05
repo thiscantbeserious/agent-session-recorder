@@ -49,14 +49,7 @@ impl AgentBackend for ClaudeBackend {
         // Use --tools "" to disable all tools and get direct text responses.
         // This prevents Claude from trying to execute tools and speeds up responses.
         let mut child = Command::new(Self::command())
-            .args([
-                "--print",
-                "--output-format",
-                "json",
-                "--tools",
-                "",
-                "-p",
-            ])
+            .args(["--print", "--output-format", "json", "--tools", "", "-p"])
             .arg(prompt)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -82,8 +75,7 @@ impl AgentBackend for ClaudeBackend {
 
                     // Claude CLI may return exit code 1 but put error info in stdout
                     // (in the JSON wrapper with is_error: true)
-                    let error_msg = extract_error_from_claude_response(&stdout)
-                        .unwrap_or(stderr);
+                    let error_msg = extract_error_from_claude_response(&stdout).unwrap_or(stderr);
 
                     Err(BackendError::ExitCode {
                         code: output.status.code().unwrap_or(-1),
@@ -124,7 +116,9 @@ fn extract_error_from_claude_response(stdout: &str) -> Option<String> {
     let wrapper: ClaudeErrorWrapper = serde_json::from_str(stdout.trim()).ok()?;
 
     if wrapper.is_error == Some(true) {
-        wrapper.result.or_else(|| Some("Claude returned an error".to_string()))
+        wrapper
+            .result
+            .or_else(|| Some("Claude returned an error".to_string()))
     } else {
         // Not an error response, check for result content that might explain the issue
         wrapper.result.filter(|r| !r.is_empty())

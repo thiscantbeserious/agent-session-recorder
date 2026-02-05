@@ -189,7 +189,12 @@ SUPPORTED AGENTS:
         #[arg(long, help = "Save cleaned content to a file and stop before analysis")]
         debug: bool,
         /// Path to save cleaned content (implies --debug if --output is used alone)
-        #[arg(long, short, value_name = "FILE", help = "Path to save cleaned content")]
+        #[arg(
+            long,
+            short,
+            value_name = "FILE",
+            help = "Path to save cleaned content"
+        )]
         output: Option<String>,
     },
 

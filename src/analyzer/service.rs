@@ -217,13 +217,12 @@ impl AnalyzerService {
                     .map(|s| format!("{}.txt", s))
                     .expect("Path must have a filename")
             };
-            
-            std::fs::write(&output_path, content.text())
-                .map_err(|e| AnalysisError::IoError {
-                    operation: "writing debug output".to_string(),
-                    message: e.to_string(),
-                })?;
-            
+
+            std::fs::write(&output_path, content.text()).map_err(|e| AnalysisError::IoError {
+                operation: "writing debug output".to_string(),
+                message: e.to_string(),
+            })?;
+
             if !self.options.quiet {
                 eprintln!("Cleaned content written to: {}", output_path);
             }
@@ -376,21 +375,21 @@ impl AnalyzerService {
     ) -> Result<Vec<ValidatedMarker>, AnalysisError> {
         let prompt = build_curation_prompt(markers, total_duration);
 
-        let response = self
-            .backend
-            .invoke(&prompt, timeout)
-            .map_err(|e| AnalysisError::IoError {
-                operation: "curation".to_string(),
-                message: format!("{}", e),
-            })?;
+        let response =
+            self.backend
+                .invoke(&prompt, timeout)
+                .map_err(|e| AnalysisError::IoError {
+                    operation: "curation".to_string(),
+                    message: format!("{}", e),
+                })?;
 
-        let parsed = self
-            .backend
-            .parse_response(&response)
-            .map_err(|e| AnalysisError::IoError {
-                operation: "parsing curation response".to_string(),
-                message: format!("{}", e),
-            })?;
+        let parsed =
+            self.backend
+                .parse_response(&response)
+                .map_err(|e| AnalysisError::IoError {
+                    operation: "parsing curation response".to_string(),
+                    message: format!("{}", e),
+                })?;
 
         // Convert RawMarkers back to ValidatedMarkers
         let curated: Vec<ValidatedMarker> = parsed
@@ -512,7 +511,10 @@ fn build_curation_prompt(markers: &[ValidatedMarker], total_duration: f64) -> St
 
     TEMPLATE
         .replace("{total_duration}", &format!("{:.1}", total_duration))
-        .replace("{duration_minutes}", &format!("{:.1}", total_duration / 60.0))
+        .replace(
+            "{duration_minutes}",
+            &format!("{:.1}", total_duration / 60.0),
+        )
         .replace("{marker_count}", &markers.len().to_string())
         .replace("{markers_json}", &markers_json_str)
 }

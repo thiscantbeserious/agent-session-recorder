@@ -46,16 +46,19 @@ impl Transform for DeduplicateProgressLines {
                     self.current_line.clear();
                     self.pending_cr = false;
                 }
-                
+
                 let mut marker = event;
                 marker.time += self.accumulated_time;
                 self.accumulated_time = 0.0;
-                
+
                 if !self.current_line.is_empty() {
-                    output_events.push(Event::output(marker.time, std::mem::take(&mut self.current_line)));
+                    output_events.push(Event::output(
+                        marker.time,
+                        std::mem::take(&mut self.current_line),
+                    ));
                     marker.time = 0.0;
                 }
-                
+
                 output_events.push(marker);
                 continue;
             }
@@ -83,7 +86,9 @@ impl Transform for DeduplicateProgressLines {
                 }
 
                 match ch {
-                    '\r' => { self.pending_cr = true; }
+                    '\r' => {
+                        self.pending_cr = true;
+                    }
                     '\n' => {
                         let data = if !self.current_line.is_empty() {
                             format!("{}\n", std::mem::take(&mut self.current_line))
@@ -101,10 +106,13 @@ impl Transform for DeduplicateProgressLines {
         }
 
         if !self.current_line.is_empty() {
-            output_events.push(Event::output(self.accumulated_time, std::mem::take(&mut self.current_line)));
+            output_events.push(Event::output(
+                self.accumulated_time,
+                std::mem::take(&mut self.current_line),
+            ));
             self.accumulated_time = 0.0;
         }
-        
+
         // Final trailing time delta if any
         if self.accumulated_time > 0.0 {
             if let Some(last) = output_events.last_mut() {

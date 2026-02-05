@@ -97,10 +97,8 @@ impl ContentExtractor {
     }
 
     fn apply_global_dedupe(&self, events: &mut Vec<Event>) -> (usize, usize) {
-        let mut global_deduper = GlobalDeduplicator::new(
-            self.config.max_line_repeats,
-            self.config.event_window_size,
-        );
+        let mut global_deduper =
+            GlobalDeduplicator::new(self.config.max_line_repeats, self.config.event_window_size);
         global_deduper.transform(events);
         global_deduper.stats()
     }

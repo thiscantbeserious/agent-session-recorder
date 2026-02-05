@@ -12,12 +12,12 @@
 //! - [`EventCoalescer`] - Merges rapid, similar consecutive events
 //! - [`GlobalDeduplicator`] - Caps global line frequency and hashes redundant redraws
 
+mod aggressive;
 mod cleaner;
 mod dedupe;
 mod normalize;
-mod aggressive;
 
+pub use aggressive::{BlockTruncator, EventCoalescer, GlobalDeduplicator, SimilarityFilter};
 pub use cleaner::ContentCleaner;
 pub use dedupe::DeduplicateProgressLines;
 pub use normalize::{FilterEmptyEvents, NormalizeWhitespace};
-pub use aggressive::{BlockTruncator, EventCoalescer, GlobalDeduplicator, SimilarityFilter};

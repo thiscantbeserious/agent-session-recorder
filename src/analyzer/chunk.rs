@@ -338,13 +338,13 @@ impl ChunkCalculator {
                         let char_end = ((include_end as f64 * ratio) as usize).min(total_chars);
 
                         // Ensure we get at least some content if there are tokens to include
-                        let (char_start, char_end) = if char_end <= char_start && included_tokens > 0
-                        {
-                            // Fall back to including all content if calculation fails
-                            (0, total_chars)
-                        } else {
-                            (char_start, char_end)
-                        };
+                        let (char_start, char_end) =
+                            if char_end <= char_start && included_tokens > 0 {
+                                // Fall back to including all content if calculation fails
+                                (0, total_chars)
+                            } else {
+                                (char_start, char_end)
+                            };
 
                         segment
                             .content

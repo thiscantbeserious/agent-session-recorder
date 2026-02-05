@@ -204,8 +204,8 @@ mod tests {
     fn accumulates_time_across_multiple_removed_events() {
         let mut events = vec![
             Event::output(1.0, "start"),
-            Event::output(2.0, ""), // removed
-            Event::output(3.0, "   "), // removed
+            Event::output(2.0, ""),     // removed
+            Event::output(3.0, "   "),  // removed
             Event::output(4.0, "\t\n"), // removed
             Event::output(5.0, "end"),
         ];
