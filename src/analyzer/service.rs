@@ -187,6 +187,24 @@ impl AnalyzerService {
             return Err(AnalysisError::NoContent);
         }
 
+        // Show extraction stats
+        if !self.options.quiet {
+            let stats = &content.stats;
+            let compression = if stats.original_bytes > 0 {
+                100.0 - (stats.extracted_bytes as f64 / stats.original_bytes as f64 * 100.0)
+            } else {
+                0.0
+            };
+            eprintln!(
+                "Extracted: {}KB → {}KB ({:.0}% reduction, {} ANSI stripped, {} lines deduped)",
+                stats.original_bytes / 1024,
+                stats.extracted_bytes / 1024,
+                compression,
+                stats.ansi_sequences_stripped,
+                stats.progress_lines_deduplicated
+            );
+        }
+
         // 4. Calculate chunks (Stage 2)
         let calculator = ChunkCalculator::for_agent(self.options.agent);
         let chunks = calculator.calculate_chunks(&content);
@@ -205,8 +223,10 @@ impl AnalyzerService {
 
         // Build prompt builder with template
         let total_duration = content.total_duration;
-        let prompt_builder =
-            |chunk: &super::chunk::AnalysisChunk| -> String { build_prompt(chunk, total_duration) };
+        let total_chunks = chunks.len();
+        let prompt_builder = |chunk: &super::chunk::AnalysisChunk| -> String {
+            build_prompt(chunk, total_duration, total_chunks)
+        };
 
         // Execute with retry
         let worker_progress = ProgressReporter::new(chunks.len());
@@ -217,6 +237,23 @@ impl AnalyzerService {
         // 6. Aggregate results (Stage 5)
         let aggregator = ResultAggregator::new(content.total_duration);
         let (markers, agg_report) = aggregator.aggregate(results);
+
+        // 6.5. LLM post-processing to curate markers (if we have many)
+        let markers = if markers.len() > 12 && !self.options.quiet {
+            eprintln!("Curating {} markers...", markers.len());
+            match self.curate_markers(&markers, content.total_duration, timeout) {
+                Ok(curated) => {
+                    eprintln!("Selected {} most significant markers.", curated.len());
+                    curated
+                }
+                Err(e) => {
+                    eprintln!("Warning: Curation failed ({}), using all markers.", e);
+                    markers
+                }
+            }
+        } else {
+            markers
+        };
 
         // 7. Write markers to file
         let write_report =
@@ -237,11 +274,25 @@ impl AnalyzerService {
                     .filter(|c| agg_report.failed_chunks.contains(&c.id))
                     .map(|c| (c.time_range.start, c.time_range.end))
                     .collect();
-                progress.finish_partial(
+                // Collect error messages in same order as failed_ranges
+                let error_messages: Vec<_> = chunks
+                    .iter()
+                    .filter(|c| agg_report.failed_chunks.contains(&c.id))
+                    .map(|c| {
+                        agg_report
+                            .failed_chunk_details
+                            .iter()
+                            .find(|f| f.chunk_id == c.id)
+                            .map(|f| f.error.clone())
+                            .unwrap_or_default()
+                    })
+                    .collect();
+                progress.finish_partial_with_errors(
                     usage_summary.successful_chunks,
                     usage_summary.chunks_processed,
                     write_report.markers_written,
                     &failed_ranges,
+                    &error_messages,
                 );
             }
         }
@@ -269,23 +320,77 @@ impl AnalyzerService {
         let scaler = WorkerScaler::new(config);
         scaler.calculate_workers(chunk_count, total_tokens)
     }
+
+    /// Curate markers using LLM to select the most significant ones.
+    fn curate_markers(
+        &self,
+        markers: &[ValidatedMarker],
+        total_duration: f64,
+        timeout: Duration,
+    ) -> Result<Vec<ValidatedMarker>, AnalysisError> {
+        let prompt = build_curation_prompt(markers, total_duration);
+
+        let response = self
+            .backend
+            .invoke(&prompt, timeout)
+            .map_err(|e| AnalysisError::IoError {
+                operation: "curation".to_string(),
+                message: format!("{}", e),
+            })?;
+
+        let parsed = self
+            .backend
+            .parse_response(&response)
+            .map_err(|e| AnalysisError::IoError {
+                operation: "parsing curation response".to_string(),
+                message: format!("{}", e),
+            })?;
+
+        // Convert RawMarkers back to ValidatedMarkers
+        let curated: Vec<ValidatedMarker> = parsed
+            .into_iter()
+            .map(|raw| ValidatedMarker::new(raw.timestamp, raw.label, raw.category))
+            .collect();
+
+        Ok(curated)
+    }
 }
 
-/// Maximum tokens for prompt content (conservative limit for safety).
-/// This leaves room for the template itself and output tokens.
-const MAX_PROMPT_CONTENT_TOKENS: usize = 180_000;
+/// Maximum tokens for prompt content (safety net for edge cases).
+/// This should be higher than the chunk calculator's available_for_content()
+/// (161,500 for Claude) so truncation only triggers if chunking fails.
+/// Setting to 170K gives a small buffer above Claude's limit while still
+/// catching bugs where chunks are not properly sized.
+const MAX_PROMPT_CONTENT_TOKENS: usize = 170_000;
 
 /// Estimated characters per token for truncation calculation.
 const CHARS_PER_TOKEN: usize = 4;
+
+/// Target total markers for an entire session (regardless of size).
+const TARGET_TOTAL_MARKERS_MIN: usize = 10;
+const TARGET_TOTAL_MARKERS_MAX: usize = 20;
 
 /// Build the analysis prompt for a chunk.
 ///
 /// Uses the template from `src/analyzer/prompts/analyze.txt`.
 /// If the resulting prompt exceeds token limits, the content is truncated
 /// with a warning logged.
-pub fn build_prompt(chunk: &super::chunk::AnalysisChunk, total_duration: f64) -> String {
+///
+/// # Arguments
+///
+/// * `chunk` - The chunk to analyze
+/// * `total_duration` - Total duration of the recording
+/// * `total_chunks` - Total number of chunks (for calculating markers per chunk)
+pub fn build_prompt(
+    chunk: &super::chunk::AnalysisChunk,
+    total_duration: f64,
+    total_chunks: usize,
+) -> String {
     // Include the template at compile time
     const TEMPLATE: &str = include_str!("prompts/analyze.txt");
+
+    // Calculate markers per chunk to achieve target total
+    let (min_markers, max_markers) = calculate_markers_per_chunk(total_chunks);
 
     // Validate and potentially truncate content if too large
     let content = truncate_content_if_needed(&chunk.text, chunk.estimated_tokens);
@@ -297,7 +402,26 @@ pub fn build_prompt(chunk: &super::chunk::AnalysisChunk, total_duration: f64) ->
         )
         .replace("{chunk_end_time}", &format!("{:.1}", chunk.time_range.end))
         .replace("{total_duration}", &format!("{:.1}", total_duration))
+        .replace("{min_markers}", &min_markers.to_string())
+        .replace("{max_markers}", &max_markers.to_string())
         .replace("{cleaned_content}", &content)
+}
+
+/// Calculate how many markers to request per chunk.
+///
+/// Distributes the target total markers across chunks, ensuring
+/// each chunk requests at least 1 marker.
+fn calculate_markers_per_chunk(total_chunks: usize) -> (usize, usize) {
+    if total_chunks == 0 {
+        return (1, 3);
+    }
+
+    // Distribute target markers across chunks
+    let min_per_chunk = (TARGET_TOTAL_MARKERS_MIN / total_chunks).max(1);
+    let max_per_chunk = (TARGET_TOTAL_MARKERS_MAX / total_chunks).max(min_per_chunk + 1);
+
+    // Cap at reasonable per-chunk limits
+    (min_per_chunk.min(5), max_per_chunk.min(8))
 }
 
 /// Truncate content if it exceeds the maximum prompt token limit.
@@ -319,6 +443,32 @@ fn truncate_content_if_needed(content: &str, estimated_tokens: usize) -> String 
     let truncated: String = content.chars().take(max_chars).collect();
 
     format!("{}\n\n[Content truncated due to size limits]", truncated)
+}
+
+/// Build the curation prompt for marker selection.
+fn build_curation_prompt(markers: &[ValidatedMarker], total_duration: f64) -> String {
+    const TEMPLATE: &str = include_str!("prompts/curate.txt");
+
+    // Convert markers to JSON for the prompt
+    let markers_json: Vec<serde_json::Value> = markers
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "timestamp": m.timestamp,
+                "label": m.label,
+                "category": format!("{:?}", m.category).to_lowercase()
+            })
+        })
+        .collect();
+
+    let markers_json_str =
+        serde_json::to_string_pretty(&markers_json).unwrap_or_else(|_| "[]".to_string());
+
+    TEMPLATE
+        .replace("{total_duration}", &format!("{:.1}", total_duration))
+        .replace("{duration_minutes}", &format!("{:.1}", total_duration / 60.0))
+        .replace("{marker_count}", &markers.len().to_string())
+        .replace("{markers_json}", &markers_json_str)
 }
 
 #[cfg(test)]
@@ -472,7 +622,7 @@ mod tests {
             }],
         );
 
-        let prompt = build_prompt(&chunk, 120.0);
+        let prompt = build_prompt(&chunk, 120.0, 3); // 3 chunks total
 
         assert!(prompt.contains("10.0s - 50.0s"));
         assert!(prompt.contains("120.0s"));
@@ -482,6 +632,8 @@ mod tests {
         assert!(prompt.contains("implementation"));
         assert!(prompt.contains("success"));
         assert!(prompt.contains("failure"));
+        // With 3 chunks, target 10-20 markers total = 3-6 per chunk
+        assert!(prompt.contains("3-6"));
     }
 
     // ============================================

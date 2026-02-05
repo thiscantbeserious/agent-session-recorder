@@ -64,18 +64,39 @@ impl Transform for NormalizeWhitespace {
 ///
 /// Removes output events that are empty or contain only whitespace.
 /// **Always preserves**: markers, input events, resize events.
+///
+/// **Important**: When removing events, their time deltas are accumulated
+/// and added to the next kept event to preserve timeline integrity.
 pub struct FilterEmptyEvents;
 
 impl Transform for FilterEmptyEvents {
     fn transform(&mut self, events: &mut Vec<Event>) {
-        events.retain(|event| {
+        let mut accumulated_time = 0.0;
+        let mut output = Vec::with_capacity(events.len());
+
+        for mut event in events.drain(..) {
             // Always keep non-output events (markers, input, resize)
             if !event.is_output() {
-                return true;
+                // Add accumulated time to this event
+                event.time += accumulated_time;
+                accumulated_time = 0.0;
+                output.push(event);
+                continue;
             }
+
             // Keep output events only if they have non-whitespace content
-            !event.data.trim().is_empty()
-        });
+            if !event.data.trim().is_empty() {
+                // Add accumulated time from removed events
+                event.time += accumulated_time;
+                accumulated_time = 0.0;
+                output.push(event);
+            } else {
+                // Accumulate time from removed event
+                accumulated_time += event.time;
+            }
+        }
+
+        *events = output;
     }
 }
 
@@ -155,5 +176,68 @@ mod tests {
 
         assert_eq!(events.len(), 1);
         assert!(events[0].is_marker());
+    }
+
+    #[test]
+    fn accumulates_time_from_removed_events() {
+        let mut events = vec![
+            Event::output(10.0, "content1"),
+            Event::output(5.0, ""), // empty - removed, but 5.0 should be accumulated
+            Event::output(3.0, "content2"),
+        ];
+
+        FilterEmptyEvents.transform(&mut events);
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].data, "content1");
+        assert!((events[0].time - 10.0).abs() < 0.001);
+        assert_eq!(events[1].data, "content2");
+        // Second event should have 5.0 + 3.0 = 8.0 time delta
+        assert!(
+            (events[1].time - 8.0).abs() < 0.001,
+            "Expected 8.0, got {}",
+            events[1].time
+        );
+    }
+
+    #[test]
+    fn accumulates_time_across_multiple_removed_events() {
+        let mut events = vec![
+            Event::output(1.0, "start"),
+            Event::output(2.0, ""), // removed
+            Event::output(3.0, "   "), // removed
+            Event::output(4.0, "\t\n"), // removed
+            Event::output(5.0, "end"),
+        ];
+
+        FilterEmptyEvents.transform(&mut events);
+
+        assert_eq!(events.len(), 2);
+        assert!((events[0].time - 1.0).abs() < 0.001);
+        // Second event: 2 + 3 + 4 + 5 = 14
+        assert!(
+            (events[1].time - 14.0).abs() < 0.001,
+            "Expected 14.0, got {}",
+            events[1].time
+        );
+    }
+
+    #[test]
+    fn accumulated_time_passes_to_marker() {
+        let mut events = vec![
+            Event::output(1.0, "content"),
+            Event::output(5.0, ""), // removed
+            Event::marker(2.0, "test"),
+        ];
+
+        FilterEmptyEvents.transform(&mut events);
+
+        assert_eq!(events.len(), 2);
+        // Marker should have 5.0 + 2.0 = 7.0 time delta
+        assert!(
+            (events[1].time - 7.0).abs() < 0.001,
+            "Expected 7.0, got {}",
+            events[1].time
+        );
     }
 }

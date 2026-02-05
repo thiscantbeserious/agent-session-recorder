@@ -119,7 +119,7 @@ pub enum BackendError {
     #[error("Agent timed out after {0:?}")]
     Timeout(Duration),
 
-    #[error("Agent returned non-zero exit code: {code}")]
+    #[error("Exit code {code}: {}", truncate_stderr(stderr))]
     ExitCode { code: i32, stderr: String },
 
     #[error("Rate limited: {0}")]
@@ -212,12 +212,25 @@ pub struct AnalysisResponse {
     pub markers: Vec<RawMarker>,
 }
 
+/// Claude CLI wrapper format when using `--output-format json`.
+///
+/// Claude wraps the actual response in a metadata envelope:
+/// `{"type":"result","result":"...","is_error":false,...}`
+#[derive(Debug, Deserialize)]
+struct ClaudeWrapper {
+    #[serde(rename = "type")]
+    response_type: Option<String>,
+    result: Option<String>,
+    is_error: Option<bool>,
+}
+
 /// Extract JSON from a potentially wrapped text response.
 ///
 /// Handles multiple response formats:
-/// 1. Direct JSON object
-/// 2. JSON embedded in text
-/// 3. JSON in markdown code blocks
+/// 1. Claude CLI wrapper (`{"type":"result","result":"..."}`)
+/// 2. Direct JSON object
+/// 3. JSON embedded in text
+/// 4. JSON in markdown code blocks
 ///
 /// # Arguments
 ///
@@ -229,21 +242,50 @@ pub struct AnalysisResponse {
 pub fn extract_json(response: &str) -> BackendResult<AnalysisResponse> {
     let trimmed = response.trim();
 
+    // Try Claude CLI wrapper format first
+    // Claude returns: {"type":"result","result":"```json\n{...}\n```",...}
+    if let Ok(wrapper) = serde_json::from_str::<ClaudeWrapper>(trimmed) {
+        if wrapper.response_type.as_deref() == Some("result") {
+            // Check for error response
+            if wrapper.is_error == Some(true) {
+                return Err(BackendError::JsonExtraction {
+                    response: wrapper
+                        .result
+                        .unwrap_or_else(|| "Claude returned an error".to_string()),
+                });
+            }
+
+            // Extract the inner result and parse it
+            if let Some(inner) = wrapper.result {
+                return extract_json_inner(&inner);
+            }
+        }
+    }
+
+    // Fall back to standard extraction
+    extract_json_inner(trimmed)
+}
+
+/// Inner JSON extraction logic (handles direct JSON, text-embedded, code blocks).
+fn extract_json_inner(response: &str) -> BackendResult<AnalysisResponse> {
+    let trimmed = response.trim();
+
     // Try direct parse first
     if let Ok(parsed) = serde_json::from_str(trimmed) {
         return Ok(parsed);
     }
 
-    // Try to find JSON object boundaries
-    if let (Some(start), Some(end)) = (trimmed.find('{'), trimmed.rfind('}')) {
-        let json_str = &trimmed[start..=end];
+    // Try code block extraction (check before JSON boundaries to handle
+    // code-fenced responses with surrounding text)
+    if let Some(json_str) = extract_from_code_block(trimmed) {
         if let Ok(parsed) = serde_json::from_str(json_str) {
             return Ok(parsed);
         }
     }
 
-    // Try code block extraction
-    if let Some(json_str) = extract_from_code_block(trimmed) {
+    // Try to find JSON object boundaries
+    if let (Some(start), Some(end)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        let json_str = &trimmed[start..=end];
         if let Ok(parsed) = serde_json::from_str(json_str) {
             return Ok(parsed);
         }
@@ -363,6 +405,18 @@ fn extract_first_number(s: &str) -> Option<u64> {
     }
 
     num_str.parse().ok()
+}
+
+/// Truncate stderr for error display.
+///
+/// Takes the first line and limits to 200 characters for readability.
+fn truncate_stderr(stderr: &str) -> String {
+    let first_line = stderr.lines().next().unwrap_or("").trim();
+    if first_line.len() <= 200 {
+        first_line.to_string()
+    } else {
+        format!("{}...", &first_line[..200])
+    }
 }
 
 /// Check if a command is available in PATH.
@@ -516,6 +570,41 @@ Done."#;
     }
 
     #[test]
+    fn extract_json_claude_wrapper_with_code_block() {
+        // This is the actual format Claude CLI returns with --output-format json
+        let response = r#"{"type":"result","subtype":"success","is_error":false,"result":"```json\n{\"markers\":[{\"timestamp\":10.0,\"label\":\"Test\",\"category\":\"success\"}]}\n```"}"#;
+        let result = extract_json(response).unwrap();
+        assert_eq!(result.markers.len(), 1);
+        assert_eq!(result.markers[0].category, MarkerCategory::Success);
+    }
+
+    #[test]
+    fn extract_json_claude_wrapper_direct_json() {
+        // Claude wrapper with direct JSON (no code blocks)
+        let response = r#"{"type":"result","is_error":false,"result":"{\"markers\":[{\"timestamp\":5.0,\"label\":\"Plan\",\"category\":\"planning\"}]}"}"#;
+        let result = extract_json(response).unwrap();
+        assert_eq!(result.markers.len(), 1);
+        assert_eq!(result.markers[0].category, MarkerCategory::Planning);
+    }
+
+    #[test]
+    fn extract_json_claude_wrapper_error() {
+        // Claude wrapper with is_error: true
+        let response =
+            r#"{"type":"result","is_error":true,"result":"Failed to analyze: content too large"}"#;
+        let result = extract_json(response);
+        assert!(matches!(result, Err(BackendError::JsonExtraction { .. })));
+    }
+
+    #[test]
+    fn extract_json_claude_wrapper_empty_markers() {
+        let response =
+            r#"{"type":"result","is_error":false,"result":"```json\n{\"markers\":[]}\n```"}"#;
+        let result = extract_json(response).unwrap();
+        assert!(result.markers.is_empty());
+    }
+
+    #[test]
     fn extract_json_empty_markers() {
         let response = r#"{"markers": []}"#;
         let result = extract_json(response).unwrap();
@@ -596,6 +685,68 @@ Done."#;
             err.wait_duration(Duration::from_secs(10)),
             Duration::from_secs(10)
         );
+    }
+
+    #[test]
+    fn backend_error_exit_code_displays_stderr() {
+        let err = BackendError::ExitCode {
+            code: 1,
+            stderr: "error: prompt too large for context window".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Exit code 1"));
+        assert!(msg.contains("prompt too large"));
+    }
+
+    #[test]
+    fn backend_error_exit_code_truncates_long_stderr() {
+        let long_stderr = "x".repeat(300);
+        let err = BackendError::ExitCode {
+            code: 1,
+            stderr: long_stderr,
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("Exit code 1"));
+        assert!(msg.contains("..."));
+        // Message should be truncated to ~200 chars plus "..."
+        assert!(msg.len() < 250);
+    }
+
+    #[test]
+    fn backend_error_exit_code_uses_first_line() {
+        let err = BackendError::ExitCode {
+            code: 1,
+            stderr: "first line error\nsecond line details\nthird line".to_string(),
+        };
+        let msg = format!("{}", err);
+        assert!(msg.contains("first line error"));
+        assert!(!msg.contains("second line"));
+    }
+
+    #[test]
+    fn truncate_stderr_short_message() {
+        let result = truncate_stderr("short error");
+        assert_eq!(result, "short error");
+    }
+
+    #[test]
+    fn truncate_stderr_long_message() {
+        let long = "x".repeat(250);
+        let result = truncate_stderr(&long);
+        assert!(result.len() <= 203); // 200 + "..."
+        assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn truncate_stderr_multiline() {
+        let result = truncate_stderr("first line\nsecond line\nthird");
+        assert_eq!(result, "first line");
+    }
+
+    #[test]
+    fn truncate_stderr_empty() {
+        let result = truncate_stderr("");
+        assert_eq!(result, "");
     }
 
     // ============================================

@@ -103,7 +103,7 @@ impl ExtractionStats {
 
 /// Estimate token count from text content.
 ///
-/// Uses chars/4 heuristic - simple, fast, no dependencies.
+/// Uses chars/3 heuristic for terminal content - simple, fast, no dependencies.
 /// Applied AFTER cleanup since raw content is 55-89% noise.
 #[derive(Debug, Clone)]
 pub struct TokenEstimator {
@@ -157,8 +157,12 @@ impl TokenEstimator {
 impl Default for TokenEstimator {
     fn default() -> Self {
         Self {
-            chars_per_token: 4.0,
-            safety_factor: 0.85, // 15% safety buffer (conservative)
+            // Terminal content tokenizes poorly - short words, symbols, paths
+            // Using 3.0 instead of 4.0 is more conservative
+            chars_per_token: 3.0,
+            // Extra safety buffer for Claude CLI mode which may have
+            // additional overhead (system prompt, tool context)
+            safety_factor: 0.70, // 30% safety buffer
         }
     }
 }
@@ -170,17 +174,17 @@ mod tests {
     #[test]
     fn token_estimator_default_values() {
         let estimator = TokenEstimator::default();
-        assert!((estimator.chars_per_token - 4.0).abs() < 0.001);
-        assert!((estimator.safety_factor - 0.85).abs() < 0.001);
+        assert!((estimator.chars_per_token - 3.0).abs() < 0.001);
+        assert!((estimator.safety_factor - 0.70).abs() < 0.001);
     }
 
     #[test]
     fn token_estimator_estimate_basic() {
         let estimator = TokenEstimator::default();
 
-        // 100 chars / 4 = 25 tokens * 0.85 = 21.25 -> 21
+        // 100 chars / 3 = 33.33 tokens * 0.70 = 23.33 -> 23
         let text = "a".repeat(100);
-        assert_eq!(estimator.estimate(&text), 21);
+        assert_eq!(estimator.estimate(&text), 23);
     }
 
     #[test]

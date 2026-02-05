@@ -94,6 +94,18 @@ impl DefaultProgressReporter {
         markers_added: usize,
         failed_ranges: &[(f64, f64)],
     ) {
+        self.finish_partial_with_errors(successful_chunks, total_chunks, markers_added, failed_ranges, &[])
+    }
+
+    /// Report partial success with failures and error details.
+    pub fn finish_partial_with_errors(
+        &self,
+        successful_chunks: usize,
+        total_chunks: usize,
+        markers_added: usize,
+        failed_ranges: &[(f64, f64)],
+        error_messages: &[String],
+    ) {
         if !self.show_output {
             return;
         }
@@ -107,8 +119,12 @@ impl DefaultProgressReporter {
 
         if !failed_ranges.is_empty() {
             eprintln!("   Failed time ranges:");
-            for (start, end) in failed_ranges {
-                eprintln!("     - {:.1}s - {:.1}s", start, end);
+            for (i, (start, end)) in failed_ranges.iter().enumerate() {
+                if i < error_messages.len() && !error_messages[i].is_empty() {
+                    eprintln!("     - {:.1}s - {:.1}s ({})", start, end, error_messages[i]);
+                } else {
+                    eprintln!("     - {:.1}s - {:.1}s", start, end);
+                }
             }
         }
     }

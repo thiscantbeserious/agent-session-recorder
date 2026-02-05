@@ -1,18 +1,20 @@
 //! Claude backend implementation.
 //!
-//! Invokes the Claude CLI with `--print --output-format json` for analysis.
+//! Invokes the Claude CLI with `--print --output-format json --tools ""` for analysis.
+//! Disabling tools ensures Claude responds directly without trying to execute commands.
 
 use super::{
     extract_json, parse_rate_limit_info, AgentBackend, BackendError, BackendResult, RawMarker,
 };
 use crate::analyzer::TokenBudget;
+use serde::Deserialize;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
 /// Backend for Claude CLI.
 ///
-/// Uses `claude --print --output-format json` for non-interactive analysis.
-/// No permission bypass flags needed - the agent only processes text.
+/// Uses `claude --print --output-format json --tools ""` for non-interactive analysis.
+/// Tools are disabled to ensure Claude just responds with text/JSON.
 #[derive(Debug, Clone, Default)]
 pub struct ClaudeBackend;
 
@@ -44,8 +46,17 @@ impl AgentBackend for ClaudeBackend {
             ));
         }
 
+        // Use --tools "" to disable all tools and get direct text responses.
+        // This prevents Claude from trying to execute tools and speeds up responses.
         let mut child = Command::new(Self::command())
-            .args(["--print", "--output-format", "json", "-p"])
+            .args([
+                "--print",
+                "--output-format",
+                "json",
+                "--tools",
+                "",
+                "-p",
+            ])
             .arg(prompt)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -58,19 +69,25 @@ impl AgentBackend for ClaudeBackend {
 
         match result {
             Ok(output) => {
-                if output.status.success() {
-                    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-                } else {
-                    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-                    // Check for rate limiting
+                if output.status.success() {
+                    Ok(stdout)
+                } else {
+                    // Check for rate limiting in stderr
                     if let Some(info) = parse_rate_limit_info(&stderr) {
                         return Err(BackendError::RateLimited(info));
                     }
 
+                    // Claude CLI may return exit code 1 but put error info in stdout
+                    // (in the JSON wrapper with is_error: true)
+                    let error_msg = extract_error_from_claude_response(&stdout)
+                        .unwrap_or(stderr);
+
                     Err(BackendError::ExitCode {
                         code: output.status.code().unwrap_or(-1),
-                        stderr,
+                        stderr: error_msg,
                     })
                 }
             }
@@ -89,6 +106,28 @@ impl AgentBackend for ClaudeBackend {
 
     fn token_budget(&self) -> TokenBudget {
         TokenBudget::claude()
+    }
+}
+
+/// Claude CLI wrapper format for error extraction.
+#[derive(Debug, Deserialize)]
+struct ClaudeErrorWrapper {
+    is_error: Option<bool>,
+    result: Option<String>,
+}
+
+/// Extract error message from Claude's JSON response wrapper.
+///
+/// When Claude CLI exits with non-zero status, the error details may be
+/// in stdout as JSON with `is_error: true`.
+fn extract_error_from_claude_response(stdout: &str) -> Option<String> {
+    let wrapper: ClaudeErrorWrapper = serde_json::from_str(stdout.trim()).ok()?;
+
+    if wrapper.is_error == Some(true) {
+        wrapper.result.or_else(|| Some("Claude returned an error".to_string()))
+    } else {
+        // Not an error response, check for result content that might explain the issue
+        wrapper.result.filter(|r| !r.is_empty())
     }
 }
 
@@ -165,7 +204,7 @@ mod tests {
     fn claude_backend_token_budget() {
         let backend = ClaudeBackend::new();
         let budget = backend.token_budget();
-        assert_eq!(budget.max_input_tokens, 200_000);
+        assert_eq!(budget.max_input_tokens, 100_000);
     }
 
     #[test]

@@ -2,17 +2,19 @@
 //!
 //! Uses the AnalyzerService facade to orchestrate analysis:
 //! 1. Parse cast file
-//! 2. Check for existing markers
+//! 2. Check for existing markers (offer to remove)
 //! 3. Extract content (strip ANSI, dedupe progress)
 //! 4. Chunk content based on agent token limits
 //! 5. Execute parallel analysis
 //! 6. Aggregate and deduplicate markers
 //! 7. Write markers to file
 
+use std::io::{self, Write};
+
 use anyhow::Result;
 
 use agr::analyzer::{AgentType, AnalyzeOptions, AnalyzerService};
-use agr::Config;
+use agr::{Config, MarkerManager};
 
 use super::resolve_file_path;
 
@@ -72,6 +74,24 @@ pub fn handle(
         );
     }
 
+    // Check for existing markers and offer to remove them
+    let existing_count = MarkerManager::count_markers(&filepath)?;
+    if existing_count > 0 {
+        print!(
+            "File contains {} existing marker(s). Remove them before analysis? [y/N]: ",
+            existing_count
+        );
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+
+        if input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes") {
+            let removed = MarkerManager::clear_markers(&filepath)?;
+            println!("Removed {} marker(s).", removed);
+        }
+    }
+
     // Run analysis
     println!("Analyzing {} with {}...", file, agent);
     let result = service.analyze(&filepath)?;
@@ -84,10 +104,18 @@ pub fn handle(
         );
     }
 
-    println!(
-        "Analysis complete. {} markers added.",
-        result.markers_added()
-    );
+    // Print markers verbosely
+    println!("\nMarkers added ({}):", result.markers_added());
+    for marker in &result.markers {
+        let minutes = (marker.timestamp / 60.0).floor() as u32;
+        let seconds = marker.timestamp % 60.0;
+        println!(
+            "  {:02}:{:05.2} - {}",
+            minutes, seconds, marker.label
+        );
+    }
+
+    println!("\nAnalysis complete.");
 
     Ok(())
 }

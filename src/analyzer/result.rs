@@ -23,7 +23,15 @@ use crate::asciicast::{AsciicastFile, MarkerManager};
 use std::path::Path;
 
 /// Default time window for marker deduplication (seconds).
-const DEDUP_WINDOW_SECS: f64 = 2.0;
+/// Minimum dedup window as percentage of total duration.
+/// 2% means markers must be at least 2% of recording duration apart.
+const DEDUP_WINDOW_PERCENT: f64 = 0.02;
+
+/// Minimum absolute dedup window in seconds (floor for short recordings).
+const DEDUP_WINDOW_MIN_SECS: f64 = 5.0;
+
+/// Maximum absolute dedup window in seconds (cap for very long recordings).
+const DEDUP_WINDOW_MAX_SECS: f64 = 60.0;
 
 /// A validated marker with absolute timestamp.
 ///
@@ -61,6 +69,15 @@ impl ValidatedMarker {
     }
 }
 
+/// Information about a failed chunk for error reporting.
+#[derive(Debug, Clone)]
+pub struct FailedChunkInfo {
+    /// Chunk ID
+    pub chunk_id: usize,
+    /// Error message describing the failure
+    pub error: String,
+}
+
 /// Report from result aggregation.
 #[derive(Debug, Default)]
 pub struct AggregationReport {
@@ -72,8 +89,10 @@ pub struct AggregationReport {
     pub duplicates_removed: usize,
     /// Final marker count after processing
     pub final_count: usize,
-    /// Failed chunk IDs
+    /// Failed chunk IDs (for backward compatibility)
     pub failed_chunks: Vec<usize>,
+    /// Detailed failure information for each failed chunk
+    pub failed_chunk_details: Vec<FailedChunkInfo>,
 }
 
 /// Result aggregator for collecting and processing chunk results.
@@ -89,9 +108,17 @@ pub struct ResultAggregator {
 
 impl ResultAggregator {
     /// Create a new result aggregator.
+    ///
+    /// The dedup window is calculated as a percentage of total duration,
+    /// with minimum and maximum bounds.
     pub fn new(max_timestamp: f64) -> Self {
+        // Calculate window as percentage of duration
+        let window = (max_timestamp * DEDUP_WINDOW_PERCENT)
+            .max(DEDUP_WINDOW_MIN_SECS)
+            .min(DEDUP_WINDOW_MAX_SECS);
+
         Self {
-            dedup_window: DEDUP_WINDOW_SECS,
+            dedup_window: window,
             max_timestamp,
         }
     }
@@ -138,8 +165,12 @@ impl ResultAggregator {
                         all_markers.push(ValidatedMarker::new(absolute_ts, label, raw.category));
                     }
                 }
-                Err(_) => {
+                Err(e) => {
                     report.failed_chunks.push(result.chunk_id);
+                    report.failed_chunk_details.push(FailedChunkInfo {
+                        chunk_id: result.chunk_id,
+                        error: format!("{}", e),
+                    });
                 }
             }
         }
@@ -522,6 +553,10 @@ mod tests {
 
         assert_eq!(markers.len(), 1);
         assert_eq!(report.failed_chunks, vec![1]);
+        // Verify error details are captured
+        assert_eq!(report.failed_chunk_details.len(), 1);
+        assert_eq!(report.failed_chunk_details[0].chunk_id, 1);
+        assert!(report.failed_chunk_details[0].error.contains("timed out"));
     }
 
     // ============================================
@@ -581,9 +616,10 @@ mod tests {
 
     #[test]
     fn no_dedup_outside_window() {
+        // For 1000s recording, window = 1000 * 0.02 = 20s
         let aggregator = ResultAggregator::new(1000.0);
 
-        // Two markers with same category but outside 2s window
+        // Two markers with same category but outside 20s window
         let chunk_markers = vec![
             RawMarker {
                 timestamp: 10.0,
@@ -591,7 +627,7 @@ mod tests {
                 category: MarkerCategory::Planning,
             },
             RawMarker {
-                timestamp: 15.0, // 5s later, outside 2s window
+                timestamp: 35.0, // 25s later, outside 20s window
                 label: "Second".to_string(),
                 category: MarkerCategory::Planning,
             },

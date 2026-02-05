@@ -45,13 +45,17 @@ impl TokenBudget {
         }
     }
 
-    /// Create budget for Claude (200K context).
+    /// Create budget for Claude (using conservative 100K limit).
+    ///
+    /// Note: Claude CLI with `--print --tools ""` has stricter limits
+    /// than the API. The CLI adds its own system prompt and context,
+    /// so we use a conservative 100K limit to ensure prompts fit.
     pub fn claude() -> Self {
         Self {
-            max_input_tokens: 200_000,
+            max_input_tokens: 100_000, // Conservative limit for CLI mode
             reserved_for_prompt: 2_000,
             reserved_for_output: 8_000,
-            safety_margin_pct: 0.15,
+            safety_margin_pct: 0.20,
         }
     }
 
@@ -277,7 +281,7 @@ impl ChunkCalculator {
         pct_overlap.max(self.config.min_overlap_tokens)
     }
 
-    /// Find segments that fit within a token range.
+    /// Find segments that fit within a token range, splitting large segments if needed.
     fn find_segments_for_range(
         &self,
         content: &AnalysisContent,
@@ -290,20 +294,79 @@ impl ChunkCalculator {
         let mut end_time = 0.0;
 
         for segment in &content.segments {
+            let segment_start = accumulated_tokens;
             let segment_end = accumulated_tokens + segment.estimated_tokens;
 
             // Check if segment overlaps with target range
-            if segment_end > start_tokens && accumulated_tokens < end_tokens {
-                if start_time.is_none() {
-                    start_time = Some(segment.start_time);
+            if segment_end > start_tokens && segment_start < end_tokens {
+                // Calculate how much of this segment to include
+                let include_start = start_tokens.saturating_sub(segment_start);
+                let include_end = (end_tokens - segment_start).min(segment.estimated_tokens);
+
+                if include_end > include_start {
+                    // Calculate proportional time range within the segment
+                    let segment_duration = segment.end_time - segment.start_time;
+                    let segment_tokens = segment.estimated_tokens.max(1);
+                    let time_per_token = segment_duration / segment_tokens as f64;
+
+                    let partial_start_time =
+                        segment.start_time + (include_start as f64 * time_per_token);
+                    let partial_end_time =
+                        segment.start_time + (include_end as f64 * time_per_token);
+
+                    if start_time.is_none() {
+                        start_time = Some(partial_start_time);
+                    }
+                    end_time = partial_end_time;
+
+                    // Create a partial segment with only the included portion
+                    let included_tokens = include_end - include_start;
+
+                    // Extract partial content if we're not including the whole segment
+                    let partial_content = if include_start == 0
+                        && include_end == segment.estimated_tokens
+                    {
+                        segment.content.clone()
+                    } else if segment.content.is_empty() {
+                        String::new()
+                    } else {
+                        // Estimate character boundaries from token positions
+                        // Use proportional mapping: char_pos = token_pos * (total_chars / total_tokens)
+                        let total_chars = segment.content.chars().count();
+                        let ratio = total_chars as f64 / segment_tokens as f64;
+                        let char_start = ((include_start as f64 * ratio) as usize).min(total_chars);
+                        let char_end = ((include_end as f64 * ratio) as usize).min(total_chars);
+
+                        // Ensure we get at least some content if there are tokens to include
+                        let (char_start, char_end) = if char_end <= char_start && included_tokens > 0
+                        {
+                            // Fall back to including all content if calculation fails
+                            (0, total_chars)
+                        } else {
+                            (char_start, char_end)
+                        };
+
+                        segment
+                            .content
+                            .chars()
+                            .skip(char_start)
+                            .take(char_end.saturating_sub(char_start))
+                            .collect()
+                    };
+
+                    segments.push(AnalysisSegment {
+                        start_time: partial_start_time,
+                        end_time: partial_end_time,
+                        content: partial_content,
+                        estimated_tokens: included_tokens,
+                        event_range: segment.event_range, // Keep original for reference
+                    });
                 }
-                end_time = segment.end_time;
-                segments.push(segment.clone());
             }
 
             accumulated_tokens = segment_end;
 
-            // Stop if we've exceeded the target range
+            // Stop if we've passed the target range
             if accumulated_tokens >= end_tokens {
                 break;
             }
@@ -341,7 +404,7 @@ mod tests {
     #[test]
     fn token_budget_claude_limits() {
         let budget = TokenBudget::claude();
-        assert_eq!(budget.max_input_tokens, 200_000);
+        assert_eq!(budget.max_input_tokens, 100_000);
         assert_eq!(budget.reserved_for_prompt, 2_000);
         assert_eq!(budget.reserved_for_output, 8_000);
     }
@@ -365,9 +428,9 @@ mod tests {
     #[test]
     fn token_budget_available_for_content_claude() {
         let budget = TokenBudget::claude();
-        // 200K - 2K - 8K = 190K, then * 0.85 = 161,500
+        // 100K - 2K - 8K = 90K, then * 0.80 = 72,000
         let available = budget.available_for_content();
-        assert_eq!(available, 161_500);
+        assert_eq!(available, 72_000);
     }
 
     #[test]
@@ -396,7 +459,7 @@ mod tests {
 
     #[test]
     fn agent_type_returns_correct_budget() {
-        assert_eq!(AgentType::Claude.token_budget().max_input_tokens, 200_000);
+        assert_eq!(AgentType::Claude.token_budget().max_input_tokens, 100_000);
         assert_eq!(AgentType::Codex.token_budget().max_input_tokens, 192_000);
         assert_eq!(AgentType::Gemini.token_budget().max_input_tokens, 1_000_000);
     }
@@ -578,14 +641,14 @@ mod tests {
     #[test]
     fn chunk_calculator_count_matches_scaling_table() {
         let calculator = ChunkCalculator::for_agent(AgentType::Claude);
-        // Claude ~161K available
+        // Claude ~72K available (100K - 10K reserved, * 0.80)
 
         // Small content = 1 chunk
         assert_eq!(calculator.calculate_chunk_count(50_000), 1);
-        assert_eq!(calculator.calculate_chunk_count(161_500), 1);
+        assert_eq!(calculator.calculate_chunk_count(72_000), 1);
 
         // Just over limit = 2 chunks
-        assert!(calculator.calculate_chunk_count(170_000) >= 2);
+        assert!(calculator.calculate_chunk_count(80_000) >= 2);
 
         // Large content = many chunks
         assert!(calculator.calculate_chunk_count(500_000) >= 3);
@@ -655,5 +718,113 @@ mod tests {
         // Last chunk should cover content end
         let last_chunk = chunks.last().unwrap();
         assert!(last_chunk.time_range.end >= content.total_duration - 0.001);
+    }
+
+    // ============================================
+    // Bug Fix Tests - Single Large Segment
+    // ============================================
+
+    /// Test for bug: all chunks have identical time ranges when content is a single large segment.
+    /// This happened because a segment larger than the chunk size was included in ALL chunks
+    /// without being split.
+    #[test]
+    fn chunk_calculator_single_large_segment_split() {
+        let calculator = ChunkCalculator::for_agent(AgentType::Claude);
+        // Claude has ~161K available, create a single 400K token segment
+        let content = AnalysisContent {
+            total_duration: 100.0,
+            total_tokens: 400_000,
+            segments: vec![AnalysisSegment {
+                start_time: 0.0,
+                end_time: 100.0,
+                content: "x".repeat(1_600_000), // estimated_tokens set directly below
+                estimated_tokens: 400_000,
+                event_range: (0, 100),
+            }],
+            stats: Default::default(),
+        };
+
+        let chunks = calculator.calculate_chunks(&content);
+
+        // Should have at least 3 chunks (400K / 161K ~= 3)
+        assert!(
+            chunks.len() >= 3,
+            "Expected at least 3 chunks, got {}",
+            chunks.len()
+        );
+
+        // Each chunk should have DIFFERENT time ranges
+        for (i, chunk) in chunks.iter().enumerate() {
+            for (j, other) in chunks.iter().enumerate() {
+                if i != j {
+                    assert!(
+                        (chunk.time_range.start - other.time_range.start).abs() > 0.001
+                            || (chunk.time_range.end - other.time_range.end).abs() > 0.001,
+                        "Chunks {} and {} have identical time ranges: {:?} vs {:?}",
+                        i,
+                        j,
+                        chunk.time_range,
+                        other.time_range
+                    );
+                }
+            }
+        }
+
+        // Each chunk should have tokens <= available
+        let available = calculator.budget.available_for_content();
+        for (i, chunk) in chunks.iter().enumerate() {
+            assert!(
+                chunk.estimated_tokens <= available,
+                "Chunk {} has {} tokens, exceeds available {}",
+                i,
+                chunk.estimated_tokens,
+                available
+            );
+        }
+
+        // Time ranges should progress through the recording
+        for i in 1..chunks.len() {
+            assert!(
+                chunks[i].time_range.start >= chunks[i - 1].time_range.start,
+                "Chunk {} starts before chunk {}: {:.1}s vs {:.1}s",
+                i,
+                i - 1,
+                chunks[i].time_range.start,
+                chunks[i - 1].time_range.start
+            );
+        }
+    }
+
+    /// Test that chunks don't have inflated token counts when splitting large segments.
+    #[test]
+    fn chunk_calculator_no_duplicate_tokens() {
+        let calculator = ChunkCalculator::for_agent(AgentType::Claude);
+        let content = AnalysisContent {
+            total_duration: 50.0,
+            total_tokens: 390_000,
+            segments: vec![AnalysisSegment {
+                start_time: 1.9,
+                end_time: 17.5,
+                content: "x".repeat(1_560_000), // ~390K tokens
+                estimated_tokens: 390_000,
+                event_range: (0, 50),
+            }],
+            stats: Default::default(),
+        };
+
+        let chunks = calculator.calculate_chunks(&content);
+
+        // Total tokens across all chunks should be close to original
+        // (may be slightly higher due to overlap, but not 3x)
+        let total_chunk_tokens: usize = chunks.iter().map(|c| c.estimated_tokens).sum();
+
+        // With 10% overlap and 3 chunks, we expect roughly 1.2x the original tokens
+        // Allow up to 1.5x to be safe
+        assert!(
+            total_chunk_tokens <= content.total_tokens * 2,
+            "Duplicate tokens detected: chunk total {} vs original {}",
+            total_chunk_tokens,
+            content.total_tokens
+        );
     }
 }

@@ -172,7 +172,7 @@ mod tests {
 
         let content = extractor.extract(&mut events);
 
-        // Token estimate should be reasonable (chars/4 * 0.85)
+        // Token estimate should be reasonable (chars/3 * 0.70)
         assert!(content.total_tokens > 0);
         assert!(content.total_tokens < 100);
     }

@@ -24,12 +24,18 @@ Chunk time range: {chunk_start_time}s - {chunk_end_time}s (within full recording
 
 ## Your Task
 
-Identify 5-15 significant engineering moments in this session. Focus on:
+Identify the {min_markers}-{max_markers} MOST significant engineering moments in this chunk. Be selective - only mark truly important transitions, not routine operations. Focus on:
 - When the agent starts planning or changes approach
 - Architecture or design decisions
 - Implementation milestones (started coding, file created, etc.)
 - Successes (tests pass, build works, feature complete)
 - Failures (errors, failed attempts, issues encountered)
+
+DO NOT mark:
+- Routine file reads or directory listings
+- Every command execution - only mark significant ones
+- Minor progress updates within a task
+- Repetitive similar events
 
 ## Output Format
 
