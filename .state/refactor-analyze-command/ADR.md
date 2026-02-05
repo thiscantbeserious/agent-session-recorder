@@ -237,6 +237,24 @@ Raw Cast File (100MB)
 
 > **See SPEC.md Section 4** for complete CLI invocation examples.
 
+### Prompt Design
+
+The analysis prompt is designed to work without file access:
+- Cast content is embedded directly in the prompt
+- Agent returns JSON with marker positions
+- No file reads, writes, or shell commands needed
+
+Key prompt elements:
+1. **Context**: Explains the content is cleaned terminal output
+2. **Semantic indicators**: Notes that ✓✔✕⚠ are preserved for outcome detection
+3. **Timestamp guidance**: Explains relative timestamps within chunk
+4. **Output format**: JSON-only, no markdown wrapping
+5. **Category definitions**: Clear guidance on when to use each
+
+> **See SPEC.md Section 2.1** for the complete prompt template.
+
+The prompt is stored as `src/analyzer/prompts/analyze.txt` for easy iteration without recompiling.
+
 ### AgentBackend Trait Definition
 
 ```rust

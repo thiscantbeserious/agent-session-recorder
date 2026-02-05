@@ -245,24 +245,43 @@ POST https://api.anthropic.com/v1/messages
 You are analyzing a terminal session recording from an AI coding agent.
 Your task is to identify key engineering workflow moments and return them as markers.
 
+## About This Content
+
+This is cleaned terminal output from an AI coding session. Visual noise has been removed:
+- ANSI escape codes (colors, cursor movement) have been stripped
+- Spinner animations and progress bars have been removed
+- Only semantic content remains
+
+Semantic indicators are PRESERVED to help you identify outcomes:
+- ✓ ✔ = Success, task completed, test passed
+- ✕ = Failure, error, test failed
+- ⚠ = Warning, issue detected
+- ℹ = Information, note
+
 ## Session Content
 
-Time range: {chunk_start_time}s - {chunk_end_time}s
-Recording duration: {total_duration}s
+Chunk time range: {chunk_start_time}s - {chunk_end_time}s (within full recording of {total_duration}s)
 
 <session_content>
 {cleaned_content}
 </session_content>
 
+## Your Task
+
+Identify 5-15 significant engineering moments in this session. Focus on:
+- When the agent starts planning or changes approach
+- Architecture or design decisions
+- Implementation milestones (started coding, file created, etc.)
+- Successes (tests pass, build works, feature complete)
+- Failures (errors, failed attempts, issues encountered)
+
 ## Output Format
 
-Return a JSON array of markers. Each marker must have:
-- timestamp: Relative timestamp in seconds from chunk start (float)
-- label: Brief description of what happened (string, max 80 chars)
-- category: One of: "planning", "design", "implementation", "success", "failure"
+Return a JSON object with a "markers" array. Each marker needs:
+- timestamp: Seconds from chunk start (e.g., if chunk starts at 100s and event is at 112s, use 12.0)
+- label: Brief description (max 80 chars)
+- category: One of "planning", "design", "implementation", "success", "failure"
 
-Example:
-```json
 {
   "markers": [
     {"timestamp": 12.5, "label": "Started planning feature implementation", "category": "planning"},
@@ -270,18 +289,33 @@ Example:
     {"timestamp": 78.9, "label": "Tests passing after fix", "category": "success"}
   ]
 }
+
+## Category Definitions
+
+- **planning**: Task breakdown, approach decisions, strategy discussion, "let me think about..."
+- **design**: Architecture decisions, API design, data model choices, ADR discussions
+- **implementation**: Code writing, file modifications, command execution, "creating file..."
+- **success**: Tests passing, builds working, feature complete, ✓ indicators
+- **failure**: Errors, test failures, failed approaches, ✕ indicators, stack traces
+
+IMPORTANT: Return ONLY valid JSON. No markdown code blocks, no explanation, no text before or after.
 ```
 
-## Categories
+### 2.2 Prompt Builder Implementation
 
-- **planning**: Task breakdown, approach decisions, strategy discussion
-- **design**: Architecture decisions, API design, data model choices
-- **implementation**: Code writing, file modifications, command execution
-- **success**: Tests passing, builds working, feature complete
-- **failure**: Errors, test failures, failed approaches, issues encountered
-
-Return ONLY the JSON. No explanation, no markdown, just the JSON object.
+```rust
+pub fn build_prompt(chunk: &AnalysisChunk, total_duration: f64) -> String {
+    format!(
+        include_str!("prompts/analyze.txt"),
+        chunk_start_time = chunk.time_range.start,
+        chunk_end_time = chunk.time_range.end,
+        total_duration = total_duration,
+        cleaned_content = &chunk.text,
+    )
+}
 ```
+
+The prompt template is stored in `src/analyzer/prompts/analyze.txt` for easy iteration without recompiling.
 
 ### 2.2 Response Schema (JSON Schema)
 
