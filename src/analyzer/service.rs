@@ -45,6 +45,10 @@ pub struct AnalyzeOptions {
     pub no_parallel: bool,
     /// Quiet mode (suppress progress output)
     pub quiet: bool,
+    /// Debug mode (save cleaned content and stop)
+    pub debug: bool,
+    /// Output path for cleaned content (optional)
+    pub output_path: Option<String>,
 }
 
 impl Default for AnalyzeOptions {
@@ -55,6 +59,8 @@ impl Default for AnalyzeOptions {
             timeout_secs: DEFAULT_TIMEOUT_SECS,
             no_parallel: false,
             quiet: false,
+            debug: false,
+            output_path: None,
         }
     }
 }
@@ -89,6 +95,18 @@ impl AnalyzeOptions {
     /// Enable quiet mode.
     pub fn quiet(mut self) -> Self {
         self.quiet = true;
+        self
+    }
+
+    /// Enable debug mode.
+    pub fn debug(mut self, enabled: bool) -> Self {
+        self.debug = enabled;
+        self
+    }
+
+    /// Set output path for cleaned content.
+    pub fn output(mut self, path: String) -> Self {
+        self.output_path = Some(path);
         self
     }
 }
@@ -189,6 +207,40 @@ impl AnalyzerService {
             return Err(AnalysisError::NoContent);
         }
 
+        // Handle debug output if requested
+        if self.options.debug || self.options.output_path.is_some() {
+            let output_path = if let Some(path_str) = &self.options.output_path {
+                path_str.clone()
+            } else {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| format!("{}.txt", s))
+                    .expect("Path must have a filename")
+            };
+            
+            std::fs::write(&output_path, content.text())
+                .map_err(|e| AnalysisError::IoError {
+                    operation: "writing debug output".to_string(),
+                    message: e.to_string(),
+                })?;
+            
+            if !self.options.quiet {
+                eprintln!("Cleaned content written to: {}", output_path);
+            }
+
+            // Return early if in debug mode
+            if self.options.debug {
+                return Ok(AnalysisResult {
+                    markers: vec![],
+                    write_report: WriteReport::default(),
+                    usage_summary: UsageSummary::default(),
+                    had_existing_markers,
+                    existing_marker_count,
+                    total_duration: content.total_duration,
+                });
+            }
+        }
+
         // Show extraction stats
         if !self.options.quiet {
             let stats = &content.stats;
@@ -198,12 +250,17 @@ impl AnalyzerService {
                 0.0
             };
             eprintln!(
-                "Extracted: {}KB → {}KB ({:.0}% reduction, {} ANSI stripped, {} lines deduped)",
+                "Extracted: {}KB → {}KB ({:.0}% reduction, {} ANSI stripped, {} deduped, {} coalesced, {} global, {} window, {} collapsed, {} truncated)",
                 stats.original_bytes / 1024,
                 stats.extracted_bytes / 1024,
                 compression,
                 stats.ansi_sequences_stripped,
-                stats.progress_lines_deduplicated
+                stats.progress_lines_deduplicated,
+                stats.events_coalesced,
+                stats.global_lines_deduped,
+                stats.window_events_deduped,
+                stats.lines_collapsed,
+                stats.blocks_truncated
             );
         }
 

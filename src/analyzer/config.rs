@@ -21,6 +21,24 @@ pub struct ExtractionConfig {
     pub strip_progress_blocks: bool,
     /// Time gap threshold for segment boundaries (seconds)
     pub segment_time_gap: f64,
+    /// Enable similarity-based line collapsing
+    pub collapse_similar_lines: bool,
+    /// Similarity threshold (0.0 to 1.0) for collapsing lines
+    pub similarity_threshold: f64,
+    /// Enable coalescing of rapid, similar events
+    pub coalesce_events: bool,
+    /// Time threshold for event coalescing (seconds)
+    pub coalesce_time_threshold: f64,
+    /// Enable truncation of large output blocks
+    pub truncate_large_blocks: bool,
+    /// Max times a specific line can repeat globally
+    pub max_line_repeats: usize,
+    /// Window size for event hashing (number of events)
+    pub event_window_size: usize,
+    /// Maximum size of an output block before truncation (bytes)
+    pub max_block_size: usize,
+    /// Number of lines to keep at head/tail during truncation
+    pub truncation_context_lines: usize,
 }
 
 impl Default for ExtractionConfig {
@@ -35,6 +53,15 @@ impl Default for ExtractionConfig {
             strip_spinner_chars: true,
             strip_progress_blocks: true,
             segment_time_gap: 2.0,
+            collapse_similar_lines: true,
+            similarity_threshold: 0.80,
+            coalesce_events: true,
+            coalesce_time_threshold: 0.2, // 200ms
+            max_line_repeats: 5,
+            event_window_size: 50,
+            truncate_large_blocks: true,
+            max_block_size: 10 * 1024, // 10KB
+            truncation_context_lines: 30,
         }
     }
 }

@@ -35,6 +35,8 @@ pub fn handle(
     timeout: Option<u64>,
     no_parallel: bool,
     curate: bool,
+    debug: bool,
+    output: Option<String>,
 ) -> Result<()> {
     let config = Config::load()?;
     let agent_name = agent_override.unwrap_or(&config.recording.analysis_agent);
@@ -66,6 +68,12 @@ pub fn handle(
     }
     if no_parallel {
         options = options.sequential();
+    }
+    if debug {
+        options = options.debug(true);
+    }
+    if let Some(out) = output {
+        options = options.output(out);
     }
 
     // Create service

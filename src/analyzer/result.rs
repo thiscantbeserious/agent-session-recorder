@@ -249,7 +249,7 @@ pub fn resolve_timestamp(time_range: &TimeRange, relative: f64) -> f64 {
 }
 
 /// Report from marker writing.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct WriteReport {
     /// Number of markers written
     pub markers_written: usize,

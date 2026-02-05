@@ -185,6 +185,12 @@ SUPPORTED AGENTS:
         /// Auto-curate markers without prompting (reduces to 8-12 best markers)
         #[arg(long, help = "Auto-curate to 8-12 markers without prompting")]
         curate: bool,
+        /// Debug mode: Save cleaned content to a file and stop before analysis
+        #[arg(long, help = "Save cleaned content to a file and stop before analysis")]
+        debug: bool,
+        /// Path to save cleaned content (implies --debug if --output is used alone)
+        #[arg(long, short, value_name = "FILE", help = "Path to save cleaned content")]
+        output: Option<String>,
     },
 
     /// Play a recording with the native player

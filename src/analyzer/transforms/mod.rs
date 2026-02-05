@@ -11,7 +11,9 @@
 mod cleaner;
 mod dedupe;
 mod normalize;
+mod aggressive;
 
 pub use cleaner::ContentCleaner;
 pub use dedupe::DeduplicateProgressLines;
 pub use normalize::{FilterEmptyEvents, NormalizeWhitespace};
+pub use aggressive::{BlockTruncator, EventCoalescer, GlobalDeduplicator, SimilarityFilter};

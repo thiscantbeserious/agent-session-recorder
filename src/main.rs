@@ -299,7 +299,18 @@ fn main() -> Result<()> {
             timeout,
             no_parallel,
             curate,
-        } => commands::analyze::handle(&file, agent.as_deref(), workers, timeout, no_parallel, curate),
+            debug,
+            output,
+        } => commands::analyze::handle(
+            &file,
+            agent.as_deref(),
+            workers,
+            timeout,
+            no_parallel,
+            curate,
+            debug,
+            output,
+        ),
         Commands::Play { file } => commands::play::handle(&file),
         Commands::Copy { file } => commands::copy::handle(&file),
         Commands::Marker(cmd) => match cmd {
@@ -559,6 +570,9 @@ mod tests {
             "60",
             "--no-parallel",
             "--curate",
+            "--debug",
+            "--output",
+            "debug.txt",
         ])
         .unwrap();
         match cli.command {
@@ -569,6 +583,8 @@ mod tests {
                 timeout,
                 no_parallel,
                 curate,
+                debug,
+                output,
             } => {
                 assert_eq!(file, "session.cast");
                 assert_eq!(agent, Some("codex".to_string()));
@@ -576,6 +592,8 @@ mod tests {
                 assert_eq!(timeout, Some(60));
                 assert!(no_parallel);
                 assert!(curate);
+                assert!(debug);
+                assert_eq!(output, Some("debug.txt".to_string()));
             }
             _ => panic!("Expected Analyze command"),
         }

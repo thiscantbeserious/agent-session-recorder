@@ -7,7 +7,8 @@ use crate::asciicast::{Event, Transform};
 
 use super::config::ExtractionConfig;
 use super::transforms::{
-    ContentCleaner, DeduplicateProgressLines, FilterEmptyEvents, NormalizeWhitespace,
+    BlockTruncator, ContentCleaner, DeduplicateProgressLines, EventCoalescer, FilterEmptyEvents,
+    GlobalDeduplicator, NormalizeWhitespace, SimilarityFilter,
 };
 use super::types::{AnalysisContent, AnalysisSegment, ExtractionStats, TokenEstimator};
 
@@ -29,15 +30,57 @@ impl ContentExtractor {
         let original_bytes: usize = events.iter().map(|e| e.data.len()).sum();
         let original_event_count = events.len();
 
-        // Create and apply transforms
+        // 1. Basic Cleaning (ANSI, Controls, Visual noise)
         let mut cleaner = ContentCleaner::new(&self.config);
         cleaner.transform(events);
 
+        // 2. Event Coalescing (Rapid, similar events)
+        let mut events_coalesced = 0;
+        if self.config.coalesce_events {
+            let mut coalescer = EventCoalescer::new(
+                self.config.similarity_threshold,
+                self.config.coalesce_time_threshold,
+            );
+            coalescer.transform(events);
+            events_coalesced = coalescer.coalesced_count();
+        }
+
+        // 3. Global Deduplication (Frequent lines & windowed event hashing)
+        let (global_lines_deduped, window_events_deduped) = {
+            let mut global_deduper = GlobalDeduplicator::new(
+                self.config.max_line_repeats,
+                self.config.event_window_size,
+            );
+            global_deduper.transform(events);
+            global_deduper.stats()
+        };
+
+        // 4. Carriage Return Deduplication
         let mut deduper = DeduplicateProgressLines::new();
         if self.config.dedupe_progress_lines {
             deduper.transform(events);
         }
 
+        // 3. Similarity Filtering (Consecutive redundant lines)
+        let mut lines_collapsed = 0;
+        if self.config.collapse_similar_lines {
+            let mut sim_filter = SimilarityFilter::new(self.config.similarity_threshold);
+            sim_filter.transform(events);
+            lines_collapsed = sim_filter.collapsed_count();
+        }
+
+        // 4. Large Block Truncation
+        let mut blocks_truncated = 0;
+        if self.config.truncate_large_blocks {
+            let mut truncator = BlockTruncator::new(
+                self.config.max_block_size,
+                self.config.truncation_context_lines,
+            );
+            truncator.transform(events);
+            blocks_truncated = truncator.truncated_count();
+        }
+
+        // 5. Final Normalization
         if self.config.normalize_whitespace {
             let mut normalizer = NormalizeWhitespace::new(self.config.max_consecutive_newlines);
             normalizer.transform(events);
@@ -53,6 +96,11 @@ impl ContentExtractor {
             ansi_sequences_stripped: cleaner.ansi_stripped_count(),
             control_chars_stripped: cleaner.control_stripped_count(),
             progress_lines_deduplicated: deduper.deduped_count(),
+            events_coalesced,
+            global_lines_deduped,
+            window_events_deduped,
+            lines_collapsed,
+            blocks_truncated,
             events_processed: original_event_count,
             events_retained: events.len(),
         };

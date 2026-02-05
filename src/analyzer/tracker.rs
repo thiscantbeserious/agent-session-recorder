@@ -161,7 +161,7 @@ impl ChunkUsage {
 }
 
 /// Summary report of analysis usage.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct UsageSummary {
     /// Number of chunks processed
     pub chunks_processed: usize,

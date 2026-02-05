@@ -80,6 +80,16 @@ pub struct ExtractionStats {
     pub control_chars_stripped: usize,
     /// Number of progress lines deduplicated
     pub progress_lines_deduplicated: usize,
+    /// Number of rapid events coalesced
+    pub events_coalesced: usize,
+    /// Number of lines removed by global frequency cap
+    pub global_lines_deduped: usize,
+    /// Number of events removed by windowed hashing
+    pub window_events_deduped: usize,
+    /// Number of similar lines collapsed
+    pub lines_collapsed: usize,
+    /// Number of large output blocks truncated
+    pub blocks_truncated: usize,
     /// Number of events processed
     pub events_processed: usize,
     /// Number of events retained after filtering
