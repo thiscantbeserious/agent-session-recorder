@@ -271,12 +271,24 @@ impl AnalyzerService {
     }
 }
 
+/// Maximum tokens for prompt content (conservative limit for safety).
+/// This leaves room for the template itself and output tokens.
+const MAX_PROMPT_CONTENT_TOKENS: usize = 180_000;
+
+/// Estimated characters per token for truncation calculation.
+const CHARS_PER_TOKEN: usize = 4;
+
 /// Build the analysis prompt for a chunk.
 ///
 /// Uses the template from `src/analyzer/prompts/analyze.txt`.
+/// If the resulting prompt exceeds token limits, the content is truncated
+/// with a warning logged.
 pub fn build_prompt(chunk: &super::chunk::AnalysisChunk, total_duration: f64) -> String {
     // Include the template at compile time
     const TEMPLATE: &str = include_str!("prompts/analyze.txt");
+
+    // Validate and potentially truncate content if too large
+    let content = truncate_content_if_needed(&chunk.text, chunk.estimated_tokens);
 
     TEMPLATE
         .replace(
@@ -285,7 +297,28 @@ pub fn build_prompt(chunk: &super::chunk::AnalysisChunk, total_duration: f64) ->
         )
         .replace("{chunk_end_time}", &format!("{:.1}", chunk.time_range.end))
         .replace("{total_duration}", &format!("{:.1}", total_duration))
-        .replace("{cleaned_content}", &chunk.text)
+        .replace("{cleaned_content}", &content)
+}
+
+/// Truncate content if it exceeds the maximum prompt token limit.
+///
+/// Returns the content as-is if within limits, otherwise truncates
+/// and appends a truncation notice.
+fn truncate_content_if_needed(content: &str, estimated_tokens: usize) -> String {
+    if estimated_tokens <= MAX_PROMPT_CONTENT_TOKENS {
+        return content.to_string();
+    }
+
+    eprintln!(
+        "Warning: Content size ({} tokens) exceeds limit ({}). Truncating.",
+        estimated_tokens, MAX_PROMPT_CONTENT_TOKENS
+    );
+
+    // Calculate safe character limit
+    let max_chars = MAX_PROMPT_CONTENT_TOKENS * CHARS_PER_TOKEN;
+    let truncated: String = content.chars().take(max_chars).collect();
+
+    format!("{}\n\n[Content truncated due to size limits]", truncated)
 }
 
 #[cfg(test)]

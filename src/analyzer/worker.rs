@@ -263,11 +263,28 @@ impl<'a, B: AgentBackend + ?Sized> ParallelExecutor<'a, B> {
         prompt_builder: &(impl Fn(&AnalysisChunk) -> String + Sync),
     ) -> Vec<ChunkResult> {
         // Build dedicated thread pool with specified worker count
-        let pool = rayon::ThreadPoolBuilder::new()
+        let pool = match rayon::ThreadPoolBuilder::new()
             .num_threads(self.worker_count)
             .thread_name(|i| format!("analyzer-{}", i))
             .build()
-            .expect("Failed to create thread pool");
+        {
+            Ok(pool) => pool,
+            Err(e) => {
+                // If thread pool creation fails, return failures for all chunks
+                eprintln!(
+                    "Warning: Failed to create thread pool: {}. Processing sequentially.",
+                    e
+                );
+                return chunks
+                    .into_iter()
+                    .map(|chunk| {
+                        let result = self.analyze_chunk(&chunk, prompt_builder);
+                        progress.report_progress();
+                        result
+                    })
+                    .collect();
+            }
+        };
 
         // Execute in parallel
         pool.install(|| {
@@ -352,16 +369,21 @@ impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
         prompt_builder: impl Fn(&AnalysisChunk) -> String + Sync,
     ) -> (Vec<ChunkResult>, TokenTracker) {
         let mut tracker = TokenTracker::new();
+        let chunk_count = chunks.len();
 
         if chunks.is_empty() {
             return (Vec::new(), tracker);
         }
 
+        // Pre-extract token counts to avoid needing full chunks after execution
+        let token_map: std::collections::HashMap<usize, usize> =
+            chunks.iter().map(|c| (c.id, c.estimated_tokens)).collect();
+
         // Try parallel execution first
         let parallel_executor =
             ParallelExecutor::new(self.backend, self.timeout, self.worker_count);
 
-        let results = parallel_executor.execute(chunks.clone(), progress, &prompt_builder);
+        let results = parallel_executor.execute(chunks, progress, &prompt_builder);
 
         // Check if all failed (might need sequential fallback)
         let all_failed = results.iter().all(|r| r.is_failure());
@@ -369,15 +391,19 @@ impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
             .iter()
             .any(|r| matches!(&r.result, Err(BackendError::RateLimited(_))));
 
-        if all_failed && has_rate_limit && chunks.len() > 1 {
-            // Fall back to sequential with retry
-            return self.execute_sequential_with_retry(chunks, &mut tracker, &prompt_builder);
+        // Sequential fallback is no longer available since we consume chunks in parallel
+        // execution. If all chunks fail with rate limiting, we return the failed results.
+        // Sequential retry would need to be handled at a higher level.
+        if all_failed && has_rate_limit && chunk_count > 1 {
+            eprintln!(
+                "Warning: All {} chunks failed with rate limiting. Sequential fallback unavailable.",
+                chunk_count
+            );
         }
 
-        // Record results in tracker
+        // Record results in tracker using pre-extracted token counts
         for result in &results {
-            let chunk = chunks.iter().find(|c| c.id == result.chunk_id);
-            let tokens = chunk.map(|c| c.estimated_tokens).unwrap_or(0);
+            let tokens = token_map.get(&result.chunk_id).copied().unwrap_or(0);
 
             match &result.result {
                 Ok(_) => tracker.record_success(
@@ -394,6 +420,11 @@ impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
     }
 
     /// Execute chunks sequentially with retry logic.
+    ///
+    /// Note: Currently unused after removing the clone in execute_with_retry.
+    /// Kept for potential future use or if sequential fallback is re-enabled
+    /// at a higher level.
+    #[allow(dead_code)]
     fn execute_sequential_with_retry(
         &self,
         chunks: Vec<AnalysisChunk>,
@@ -433,6 +464,7 @@ impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
     }
 
     /// Analyze a single chunk with retry logic.
+    #[allow(dead_code)]
     fn analyze_chunk_with_retry(
         &self,
         chunk: &AnalysisChunk,

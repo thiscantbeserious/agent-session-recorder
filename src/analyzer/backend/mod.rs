@@ -366,8 +366,17 @@ fn extract_first_number(s: &str) -> Option<u64> {
 }
 
 /// Check if a command is available in PATH.
+///
+/// Uses platform-specific command lookup:
+/// - Unix: `which` command
+/// - Windows: `where` command
 pub fn command_exists(command: &str) -> bool {
-    std::process::Command::new("which")
+    #[cfg(windows)]
+    let lookup_cmd = "where";
+    #[cfg(not(windows))]
+    let lookup_cmd = "which";
+
+    std::process::Command::new(lookup_cmd)
         .arg(command)
         .output()
         .map(|output| output.status.success())
