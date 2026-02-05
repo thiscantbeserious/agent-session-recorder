@@ -457,8 +457,9 @@ impl TokenBudget {
         let reserved = self.reserved_for_prompt + self.reserved_for_output;
         let usable = self.max_input_tokens.saturating_sub(reserved);
 
-        // Apply safety margin (10%)
-        (usable as f64 * 0.90) as usize
+        // Apply safety margin (15% buffer to compensate for heuristic estimation errors)
+        // Matches ADR TokenEstimator safety_factor: 0.85
+        (usable as f64 * 0.85) as usize
     }
 }
 ```
@@ -683,6 +684,45 @@ gemini \
 # Via stdin
 echo "$PROMPT" | gemini --output-format json --yolo
 ```
+
+### 4.4 Rate Limiting Detection
+
+Each agent CLI signals rate limiting differently. Detect and handle these patterns:
+
+```rust
+/// Detect rate limiting from agent CLI output
+pub fn detect_rate_limit(agent: AgentType, stderr: &str, exit_code: i32) -> bool {
+    match agent {
+        AgentType::Claude => {
+            // Claude CLI rate limit patterns
+            stderr.contains("rate limit") ||
+            stderr.contains("429") ||
+            stderr.contains("Too many requests") ||
+            stderr.contains("quota exceeded")
+        }
+        AgentType::Codex => {
+            // Codex CLI rate limit patterns
+            stderr.contains("rate limit") ||
+            stderr.contains("throttled") ||
+            exit_code == 429
+        }
+        AgentType::Gemini => {
+            // Gemini CLI rate limit patterns
+            stderr.contains("RESOURCE_EXHAUSTED") ||
+            stderr.contains("rate limit") ||
+            stderr.contains("quota")
+        }
+    }
+}
+```
+
+**Agent-specific patterns:**
+
+| Agent | Rate Limit Indicators |
+|-------|----------------------|
+| Claude | `"rate limit"`, `"429"`, `"Too many requests"`, `"quota exceeded"` in stderr |
+| Codex | `"rate limit"`, `"throttled"` in stderr, or exit code 429 |
+| Gemini | `"RESOURCE_EXHAUSTED"`, `"rate limit"`, `"quota"` in stderr |
 
 ---
 

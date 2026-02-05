@@ -362,9 +362,9 @@ impl Transform for StripAnsiCodes {
         for event in events.iter_mut() {
             // Only modify output events, preserve markers/input
             if event.is_output() {
-                if let Some(data) = event.data_mut() {
-                    *data = self.ansi_regex.replace_all(data, "").into_owned();
-                }
+                // Note: Event.data is a public field - direct access is used
+                // Implementation should add data()/data_mut() accessors for consistency
+                event.data = self.ansi_regex.replace_all(&event.data, "").into_owned();
             }
         }
     }
@@ -1665,6 +1665,162 @@ impl AnalyzerService {
 - Do NOT prevent re-analysis (just warn)
 - New markers are added alongside existing ones
 - No automatic deduplication with existing markers (keep it simple per R9)
+
+---
+
+## Partial Chunk Success Policy
+
+When parallel analysis results in some chunks succeeding and others failing:
+
+```rust
+/// Policy: Write all successful markers, report failed chunks
+pub struct PartialSuccessPolicy;
+
+impl PartialSuccessPolicy {
+    pub fn handle_results(
+        results: Vec<ChunkResult>,
+        total_chunks: usize,
+    ) -> Result<(Vec<ValidatedMarker>, PartialSuccessReport)> {
+        let (successes, failures): (Vec<_>, Vec<_>) = results
+            .into_iter()
+            .partition(|r| r.result.is_ok());
+
+        let markers: Vec<ValidatedMarker> = successes
+            .into_iter()
+            .flat_map(|r| r.result.unwrap())
+            .collect();
+
+        let report = PartialSuccessReport {
+            successful_chunks: total_chunks - failures.len(),
+            failed_chunks: failures.len(),
+            failed_time_ranges: failures.iter()
+                .map(|r| r.time_range.clone())
+                .collect(),
+            markers_found: markers.len(),
+        };
+
+        // Partial success is acceptable - write what we have
+        if markers.is_empty() && !failures.is_empty() {
+            return Err(AnalysisError::AllChunksFailed {
+                total: total_chunks,
+                errors: failures.into_iter()
+                    .map(|r| r.result.unwrap_err())
+                    .collect(),
+            });
+        }
+
+        Ok((markers, report))
+    }
+}
+
+pub struct PartialSuccessReport {
+    pub successful_chunks: usize,
+    pub failed_chunks: usize,
+    pub failed_time_ranges: Vec<TimeRange>,
+    pub markers_found: usize,
+}
+```
+
+**Automatic retry for failed chunks:**
+
+```rust
+/// Automatic retry with exponential backoff
+pub struct RetryPolicy {
+    pub max_attempts: usize,     // Default: 3
+    pub initial_delay_ms: u64,   // Default: 1000
+    pub backoff_multiplier: f64, // Default: 2.0
+    pub max_delay_ms: u64,       // Default: 30000
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_attempts: 3,
+            initial_delay_ms: 1000,
+            backoff_multiplier: 2.0,
+            max_delay_ms: 30000,
+        }
+    }
+}
+
+/// Retry failed chunks automatically before reporting partial success
+pub fn analyze_with_retry(
+    chunks: Vec<AnalysisChunk>,
+    backend: &dyn AgentBackend,
+    policy: &RetryPolicy,
+) -> Vec<ChunkResult> {
+    let mut results = Vec::with_capacity(chunks.len());
+
+    for chunk in chunks {
+        let mut last_error = None;
+        let mut delay_ms = policy.initial_delay_ms;
+
+        for attempt in 1..=policy.max_attempts {
+            match backend.invoke(&build_prompt(&chunk), Duration::from_secs(120)) {
+                Ok(response) => {
+                    results.push(ChunkResult::success(chunk.id, response));
+                    break;
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < policy.max_attempts {
+                        eprintln!("  Chunk {} failed (attempt {}/{}), retrying in {}ms...",
+                            chunk.id, attempt, policy.max_attempts, delay_ms);
+                        std::thread::sleep(Duration::from_millis(delay_ms));
+                        delay_ms = (delay_ms as f64 * policy.backoff_multiplier)
+                            .min(policy.max_delay_ms as f64) as u64;
+                    }
+                }
+            }
+        }
+
+        if let Some(e) = last_error {
+            if results.last().map(|r| r.chunk_id != chunk.id).unwrap_or(true) {
+                results.push(ChunkResult::failure(chunk.id, e));
+            }
+        }
+    }
+
+    results
+}
+```
+
+**User feedback for partial success (after automatic retries):**
+```
+Analyzing session... (4 chunks, ~380K tokens)
+  [1/4] ████████████████████ done (32s)
+  [2/4] ████████████████████ done (28s)
+  [3/4] failed (attempt 1/3), retrying in 1000ms...
+  [3/4] failed (attempt 2/3), retrying in 2000ms...
+  [3/4] ████████████████████ done (retry succeeded)
+  [4/4] ████████████████████ done (29s)
+
+✓ Added 15 markers to session.cast
+```
+
+**If all retries fail:**
+```
+Analyzing session... (4 chunks, ~380K tokens)
+  [1/4] ████████████████████ done (32s)
+  [2/4] ████████████████████ done (28s)
+  [3/4] failed (attempt 1/3), retrying in 1000ms...
+  [3/4] failed (attempt 2/3), retrying in 2000ms...
+  [3/4] failed (attempt 3/3)
+  [4/4] ████████████████████ done (29s)
+
+⚠ Analysis partially complete:
+   ✓ 3/4 chunks analyzed (after automatic retries)
+   ✕ 1 chunk failed (timestamps 450.0s - 600.0s)
+
+   12 markers added. The failed time range may have missing markers.
+```
+
+**Design rationale:**
+- Retry is automatic - no user intervention needed
+- Exponential backoff avoids hammering rate-limited APIs
+- Partial success is better than total failure
+- User gets value from successful chunks immediately
+- Failed time ranges are clearly reported after all retries exhausted
 
 ---
 
