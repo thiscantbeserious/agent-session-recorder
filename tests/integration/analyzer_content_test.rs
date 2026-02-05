@@ -92,11 +92,11 @@ fn snapshot_spinner_progress_dedupe() {
 
     // Spinner progress sequence (common pattern in all agents)
     let mut events = vec![
-        Event::output(0.1, "\r\u{280B} Building..."),  // ⠋
-        Event::output(0.1, "\r\u{2819} Building..."),  // ⠙
-        Event::output(0.1, "\r\u{2839} Building..."),  // ⠹
-        Event::output(0.1, "\r\u{2838} Building..."),  // ⠸
-        Event::output(0.1, "\r\u{283C} Building..."),  // ⠼
+        Event::output(0.1, "\r\u{280B} Building..."),      // ⠋
+        Event::output(0.1, "\r\u{2819} Building..."),      // ⠙
+        Event::output(0.1, "\r\u{2839} Building..."),      // ⠹
+        Event::output(0.1, "\r\u{2838} Building..."),      // ⠸
+        Event::output(0.1, "\r\u{283C} Building..."),      // ⠼
         Event::output(0.1, "\r\u{2713} Build complete\n"), // ✓
     ];
 

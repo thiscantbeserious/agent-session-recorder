@@ -73,7 +73,11 @@ fn benchmark_content_extraction_15mb() {
     let events = generate_realistic_events(15 * 1024 * 1024);
     let original_bytes: usize = events.iter().map(|e| e.data.len()).sum();
 
-    println!("Generated {} events, {} bytes", events.len(), original_bytes);
+    println!(
+        "Generated {} events, {} bytes",
+        events.len(),
+        original_bytes
+    );
 
     let extractor = ContentExtractor::default();
     let mut events_clone = events.clone();
@@ -191,8 +195,7 @@ fn verify_compression_ratios_match_spec() {
     let mut claude_clone = claude_events;
     let claude_result = extractor.extract(&mut claude_clone);
 
-    let claude_ratio =
-        1.0 - claude_result.stats.extracted_bytes as f64 / claude_original as f64;
+    let claude_ratio = 1.0 - claude_result.stats.extracted_bytes as f64 / claude_original as f64;
     println!(
         "Claude-style compression: {:.1}% ({} -> {} bytes)",
         claude_ratio * 100.0,
