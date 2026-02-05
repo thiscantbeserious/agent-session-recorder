@@ -8,8 +8,10 @@
 //! 5. Execute parallel analysis
 //! 6. Aggregate and deduplicate markers
 //! 7. Write markers to file
+//! 8. Optionally curate markers (reduce to 8-12 most significant)
 
 use std::io::{self, Write};
+use std::time::Duration;
 
 use anyhow::Result;
 
@@ -17,6 +19,9 @@ use agr::analyzer::{AgentType, AnalyzeOptions, AnalyzerService};
 use agr::{Config, MarkerManager};
 
 use super::resolve_file_path;
+
+/// Threshold for offering marker curation.
+const CURATION_THRESHOLD: usize = 12;
 
 /// Analyze a recording file using an AI agent.
 ///
@@ -29,6 +34,7 @@ pub fn handle(
     workers: Option<usize>,
     timeout: Option<u64>,
     no_parallel: bool,
+    curate: bool,
 ) -> Result<()> {
     let config = Config::load()?;
     let agent_name = agent_override.unwrap_or(&config.recording.analysis_agent);
@@ -105,19 +111,68 @@ pub fn handle(
     }
 
     // Print markers verbosely
-    println!("\nMarkers added ({}):", result.markers_added());
+    println!("\nMarkers found ({}):", result.markers.len());
     for marker in &result.markers {
-        let minutes = (marker.timestamp / 60.0).floor() as u32;
-        let seconds = marker.timestamp % 60.0;
-        println!(
-            "  {:02}:{:05.2} - {}",
-            minutes, seconds, marker.label
-        );
+        print_marker(marker.timestamp, &marker.label);
     }
 
-    println!("\nAnalysis complete.");
+    // Handle curation if we have many markers
+    let final_marker_count = if result.markers.len() > CURATION_THRESHOLD {
+        let should_curate = if curate {
+            // Auto-curate with --curate flag
+            println!("\nAuto-curating {} markers to 8-12...", result.markers.len());
+            true
+        } else {
+            // Prompt user
+            print!(
+                "\nFound {} markers. Curate to 8-12 most significant? [y/N]: ",
+                result.markers.len()
+            );
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes")
+        };
+
+        if should_curate {
+            let timeout_duration = Duration::from_secs(timeout.unwrap_or(120));
+            match service.curate_markers(&result.markers, result.total_duration, timeout_duration) {
+                Ok(curated) => {
+                    // Write curated markers to file (replacing the ones from analyze)
+                    MarkerManager::clear_markers(&filepath)?;
+                    for marker in &curated {
+                        MarkerManager::add_marker(&filepath, marker.timestamp, &marker.label)?;
+                    }
+
+                    println!("\nCurated markers ({}):", curated.len());
+                    for marker in &curated {
+                        print_marker(marker.timestamp, &marker.label);
+                    }
+                    curated.len()
+                }
+                Err(e) => {
+                    eprintln!("Warning: Curation failed ({}), keeping all markers.", e);
+                    result.markers.len()
+                }
+            }
+        } else {
+            result.markers.len()
+        }
+    } else {
+        result.markers.len()
+    };
+
+    println!("\nAnalysis complete. {} markers in file.", final_marker_count);
 
     Ok(())
+}
+
+/// Print a marker with formatted timestamp.
+fn print_marker(timestamp: f64, label: &str) {
+    let minutes = (timestamp / 60.0).floor() as u32;
+    let seconds = timestamp % 60.0;
+    println!("  {:02}:{:05.2} - {}", minutes, seconds, label);
 }
 
 /// Parse agent name string to AgentType enum.

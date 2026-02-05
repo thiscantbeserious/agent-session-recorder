@@ -49,6 +49,9 @@ Options:
       --no-parallel
           Disable parallel processing
 
+      --curate
+          Auto-curate to 8-12 markers without prompting
+
   -h, --help
           Print help (see a summary with '-h')
 --- stderr ---

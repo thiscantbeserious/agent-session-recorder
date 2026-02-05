@@ -182,6 +182,9 @@ SUPPORTED AGENTS:
         /// Disable parallel processing (analyze sequentially)
         #[arg(long, help = "Disable parallel processing")]
         no_parallel: bool,
+        /// Auto-curate markers without prompting (reduces to 8-12 best markers)
+        #[arg(long, help = "Auto-curate to 8-12 markers without prompting")]
+        curate: bool,
     },
 
     /// Play a recording with the native player

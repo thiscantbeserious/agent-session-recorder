@@ -106,6 +106,8 @@ pub struct AnalysisResult {
     pub had_existing_markers: bool,
     /// Number of existing markers before analysis
     pub existing_marker_count: usize,
+    /// Total duration of the recording in seconds
+    pub total_duration: f64,
 }
 
 impl AnalysisResult {
@@ -238,23 +240,6 @@ impl AnalyzerService {
         let aggregator = ResultAggregator::new(content.total_duration);
         let (markers, agg_report) = aggregator.aggregate(results);
 
-        // 6.5. LLM post-processing to curate markers (if we have many)
-        let markers = if markers.len() > 12 && !self.options.quiet {
-            eprintln!("Curating {} markers...", markers.len());
-            match self.curate_markers(&markers, content.total_duration, timeout) {
-                Ok(curated) => {
-                    eprintln!("Selected {} most significant markers.", curated.len());
-                    curated
-                }
-                Err(e) => {
-                    eprintln!("Warning: Curation failed ({}), using all markers.", e);
-                    markers
-                }
-            }
-        } else {
-            markers
-        };
-
         // 7. Write markers to file
         let write_report =
             MarkerWriter::write_markers(path, &markers).map_err(|e| AnalysisError::IoError {
@@ -303,6 +288,7 @@ impl AnalyzerService {
             usage_summary,
             had_existing_markers,
             existing_marker_count,
+            total_duration,
         })
     }
 
@@ -322,7 +308,10 @@ impl AnalyzerService {
     }
 
     /// Curate markers using LLM to select the most significant ones.
-    fn curate_markers(
+    ///
+    /// Call this after analyze() if the marker count is too high.
+    /// Returns a reduced set of 8-12 most significant markers.
+    pub fn curate_markers(
         &self,
         markers: &[ValidatedMarker],
         total_duration: f64,
@@ -836,6 +825,7 @@ mod tests {
             },
             had_existing_markers: false,
             existing_marker_count: 0,
+            total_duration: 120.0,
         };
 
         assert!(result.is_success());
@@ -865,6 +855,7 @@ mod tests {
             },
             had_existing_markers: false,
             existing_marker_count: 0,
+            total_duration: 180.0,
         };
 
         assert!(result.is_success());

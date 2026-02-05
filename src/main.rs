@@ -298,7 +298,8 @@ fn main() -> Result<()> {
             workers,
             timeout,
             no_parallel,
-        } => commands::analyze::handle(&file, agent.as_deref(), workers, timeout, no_parallel),
+            curate,
+        } => commands::analyze::handle(&file, agent.as_deref(), workers, timeout, no_parallel, curate),
         Commands::Play { file } => commands::play::handle(&file),
         Commands::Copy { file } => commands::copy::handle(&file),
         Commands::Marker(cmd) => match cmd {
@@ -454,12 +455,14 @@ mod tests {
                 workers,
                 timeout,
                 no_parallel,
+                curate,
             } => {
                 assert_eq!(file, "session.cast");
                 assert!(agent.is_none());
                 assert!(workers.is_none());
                 assert!(timeout.is_none());
                 assert!(!no_parallel);
+                assert!(!curate);
             }
             _ => panic!("Expected Analyze command"),
         }
@@ -555,6 +558,7 @@ mod tests {
             "--timeout",
             "60",
             "--no-parallel",
+            "--curate",
         ])
         .unwrap();
         match cli.command {
@@ -564,12 +568,14 @@ mod tests {
                 workers,
                 timeout,
                 no_parallel,
+                curate,
             } => {
                 assert_eq!(file, "session.cast");
                 assert_eq!(agent, Some("codex".to_string()));
                 assert_eq!(workers, Some(2));
                 assert_eq!(timeout, Some(60));
                 assert!(no_parallel);
+                assert!(curate);
             }
             _ => panic!("Expected Analyze command"),
         }
