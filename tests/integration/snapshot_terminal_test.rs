@@ -7,14 +7,14 @@ use agr::terminal::TerminalBuffer;
 /// Helper to create a terminal buffer and process input
 fn process(input: &str) -> String {
     let mut buf = TerminalBuffer::new(40, 10);
-    buf.process(input);
+    buf.process(input, None);
     buf.to_string()
 }
 
 /// Helper with custom dimensions
 fn process_sized(input: &str, cols: usize, rows: usize) -> String {
     let mut buf = TerminalBuffer::new(cols, rows);
-    buf.process(input);
+    buf.process(input, None);
     buf.to_string()
 }
 
@@ -180,16 +180,16 @@ fn terminal_newline_scroll() {
 #[test]
 fn terminal_resize_wider() {
     let mut buf = TerminalBuffer::new(20, 5);
-    buf.process("Hello\nWorld");
+    buf.process("Hello\nWorld", None);
     buf.resize(40, 5);
-    buf.process(" - extended");
+    buf.process(" - extended", None);
     insta::assert_snapshot!(buf.to_string());
 }
 
 #[test]
 fn terminal_resize_narrower() {
     let mut buf = TerminalBuffer::new(40, 5);
-    buf.process("This is a long line of text");
+    buf.process("This is a long line of text", None);
     buf.resize(20, 5);
     insta::assert_snapshot!(buf.to_string());
 }
@@ -197,16 +197,16 @@ fn terminal_resize_narrower() {
 #[test]
 fn terminal_resize_taller() {
     let mut buf = TerminalBuffer::new(20, 3);
-    buf.process("Line1\nLine2\nLine3");
+    buf.process("Line1\nLine2\nLine3", None);
     buf.resize(20, 6);
-    buf.process("\nLine4\nLine5");
+    buf.process("\nLine4\nLine5", None);
     insta::assert_snapshot!(buf.to_string());
 }
 
 #[test]
 fn terminal_resize_shorter() {
     let mut buf = TerminalBuffer::new(20, 6);
-    buf.process("Line1\nLine2\nLine3\nLine4\nLine5\nLine6");
+    buf.process("Line1\nLine2\nLine3\nLine4\nLine5\nLine6", None);
     buf.resize(20, 3);
     insta::assert_snapshot!(buf.to_string());
 }
@@ -268,10 +268,10 @@ fn terminal_prompt_pattern() {
 fn terminal_progress_bar_update() {
     // Progress bar that updates in place
     let mut buf = TerminalBuffer::new(40, 3);
-    buf.process("Downloading...\n[          ] 0%");
-    buf.process("\r[##        ] 20%");
-    buf.process("\r[#####     ] 50%");
-    buf.process("\r[##########] 100%\nDone!");
+    buf.process("Downloading...\n[          ] 0%", None);
+    buf.process("\r[##        ] 20%", None);
+    buf.process("\r[#####     ] 50%", None);
+    buf.process("\r[##########] 100%\nDone!", None);
     insta::assert_snapshot!(buf.to_string());
 }
 

@@ -185,7 +185,7 @@ fn run_main_loop(
                 state.set_cumulative_time(next_time);
 
                 if evt.is_output() {
-                    buffer.process(&evt.data);
+                    buffer.process(&evt.data, None);
                 } else if let Some((cols, rows)) = evt.parse_resize() {
                     buffer.resize(cols as usize, rows as usize);
                 }

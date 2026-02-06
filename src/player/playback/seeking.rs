@@ -54,7 +54,7 @@ pub fn seek_to_time(
             break;
         }
         if event.is_output() {
-            buffer.process(&event.data);
+            buffer.process(&event.data, None);
         } else if let Some((new_cols, new_rows)) = event.parse_resize() {
             buffer.resize(new_cols as usize, new_rows as usize);
         }
@@ -155,7 +155,7 @@ mod tests {
             }],
         };
         let mut buffer = TerminalBuffer::new(80, 24);
-        buffer.process("some content");
+        buffer.process("some content", None);
 
         seek_to_time(&mut buffer, &cast, 0.0, 80, 24);
 

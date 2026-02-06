@@ -22,7 +22,7 @@ fn process_cast_with_snapshots(
 
     for (idx, event) in cast.events.iter().enumerate() {
         if event.is_output() {
-            buffer.process(&event.data);
+            buffer.process(&event.data, None);
         } else if let Some((cols, rows)) = event.parse_resize() {
             buffer.resize(cols as usize, rows as usize);
             current_cols = cols;
@@ -141,9 +141,9 @@ fn test_rapid_resize_maintains_content_integrity() {
     let mut buffer = TerminalBuffer::new(100, 24);
 
     // Write some content
-    buffer.process("Line 1: Hello World\r\n");
-    buffer.process("Line 2: Test Content\r\n");
-    buffer.process("Line 3: More Text\r\n");
+    buffer.process("Line 1: Hello World\r\n", None);
+    buffer.process("Line 2: Test Content\r\n", None);
+    buffer.process("Line 3: More Text\r\n", None);
 
     let _before_resize = buffer.to_string();
 
@@ -178,17 +178,17 @@ fn test_resize_with_cursor_positioning() {
     let mut buffer = TerminalBuffer::new(100, 24);
 
     // Fill first few lines
-    buffer.process("AAAAAAAAAA\r\n");
-    buffer.process("BBBBBBBBBB\r\n");
-    buffer.process("CCCCCCCCCC\r\n");
+    buffer.process("AAAAAAAAAA\r\n", None);
+    buffer.process("BBBBBBBBBB\r\n", None);
+    buffer.process("CCCCCCCCCC\r\n", None);
 
     // Resize to smaller
     buffer.resize(50, 24);
 
     // Now do cursor positioning that would have been valid at 100 cols
     // Move cursor to column 40 (still valid at 50), row 1
-    buffer.process("\x1b[2;41H"); // Row 2, Column 41
-    buffer.process("X");
+    buffer.process("\x1b[2;41H", None); // Row 2, Column 41
+    buffer.process("X", None);
 
     let output = buffer.to_string();
     let lines: Vec<&str> = output.lines().collect();
@@ -207,7 +207,7 @@ fn test_resize_clamps_cursor() {
     let mut buffer = TerminalBuffer::new(100, 24);
 
     // Position cursor at far right
-    buffer.process("\x1b[1;90H"); // Row 1, Column 90
+    buffer.process("\x1b[1;90H", None); // Row 1, Column 90
     assert_eq!(buffer.cursor_col(), 89); // 0-indexed
 
     // Resize to smaller
@@ -221,7 +221,7 @@ fn test_resize_clamps_cursor() {
     );
 
     // Write something - at col 49, "TEST" will wrap: 'T' at col 49, "EST" on next row
-    buffer.process("TEST");
+    buffer.process("TEST", None);
 
     let output = buffer.to_string();
 

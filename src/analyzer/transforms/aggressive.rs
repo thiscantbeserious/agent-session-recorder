@@ -602,7 +602,7 @@ impl WindowedLineDeduplicator {
 
 impl Default for WindowedLineDeduplicator {
     fn default() -> Self {
-        Self::new(500) // 500-line window
+        Self::new(1000) // 1000-line window
     }
 }
 

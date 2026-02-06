@@ -164,7 +164,7 @@ impl SessionPreview {
                 if !preview_captured {
                     if event_type == EventType::Output {
                         if let Some(output) = data {
-                            buffer.process(&output);
+                            buffer.process(&output, None);
                         }
                     }
 

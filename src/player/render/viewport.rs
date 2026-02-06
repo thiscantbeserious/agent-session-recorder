@@ -200,7 +200,7 @@ mod tests {
 
     fn create_buffer_with_content(width: usize, height: usize, content: &str) -> TerminalBuffer {
         let mut buffer = TerminalBuffer::new(width, height);
-        buffer.process(content);
+        buffer.process(content, None);
         buffer
     }
 

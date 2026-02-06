@@ -64,7 +64,7 @@ impl TerminalBuffer {
     /// Process output data through the terminal emulator.
     ///
     /// This parses ANSI escape sequences and updates the buffer state.
-    pub fn process(&mut self, data: &str) {
+    pub fn process(&mut self, data: &str, mut scroll_callback: Option<&mut dyn FnMut(Vec<Cell>)>) {
         let mut perf = performer::TerminalPerformer {
             buffer: &mut self.buffer,
             width: self.width,
@@ -75,6 +75,7 @@ impl TerminalBuffer {
             saved_cursor: &mut self.saved_cursor,
             scroll_top: self.scroll_top,
             scroll_bottom: self.scroll_bottom,
+            scroll_callback: scroll_callback.as_mut().map(|cb| *cb as &mut dyn FnMut(Vec<Cell>)),
         };
         self.parser.advance(&mut perf, data.as_bytes());
         // Update scroll region in case it was changed by DECSTBM

@@ -50,18 +50,18 @@ impl ContentExtractor {
         let mut term_transform = TerminalTransform::new(cols, rows);
         term_transform.transform(events);
 
-        // 1b. Basic Cleaning (Controls, Visual noise)
+        // 1b. Windowed Line Deduplication (Keeps ONLY the LAST version of status lines)
+        let windowed_lines_deduped = self.apply_windowed_dedupe(events);
+
+        // 1c. Basic Cleaning (Controls, Visual noise)
         let mut cleaner = ContentCleaner::new(&self.config);
         cleaner.transform(events);
 
-        // 1c. Collapse consecutive empty lines
+        // 1d. Collapse consecutive empty lines
         EmptyLineFilter::new().transform(events);
 
         // 2. Event Coalescing (Rapid, similar events)
         let events_coalesced = self.apply_coalescing(events);
-
-        // 2b. Windowed Line Deduplication (Keeps FIRST and LAST version of status lines)
-        let windowed_lines_deduped = self.apply_windowed_dedupe(events);
 
         // 3. Global Deduplication (Frequent lines & windowed event hashing)
         let (global_lines_deduped, window_events_deduped) = self.apply_global_dedupe(events);
