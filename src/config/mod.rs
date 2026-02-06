@@ -89,4 +89,36 @@ impl Config {
         self.agents.no_wrap.retain(|a| a != name);
         self.agents.no_wrap.len() < initial_len
     }
+
+    /// Resolve the analysis agent, preferring `[analysis].default_agent` over
+    /// the deprecated `[recording].analysis_agent`.
+    ///
+    /// If neither is set, returns the default ("claude").
+    /// Emits a deprecation warning to stderr when the old field is being used.
+    pub fn resolve_analysis_agent(&self) -> String {
+        // Prefer new [analysis].default_agent
+        if let Some(ref agent) = self.analysis.default_agent {
+            return agent.clone();
+        }
+
+        // Fall back to deprecated [recording].analysis_agent
+        let old_value = &self.recording.analysis_agent;
+        let default_value = default_analysis_agent();
+
+        if *old_value != default_value {
+            eprintln!(
+                "Warning: [recording].analysis_agent is deprecated. \
+                 Use [analysis].default_agent instead."
+            );
+        }
+
+        old_value.clone()
+    }
+
+    /// Look up per-agent analysis configuration.
+    ///
+    /// Returns `None` if no agent-specific config exists.
+    pub fn analysis_agent_config(&self, agent_name: &str) -> Option<&AgentAnalysisConfig> {
+        self.analysis.agents.get(agent_name)
+    }
 }

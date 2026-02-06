@@ -16,12 +16,22 @@ use std::time::Duration;
 /// Uses `codex exec --sandbox read-only` for non-interactive analysis.
 /// The sandbox flag prevents tool execution for read-only analysis.
 #[derive(Debug, Clone, Default)]
-pub struct CodexBackend;
+pub struct CodexBackend {
+    /// Extra CLI arguments to pass to the codex command.
+    extra_args: Vec<String>,
+}
 
 impl CodexBackend {
-    /// Create a new Codex backend.
+    /// Create a new Codex backend with no extra arguments.
     pub fn new() -> Self {
-        Self
+        Self {
+            extra_args: Vec::new(),
+        }
+    }
+
+    /// Create a new Codex backend with extra CLI arguments.
+    pub fn with_extra_args(extra_args: Vec<String>) -> Self {
+        Self { extra_args }
     }
 
     /// Get the CLI command name.
@@ -55,6 +65,11 @@ impl AgentBackend for CodexBackend {
             let schema_path = get_schema_file_path()?;
             cmd.arg("--output-schema");
             cmd.arg(&schema_path);
+        }
+
+        // Append extra args from per-agent config
+        for arg in &self.extra_args {
+            cmd.arg(arg);
         }
 
         // Pass prompt via stdin to avoid ARG_MAX limits

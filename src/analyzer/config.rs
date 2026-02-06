@@ -46,7 +46,7 @@ impl Default for ExtractionConfig {
         Self {
             strip_ansi: true,
             strip_control_chars: true,
-            dedupe_progress_lines: true,
+            dedupe_progress_lines: false,
             normalize_whitespace: true,
             max_consecutive_newlines: 2,
             strip_box_drawing: true,
@@ -57,7 +57,7 @@ impl Default for ExtractionConfig {
             similarity_threshold: 0.80,
             coalesce_events: true,
             coalesce_time_threshold: 0.2, // 200ms
-            max_line_repeats: 5,
+            max_line_repeats: 20,
             event_window_size: 50,
             truncate_large_blocks: true,
             max_block_size: 10 * 1024, // 10KB

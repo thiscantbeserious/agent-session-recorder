@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use agr::{clipboard::copy_file_to_clipboard, Config};
 
-use super::resolve_file_path;
+use agr::files::resolve::resolve_file_path;
 
 /// Copy a recording file to the system clipboard.
 ///

@@ -21,7 +21,8 @@ use anyhow::Result;
 use agr::analyzer::{AgentType, AnalyzeOptions, AnalyzerService};
 use agr::{Config, MarkerManager};
 
-use super::resolve_file_path;
+use agr::asciicast::integrity::check_file_integrity;
+use agr::files::resolve::resolve_file_path;
 
 /// Threshold for offering marker curation.
 const CURATION_THRESHOLD: usize = 12;
@@ -44,10 +45,13 @@ pub fn handle(
     fast: bool,
 ) -> Result<()> {
     let config = Config::load()?;
-    let agent_name = agent_override.unwrap_or(&config.recording.analysis_agent);
 
-    // Parse agent type
-    let agent = parse_agent_type(agent_name)?;
+    // Resolve agent: CLI override > config > default
+    let resolved_agent = match agent_override {
+        Some(name) => name.to_string(),
+        None => config.resolve_analysis_agent(),
+    };
+    let agent = parse_agent_type(&resolved_agent)?;
 
     // Resolve file path (supports short format like "claude/session.cast")
     let filepath = resolve_file_path(file, &config)?;
@@ -63,14 +67,29 @@ pub fn handle(
         eprintln!("Warning: File does not have .cast extension");
     }
 
-    // Build options
+    // Check for file corruption before proceeding
+    check_file_integrity(&filepath)?;
+
+    // Look up per-agent config
+    let agent_config = config.analysis_agent_config(&resolved_agent);
+
+    // Build options with three-tier cascade: CLI > config > defaults
     let mut options = AnalyzeOptions::with_agent(agent);
+
+    // Workers: CLI > config > auto-scale (None)
     if let Some(w) = workers {
         options = options.workers(w);
+    } else if let Some(w) = config.analysis.workers {
+        options = options.workers(w);
     }
+
+    // Timeout: CLI > config > default
     if let Some(t) = timeout {
         options = options.timeout(t);
+    } else if let Some(t) = config.analysis.timeout {
+        options = options.timeout(t);
     }
+
     if no_parallel {
         options = options.sequential();
     }
@@ -80,12 +99,25 @@ pub fn handle(
     if let Some(out) = output {
         options = options.output(out);
     }
-    if fast {
+
+    // Fast: CLI true wins, else config, else false
+    if fast || config.analysis.fast.unwrap_or(false) {
         options = options.fast(true);
+    }
+
+    // Pass extra_args and token_budget_override from per-agent config
+    if let Some(ac) = agent_config {
+        if !ac.extra_args.is_empty() {
+            options = options.extra_args(ac.extra_args.clone());
+        }
+        if let Some(budget) = ac.token_budget {
+            options = options.token_budget_override(budget);
+        }
     }
 
     // Create service
     let service = AnalyzerService::new(options);
+    let agent_name = &resolved_agent;
 
     // Check agent is available
     if !service.is_agent_available() {
@@ -133,8 +165,10 @@ pub fn handle(
     }
 
     // Handle curation if we have many markers
+    // Curate: CLI true wins, else config, else false
+    let effective_curate = curate || config.analysis.curate.unwrap_or(false);
     let final_marker_count = if result.markers.len() > CURATION_THRESHOLD {
-        let should_curate = if curate {
+        let should_curate = if effective_curate {
             // Auto-curate with --curate flag
             println!(
                 "\nAuto-curating {} markers to 8-12...",

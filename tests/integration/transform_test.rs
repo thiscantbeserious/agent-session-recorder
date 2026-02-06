@@ -301,22 +301,23 @@ fn transform_permission_denied_clear_error() {
     let temp_dir = TempDir::new().unwrap();
     let cast_path = create_cast_file(&temp_dir, "readonly.cast", sample_cast_with_long_pauses());
 
-    // Make file read-only
-    let mut perms = fs::metadata(&cast_path).unwrap().permissions();
-    perms.set_mode(0o444);
-    fs::set_permissions(&cast_path, perms).unwrap();
+    // Make directory read-only (atomic write needs directory write permission
+    // to create temp file and rename)
+    let dir_path = temp_dir.path();
+    let original_perms = fs::metadata(dir_path).unwrap().permissions();
+    let mut readonly_perms = original_perms.clone();
+    readonly_perms.set_mode(0o555);
+    fs::set_permissions(dir_path, readonly_perms).unwrap();
 
     let (stdout, stderr, exit_code) =
         run_agr(&["optimize", "--remove-silence", cast_path.to_str().unwrap()]);
 
     // Restore permissions for cleanup
-    let mut perms = fs::metadata(&cast_path).unwrap().permissions();
-    perms.set_mode(0o644);
-    fs::set_permissions(&cast_path, perms).unwrap();
+    fs::set_permissions(dir_path, original_perms).unwrap();
 
     assert_ne!(
         exit_code, 0,
-        "Exit code should be non-zero for read-only file"
+        "Exit code should be non-zero for read-only directory"
     );
     let combined = format!("{}{}", stdout, stderr);
     assert!(

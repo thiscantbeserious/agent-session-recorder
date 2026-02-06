@@ -295,14 +295,24 @@ impl Transform for EventCoalescer {
 ///
 /// Implements a global frequency cap for lines and a sliding window for
 /// exact event content hashing to catch redundant TUI redraws.
+///
+/// **Important**: Windowed hashing only applies to events larger than
+/// `min_hash_bytes` to avoid discarding small but meaningful events
+/// like individual keystrokes and short output fragments.
 pub struct GlobalDeduplicator {
     line_counts: HashMap<String, usize>,
     max_line_repeats: usize,
     event_hashes: VecDeque<u64>,
     window_size: usize,
+    min_hash_bytes: usize,
     total_deduped_lines: usize,
     total_deduped_events: usize,
 }
+
+/// Minimum event data size (bytes) for windowed hash deduplication.
+/// Events smaller than this are kept regardless of duplicates, since they
+/// typically represent keystrokes or short output rather than TUI redraws.
+const DEFAULT_MIN_HASH_BYTES: usize = 128;
 
 impl GlobalDeduplicator {
     /// Create a new global deduplicator.
@@ -312,6 +322,7 @@ impl GlobalDeduplicator {
             max_line_repeats,
             event_hashes: VecDeque::with_capacity(window_size),
             window_size,
+            min_hash_bytes: DEFAULT_MIN_HASH_BYTES,
             total_deduped_lines: 0,
             total_deduped_events: 0,
         }
@@ -347,15 +358,18 @@ impl Transform for GlobalDeduplicator {
             }
 
             // Windowed event hashing (targets TUI redraw frames)
-            let h = Self::hash_string(&event.data);
-            if self.event_hashes.contains(&h) {
-                self.total_deduped_events += 1;
-                accumulated_time += event.time;
-                continue;
-            }
-            self.event_hashes.push_back(h);
-            if self.event_hashes.len() > self.window_size {
-                self.event_hashes.pop_front();
+            // Skip small events: keystrokes and short output are not redraws
+            if event.data.len() >= self.min_hash_bytes {
+                let h = Self::hash_string(&event.data);
+                if self.event_hashes.contains(&h) {
+                    self.total_deduped_events += 1;
+                    accumulated_time += event.time;
+                    continue;
+                }
+                self.event_hashes.push_back(h);
+                if self.event_hashes.len() > self.window_size {
+                    self.event_hashes.pop_front();
+                }
             }
 
             // Line frequency capping

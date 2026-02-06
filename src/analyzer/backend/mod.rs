@@ -156,11 +156,11 @@ pub enum AgentType {
 
 impl AgentType {
     /// Create the appropriate backend for this agent type.
-    pub fn create_backend(&self) -> Box<dyn AgentBackend> {
+    pub fn create_backend(&self, extra_args: Vec<String>) -> Box<dyn AgentBackend> {
         match self {
-            AgentType::Claude => Box::new(ClaudeBackend::new()),
-            AgentType::Codex => Box::new(CodexBackend::new()),
-            AgentType::Gemini => Box::new(GeminiBackend::new()),
+            AgentType::Claude => Box::new(ClaudeBackend::with_extra_args(extra_args)),
+            AgentType::Codex => Box::new(CodexBackend::with_extra_args(extra_args)),
+            AgentType::Gemini => Box::new(GeminiBackend::with_extra_args(extra_args)),
         }
     }
 
@@ -882,8 +882,8 @@ Done."#;
     #[test]
     fn agent_type_create_backend() {
         // Just verify it creates without panic
-        let _ = AgentType::Claude.create_backend();
-        let _ = AgentType::Codex.create_backend();
-        let _ = AgentType::Gemini.create_backend();
+        let _ = AgentType::Claude.create_backend(vec![]);
+        let _ = AgentType::Codex.create_backend(vec![]);
+        let _ = AgentType::Gemini.create_backend(vec![]);
     }
 }

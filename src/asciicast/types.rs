@@ -333,7 +333,15 @@ impl AsciicastFile {
 
         let cumulative_times = self.cumulative_times();
         let prev_cumulative = cumulative_times.get(index - 1).copied().unwrap_or(0.0);
-        absolute_timestamp - prev_cumulative
+        let relative = absolute_timestamp - prev_cumulative;
+
+        // Clamp floating point noise to 0.0 (accumulation over many events
+        // can produce tiny values like 2.6e-12 instead of exact 0.0)
+        if relative < 1e-6 {
+            0.0
+        } else {
+            relative
+        }
     }
 
     /// Get the total duration of the recording in seconds.

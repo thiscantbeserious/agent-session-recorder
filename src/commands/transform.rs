@@ -11,7 +11,8 @@ use agr::asciicast::{AsciicastFile, SilenceRemoval, Transform, DEFAULT_SILENCE_T
 use agr::tui::current_theme;
 use agr::Config;
 
-use super::resolve_file_path;
+use agr::asciicast::integrity::check_file_integrity;
+use agr::files::resolve::resolve_file_path;
 
 /// Resolve the threshold to use for silence removal.
 ///
@@ -74,6 +75,9 @@ pub fn handle_remove_silence(
     if filepath.extension().and_then(|e| e.to_str()) != Some("cast") {
         eprintln!("Warning: File does not have .cast extension");
     }
+
+    // Check for file corruption before transforming
+    check_file_integrity(&filepath)?;
 
     // Parse the file
     let mut cast = AsciicastFile::parse(&filepath)

@@ -20,7 +20,7 @@ use std::time::Duration;
 use crate::asciicast::AsciicastFile;
 
 use super::backend::{AgentBackend, AgentType};
-use super::chunk::ChunkCalculator;
+use super::chunk::{ChunkCalculator, ChunkConfig};
 use super::config::ExtractionConfig;
 use super::error::AnalysisError;
 use super::extractor::ContentExtractor;
@@ -51,6 +51,10 @@ pub struct AnalyzeOptions {
     pub output_path: Option<String>,
     /// Fast mode (skip JSON schema enforcement)
     pub fast: bool,
+    /// Extra CLI arguments to pass to the agent backend
+    pub extra_args: Vec<String>,
+    /// Override the token budget for chunk calculation
+    pub token_budget_override: Option<usize>,
 }
 
 impl Default for AnalyzeOptions {
@@ -64,6 +68,8 @@ impl Default for AnalyzeOptions {
             debug: false,
             output_path: None,
             fast: false,
+            extra_args: Vec::new(),
+            token_budget_override: None,
         }
     }
 }
@@ -118,6 +124,18 @@ impl AnalyzeOptions {
         self.fast = enabled;
         self
     }
+
+    /// Set extra CLI arguments to pass to the agent backend.
+    pub fn extra_args(mut self, args: Vec<String>) -> Self {
+        self.extra_args = args;
+        self
+    }
+
+    /// Set token budget override for chunk calculation.
+    pub fn token_budget_override(mut self, budget: usize) -> Self {
+        self.token_budget_override = Some(budget);
+        self
+    }
 }
 
 /// Result of an analysis operation.
@@ -165,7 +183,7 @@ pub struct AnalyzerService {
 impl AnalyzerService {
     /// Create a new analyzer service with options.
     pub fn new(options: AnalyzeOptions) -> Self {
-        let backend = options.agent.create_backend();
+        let backend = options.agent.create_backend(options.extra_args.clone());
         Self { options, backend }
     }
 
@@ -212,8 +230,27 @@ impl AnalyzerService {
         let extractor = ContentExtractor::new(config);
         let content = extractor.extract(&mut cast.events);
 
-        if content.total_tokens == 0 || content.segments.is_empty() {
-            return Err(AnalysisError::NoContent);
+        // Show extraction stats (before NoContent check so --debug always sees them)
+        if !self.options.quiet {
+            let stats = &content.stats;
+            let compression = if stats.original_bytes > 0 {
+                100.0 - (stats.extracted_bytes as f64 / stats.original_bytes as f64 * 100.0)
+            } else {
+                0.0
+            };
+            eprintln!(
+                "Extracted: {}KB \u{2192} {}KB ({:.0}% reduction, {} ANSI stripped, {} deduped, {} coalesced, {} global, {} window, {} collapsed, {} truncated)",
+                stats.original_bytes / 1024,
+                stats.extracted_bytes / 1024,
+                compression,
+                stats.ansi_sequences_stripped,
+                stats.progress_lines_deduplicated,
+                stats.events_coalesced,
+                stats.global_lines_deduped,
+                stats.window_events_deduped,
+                stats.lines_collapsed,
+                stats.blocks_truncated
+            );
         }
 
         // Handle debug output if requested (--debug AND --output flags)
@@ -243,31 +280,27 @@ impl AnalyzerService {
             }
         }
 
-        // Show extraction stats
-        if !self.options.quiet {
-            let stats = &content.stats;
-            let compression = if stats.original_bytes > 0 {
-                100.0 - (stats.extracted_bytes as f64 / stats.original_bytes as f64 * 100.0)
-            } else {
-                0.0
-            };
-            eprintln!(
-                "Extracted: {}KB \u{2192} {}KB ({:.0}% reduction, {} ANSI stripped, {} deduped, {} coalesced, {} global, {} window, {} collapsed, {} truncated)",
-                stats.original_bytes / 1024,
-                stats.extracted_bytes / 1024,
-                compression,
-                stats.ansi_sequences_stripped,
-                stats.progress_lines_deduplicated,
-                stats.events_coalesced,
-                stats.global_lines_deduped,
-                stats.window_events_deduped,
-                stats.lines_collapsed,
-                stats.blocks_truncated
-            );
+        if content.total_tokens == 0 || content.segments.is_empty() {
+            return Err(AnalysisError::NoContent);
         }
 
         // 4. Calculate chunks (Stage 2)
-        let calculator = ChunkCalculator::for_agent(self.options.agent);
+        let calculator = if let Some(budget_tokens) = self.options.token_budget_override {
+            if budget_tokens < 10000 {
+                eprintln!(
+                    "Warning: token_budget {} is below minimum (10000). Using default budget.",
+                    budget_tokens
+                );
+                ChunkCalculator::for_agent(self.options.agent)
+            } else {
+                // Use overridden token budget from per-agent config
+                let mut budget = self.options.agent.token_budget();
+                budget.max_input_tokens = budget_tokens;
+                ChunkCalculator::new(budget, ChunkConfig::default())
+            }
+        } else {
+            ChunkCalculator::for_agent(self.options.agent)
+        };
         let chunks = calculator.calculate_chunks(&content);
 
         // 5. Execute analysis (Stage 3+4)

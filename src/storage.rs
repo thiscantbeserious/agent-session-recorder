@@ -403,6 +403,7 @@ mod tests {
             },
             shell: Default::default(),
             recording: Default::default(),
+            analysis: Default::default(),
         }
     }
 

@@ -14,6 +14,7 @@
 //! - [`transform`] - Event transformation pipeline utilities
 //! - [`transform_ops`] - High-level file transform operations (backup, restore)
 
+pub mod integrity;
 pub mod marker;
 mod reader;
 mod silence_removal;
@@ -32,9 +33,10 @@ pub use silence_removal::{SilenceRemoval, DEFAULT_SILENCE_THRESHOLD};
 pub use transform::{Transform, TransformChain};
 
 // Re-export transform_ops types for convenience
-pub use transform_ops::{
-    apply_transforms, backup_path_for, has_backup, restore_from_backup, TransformResult,
-};
+pub use transform_ops::{apply_transforms, TransformResult};
+
+// Re-export integrity types
+pub use integrity::{check_file_integrity, diagnose, repair, DiagnoseResult, LineDiagnostic};
 
 // Re-export core types
 pub use types::{AsciicastFile, EnvInfo, Event, EventType, Header, TermInfo};

@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 
 use super::{AsciicastFile, SilenceRemoval, Transform, DEFAULT_SILENCE_THRESHOLD};
+use crate::files::backup::backup_path_for;
 
 /// Result of applying transforms to a recording.
 #[derive(Debug, Clone)]
@@ -38,20 +39,6 @@ impl TransformResult {
             0.0
         }
     }
-}
-
-/// Get the backup path for a given file.
-///
-/// The backup path is the original path with `.bak` appended.
-pub fn backup_path_for(path: &Path) -> PathBuf {
-    let mut backup = path.as_os_str().to_owned();
-    backup.push(".bak");
-    PathBuf::from(backup)
-}
-
-/// Check if a backup exists for the given file.
-pub fn has_backup(path: &Path) -> bool {
-    backup_path_for(path).exists()
 }
 
 /// Apply all transforms to a recording file.
@@ -105,18 +92,9 @@ pub fn apply_transforms(path: &Path) -> Result<TransformResult> {
 
     let new_duration = cast.duration();
 
-    // Write to temp file first, then atomically rename to prevent data corruption
-    // if write fails mid-operation (disk full, permissions issue, crash)
-    let temp_path = path.with_extension("cast.tmp");
-    cast.write(&temp_path)
-        .with_context(|| format!("Failed to write transformed file: {}", temp_path.display()))?;
-
-    if let Err(e) = fs::rename(&temp_path, path) {
-        // Clean up temp file on failure (best-effort, ignore cleanup errors)
-        let _ = fs::remove_file(&temp_path);
-        return Err(e)
-            .with_context(|| format!("Failed to replace original file: {}", path.display()));
-    }
+    // Write back to original path (AsciicastFile::write uses atomic temp+rename)
+    cast.write(path)
+        .with_context(|| format!("Failed to write transformed file: {}", path.display()))?;
 
     Ok(TransformResult {
         original_duration,
@@ -126,52 +104,11 @@ pub fn apply_transforms(path: &Path) -> Result<TransformResult> {
     })
 }
 
-/// Restore a file from its backup.
-///
-/// # Arguments
-///
-/// * `path` - Path to the `.cast` file to restore
-///
-/// # Returns
-///
-/// Returns `Ok(())` if restore succeeded.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - No backup exists for the file
-/// - The backup cannot be read
-/// - Writing the restored file fails
-pub fn restore_from_backup(path: &Path) -> Result<()> {
-    let backup = backup_path_for(path);
-
-    if !backup.exists() {
-        anyhow::bail!("No backup exists for: {}", path.display());
-    }
-
-    // Use atomic temp+rename pattern for crash safety
-    let temp_path = path.with_extension("cast.tmp");
-
-    fs::copy(&backup, &temp_path)
-        .with_context(|| format!("Failed to copy backup to temp file: {}", backup.display()))?;
-
-    if let Err(e) = fs::rename(&temp_path, path) {
-        // Clean up temp file on failure
-        let _ = fs::remove_file(&temp_path);
-        return Err(e)
-            .with_context(|| format!("Failed to restore from backup: {}", path.display()));
-    }
-
-    // Delete backup file after successful restore (best-effort, ignore errors)
-    let _ = fs::remove_file(&backup);
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::asciicast::{Event, Header};
+    use crate::files::backup::{has_backup, restore_from_backup};
     use std::io::Write;
     use tempfile::TempDir;
 

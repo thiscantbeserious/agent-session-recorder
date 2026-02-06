@@ -101,12 +101,13 @@ mod tests {
     fn empty_input_returns_full_default_config() {
         let result = migrate_config("").unwrap();
 
-        // Should have all 4 sections added
-        assert_eq!(result.sections_added.len(), 4);
+        // Should have all 5 sections added
+        assert_eq!(result.sections_added.len(), 5);
         assert!(result.sections_added.contains(&"storage".to_string()));
         assert!(result.sections_added.contains(&"agents".to_string()));
         assert!(result.sections_added.contains(&"shell".to_string()));
         assert!(result.sections_added.contains(&"recording".to_string()));
+        assert!(result.sections_added.contains(&"analysis".to_string()));
 
         // Content should be valid TOML that parses back to Config
         let parsed: Config = toml::from_str(&result.content).unwrap();
@@ -124,11 +125,12 @@ directory = "~/my-recordings"
 
         let result = migrate_config(input).unwrap();
 
-        // Should add 3 missing sections
-        assert_eq!(result.sections_added.len(), 3);
+        // Should add 4 missing sections
+        assert_eq!(result.sections_added.len(), 4);
         assert!(result.sections_added.contains(&"agents".to_string()));
         assert!(result.sections_added.contains(&"shell".to_string()));
         assert!(result.sections_added.contains(&"recording".to_string()));
+        assert!(result.sections_added.contains(&"analysis".to_string()));
         assert!(!result.sections_added.contains(&"storage".to_string()));
 
         // Should add missing fields in storage section
@@ -164,8 +166,9 @@ auto_analyze = true
 
         let result = migrate_config(input).unwrap();
 
-        // No sections should be added (all exist)
-        assert!(result.sections_added.is_empty());
+        // Only [analysis] section should be added (others all exist)
+        assert_eq!(result.sections_added.len(), 1);
+        assert!(result.sections_added.contains(&"analysis".to_string()));
 
         // Should add missing fields in recording section
         assert!(result
@@ -210,6 +213,8 @@ auto_analyze = false
 analysis_agent = "claude"
 filename_template = "{directory}_{date}_{time}"
 directory_max_length = 50
+
+[analysis.agents]
 "#;
 
         let result = migrate_config(input).unwrap();
@@ -292,7 +297,7 @@ foo = "bar"
         let result = migrate_config("   \n\n   ").unwrap();
 
         // Should add all sections like empty input
-        assert_eq!(result.sections_added.len(), 4);
+        assert_eq!(result.sections_added.len(), 5);
     }
 
     #[test]
@@ -316,6 +321,8 @@ auto_analyze = false
 analysis_agent = "claude"
 filename_template = "{date}"
 directory_max_length = 25
+
+[analysis.agents]
 "#;
 
         let result = migrate_config(input).unwrap();
@@ -354,6 +361,8 @@ auto_analyze = false
 analysis_agent = "claude"
 filename_template = "{date}"
 directory_max_length = 25
+
+[analysis.agents]
 
 [my.dotted.section]
 value = 123
@@ -398,6 +407,8 @@ auto_analyze = false
 analysis_agent = "claude"
 filename_template = "{date}"
 directory_max_length = 25
+
+[analysis.agents]
 "#;
 
         let result = migrate_config(input).unwrap();

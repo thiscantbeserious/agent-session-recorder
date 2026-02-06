@@ -54,6 +54,9 @@ impl ContentExtractor {
         let (global_lines_deduped, window_events_deduped) = self.apply_global_dedupe(events);
 
         // 4. Carriage Return Deduplication
+        //    Disabled by default: SimilarityFilter handles progress bars well enough,
+        //    and DeduplicateProgressLines is too aggressive on TUI/interactive sessions
+        //    where \r is used for all line updates, not just progress bars.
         let deduped_count = self.apply_progress_dedupe(events);
 
         // 5. Similarity Filtering (Consecutive redundant lines)

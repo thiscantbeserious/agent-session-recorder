@@ -21,9 +21,8 @@ use super::event::Event;
 use super::preview_cache::PreviewCache;
 use super::theme::current_theme;
 use super::widgets::{FileExplorer, FileExplorerWidget, FileItem};
-use crate::asciicast::{
-    apply_transforms, backup_path_for, has_backup, restore_from_backup, TransformResult,
-};
+use crate::asciicast::{apply_transforms, TransformResult};
+use crate::files::backup::{backup_path_for, create_backup, has_backup, restore_from_backup};
 
 /// UI mode for the list application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -51,6 +50,7 @@ pub enum ContextMenuItem {
     Play,
     Copy,
     Optimize,
+    Analyze,
     Restore,
     Delete,
     AddMarker,
@@ -58,10 +58,11 @@ pub enum ContextMenuItem {
 
 impl ContextMenuItem {
     /// All menu items in display order
-    pub const ALL: [ContextMenuItem; 6] = [
+    pub const ALL: [ContextMenuItem; 7] = [
         ContextMenuItem::Play,
         ContextMenuItem::Copy,
         ContextMenuItem::Optimize,
+        ContextMenuItem::Analyze,
         ContextMenuItem::Restore,
         ContextMenuItem::Delete,
         ContextMenuItem::AddMarker,
@@ -73,6 +74,7 @@ impl ContextMenuItem {
             ContextMenuItem::Play => "Play",
             ContextMenuItem::Copy => "Copy to clipboard",
             ContextMenuItem::Optimize => "Optimize",
+            ContextMenuItem::Analyze => "Analyze",
             ContextMenuItem::Restore => "Restore from backup",
             ContextMenuItem::Delete => "Delete",
             ContextMenuItem::AddMarker => "Add marker",
@@ -85,6 +87,7 @@ impl ContextMenuItem {
             ContextMenuItem::Play => "p",
             ContextMenuItem::Copy => "c",
             ContextMenuItem::Optimize => "t",
+            ContextMenuItem::Analyze => "a",
             ContextMenuItem::Restore => "r",
             ContextMenuItem::Delete => "d",
             ContextMenuItem::AddMarker => "m",
@@ -283,7 +286,7 @@ impl ListApp {
                 Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
                 Mode::OptimizeResult => "Enter/Esc: dismiss",
                 Mode::Normal => {
-                    "↑↓: navigate | Enter: menu | p: play | c: copy | t: optimize | d: delete | ?: help | q: quit"
+                    "↑↓: navigate | Enter: menu | p: play | c: copy | t: optimize | a: analyze | d: delete | ?: help | q: quit"
                 }
             };
             let footer = Paragraph::new(footer_text)
@@ -368,6 +371,7 @@ impl ListApp {
             KeyCode::Char('p') => self.play_session()?,
             KeyCode::Char('c') => self.copy_to_clipboard()?,
             KeyCode::Char('t') => self.optimize_session()?,
+            KeyCode::Char('a') => self.analyze_session()?,
             KeyCode::Char('d') => {
                 if self.explorer.selected_item().is_some() {
                     self.mode = Mode::ConfirmDelete;
@@ -527,6 +531,13 @@ impl ListApp {
                     .unwrap_or(0);
                 self.execute_context_menu_action()?;
             }
+            KeyCode::Char('a') => {
+                self.context_menu_idx = ContextMenuItem::ALL
+                    .iter()
+                    .position(|i| matches!(i, ContextMenuItem::Analyze))
+                    .unwrap_or(0);
+                self.execute_context_menu_action()?;
+            }
             KeyCode::Char('r') => {
                 self.context_menu_idx = ContextMenuItem::ALL
                     .iter()
@@ -592,6 +603,7 @@ impl ListApp {
             ContextMenuItem::Play => self.play_session()?,
             ContextMenuItem::Copy => self.copy_to_clipboard()?,
             ContextMenuItem::Optimize => self.optimize_session()?,
+            ContextMenuItem::Analyze => self.analyze_session()?,
             ContextMenuItem::Restore => self.restore_session()?,
             ContextMenuItem::Delete => {
                 if self.explorer.selected_item().is_some() {
@@ -729,6 +741,93 @@ impl ListApp {
         Ok(())
     }
 
+    /// Analyze the selected session using the analyze subcommand.
+    fn analyze_session(&mut self) -> Result<()> {
+        if let Some(item) = self.explorer.selected_item() {
+            let path = item.path.clone();
+
+            // Create backup before analysis
+            let file_path = std::path::Path::new(&path);
+            if let Err(e) = create_backup(file_path) {
+                self.status_message =
+                    Some(format!("ERROR: Backup failed for {}: {}", path, e));
+                return Ok(());
+            }
+
+            // Suspend TUI - restores normal terminal mode
+            self.app.suspend()?;
+
+            // Run the analyze subcommand
+            let status = std::process::Command::new(std::env::current_exe()?)
+                .args(["analyze", &path])
+                .status();
+
+            // Resume TUI - re-enters alternate screen and raw mode
+            self.app.resume()?;
+
+            match status {
+                Ok(s) if s.success() => {
+                    // Check if the original file was renamed by the analyze command
+                    if !file_path.exists() {
+                        // File was renamed — find the newest .cast file in the same directory
+                        // (the renamed file will have the most recent mtime)
+                        let new_file = file_path.parent().and_then(|parent| {
+                            std::fs::read_dir(parent).ok().and_then(|entries| {
+                                entries
+                                    .flatten()
+                                    .filter(|e| {
+                                        e.path()
+                                            .extension()
+                                            .and_then(|ext| ext.to_str())
+                                            == Some("cast")
+                                    })
+                                    .max_by_key(|e| {
+                                        e.metadata()
+                                            .and_then(|m| m.modified())
+                                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                                    })
+                                    .map(|e| e.path())
+                            })
+                        });
+
+                        if let Some(new_path) = new_file {
+                            let new_path_str = new_path.to_string_lossy().to_string();
+                            self.preview_cache.invalidate(&new_path);
+                            self.explorer.update_item_path(&path, &new_path_str);
+                            self.status_message = Some(format!(
+                                "Analysis complete (renamed to {})",
+                                new_path
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("unknown")
+                            ));
+                        } else {
+                            // Couldn't find any .cast file — remove the stale item
+                            self.explorer.remove_item(&path);
+                            self.status_message =
+                                Some("Analysis complete (file was renamed)".to_string());
+                        }
+                    } else {
+                        // File still exists at original path — just invalidate cache
+                        self.preview_cache.invalidate(std::path::Path::new(&path));
+                        self.explorer.update_item_metadata(&path);
+                        self.status_message = Some("Analysis complete".to_string());
+                    }
+                }
+                Ok(s) => {
+                    self.status_message = Some(format!(
+                        "Analyze exited with code {}",
+                        s.code().unwrap_or(-1)
+                    ));
+                }
+                Err(e) => {
+                    self.status_message = Some(format!("Failed to run analyze: {}", e));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Prefetch previews for current, previous, and next items.
     fn prefetch_adjacent_previews(&mut self) {
         let selected = self.explorer.selected();
@@ -774,7 +873,7 @@ impl ListApp {
 
         // Center the modal
         let modal_width = 60.min(area.width.saturating_sub(4));
-        let modal_height = 27.min(area.height.saturating_sub(4)); // Updated: added c for copy
+        let modal_height = 28.min(area.height.saturating_sub(4)); // Updated: added a for analyze
         let x = (area.width - modal_width) / 2;
         let y = (area.height - modal_height) / 2;
         let modal_area = Rect::new(x, y, modal_width, modal_height);
@@ -828,6 +927,10 @@ impl ListApp {
             Line::from(vec![
                 Span::styled("  t", Style::default().fg(theme.accent)),
                 Span::raw("           Optimize (removes silence)"),
+            ]),
+            Line::from(vec![
+                Span::styled("  a", Style::default().fg(theme.accent)),
+                Span::raw("           Analyze session"),
             ]),
             Line::from(vec![
                 Span::styled("  d", Style::default().fg(theme.accent)),
@@ -1180,8 +1283,8 @@ mod tests {
     }
 
     #[test]
-    fn context_menu_has_six_items() {
-        assert_eq!(ContextMenuItem::ALL.len(), 6);
+    fn context_menu_has_seven_items() {
+        assert_eq!(ContextMenuItem::ALL.len(), 7);
     }
 
     #[test]
@@ -1206,13 +1309,14 @@ mod tests {
 
     #[test]
     fn context_menu_item_order() {
-        // Verify expected order: Play, Copy, Optimize, Restore, Delete, AddMarker
+        // Verify expected order: Play, Copy, Optimize, Analyze, Restore, Delete, AddMarker
         assert_eq!(ContextMenuItem::ALL[0], ContextMenuItem::Play);
         assert_eq!(ContextMenuItem::ALL[1], ContextMenuItem::Copy);
         assert_eq!(ContextMenuItem::ALL[2], ContextMenuItem::Optimize);
-        assert_eq!(ContextMenuItem::ALL[3], ContextMenuItem::Restore);
-        assert_eq!(ContextMenuItem::ALL[4], ContextMenuItem::Delete);
-        assert_eq!(ContextMenuItem::ALL[5], ContextMenuItem::AddMarker);
+        assert_eq!(ContextMenuItem::ALL[3], ContextMenuItem::Analyze);
+        assert_eq!(ContextMenuItem::ALL[4], ContextMenuItem::Restore);
+        assert_eq!(ContextMenuItem::ALL[5], ContextMenuItem::Delete);
+        assert_eq!(ContextMenuItem::ALL[6], ContextMenuItem::AddMarker);
     }
 
     #[test]

@@ -18,12 +18,22 @@ use std::time::Duration;
 /// The `--approval-mode plan` ensures read-only operation (no tool execution).
 /// Note: Gemini does not support JSON schema enforcement (use_schema is ignored).
 #[derive(Debug, Clone, Default)]
-pub struct GeminiBackend;
+pub struct GeminiBackend {
+    /// Extra CLI arguments to pass to the gemini command.
+    extra_args: Vec<String>,
+}
 
 impl GeminiBackend {
-    /// Create a new Gemini backend.
+    /// Create a new Gemini backend with no extra arguments.
     pub fn new() -> Self {
-        Self
+        Self {
+            extra_args: Vec::new(),
+        }
+    }
+
+    /// Create a new Gemini backend with extra CLI arguments.
+    pub fn with_extra_args(extra_args: Vec<String>) -> Self {
+        Self { extra_args }
     }
 
     /// Get the CLI command name.
@@ -53,15 +63,17 @@ impl AgentBackend for GeminiBackend {
 
         // Use --approval-mode plan for read-only operation (no tool execution)
         // Pass prompt via stdin to avoid ARG_MAX limits
-        let mut child = Command::new(Self::command())
-            .args([
-                "--output-format",
-                "json",
-                "--approval-mode",
-                "plan",
-                "--prompt",
-                "-",
-            ])
+        let mut cmd = Command::new(Self::command());
+        cmd.args(["--output-format", "json", "--approval-mode", "plan"]);
+
+        // Append extra args from per-agent config
+        for arg in &self.extra_args {
+            cmd.arg(arg);
+        }
+
+        cmd.args(["--prompt", "-"]);
+
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
