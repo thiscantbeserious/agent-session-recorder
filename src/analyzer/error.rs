@@ -225,12 +225,19 @@ impl AnalysisError {
 }
 
 /// Truncate a response string for display.
+/// Uses char-boundary-safe truncation to avoid panics on multi-byte UTF-8.
 fn truncate_response(response: &str, max_len: usize) -> String {
     let trimmed = response.trim();
     if trimmed.len() <= max_len {
         trimmed.to_string()
     } else {
-        format!("{}...", &trimmed[..max_len])
+        let end = trimmed
+            .char_indices()
+            .take_while(|(i, _)| *i < max_len)
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(0);
+        format!("{}...", &trimmed[..end])
     }
 }
 

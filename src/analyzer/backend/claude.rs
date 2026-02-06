@@ -57,13 +57,20 @@ impl AgentBackend for ClaudeBackend {
         }
 
         // Disable tools for read-only analysis
-        cmd.args(["--tools", "", "-p"]);
-        cmd.arg(prompt);
-        cmd.stdin(Stdio::null());
+        // Use "-p -" to read prompt from stdin (avoids ARG_MAX limits)
+        cmd.args(["--tools", "", "-p", "-"]);
+        cmd.stdin(Stdio::piped());
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
         let mut child = cmd.spawn()?;
+
+        // Write prompt to stdin and close it
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin.write_all(prompt.as_bytes())?;
+            // stdin is dropped here, closing the pipe
+        }
 
         // Wait with timeout
         let result = wait_with_timeout(&mut child, timeout.as_secs());

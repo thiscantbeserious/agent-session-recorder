@@ -39,10 +39,9 @@ pub fn get_schema_file_path() -> std::io::Result<PathBuf> {
     let temp_dir = std::env::temp_dir();
     let schema_path = temp_dir.join("agr_marker_schema.json");
 
-    // Write schema if it doesn't exist or is stale
-    if !schema_path.exists() {
-        std::fs::write(&schema_path, MARKER_JSON_SCHEMA)?;
-    }
+    // Write unconditionally — the file is tiny (~500 bytes) and this avoids
+    // a TOCTOU race condition with parallel workers.
+    std::fs::write(&schema_path, MARKER_JSON_SCHEMA)?;
 
     Ok(schema_path)
 }
@@ -506,12 +505,19 @@ fn extract_first_number(s: &str) -> Option<u64> {
 /// Truncate stderr for error display.
 ///
 /// Takes the first line and limits to 200 characters for readability.
+/// Uses char-boundary-safe truncation to avoid panics on multi-byte UTF-8.
 fn truncate_stderr(stderr: &str) -> String {
     let first_line = stderr.lines().next().unwrap_or("").trim();
     if first_line.len() <= 200 {
         first_line.to_string()
     } else {
-        format!("{}...", &first_line[..200])
+        let end = first_line
+            .char_indices()
+            .take_while(|(i, _)| *i < 200)
+            .last()
+            .map(|(i, c)| i + c.len_utf8())
+            .unwrap_or(0);
+        format!("{}...", &first_line[..end])
     }
 }
 

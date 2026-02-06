@@ -227,7 +227,10 @@ impl AnalyzerService {
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .map(|s| format!("{}.txt", s))
-                    .expect("Path must have a filename"),
+                    .ok_or_else(|| AnalysisError::IoError {
+                        operation: "deriving debug output path".to_string(),
+                        message: "Path does not have a valid filename".to_string(),
+                    })?,
             };
 
             std::fs::write(&output_path, content.text()).map_err(|e| AnalysisError::IoError {

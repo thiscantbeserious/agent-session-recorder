@@ -52,7 +52,7 @@ impl AgentBackend for GeminiBackend {
         // use_schema parameter is ignored
 
         // Use --approval-mode plan for read-only operation (no tool execution)
-        // Use --prompt for non-interactive mode
+        // Pass prompt via stdin to avoid ARG_MAX limits
         let mut child = Command::new(Self::command())
             .args([
                 "--output-format",
@@ -60,12 +60,19 @@ impl AgentBackend for GeminiBackend {
                 "--approval-mode",
                 "plan",
                 "--prompt",
+                "-",
             ])
-            .arg(prompt)
-            .stdin(Stdio::null())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()?;
+
+        // Write prompt to stdin and close it
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin.write_all(prompt.as_bytes())?;
+            // stdin is dropped here, closing the pipe
+        }
 
         // Wait with timeout
         let result = wait_with_timeout(&mut child, timeout.as_secs());

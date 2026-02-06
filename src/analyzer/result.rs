@@ -214,7 +214,7 @@ impl ResultAggregator {
     ///
     /// Algorithm:
     /// 1. Markers must already be sorted by timestamp
-    /// 2. For markers within window with same category, keep first only
+    /// 2. For markers within window with same category as any recently kept marker, skip
     fn deduplicate(&self, markers: Vec<ValidatedMarker>) -> Vec<ValidatedMarker> {
         if markers.is_empty() {
             return markers;
@@ -224,12 +224,14 @@ impl ResultAggregator {
         result.push(markers[0].clone());
 
         for marker in markers.into_iter().skip(1) {
-            let last = result.last().unwrap();
+            // Check against all recently kept markers within the dedup window
+            let is_dup = result
+                .iter()
+                .rev()
+                .take_while(|m| (marker.timestamp - m.timestamp).abs() < self.dedup_window)
+                .any(|m| m.category == marker.category);
 
-            // Check if within window and same category
-            let time_diff = (marker.timestamp - last.timestamp).abs();
-            if time_diff < self.dedup_window && marker.category == last.category {
-                // Skip duplicate
+            if is_dup {
                 continue;
             }
 

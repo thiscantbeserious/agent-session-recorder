@@ -21,11 +21,11 @@
 
 use crate::analyzer::backend::{AgentBackend, BackendError, RawMarker};
 use crate::analyzer::chunk::{AnalysisChunk, TimeRange};
-use crate::analyzer::tracker::{RetryCoordinator, RetryPolicy, TokenTracker};
+use crate::analyzer::tracker::TokenTracker;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 /// Configuration for worker scaling.
 #[derive(Debug, Clone)]
@@ -320,53 +320,30 @@ impl<'a, B: AgentBackend + ?Sized> ParallelExecutor<'a, B> {
     }
 }
 
-/// Delay between sequential chunk analysis (milliseconds).
-const SEQUENTIAL_DELAY_MS: u64 = 500;
-
-/// Executor with retry logic and fallback to sequential execution.
+/// Executor with parallel execution and token tracking.
 ///
 /// Wraps parallel execution with:
-/// - Per-chunk retry with exponential backoff
-/// - Fallback to sequential if parallel fails completely
 /// - Token tracking for visibility
+/// - Rate limit detection and warnings
 pub struct RetryExecutor<'a, B: AgentBackend + ?Sized> {
     backend: &'a B,
     timeout: Duration,
     worker_count: usize,
     use_schema: bool,
-    retry_coordinator: RetryCoordinator,
 }
 
 impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
-    /// Create a new retry executor with default retry policy.
+    /// Create a new executor.
     pub fn new(backend: &'a B, timeout: Duration, worker_count: usize, use_schema: bool) -> Self {
         Self {
             backend,
             timeout,
             worker_count,
             use_schema,
-            retry_coordinator: RetryCoordinator::with_defaults(),
         }
     }
 
-    /// Create with custom retry policy.
-    pub fn with_policy(
-        backend: &'a B,
-        timeout: Duration,
-        worker_count: usize,
-        use_schema: bool,
-        policy: RetryPolicy,
-    ) -> Self {
-        Self {
-            backend,
-            timeout,
-            worker_count,
-            use_schema,
-            retry_coordinator: RetryCoordinator::new(policy),
-        }
-    }
-
-    /// Execute analysis with retry and fallback logic.
+    /// Execute analysis with tracking.
     ///
     /// Returns tuple of (results, tracker) for visibility.
     pub fn execute_with_retry(
@@ -428,100 +405,6 @@ impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
         }
 
         (results, tracker)
-    }
-
-    /// Execute chunks sequentially with retry logic.
-    ///
-    /// Note: Currently unused after removing the clone in execute_with_retry.
-    /// Kept for potential future use or if sequential fallback is re-enabled
-    /// at a higher level.
-    #[allow(dead_code)]
-    fn execute_sequential_with_retry(
-        &self,
-        chunks: Vec<AnalysisChunk>,
-        tracker: &mut TokenTracker,
-        prompt_builder: &impl Fn(&AnalysisChunk) -> String,
-    ) -> (Vec<ChunkResult>, TokenTracker) {
-        let mut results = Vec::with_capacity(chunks.len());
-
-        for chunk in chunks {
-            let start = Instant::now();
-            let result = self.analyze_chunk_with_retry(&chunk, prompt_builder);
-            let duration = start.elapsed();
-
-            let attempts = match &result.result {
-                Ok(_) => 1, // If success, count as 1 attempt (simplified)
-                Err(_) => self.retry_coordinator.max_attempts(),
-            };
-
-            match &result.result {
-                Ok(_) => {
-                    tracker.record_success(chunk.id, chunk.estimated_tokens, duration, attempts)
-                }
-                Err(_) => {
-                    tracker.record_failure(chunk.id, chunk.estimated_tokens, duration, attempts)
-                }
-            }
-
-            results.push(result);
-
-            // Small delay between sequential calls
-            std::thread::sleep(Duration::from_millis(SEQUENTIAL_DELAY_MS));
-        }
-
-        // Take ownership of tracker to return
-        let tracker_copy = std::mem::take(tracker);
-        (results, tracker_copy)
-    }
-
-    /// Analyze a single chunk with retry logic.
-    #[allow(dead_code)]
-    fn analyze_chunk_with_retry(
-        &self,
-        chunk: &AnalysisChunk,
-        prompt_builder: &impl Fn(&AnalysisChunk) -> String,
-    ) -> ChunkResult {
-        let prompt = prompt_builder(chunk);
-        let mut last_error = None;
-
-        for attempt in 0..self.retry_coordinator.max_attempts() {
-            match self.backend.invoke(&prompt, self.timeout, self.use_schema) {
-                Ok(response) => match self.backend.parse_response(&response) {
-                    Ok(markers) => {
-                        return ChunkResult::success(chunk.id, chunk.time_range.clone(), markers);
-                    }
-                    Err(e) => {
-                        last_error = Some(e);
-                    }
-                },
-                Err(e) => {
-                    // Check for rate limit info
-                    let retry_after = e.wait_duration(Duration::ZERO);
-                    let retry_after = if retry_after.is_zero() {
-                        None
-                    } else {
-                        Some(retry_after)
-                    };
-
-                    // Wait before retry
-                    if self.retry_coordinator.should_retry(attempt + 1) {
-                        let wait = self.retry_coordinator.wait_duration(attempt, retry_after);
-                        std::thread::sleep(wait);
-                    }
-
-                    last_error = Some(e);
-                }
-            }
-        }
-
-        // All retries exhausted
-        ChunkResult::failure(
-            chunk.id,
-            chunk.time_range.clone(),
-            last_error.unwrap_or_else(|| BackendError::JsonExtraction {
-                response: "Unknown error".to_string(),
-            }),
-        )
     }
 
     /// Check if fallback to sequential should be triggered.
