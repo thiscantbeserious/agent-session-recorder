@@ -10,6 +10,8 @@ pub use types::*;
 use anyhow::Result;
 use std::path::PathBuf;
 
+use crate::analyzer::AgentAnalysisConfig;
+
 impl Config {
     /// Get the config file path (~/.config/agr/config.toml)
     pub fn config_path() -> Result<PathBuf> {

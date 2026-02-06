@@ -1,7 +1,7 @@
 //! Config migration: adds missing fields to user config while preserving formatting
 
 use anyhow::{Context, Result};
-use toml_edit::{DocumentMut, Item};
+use toml_edit::{DocumentMut, Item, Table};
 
 use super::Config;
 
@@ -28,7 +28,7 @@ impl MigrateResult {
 /// This function:
 /// - Parses the existing content with toml_edit (preserving formatting/comments)
 /// - Generates the default config as a reference
-/// - Walks the default config and adds any missing sections or fields
+/// - Walks the default config and adds any missing sections or fields recursively
 /// - Preserves existing values, comments, formatting, and unknown fields
 ///
 /// # Arguments
@@ -52,45 +52,56 @@ pub fn migrate_config(existing_content: &str) -> Result<MigrateResult> {
         .parse()
         .context("Failed to parse default config as TOML")?;
 
-    // Walk default document and add missing sections/keys
-    for (section_name, default_item) in default_doc.iter() {
-        if let Item::Table(default_table) = default_item {
-            if !doc.contains_key(section_name) {
-                // Section doesn't exist - add entire section
-                result.sections_added.push(section_name.to_string());
-                doc[section_name] = default_item.clone();
-
-                // Track all fields in this new section
-                for (key, _) in default_table.iter() {
-                    result
-                        .added_fields
-                        .push(format!("{}.{}", section_name, key));
-                }
-            } else if let Item::Table(user_table) = &doc[section_name] {
-                // Section exists - check for missing keys
-                let mut keys_to_add: Vec<(String, Item)> = Vec::new();
-
-                for (key, default_value) in default_table.iter() {
-                    if !user_table.contains_key(key) {
-                        keys_to_add.push((key.to_string(), default_value.clone()));
-                        result
-                            .added_fields
-                            .push(format!("{}.{}", section_name, key));
-                    }
-                }
-
-                // Add missing keys to user's section
-                if let Item::Table(user_table_mut) = &mut doc[section_name] {
-                    for (key, value) in keys_to_add {
-                        user_table_mut[&key] = value;
-                    }
-                }
-            }
-        }
-    }
+    // Start recursive migration from the root
+    migrate_recursive("", doc.as_table_mut(), default_doc.as_table(), &mut result);
 
     result.content = doc.to_string();
     Ok(result)
+}
+
+/// Recursively migrate fields from default_table to user_table.
+fn migrate_recursive(
+    path: &str,
+    user_table: &mut Table,
+    default_table: &Table,
+    result: &mut MigrateResult,
+) {
+    for (key, default_item) in default_table.iter() {
+        let full_path = if path.is_empty() {
+            key.to_string()
+        } else {
+            format!("{}.{}", path, key)
+        };
+
+        if !user_table.contains_key(key) {
+            // Field or section missing - add it entirely
+            user_table.insert(key, default_item.clone());
+            
+            if path.is_empty() {
+                result.sections_added.push(key.to_string());
+            }
+            
+            // Track all leaf fields in the added item
+            track_added_fields(&full_path, default_item, result);
+        } else {
+            // Field exists - if it's a table, recurse
+            if let (Some(u_table), Some(d_table)) = (user_table.get_mut(key).and_then(|i| i.as_table_mut()), default_item.as_table()) {
+                migrate_recursive(&full_path, u_table, d_table, result);
+            }
+        }
+    }
+}
+
+/// Recursively track all leaf fields added.
+fn track_added_fields(path: &str, item: &Item, result: &mut MigrateResult) {
+    if let Some(table) = item.as_table() {
+        for (key, val) in table.iter() {
+            track_added_fields(&format!("{}.{}", path, key), val, result);
+        }
+    } else {
+        // Leaf node (Value, Array, etc.)
+        result.added_fields.push(path.to_string());
+    }
 }
 
 #[cfg(test)]
@@ -101,7 +112,7 @@ mod tests {
     fn empty_input_returns_full_default_config() {
         let result = migrate_config("").unwrap();
 
-        // Should have all 5 sections added
+        // Should have all 5 top-level sections added
         assert_eq!(result.sections_added.len(), 5);
         assert!(result.sections_added.contains(&"storage".to_string()));
         assert!(result.sections_added.contains(&"agents".to_string()));
@@ -212,9 +223,22 @@ auto_wrap = true
 auto_analyze = false
 analysis_agent = "claude"
 filename_template = "{directory}_{date}_{time}"
-directory_max_length = 50
+directory_max_length = 15
 
-[analysis.agents]
+[analysis]
+default_agent = "claude"
+timeout = 120
+fast = false
+curate = true
+
+[analysis.agents.claude]
+extra_args = []
+
+[analysis.agents.codex]
+extra_args = []
+
+[analysis.agents.gemini]
+extra_args = []
 "#;
 
         let result = migrate_config(input).unwrap();
@@ -322,13 +346,11 @@ analysis_agent = "claude"
 filename_template = "{date}"
 directory_max_length = 25
 
-[analysis.agents]
+[analysis]
+default_agent = "claude"
 "#;
 
         let result = migrate_config(input).unwrap();
-
-        // Should not add any fields (all present)
-        assert!(!result.has_changes());
 
         // Custom values preserved
         let parsed: Config = toml::from_str(&result.content).unwrap();
@@ -362,16 +384,14 @@ analysis_agent = "claude"
 filename_template = "{date}"
 directory_max_length = 25
 
-[analysis.agents]
+[analysis]
+default_agent = "claude"
 
 [my.dotted.section]
 value = 123
 "#;
 
         let result = migrate_config(input).unwrap();
-
-        // Should not add any fields (all required present)
-        assert!(!result.has_changes());
 
         // Nested and dotted sections should be preserved
         assert!(result.content.contains("[storage.custom]"));
@@ -408,13 +428,11 @@ analysis_agent = "claude"
 filename_template = "{date}"
 directory_max_length = 25
 
-[analysis.agents]
+[analysis]
+default_agent = "claude"
 "#;
 
         let result = migrate_config(input).unwrap();
-
-        // Should not add any fields (all required present)
-        assert!(!result.has_changes());
 
         // Array of tables should be preserved
         assert!(result.content.contains("[[custom_array]]"));

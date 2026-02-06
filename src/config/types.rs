@@ -1,8 +1,9 @@
 //! Configuration type definitions and defaults
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::PathBuf;
+
+use crate::analyzer::AnalysisConfig;
 
 /// Main configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -141,43 +142,4 @@ impl Default for AgentsConfig {
             no_wrap: Vec::new(),
         }
     }
-}
-
-/// Analysis configuration for the `analyze` command.
-///
-/// All fields are optional so users only need to specify what they want
-/// to override. CLI flags take priority over config, which overrides defaults.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct AnalysisConfig {
-    /// Default agent for analysis ("claude", "codex", "gemini")
-    #[serde(default)]
-    pub default_agent: Option<String>,
-    /// Number of parallel workers (None = auto-scale)
-    #[serde(default)]
-    pub workers: Option<usize>,
-    /// Timeout per chunk in seconds
-    #[serde(default)]
-    pub timeout: Option<u64>,
-    /// Fast mode (skip JSON schema enforcement)
-    #[serde(default)]
-    pub fast: Option<bool>,
-    /// Auto-curate markers when count exceeds threshold
-    #[serde(default)]
-    pub curate: Option<bool>,
-    /// Per-agent configuration overrides
-    #[serde(default)]
-    pub agents: HashMap<String, AgentAnalysisConfig>,
-}
-
-/// Per-agent analysis configuration.
-///
-/// Allows customizing extra CLI arguments and token budgets for individual agents.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct AgentAnalysisConfig {
-    /// Extra CLI arguments to pass to the agent
-    #[serde(default)]
-    pub extra_args: Vec<String>,
-    /// Override the token budget for this agent
-    #[serde(default)]
-    pub token_budget: Option<usize>,
 }

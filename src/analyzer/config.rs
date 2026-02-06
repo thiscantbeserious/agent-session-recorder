@@ -1,7 +1,10 @@
-//! Configuration for the content extraction pipeline.
+//! Configuration for the content extraction pipeline and analysis service.
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Configuration for the content extraction pipeline.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionConfig {
     /// Strip ANSI escape sequences (always true)
     pub strip_ansi: bool,
@@ -67,4 +70,80 @@ impl Default for ExtractionConfig {
             truncation_context_lines: 50,
         }
     }
+}
+
+/// Analysis configuration for the `analyze` command.
+///
+/// All fields are optional so users only need to specify what they want
+/// to override. CLI flags take priority over config, which overrides defaults.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnalysisConfig {
+    /// Default agent for analysis ("claude", "codex", "gemini")
+    #[serde(default = "default_analysis_default_agent")]
+    pub default_agent: Option<String>,
+    /// Number of parallel workers (None = auto-scale)
+    #[serde(default)]
+    pub workers: Option<usize>,
+    /// Timeout per chunk in seconds
+    #[serde(default = "default_analysis_timeout")]
+    pub timeout: Option<u64>,
+    /// Fast mode (skip JSON schema enforcement)
+    #[serde(default = "default_analysis_fast")]
+    pub fast: Option<bool>,
+    /// Auto-curate markers when count exceeds threshold
+    #[serde(default = "default_analysis_curate")]
+    pub curate: Option<bool>,
+    /// Per-agent configuration overrides
+    #[serde(default = "default_analysis_agents")]
+    pub agents: HashMap<String, AgentAnalysisConfig>,
+}
+
+pub fn default_analysis_default_agent() -> Option<String> {
+    Some("claude".to_string())
+}
+
+pub fn default_analysis_timeout() -> Option<u64> {
+    Some(120)
+}
+
+pub fn default_analysis_fast() -> Option<bool> {
+    Some(false)
+}
+
+pub fn default_analysis_curate() -> Option<bool> {
+    Some(true)
+}
+
+pub fn default_analysis_agents() -> HashMap<String, AgentAnalysisConfig> {
+    let mut agents = HashMap::new();
+    agents.insert("claude".to_string(), AgentAnalysisConfig::default());
+    agents.insert("codex".to_string(), AgentAnalysisConfig::default());
+    agents.insert("gemini".to_string(), AgentAnalysisConfig::default());
+    agents
+}
+
+impl Default for AnalysisConfig {
+    fn default() -> Self {
+        Self {
+            default_agent: default_analysis_default_agent(),
+            workers: None,
+            timeout: default_analysis_timeout(),
+            fast: default_analysis_fast(),
+            curate: default_analysis_curate(),
+            agents: default_analysis_agents(),
+        }
+    }
+}
+
+/// Per-agent analysis configuration.
+///
+/// Allows customizing extra CLI arguments and token budgets for individual agents.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AgentAnalysisConfig {
+    /// Extra CLI arguments to pass to the agent
+    #[serde(default)]
+    pub extra_args: Vec<String>,
+    /// Override the token budget for this agent
+    #[serde(default)]
+    pub token_budget: Option<usize>,
 }
