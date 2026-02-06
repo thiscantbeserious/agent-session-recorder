@@ -136,14 +136,15 @@ jobs:
           MIRIFLAGS: "-Zmiri-disable-isolation"
         run: |
           # Only run lib tests - integration tests spawn processes which Miri doesn't support
-          # Skip modules whose tests use filesystem I/O, FFI, or process spawning (unsupported by Miri):
+          # Skip modules that are Miri-incompatible:
           #   transform_ops  - FFI (fclonefileat, chmod) and tempfile I/O
-          #   analyzer::service - tempfile::NamedTempFile, std::fs::read_to_string/write
+          #   analyzer        - uses Rayon thread pools, tempfile, std::fs, process spawning
+          #                     (memory safety covered by ASan/LSan job instead)
           #   storage        - tempfile::TempDir, fs::File::create, std::process::Command("df")
           #   commands::copy/completions/tests - tempfile::TempDir filesystem I/O
           cargo miri test --lib -- \
             --skip transform_ops \
-            --skip analyzer::service \
+            --skip analyzer \
             --skip storage \
             --skip commands::copy \
             --skip commands::completions \
