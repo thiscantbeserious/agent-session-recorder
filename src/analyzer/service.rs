@@ -422,6 +422,69 @@ impl AnalyzerService {
 
         Ok(curated)
     }
+
+    /// Suggest a better filename for the recording based on markers.
+    ///
+    /// Uses the LLM to generate a descriptive filename from the analysis markers.
+    /// Includes project name and git branch for better context.
+    /// Returns the suggested filename (without extension) or None on failure.
+    pub fn suggest_rename(
+        &self,
+        markers: &[ValidatedMarker],
+        total_duration: f64,
+        timeout: Duration,
+        project_context: &str,
+    ) -> Option<String> {
+        let prompt = build_rename_prompt(markers, total_duration, project_context);
+
+        let response = self
+            .backend
+            .invoke(&prompt, timeout, false) // Never use schema for rename (plain text response)
+            .ok()?;
+
+        // Extract the filename from the response (strip wrapper if present)
+        let filename = extract_rename_response(&response)?;
+
+        // Validate the filename
+        let filename = filename.trim().trim_matches('"').trim();
+        if filename.is_empty() || filename.len() < 3 || filename.len() > 60 {
+            return None;
+        }
+
+        // Ensure it's valid as a filename (kebab-case, no weird chars)
+        let sanitized: String = filename
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect();
+
+        // Clean up double dashes
+        let mut result = String::new();
+        let mut prev_dash = false;
+        for c in sanitized.chars() {
+            if c == '-' {
+                if !prev_dash {
+                    result.push(c);
+                }
+                prev_dash = true;
+            } else {
+                result.push(c);
+                prev_dash = false;
+            }
+        }
+
+        let result = result.trim_matches('-').to_lowercase();
+        if result.len() < 3 {
+            return None;
+        }
+
+        Some(result)
+    }
 }
 
 /// Maximum tokens for prompt content (safety net for edge cases).
@@ -511,6 +574,67 @@ fn truncate_content_if_needed(content: &str, estimated_tokens: usize) -> String 
     let truncated: String = content.chars().take(max_chars).collect();
 
     format!("{}\n\n[Content truncated due to size limits]", truncated)
+}
+
+/// Build the rename prompt for filename suggestion.
+fn build_rename_prompt(
+    markers: &[ValidatedMarker],
+    total_duration: f64,
+    project_context: &str,
+) -> String {
+    const TEMPLATE: &str = include_str!("prompts/rename.txt");
+
+    let markers_json: Vec<serde_json::Value> = markers
+        .iter()
+        .map(|m| {
+            serde_json::json!({
+                "timestamp": m.timestamp,
+                "label": m.label,
+                "category": format!("{:?}", m.category).to_lowercase()
+            })
+        })
+        .collect();
+
+    let markers_json_str =
+        serde_json::to_string_pretty(&markers_json).unwrap_or_else(|_| "[]".to_string());
+
+    TEMPLATE
+        .replace("{total_duration}", &format!("{:.1}", total_duration))
+        .replace(
+            "{duration_minutes}",
+            &format!("{:.1}", total_duration / 60.0),
+        )
+        .replace("{marker_count}", &markers.len().to_string())
+        .replace("{project_context}", project_context)
+        .replace("{markers_json}", &markers_json_str)
+}
+
+/// Extract the filename from an LLM rename response.
+///
+/// Handles Claude wrapper format and plain text.
+fn extract_rename_response(response: &str) -> Option<String> {
+    let trimmed = response.trim();
+
+    // Try Claude wrapper format
+    if let Ok(wrapper) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        // Claude wrapper: {"type":"result","result":"the-filename",...}
+        if wrapper.get("type").and_then(|t| t.as_str()) == Some("result") {
+            if let Some(result) = wrapper.get("result").and_then(|r| r.as_str()) {
+                let name = result.trim();
+                if !name.is_empty() {
+                    return Some(name.to_string());
+                }
+            }
+        }
+    }
+
+    // Plain text response - take first line
+    let first_line = trimmed.lines().next()?.trim();
+    if !first_line.is_empty() {
+        Some(first_line.to_string())
+    } else {
+        None
+    }
 }
 
 /// Build the curation prompt for marker selection.

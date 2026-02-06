@@ -9,8 +9,11 @@
 //! 6. Aggregate and deduplicate markers
 //! 7. Write markers to file
 //! 8. Optionally curate markers (reduce to 8-12 most significant)
+//! 9. Suggest better filename via LLM based on analysis
 
 use std::io::{self, Write};
+use std::path::Path;
+use std::process::Command;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -184,6 +187,41 @@ pub fn handle(
         final_marker_count
     );
 
+    // Suggest a descriptive filename via LLM
+    if !result.markers.is_empty() {
+        let project_context = detect_project_context(&filepath);
+        let timeout_duration = Duration::from_secs(timeout.unwrap_or(120));
+
+        match service.suggest_rename(
+            &result.markers,
+            result.total_duration,
+            timeout_duration,
+            &project_context,
+        ) {
+            Some(suggested) => {
+                let suggested_file = format!("{}.cast", suggested);
+                let new_path = filepath.with_file_name(&suggested_file);
+                if new_path != filepath && !new_path.exists() {
+                    print!("\nRename to \"{}\"? [y/N]: ", suggested_file);
+                    io::stdout().flush()?;
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input)?;
+
+                    if input.trim().eq_ignore_ascii_case("y")
+                        || input.trim().eq_ignore_ascii_case("yes")
+                    {
+                        std::fs::rename(&filepath, &new_path)?;
+                        println!("Renamed to: {}", new_path.display());
+                    }
+                }
+            }
+            None => {
+                // Silently skip if rename suggestion fails
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -205,6 +243,91 @@ fn parse_agent_type(name: &str) -> Result<AgentType> {
             name
         ),
     }
+}
+
+/// Detect project name and git branch from the recording's directory context.
+///
+/// Walks up from the cast file's parent to find a git repo, then extracts
+/// the project name (directory) and current branch.
+fn detect_project_context(filepath: &Path) -> String {
+    let dir = match filepath.parent() {
+        Some(d) => d,
+        None => return String::new(),
+    };
+
+    let mut parts = Vec::new();
+
+    // Try to get project name from git remote or directory
+    if let Some(project) = detect_git_project(dir) {
+        parts.push(format!("Project: {}", project));
+    }
+
+    // Try to get git branch
+    if let Some(branch) = detect_git_branch(dir) {
+        parts.push(format!("Git branch: {}", branch));
+    }
+
+    if parts.is_empty() {
+        String::new()
+    } else {
+        parts.join("\n")
+    }
+}
+
+/// Get the git project name from the remote origin URL or directory name.
+fn detect_git_project(dir: &Path) -> Option<String> {
+    // Try git remote first
+    let output = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(dir)
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        // Extract repo name from URL: git@github.com:user/repo.git -> repo
+        let name = url
+            .rsplit('/')
+            .next()
+            .unwrap_or(&url)
+            .trim_end_matches(".git");
+        if !name.is_empty() {
+            return Some(name.to_string());
+        }
+    }
+
+    // Fall back to git toplevel directory name
+    let output = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .current_dir(dir)
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let toplevel = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let name = Path::new(&toplevel).file_name()?.to_str()?;
+        return Some(name.to_string());
+    }
+
+    None
+}
+
+/// Get the current git branch name.
+fn detect_git_branch(dir: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["branch", "--show-current"])
+        .current_dir(dir)
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !branch.is_empty() {
+            return Some(branch);
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
