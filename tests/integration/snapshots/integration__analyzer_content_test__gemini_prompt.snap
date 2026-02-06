@@ -1,0 +1,6 @@
+---
+source: tests/integration/analyzer_content_test.rs
+expression: clean
+---
+? Enter your message (Ctrl+C to quit)> can you understand the current project? i want to have a detailed session to
+  have all kind of weird output that you can produce

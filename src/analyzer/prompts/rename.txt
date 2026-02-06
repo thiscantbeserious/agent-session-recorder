@@ -1,0 +1,35 @@
+You are naming a terminal session recording based on its analysis markers.
+
+## Recording Info
+
+Total duration: {total_duration} seconds ({duration_minutes} minutes)
+Marker count: {marker_count}
+{project_context}
+
+## Session Markers
+
+{markers_json}
+
+## Your Task
+
+Generate a SHORT, descriptive filename (without extension) for this recording session.
+
+Rules:
+1. Use lowercase kebab-case (e.g., "fix-auth-login-bug")
+2. Maximum 5 words / 40 characters
+3. Capture the PRIMARY activity or outcome of the session
+4. Be specific - avoid generic names like "coding-session" or "bug-fix"
+5. Use the project/branch context to be more specific if available
+
+Good examples:
+- "refactor-auth-middleware"
+- "fix-ci-worker-panic"
+- "add-json-schema-validation"
+- "migrate-db-to-postgres"
+
+Bad examples:
+- "session-recording" (too generic)
+- "my-coding-session" (not descriptive)
+- "fix" (too short)
+
+Return ONLY the filename. No quotes, no extension, no explanation.

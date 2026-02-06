@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "markers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "number",
+            "description": "Timestamp in seconds from the start of the recording"
+          },
+          "label": {
+            "type": "string",
+            "description": "Brief description of the engineering moment"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["planning", "design", "implementation", "success", "failure"],
+            "description": "Category of the engineering workflow moment"
+          }
+        },
+        "required": ["timestamp", "label", "category"]
+      }
+    }
+  },
+  "required": ["markers"]
+}

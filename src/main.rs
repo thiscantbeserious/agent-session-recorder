@@ -292,7 +292,27 @@ fn main() -> Result<()> {
             commands::cleanup::handle(agent.as_deref(), older_than)
         }
         Commands::List { agent } => commands::list::handle(agent.as_deref()),
-        Commands::Analyze { file, agent } => commands::analyze::handle(&file, agent.as_deref()),
+        Commands::Analyze {
+            file,
+            agent,
+            workers,
+            timeout,
+            no_parallel,
+            curate,
+            debug,
+            output,
+            fast,
+        } => commands::analyze::handle(
+            &file,
+            agent.as_deref(),
+            workers,
+            timeout,
+            no_parallel,
+            curate,
+            debug,
+            output,
+            fast,
+        ),
         Commands::Play { file } => commands::play::handle(&file),
         Commands::Copy { file } => commands::copy::handle(&file),
         Commands::Marker(cmd) => match cmd {
@@ -442,9 +462,24 @@ mod tests {
     fn cli_analyze_parses_with_file_only() {
         let cli = Cli::try_parse_from(["agr", "analyze", "session.cast"]).unwrap();
         match cli.command {
-            Commands::Analyze { file, agent } => {
+            Commands::Analyze {
+                file,
+                agent,
+                workers,
+                timeout,
+                no_parallel,
+                curate,
+                debug: _,
+                output: _,
+                fast,
+            } => {
                 assert_eq!(file, "session.cast");
                 assert!(agent.is_none());
+                assert!(workers.is_none());
+                assert!(timeout.is_none());
+                assert!(!no_parallel);
+                assert!(!curate);
+                assert!(!fast);
             }
             _ => panic!("Expected Analyze command"),
         }
@@ -455,7 +490,7 @@ mod tests {
         let cli =
             Cli::try_parse_from(["agr", "analyze", "session.cast", "--agent", "codex"]).unwrap();
         match cli.command {
-            Commands::Analyze { file, agent } => {
+            Commands::Analyze { file, agent, .. } => {
                 assert_eq!(file, "session.cast");
                 assert_eq!(agent, Some("codex".to_string()));
             }
@@ -467,7 +502,7 @@ mod tests {
     fn cli_analyze_parses_with_short_agent_flag() {
         let cli = Cli::try_parse_from(["agr", "analyze", "session.cast", "-a", "claude"]).unwrap();
         match cli.command {
-            Commands::Analyze { file, agent } => {
+            Commands::Analyze { file, agent, .. } => {
                 assert_eq!(file, "session.cast");
                 assert_eq!(agent, Some("claude".to_string()));
             }
@@ -479,9 +514,93 @@ mod tests {
     fn cli_analyze_parses_with_path() {
         let cli = Cli::try_parse_from(["agr", "analyze", "/path/to/session.cast"]).unwrap();
         match cli.command {
-            Commands::Analyze { file, agent } => {
+            Commands::Analyze { file, agent, .. } => {
                 assert_eq!(file, "/path/to/session.cast");
                 assert!(agent.is_none());
+            }
+            _ => panic!("Expected Analyze command"),
+        }
+    }
+
+    #[test]
+    fn cli_analyze_parses_with_workers_flag() {
+        let cli =
+            Cli::try_parse_from(["agr", "analyze", "session.cast", "--workers", "4"]).unwrap();
+        match cli.command {
+            Commands::Analyze { file, workers, .. } => {
+                assert_eq!(file, "session.cast");
+                assert_eq!(workers, Some(4));
+            }
+            _ => panic!("Expected Analyze command"),
+        }
+    }
+
+    #[test]
+    fn cli_analyze_parses_with_timeout_flag() {
+        let cli =
+            Cli::try_parse_from(["agr", "analyze", "session.cast", "--timeout", "180"]).unwrap();
+        match cli.command {
+            Commands::Analyze { file, timeout, .. } => {
+                assert_eq!(file, "session.cast");
+                assert_eq!(timeout, Some(180));
+            }
+            _ => panic!("Expected Analyze command"),
+        }
+    }
+
+    #[test]
+    fn cli_analyze_parses_with_no_parallel_flag() {
+        let cli = Cli::try_parse_from(["agr", "analyze", "session.cast", "--no-parallel"]).unwrap();
+        match cli.command {
+            Commands::Analyze {
+                file, no_parallel, ..
+            } => {
+                assert_eq!(file, "session.cast");
+                assert!(no_parallel);
+            }
+            _ => panic!("Expected Analyze command"),
+        }
+    }
+
+    #[test]
+    fn cli_analyze_parses_with_all_flags() {
+        let cli = Cli::try_parse_from([
+            "agr",
+            "analyze",
+            "session.cast",
+            "--agent",
+            "codex",
+            "--workers",
+            "2",
+            "--timeout",
+            "60",
+            "--no-parallel",
+            "--curate",
+            "--debug",
+            "--output=debug.txt",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Analyze {
+                file,
+                agent,
+                workers,
+                timeout,
+                no_parallel,
+                curate,
+                debug,
+                output,
+                fast,
+            } => {
+                assert_eq!(file, "session.cast");
+                assert_eq!(agent, Some("codex".to_string()));
+                assert_eq!(workers, Some(2));
+                assert_eq!(timeout, Some(60));
+                assert!(no_parallel);
+                assert!(curate);
+                assert!(debug);
+                assert_eq!(output, Some("debug.txt".to_string()));
+                assert!(!fast);
             }
             _ => panic!("Expected Analyze command"),
         }

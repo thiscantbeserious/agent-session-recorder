@@ -1,0 +1,63 @@
+You are analyzing a terminal session recording from an AI coding agent.
+Your task is to identify key engineering workflow moments and return them as markers.
+
+## About This Content
+
+This is cleaned terminal output from an AI coding session. Visual noise has been removed:
+- ANSI escape codes (colors, cursor movement) have been stripped
+- Spinner animations and progress bars have been removed
+- Only semantic content remains
+
+Semantic indicators are PRESERVED to help you identify outcomes:
+- Success marks mean task completed, test passed
+- X marks mean failure, error, test failed
+- Warning symbols mean issue detected
+- Info symbols mean information, note
+
+## Session Content
+
+Chunk time range: {chunk_start_time}s - {chunk_end_time}s (within full recording of {total_duration}s)
+
+<session_content>
+{cleaned_content}
+</session_content>
+
+## Your Task
+
+Identify the {min_markers}-{max_markers} MOST significant engineering moments in this chunk. Be selective - only mark truly important transitions, not routine operations. Focus on:
+- When the agent starts planning or changes approach
+- Architecture or design decisions
+- Implementation milestones (started coding, file created, etc.)
+- Successes (tests pass, build works, feature complete)
+- Failures (errors, failed attempts, issues encountered)
+
+DO NOT mark:
+- Routine file reads or directory listings
+- Every command execution - only mark significant ones
+- Minor progress updates within a task
+- Repetitive similar events
+
+## Output Format
+
+Return a JSON object with a "markers" array. Each marker needs:
+- timestamp: Seconds from chunk start (e.g., if chunk starts at 100s and event is at 112s, use 12.0)
+- label: Brief description (max 80 chars)
+- category: One of "planning", "design", "implementation", "success", "failure"
+
+{
+  "markers": [
+    {"timestamp": 12.5, "label": "Started planning feature implementation", "category": "planning"},
+    {"timestamp": 45.2, "label": "Build failed - missing dependency", "category": "failure"},
+    {"timestamp": 78.9, "label": "Tests passing after fix", "category": "success"}
+  ]
+}
+
+## Category Definitions
+
+- **planning**: Task breakdown, approach decisions, strategy discussion, "let me think about..."
+- **design**: Architecture decisions, API design, data model choices, ADR discussions
+- **implementation**: Code writing, file modifications, command execution, "creating file..."
+- **success**: Tests passing, builds working, feature complete
+- **failure**: Errors, test failures, failed approaches, stack traces
+
+IMPORTANT: Return ONLY valid JSON. No markdown code blocks, no explanation, no text before or after.

@@ -1,0 +1,8 @@
+---
+source: tests/integration/analyzer_content_test.rs
+expression: output
+---
+[0.1] Starting build...\n
+[0.5] [5/5] Done\n
+[M] build-complete
+[0.1] Running tests...\n

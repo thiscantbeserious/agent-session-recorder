@@ -108,6 +108,35 @@ impl MarkerManager {
 
         Ok(markers)
     }
+
+    /// Clear all markers from an asciicast file
+    pub fn clear_markers<P: AsRef<Path>>(path: P) -> Result<usize> {
+        let path = path.as_ref();
+        let mut cast = AsciicastFile::parse(path)?;
+        let count = Self::clear_markers_from_cast(&mut cast);
+        cast.write(path)?;
+        Ok(count)
+    }
+
+    /// Clear all markers from an asciicast file in memory
+    ///
+    /// Returns the number of markers removed.
+    pub fn clear_markers_from_cast(cast: &mut AsciicastFile) -> usize {
+        let original_len = cast.events.len();
+        cast.events.retain(|e| e.event_type != EventType::Marker);
+        original_len - cast.events.len()
+    }
+
+    /// Count markers in an asciicast file
+    pub fn count_markers<P: AsRef<Path>>(path: P) -> Result<usize> {
+        let cast = AsciicastFile::parse(path)?;
+        Ok(Self::count_markers_from_cast(&cast))
+    }
+
+    /// Count markers in an asciicast file in memory
+    pub fn count_markers_from_cast(cast: &AsciicastFile) -> usize {
+        cast.events.iter().filter(|e| e.is_marker()).count()
+    }
 }
 
 #[cfg(test)]
@@ -201,5 +230,40 @@ mod tests {
         // Note: add_marker_to_cast doesn't validate labels, only add_marker does
         let result = MarkerManager::add_marker_to_cast(&mut cast, 0.5, "");
         assert!(result.is_ok()); // In-memory version doesn't validate
+    }
+
+    #[test]
+    fn clear_markers_removes_all_markers() {
+        let mut cast = create_test_cast();
+        MarkerManager::add_marker_to_cast(&mut cast, 0.15, "first").unwrap();
+        MarkerManager::add_marker_to_cast(&mut cast, 0.5, "second").unwrap();
+
+        assert_eq!(MarkerManager::count_markers_from_cast(&cast), 2);
+
+        let removed = MarkerManager::clear_markers_from_cast(&mut cast);
+        assert_eq!(removed, 2);
+        assert_eq!(MarkerManager::count_markers_from_cast(&cast), 0);
+
+        // Output events should still be there
+        assert_eq!(cast.events.len(), 3);
+    }
+
+    #[test]
+    fn clear_markers_on_empty_returns_zero() {
+        let mut cast = create_test_cast();
+        let removed = MarkerManager::clear_markers_from_cast(&mut cast);
+        assert_eq!(removed, 0);
+    }
+
+    #[test]
+    fn count_markers_returns_correct_count() {
+        let mut cast = create_test_cast();
+        assert_eq!(MarkerManager::count_markers_from_cast(&cast), 0);
+
+        MarkerManager::add_marker_to_cast(&mut cast, 0.15, "one").unwrap();
+        assert_eq!(MarkerManager::count_markers_from_cast(&cast), 1);
+
+        MarkerManager::add_marker_to_cast(&mut cast, 0.5, "two").unwrap();
+        assert_eq!(MarkerManager::count_markers_from_cast(&cast), 2);
     }
 }

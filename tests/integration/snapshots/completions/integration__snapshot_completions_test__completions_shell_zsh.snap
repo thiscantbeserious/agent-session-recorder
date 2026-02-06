@@ -76,8 +76,18 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (analyze)
 _arguments "${_arguments_options[@]}" : \
-'-a+[Agent to use (overrides config)]:AGENT:_default' \
-'--agent=[Agent to use (overrides config)]:AGENT:_default' \
+'-a+[Agent to use\: claude, codex, gemini]:AGENT:_default' \
+'--agent=[Agent to use\: claude, codex, gemini]:AGENT:_default' \
+'-w+[Number of parallel workers]:WORKERS:_default' \
+'--workers=[Number of parallel workers]:WORKERS:_default' \
+'-t+[Timeout per chunk in seconds]:TIMEOUT:_default' \
+'--timeout=[Timeout per chunk in seconds]:TIMEOUT:_default' \
+'-o+[Save cleaned content and exit (optionally specify filename)]::FILE:_default' \
+'--output=[Save cleaned content and exit (optionally specify filename)]::FILE:_default' \
+'--no-parallel[Disable parallel processing]' \
+'--curate[Auto-curate to 8-12 markers without prompting]' \
+'--debug[Enable debug mode (required for --output)]' \
+'--fast[Skip JSON schema enforcement (faster but less reliable)]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 ':file -- Path to the .cast recording file:_default' \

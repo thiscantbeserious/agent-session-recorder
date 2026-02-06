@@ -1,0 +1,1 @@
+\x1b[?2026h\x1b[1;61H\x1b[0m\x1b[49m\x1b[K\x1b[?25l\x1b[1;61H\x1b[48;5;234m\x1b[38;5;7m\x1b[2m\x1b[38;5;8m \x1b[22m› 1. Allow Codex to work in this folder without asking for approval\x1b[2m\x1b[38;5;8m \x1b[22m  2. Require approval of edits and commands\x1b[?25h\x1b[?2026l

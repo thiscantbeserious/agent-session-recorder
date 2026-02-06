@@ -2,7 +2,9 @@
 //!
 //! A Rust library for recording AI agent terminal sessions with asciinema.
 
+// Analyzer module with content extraction pipeline and AI analysis
 pub mod analyzer;
+
 pub mod asciicast;
 pub mod branding;
 pub mod cli;
@@ -16,7 +18,6 @@ pub mod storage;
 pub mod terminal;
 pub mod tui;
 
-pub use analyzer::Analyzer;
 pub use asciicast::{AsciicastFile, Event, EventType, Header, MarkerInfo, MarkerManager};
 pub use config::Config;
 pub use player::{play_session, PlaybackResult};

@@ -1,0 +1,35 @@
+You are curating markers for a terminal session recording.
+
+## Recording Info
+
+Total duration: {total_duration} seconds ({duration_minutes} minutes)
+Current marker count: {marker_count}
+Target marker count: 8-12 markers
+
+## Current Markers
+
+{markers_json}
+
+## Your Task
+
+Select the 8-12 MOST significant markers that best represent the session's key moments.
+
+Selection criteria:
+1. **Temporal distribution**: Markers should be well-spread across the recording timeline
+2. **Significance**: Prefer major milestones over minor updates
+3. **Variety**: Include different categories (planning, implementation, success, failure)
+4. **No clustering**: Avoid multiple markers within 30 seconds of each other
+
+## Output Format
+
+Return a JSON object with "markers" array containing ONLY the selected markers.
+Keep the exact same timestamp, label, and category for each selected marker.
+
+{
+  "markers": [
+    {"timestamp": 91.9, "label": "[IMPL] Implementation started", "category": "implementation"},
+    {"timestamp": 500.0, "label": "[SUCCESS] Tests passing", "category": "success"}
+  ]
+}
+
+IMPORTANT: Return ONLY valid JSON. No explanation, no markdown code blocks.

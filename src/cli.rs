@@ -145,28 +145,63 @@ EXAMPLES:
     /// Analyze a recording with AI
     #[command(long_about = "Analyze a recording file using an AI agent.
 
-The analyzer reads the cast file, identifies key moments (errors, decisions,
-milestones), and adds markers using 'agr marker add'. This is the same
-analysis that runs automatically when auto_analyze is enabled.
+The analyzer reads the cast file, extracts meaningful content (removing ANSI
+codes and noise), and uses AI to identify key engineering moments. Markers
+are added directly to the file using the native asciicast v3 format.
+
+For large files, analysis is parallelized across multiple chunks, with
+automatic retry and rate limit handling.
 
 The default agent is configured in ~/.config/agr/config.toml under
 [recording].analysis_agent. Use --agent to override for a single run.
 
 EXAMPLES:
-    agr analyze session.cast              Analyze with default agent
-    agr analyze session.cast --agent codex    Override agent for this run
+    agr analyze session.cast                     Analyze with default agent
+    agr analyze session.cast --agent codex       Use Codex instead
+    agr analyze session.cast --workers 4         Use 4 parallel workers
+    agr analyze session.cast --no-parallel       Sequential mode
+    agr analyze session.cast --timeout 180       3 minute timeout per chunk
 
 SUPPORTED AGENTS:
-    claude      Claude Code CLI
+    claude      Claude Code CLI (default)
     codex       OpenAI Codex CLI
-    gemini  Google Gemini CLI")]
+    gemini      Google Gemini CLI")]
     Analyze {
         /// Path to the .cast file to analyze
         #[arg(help = "Path to the .cast recording file")]
         file: String,
         /// Override the configured analysis agent
-        #[arg(long, short, help = "Agent to use (overrides config)")]
+        #[arg(long, short, help = "Agent to use: claude, codex, gemini")]
         agent: Option<String>,
+        /// Number of parallel workers (default: auto-scale based on content)
+        #[arg(long, short, help = "Number of parallel workers")]
+        workers: Option<usize>,
+        /// Timeout per chunk in seconds (default: 120)
+        #[arg(long, short, help = "Timeout per chunk in seconds")]
+        timeout: Option<u64>,
+        /// Disable parallel processing (analyze sequentially)
+        #[arg(long, help = "Disable parallel processing")]
+        no_parallel: bool,
+        /// Auto-curate markers without prompting (reduces to 8-12 best markers)
+        #[arg(long, help = "Auto-curate to 8-12 markers without prompting")]
+        curate: bool,
+        /// Debug mode: required for --output to work
+        #[arg(long, help = "Enable debug mode (required for --output)")]
+        debug: bool,
+        /// Save cleaned content and exit (requires --debug). Optionally specify filename.
+        #[arg(
+            long,
+            short,
+            value_name = "FILE",
+            num_args = 0..=1,
+            default_missing_value = "",
+            require_equals = true,
+            help = "Save cleaned content and exit (optionally specify filename)"
+        )]
+        output: Option<String>,
+        /// Skip JSON schema enforcement for faster analysis (less reliable)
+        #[arg(long, help = "Skip JSON schema enforcement (faster but less reliable)")]
+        fast: bool,
     },
 
     /// Play a recording with the native player

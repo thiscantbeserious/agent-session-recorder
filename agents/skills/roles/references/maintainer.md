@@ -41,7 +41,23 @@ Handles PR lifecycle, merging, and release management.
    - [ ] Product Owner approved
    - If anything unclear → stop and ask user for manual verification
 
-6. Merge after approval:
+6. Trigger required CI jobs by adding the `ready-to-merge` label:
+   ```bash
+   gh pr edit <PR_NUMBER> --add-label ready-to-merge
+   ```
+   Then wait for all required checks to pass:
+   ```bash
+   gh pr checks <PR_NUMBER> --watch
+   ```
+
+7. If CI jobs fail:
+   - Read the failing job logs to understand the failures
+   - Report the failures back to the Orchestrator
+   - The Orchestrator will spawn an Implementer to fix the findings
+   - After fixes are pushed, re-check CI (the label persists, jobs re-run automatically)
+   - Repeat until all required checks pass
+
+8. Merge after all checks pass:
    ```bash
    gh pr merge <PR_NUMBER> --squash
    ```
@@ -50,6 +66,7 @@ Handles PR lifecycle, merging, and release management.
 
 - Never merge without reviewer approval
 - Never merge while CI is failing
+- Never merge without the `ready-to-merge` label and all required checks passing
 - Never merge while CodeRabbit shows "processing"
 - Use squash merges to keep history clean
 - Never release without explicit user approval

@@ -6,6 +6,9 @@
 #[path = "performance/mod.rs"]
 pub mod helpers;
 
+#[path = "performance/content_extraction_test.rs"]
+mod content_extraction_test;
+
 #[path = "performance/silence_removal_test.rs"]
 mod silence_removal_test;
 
