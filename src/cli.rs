@@ -199,6 +199,9 @@ SUPPORTED AGENTS:
             help = "Save cleaned content and exit (optionally specify filename)"
         )]
         output: Option<String>,
+        /// Skip JSON schema enforcement for faster analysis (less reliable)
+        #[arg(long, help = "Skip JSON schema enforcement (faster but less reliable)")]
+        fast: bool,
     },
 
     /// Play a recording with the native player

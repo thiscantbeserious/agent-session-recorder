@@ -47,6 +47,69 @@ pub fn get_schema_file_path() -> std::io::Result<PathBuf> {
     Ok(schema_path)
 }
 
+/// Wait for child process with timeout.
+///
+/// Uses a simple polling approach since std::process doesn't have
+/// native timeout support. Includes proper process reaping to prevent zombies.
+pub(crate) fn wait_with_timeout(
+    child: &mut std::process::Child,
+    timeout_secs: u64,
+) -> std::io::Result<std::process::Output> {
+    use std::io::Read;
+    use std::thread;
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let poll_interval = Duration::from_millis(100);
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // Process finished - collect output
+                let stdout = child
+                    .stdout
+                    .take()
+                    .map(|mut s| {
+                        let mut buf = Vec::new();
+                        s.read_to_end(&mut buf).ok();
+                        buf
+                    })
+                    .unwrap_or_default();
+
+                let stderr = child
+                    .stderr
+                    .take()
+                    .map(|mut s| {
+                        let mut buf = Vec::new();
+                        s.read_to_end(&mut buf).ok();
+                        buf
+                    })
+                    .unwrap_or_default();
+
+                return Ok(std::process::Output {
+                    status,
+                    stdout,
+                    stderr,
+                });
+            }
+            Ok(None) => {
+                // Still running - check timeout
+                if start.elapsed().as_secs() >= timeout_secs {
+                    // Kill and reap to prevent zombie process
+                    let _ = child.kill();
+                    let _ = child.wait(); // Reap the zombie
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "Process timed out",
+                    ));
+                }
+                thread::sleep(poll_interval);
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
 /// Result type for agent backend operations.
 pub type BackendResult<T> = Result<T, BackendError>;
 
@@ -67,11 +130,12 @@ pub trait AgentBackend: Send + Sync {
     ///
     /// * `prompt` - The analysis prompt to send to the agent
     /// * `timeout` - Maximum time to wait for response
+    /// * `use_schema` - Whether to enforce JSON schema (slower but more reliable)
     ///
     /// # Returns
     ///
     /// The raw response string from the agent CLI.
-    fn invoke(&self, prompt: &str, timeout: Duration) -> BackendResult<String>;
+    fn invoke(&self, prompt: &str, timeout: Duration, use_schema: bool) -> BackendResult<String>;
 
     /// Parse raw response into markers.
     ///

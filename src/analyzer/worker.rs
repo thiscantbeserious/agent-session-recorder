@@ -208,15 +208,17 @@ pub struct ParallelExecutor<'a, B: AgentBackend + ?Sized> {
     backend: &'a B,
     timeout: Duration,
     worker_count: usize,
+    use_schema: bool,
 }
 
 impl<'a, B: AgentBackend + ?Sized> ParallelExecutor<'a, B> {
     /// Create a new parallel executor.
-    pub fn new(backend: &'a B, timeout: Duration, worker_count: usize) -> Self {
+    pub fn new(backend: &'a B, timeout: Duration, worker_count: usize, use_schema: bool) -> Self {
         Self {
             backend,
             timeout,
             worker_count,
+            use_schema,
         }
     }
 
@@ -308,7 +310,7 @@ impl<'a, B: AgentBackend + ?Sized> ParallelExecutor<'a, B> {
     ) -> ChunkResult {
         let prompt = prompt_builder(chunk);
 
-        match self.backend.invoke(&prompt, self.timeout) {
+        match self.backend.invoke(&prompt, self.timeout, self.use_schema) {
             Ok(response) => match self.backend.parse_response(&response) {
                 Ok(markers) => ChunkResult::success(chunk.id, chunk.time_range.clone(), markers),
                 Err(e) => ChunkResult::failure(chunk.id, chunk.time_range.clone(), e),
@@ -331,16 +333,18 @@ pub struct RetryExecutor<'a, B: AgentBackend + ?Sized> {
     backend: &'a B,
     timeout: Duration,
     worker_count: usize,
+    use_schema: bool,
     retry_coordinator: RetryCoordinator,
 }
 
 impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
     /// Create a new retry executor with default retry policy.
-    pub fn new(backend: &'a B, timeout: Duration, worker_count: usize) -> Self {
+    pub fn new(backend: &'a B, timeout: Duration, worker_count: usize, use_schema: bool) -> Self {
         Self {
             backend,
             timeout,
             worker_count,
+            use_schema,
             retry_coordinator: RetryCoordinator::with_defaults(),
         }
     }
@@ -350,12 +354,14 @@ impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
         backend: &'a B,
         timeout: Duration,
         worker_count: usize,
+        use_schema: bool,
         policy: RetryPolicy,
     ) -> Self {
         Self {
             backend,
             timeout,
             worker_count,
+            use_schema,
             retry_coordinator: RetryCoordinator::new(policy),
         }
     }
@@ -381,8 +387,12 @@ impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
             chunks.iter().map(|c| (c.id, c.estimated_tokens)).collect();
 
         // Try parallel execution first
-        let parallel_executor =
-            ParallelExecutor::new(self.backend, self.timeout, self.worker_count);
+        let parallel_executor = ParallelExecutor::new(
+            self.backend,
+            self.timeout,
+            self.worker_count,
+            self.use_schema,
+        );
 
         let results = parallel_executor.execute(chunks, progress, &prompt_builder);
 
@@ -475,7 +485,7 @@ impl<'a, B: AgentBackend + ?Sized> RetryExecutor<'a, B> {
         let mut last_error = None;
 
         for attempt in 0..self.retry_coordinator.max_attempts() {
-            match self.backend.invoke(&prompt, self.timeout) {
+            match self.backend.invoke(&prompt, self.timeout, self.use_schema) {
                 Ok(response) => match self.backend.parse_response(&response) {
                     Ok(markers) => {
                         return ChunkResult::success(chunk.id, chunk.time_range.clone(), markers);
@@ -571,7 +581,12 @@ mod tests {
             true
         }
 
-        fn invoke(&self, prompt: &str, _timeout: Duration) -> Result<String, BackendError> {
+        fn invoke(
+            &self,
+            prompt: &str,
+            _timeout: Duration,
+            _use_schema: bool,
+        ) -> Result<String, BackendError> {
             self.invocations.lock().unwrap().push(prompt.to_string());
 
             let mut responses = self.responses.lock().unwrap();
@@ -818,7 +833,7 @@ mod tests {
                 .to_string(),
         )]);
 
-        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 4);
+        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 4, true);
         let chunks = vec![create_test_chunk(0, 0.0, 100.0)];
         let progress = ProgressReporter::new(1);
 
@@ -840,7 +855,7 @@ mod tests {
             Ok(r#"{"markers": []}"#.to_string()),
         ]);
 
-        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 2);
+        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 2, true);
         let chunks = vec![
             create_test_chunk(0, 0.0, 100.0),
             create_test_chunk(1, 100.0, 200.0),
@@ -863,7 +878,7 @@ mod tests {
         let call_count = Arc::new(AtomicUsize::new(0));
         let call_count_clone = Arc::clone(&call_count);
 
-        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 2);
+        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 2, true);
         let chunks = vec![
             create_test_chunk(0, 0.0, 100.0),
             create_test_chunk(1, 100.0, 200.0),
@@ -888,7 +903,7 @@ mod tests {
             Ok(r#"{"markers": []}"#.to_string()),
         ]);
 
-        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 2);
+        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 2, true);
         let chunks = vec![
             create_test_chunk(0, 0.0, 100.0),
             create_test_chunk(1, 100.0, 200.0),
@@ -915,7 +930,7 @@ mod tests {
     #[test]
     fn parallel_executor_empty_chunks() {
         let backend = MockBackend::new(vec![]);
-        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 4);
+        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 4, true);
         let progress = ProgressReporter::new(0);
 
         let results = executor.execute(vec![], &progress, |_| "test".to_string());
@@ -930,7 +945,7 @@ mod tests {
             Err(BackendError::NotAvailable("claude".to_string())),
         ]);
 
-        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 2);
+        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 2, true);
         let chunks = vec![
             create_test_chunk(0, 0.0, 100.0),
             create_test_chunk(1, 100.0, 200.0),
@@ -946,7 +961,7 @@ mod tests {
     #[test]
     fn parallel_executor_preserves_chunk_ids() {
         let backend = MockBackend::new(vec![]);
-        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 2);
+        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), 2, true);
         let chunks = vec![
             create_test_chunk(0, 0.0, 100.0),
             create_test_chunk(1, 100.0, 200.0),
@@ -976,7 +991,7 @@ mod tests {
         assert_eq!(workers, 1);
 
         // Can create executor with calculated worker count
-        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), workers);
+        let executor = ParallelExecutor::new(&backend, Duration::from_secs(60), workers, true);
         let chunks = vec![
             create_test_chunk(0, 0.0, 100.0),
             create_test_chunk(1, 100.0, 200.0),
@@ -998,7 +1013,7 @@ mod tests {
                 .to_string(),
         )]);
 
-        let executor = RetryExecutor::new(&backend, Duration::from_secs(60), 1);
+        let executor = RetryExecutor::new(&backend, Duration::from_secs(60), 1, true);
         let mut chunks = vec![create_test_chunk(0, 0.0, 100.0)];
         chunks[0].estimated_tokens = 10000;
         let progress = ProgressReporter::new(1);
@@ -1069,7 +1084,7 @@ mod tests {
     #[test]
     fn retry_executor_empty_chunks() {
         let backend = MockBackend::new(vec![]);
-        let executor = RetryExecutor::new(&backend, Duration::from_secs(60), 1);
+        let executor = RetryExecutor::new(&backend, Duration::from_secs(60), 1, true);
         let progress = ProgressReporter::new(0);
 
         let (results, tracker) =
@@ -1086,7 +1101,7 @@ mod tests {
             Ok(r#"{"markers": []}"#.to_string()),
         ]);
 
-        let executor = RetryExecutor::new(&backend, Duration::from_secs(60), 2);
+        let executor = RetryExecutor::new(&backend, Duration::from_secs(60), 2, true);
         let mut chunks = vec![
             create_test_chunk(0, 0.0, 100.0),
             create_test_chunk(1, 100.0, 200.0),

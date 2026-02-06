@@ -38,6 +38,7 @@ pub fn handle(
     curate: bool,
     debug: bool,
     output: Option<String>,
+    fast: bool,
 ) -> Result<()> {
     let config = Config::load()?;
     let agent_name = agent_override.unwrap_or(&config.recording.analysis_agent);
@@ -75,6 +76,9 @@ pub fn handle(
     }
     if let Some(out) = output {
         options = options.output(out);
+    }
+    if fast {
+        options = options.fast(true);
     }
 
     // Create service

@@ -49,6 +49,8 @@ pub struct AnalyzeOptions {
     pub debug: bool,
     /// Output path for cleaned content (optional)
     pub output_path: Option<String>,
+    /// Fast mode (skip JSON schema enforcement)
+    pub fast: bool,
 }
 
 impl Default for AnalyzeOptions {
@@ -61,6 +63,7 @@ impl Default for AnalyzeOptions {
             quiet: false,
             debug: false,
             output_path: None,
+            fast: false,
         }
     }
 }
@@ -107,6 +110,12 @@ impl AnalyzeOptions {
     /// Set output path for cleaned content.
     pub fn output(mut self, path: String) -> Self {
         self.output_path = Some(path);
+        self
+    }
+
+    /// Enable fast mode (skip JSON schema enforcement).
+    pub fn fast(mut self, enabled: bool) -> Self {
+        self.fast = enabled;
         self
     }
 }
@@ -298,8 +307,10 @@ impl AnalyzerService {
         };
 
         // Execute with retry
+        // use_schema = true unless --fast flag was passed
+        let use_schema = !self.options.fast;
         let worker_progress = ProgressReporter::new(chunks.len());
-        let executor = RetryExecutor::new(self.backend.as_ref(), timeout, worker_count);
+        let executor = RetryExecutor::new(self.backend.as_ref(), timeout, worker_count, use_schema);
         let (results, tracker) =
             executor.execute_with_retry(chunks.clone(), &worker_progress, prompt_builder);
 
@@ -386,13 +397,14 @@ impl AnalyzerService {
     ) -> Result<Vec<ValidatedMarker>, AnalysisError> {
         let prompt = build_curation_prompt(markers, total_duration);
 
-        let response =
-            self.backend
-                .invoke(&prompt, timeout)
-                .map_err(|e| AnalysisError::IoError {
-                    operation: "curation".to_string(),
-                    message: format!("{}", e),
-                })?;
+        let use_schema = !self.options.fast;
+        let response = self
+            .backend
+            .invoke(&prompt, timeout, use_schema)
+            .map_err(|e| AnalysisError::IoError {
+                operation: "curation".to_string(),
+                message: format!("{}", e),
+            })?;
 
         let parsed =
             self.backend
@@ -574,7 +586,12 @@ mod tests {
             self.available
         }
 
-        fn invoke(&self, _prompt: &str, _timeout: Duration) -> Result<String, BackendError> {
+        fn invoke(
+            &self,
+            _prompt: &str,
+            _timeout: Duration,
+            _use_schema: bool,
+        ) -> Result<String, BackendError> {
             let mut responses = self.responses.lock().unwrap();
             if responses.is_empty() {
                 Ok(r#"{"markers": []}"#.to_string())

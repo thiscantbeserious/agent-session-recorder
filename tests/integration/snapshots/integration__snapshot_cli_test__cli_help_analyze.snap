@@ -58,6 +58,9 @@ Options:
   -o, --output[=<FILE>]
           Save cleaned content and exit (optionally specify filename)
 
+      --fast
+          Skip JSON schema enforcement (faster but less reliable)
+
   -h, --help
           Print help (see a summary with '-h')
 --- stderr ---

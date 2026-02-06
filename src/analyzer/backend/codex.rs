@@ -1,11 +1,11 @@
 //! Codex backend implementation.
 //!
-//! Invokes the Codex CLI with `exec --output-schema` for structured JSON analysis.
-//! Does NOT use `--full-auto` to prevent tool execution - analysis is read-only.
+//! Invokes the Codex CLI with `exec --sandbox read-only` for read-only analysis.
+//! Optionally uses `--output-schema` for structured JSON output.
 
 use super::{
-    extract_json, get_schema_file_path, parse_rate_limit_info, AgentBackend, BackendError,
-    BackendResult, RawMarker,
+    extract_json, get_schema_file_path, parse_rate_limit_info, wait_with_timeout, AgentBackend,
+    BackendError, BackendResult, RawMarker,
 };
 use crate::analyzer::TokenBudget;
 use std::process::{Command, Stdio};
@@ -13,9 +13,8 @@ use std::time::Duration;
 
 /// Backend for Codex CLI.
 ///
-/// Uses `codex exec --output-schema` for non-interactive analysis.
-/// The schema enforces structured JSON marker output.
-/// No `--full-auto` flag - prevents tool execution for read-only analysis.
+/// Uses `codex exec --sandbox read-only` for non-interactive analysis.
+/// The sandbox flag prevents tool execution for read-only analysis.
 #[derive(Debug, Clone, Default)]
 pub struct CodexBackend;
 
@@ -40,30 +39,33 @@ impl AgentBackend for CodexBackend {
         super::command_exists(Self::command())
     }
 
-    fn invoke(&self, prompt: &str, timeout: Duration) -> BackendResult<String> {
+    fn invoke(&self, prompt: &str, timeout: Duration, use_schema: bool) -> BackendResult<String> {
         if !self.is_available() {
             return Err(BackendError::NotAvailable(
                 "codex CLI not found in PATH".to_string(),
             ));
         }
 
-        // Get schema file path for --output-schema flag
-        let schema_path = get_schema_file_path()?;
+        // Build command with --sandbox read-only for read-only analysis
+        let mut cmd = Command::new(Self::command());
+        cmd.args(["exec", "--sandbox", "read-only"]);
 
-        // Use --output-schema for structured JSON output
-        // Do NOT use --full-auto to prevent tool execution (read-only analysis)
-        let mut child = Command::new(Self::command())
-            .args(["exec", "--output-schema"])
-            .arg(&schema_path)
-            .arg(prompt)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+        // Optionally add schema enforcement (slower but more reliable)
+        if use_schema {
+            let schema_path = get_schema_file_path()?;
+            cmd.arg("--output-schema");
+            cmd.arg(&schema_path);
+        }
+
+        cmd.arg(prompt);
+        cmd.stdin(Stdio::null());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+
+        let mut child = cmd.spawn()?;
 
         // Wait with timeout
-        let timeout_secs = timeout.as_secs();
-        let result = wait_with_timeout(&mut child, timeout_secs);
+        let result = wait_with_timeout(&mut child, timeout.as_secs());
 
         match result {
             Ok(output) => {
@@ -83,76 +85,20 @@ impl AgentBackend for CodexBackend {
                     })
                 }
             }
-            Err(_) => {
-                // Kill the process if timeout
-                let _ = child.kill();
+            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
                 Err(BackendError::Timeout(timeout))
             }
+            Err(e) => Err(BackendError::Io(e)),
         }
     }
 
     fn parse_response(&self, response: &str) -> BackendResult<Vec<RawMarker>> {
-        // Codex doesn't have native JSON output, so we need to extract it
         let analysis = extract_json(response)?;
         Ok(analysis.markers)
     }
 
     fn token_budget(&self) -> TokenBudget {
         TokenBudget::codex()
-    }
-}
-
-/// Wait for child process with timeout.
-fn wait_with_timeout(
-    child: &mut std::process::Child,
-    timeout_secs: u64,
-) -> std::io::Result<std::process::Output> {
-    use std::thread;
-    use std::time::Instant;
-
-    let start = Instant::now();
-    let poll_interval = Duration::from_millis(100);
-
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let stdout = child
-                    .stdout
-                    .take()
-                    .map(|mut s| {
-                        let mut buf = Vec::new();
-                        std::io::Read::read_to_end(&mut s, &mut buf).ok();
-                        buf
-                    })
-                    .unwrap_or_default();
-
-                let stderr = child
-                    .stderr
-                    .take()
-                    .map(|mut s| {
-                        let mut buf = Vec::new();
-                        std::io::Read::read_to_end(&mut s, &mut buf).ok();
-                        buf
-                    })
-                    .unwrap_or_default();
-
-                return Ok(std::process::Output {
-                    status,
-                    stdout,
-                    stderr,
-                });
-            }
-            Ok(None) => {
-                if start.elapsed().as_secs() >= timeout_secs {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "Process timed out",
-                    ));
-                }
-                thread::sleep(poll_interval);
-            }
-            Err(e) => return Err(e),
-        }
     }
 }
 

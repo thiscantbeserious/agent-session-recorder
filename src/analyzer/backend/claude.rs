@@ -1,12 +1,11 @@
 //! Claude backend implementation.
 //!
-//! Invokes the Claude CLI with `--print --output-format json --json-schema --tools ""`
-//! for structured JSON analysis. The JSON schema enforces marker output format,
-//! and disabling tools ensures Claude responds directly without executing commands.
+//! Invokes the Claude CLI with `--print --output-format json --tools ""`
+//! for analysis. Optionally uses `--json-schema` for structured output.
 
 use super::{
-    extract_json, parse_rate_limit_info, AgentBackend, BackendError, BackendResult, RawMarker,
-    MARKER_JSON_SCHEMA,
+    extract_json, parse_rate_limit_info, wait_with_timeout, AgentBackend, BackendError,
+    BackendResult, RawMarker, MARKER_JSON_SCHEMA,
 };
 use crate::analyzer::TokenBudget;
 use serde::Deserialize;
@@ -15,8 +14,8 @@ use std::time::Duration;
 
 /// Backend for Claude CLI.
 ///
-/// Uses `claude --print --output-format json --json-schema --tools ""`
-/// for non-interactive analysis with structured JSON output.
+/// Uses `claude --print --output-format json --tools ""`
+/// for non-interactive analysis. Optionally enforces JSON schema.
 #[derive(Debug, Clone, Default)]
 pub struct ClaudeBackend;
 
@@ -41,35 +40,33 @@ impl AgentBackend for ClaudeBackend {
         super::command_exists(Self::command())
     }
 
-    fn invoke(&self, prompt: &str, timeout: Duration) -> BackendResult<String> {
+    fn invoke(&self, prompt: &str, timeout: Duration, use_schema: bool) -> BackendResult<String> {
         if !self.is_available() {
             return Err(BackendError::NotAvailable(
                 "claude CLI not found in PATH".to_string(),
             ));
         }
 
-        // Use --tools "" to disable all tools and get direct text responses.
-        // Use --json-schema to enforce structured marker output format.
-        let mut child = Command::new(Self::command())
-            .args([
-                "--print",
-                "--output-format",
-                "json",
-                "--json-schema",
-                MARKER_JSON_SCHEMA,
-                "--tools",
-                "",
-                "-p",
-            ])
-            .arg(prompt)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+        // Build command with --tools "" to disable tool execution
+        let mut cmd = Command::new(Self::command());
+        cmd.args(["--print", "--output-format", "json"]);
+
+        // Optionally add schema enforcement (slower but more reliable)
+        if use_schema {
+            cmd.args(["--json-schema", MARKER_JSON_SCHEMA]);
+        }
+
+        // Disable tools for read-only analysis
+        cmd.args(["--tools", "", "-p"]);
+        cmd.arg(prompt);
+        cmd.stdin(Stdio::null());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+
+        let mut child = cmd.spawn()?;
 
         // Wait with timeout
-        let timeout_secs = timeout.as_secs();
-        let result = wait_with_timeout(&mut child, timeout_secs);
+        let result = wait_with_timeout(&mut child, timeout.as_secs());
 
         match result {
             Ok(output) => {
@@ -85,7 +82,6 @@ impl AgentBackend for ClaudeBackend {
                     }
 
                     // Claude CLI may return exit code 1 but put error info in stdout
-                    // (in the JSON wrapper with is_error: true)
                     let error_msg = extract_error_from_claude_response(&stdout).unwrap_or(stderr);
 
                     Err(BackendError::ExitCode {
@@ -94,11 +90,10 @@ impl AgentBackend for ClaudeBackend {
                     })
                 }
             }
-            Err(_) => {
-                // Kill the process if timeout
-                let _ = child.kill();
+            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
                 Err(BackendError::Timeout(timeout))
             }
+            Err(e) => Err(BackendError::Io(e)),
         }
     }
 
@@ -120,9 +115,6 @@ struct ClaudeErrorWrapper {
 }
 
 /// Extract error message from Claude's JSON response wrapper.
-///
-/// When Claude CLI exits with non-zero status, the error details may be
-/// in stdout as JSON with `is_error: true`.
 fn extract_error_from_claude_response(stdout: &str) -> Option<String> {
     let wrapper: ClaudeErrorWrapper = serde_json::from_str(stdout.trim()).ok()?;
 
@@ -131,67 +123,7 @@ fn extract_error_from_claude_response(stdout: &str) -> Option<String> {
             .result
             .or_else(|| Some("Claude returned an error".to_string()))
     } else {
-        // Not an error response, check for result content that might explain the issue
         wrapper.result.filter(|r| !r.is_empty())
-    }
-}
-
-/// Wait for child process with timeout.
-///
-/// Uses a simple polling approach since std::process doesn't have
-/// native timeout support.
-fn wait_with_timeout(
-    child: &mut std::process::Child,
-    timeout_secs: u64,
-) -> std::io::Result<std::process::Output> {
-    use std::thread;
-    use std::time::Instant;
-
-    let start = Instant::now();
-    let poll_interval = Duration::from_millis(100);
-
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                // Process finished
-                let stdout = child
-                    .stdout
-                    .take()
-                    .map(|mut s| {
-                        let mut buf = Vec::new();
-                        std::io::Read::read_to_end(&mut s, &mut buf).ok();
-                        buf
-                    })
-                    .unwrap_or_default();
-
-                let stderr = child
-                    .stderr
-                    .take()
-                    .map(|mut s| {
-                        let mut buf = Vec::new();
-                        std::io::Read::read_to_end(&mut s, &mut buf).ok();
-                        buf
-                    })
-                    .unwrap_or_default();
-
-                return Ok(std::process::Output {
-                    status,
-                    stdout,
-                    stderr,
-                });
-            }
-            Ok(None) => {
-                // Still running
-                if start.elapsed().as_secs() >= timeout_secs {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "Process timed out",
-                    ));
-                }
-                thread::sleep(poll_interval);
-            }
-            Err(e) => return Err(e),
-        }
     }
 }
 
@@ -243,6 +175,4 @@ mod tests {
         let result = backend.parse_response(response);
         assert!(result.is_err());
     }
-
-    // Note: Integration tests with actual CLI would go in tests/integration/
 }

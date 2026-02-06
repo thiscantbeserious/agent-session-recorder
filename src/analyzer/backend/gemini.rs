@@ -2,9 +2,11 @@
 //!
 //! Invokes the Gemini CLI with `--output-format json --approval-mode plan` for analysis.
 //! The `--approval-mode plan` flag enables read-only mode (no tool execution).
+//! Note: Gemini CLI does not support JSON schema enforcement.
 
 use super::{
-    extract_json, parse_rate_limit_info, AgentBackend, BackendError, BackendResult, RawMarker,
+    extract_json, parse_rate_limit_info, wait_with_timeout, AgentBackend, BackendError,
+    BackendResult, RawMarker,
 };
 use crate::analyzer::TokenBudget;
 use std::process::{Command, Stdio};
@@ -14,6 +16,7 @@ use std::time::Duration;
 ///
 /// Uses `gemini --output-format json --approval-mode plan` for non-interactive analysis.
 /// The `--approval-mode plan` ensures read-only operation (no tool execution).
+/// Note: Gemini does not support JSON schema enforcement (use_schema is ignored).
 #[derive(Debug, Clone, Default)]
 pub struct GeminiBackend;
 
@@ -38,12 +41,15 @@ impl AgentBackend for GeminiBackend {
         super::command_exists(Self::command())
     }
 
-    fn invoke(&self, prompt: &str, timeout: Duration) -> BackendResult<String> {
+    fn invoke(&self, prompt: &str, timeout: Duration, _use_schema: bool) -> BackendResult<String> {
         if !self.is_available() {
             return Err(BackendError::NotAvailable(
                 "gemini CLI not found in PATH".to_string(),
             ));
         }
+
+        // Note: Gemini CLI does not support JSON schema enforcement
+        // use_schema parameter is ignored
 
         // Use --approval-mode plan for read-only operation (no tool execution)
         // Use --prompt for non-interactive mode
@@ -62,8 +68,7 @@ impl AgentBackend for GeminiBackend {
             .spawn()?;
 
         // Wait with timeout
-        let timeout_secs = timeout.as_secs();
-        let result = wait_with_timeout(&mut child, timeout_secs);
+        let result = wait_with_timeout(&mut child, timeout.as_secs());
 
         match result {
             Ok(output) => {
@@ -83,11 +88,10 @@ impl AgentBackend for GeminiBackend {
                     })
                 }
             }
-            Err(_) => {
-                // Kill the process if timeout
-                let _ = child.kill();
+            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
                 Err(BackendError::Timeout(timeout))
             }
+            Err(e) => Err(BackendError::Io(e)),
         }
     }
 
@@ -98,60 +102,6 @@ impl AgentBackend for GeminiBackend {
 
     fn token_budget(&self) -> TokenBudget {
         TokenBudget::gemini()
-    }
-}
-
-/// Wait for child process with timeout.
-fn wait_with_timeout(
-    child: &mut std::process::Child,
-    timeout_secs: u64,
-) -> std::io::Result<std::process::Output> {
-    use std::thread;
-    use std::time::Instant;
-
-    let start = Instant::now();
-    let poll_interval = Duration::from_millis(100);
-
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let stdout = child
-                    .stdout
-                    .take()
-                    .map(|mut s| {
-                        let mut buf = Vec::new();
-                        std::io::Read::read_to_end(&mut s, &mut buf).ok();
-                        buf
-                    })
-                    .unwrap_or_default();
-
-                let stderr = child
-                    .stderr
-                    .take()
-                    .map(|mut s| {
-                        let mut buf = Vec::new();
-                        std::io::Read::read_to_end(&mut s, &mut buf).ok();
-                        buf
-                    })
-                    .unwrap_or_default();
-
-                return Ok(std::process::Output {
-                    status,
-                    stdout,
-                    stderr,
-                });
-            }
-            Ok(None) => {
-                if start.elapsed().as_secs() >= timeout_secs {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::TimedOut,
-                        "Process timed out",
-                    ));
-                }
-                thread::sleep(poll_interval);
-            }
-            Err(e) => return Err(e),
-        }
     }
 }
 
