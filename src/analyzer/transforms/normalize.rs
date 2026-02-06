@@ -32,7 +32,6 @@ impl Transform for NormalizeWhitespace {
         for event in events.iter_mut() {
             if event.is_output() {
                 let mut result = String::with_capacity(event.data.len());
-                let mut prev_space = false;
                 let mut newline_count = 0;
 
                 for c in event.data.chars() {
@@ -41,16 +40,8 @@ impl Transform for NormalizeWhitespace {
                         if newline_count <= self.max_consecutive_newlines {
                             result.push(c);
                         }
-                        prev_space = false;
-                    } else if c == ' ' || c == '\t' {
-                        newline_count = 0;
-                        if !prev_space {
-                            result.push(' ');
-                            prev_space = true;
-                        }
                     } else {
                         newline_count = 0;
-                        prev_space = false;
                         result.push(c);
                     }
                 }
@@ -84,8 +75,9 @@ impl Transform for FilterEmptyEvents {
                 continue;
             }
 
-            // Keep output events only if they have non-whitespace content
-            if !event.data.trim().is_empty() {
+            // Keep output events if they have non-whitespace content OR contain spaces
+            // (TUI often sends spaces in separate events which we must preserve)
+            if !event.data.trim().is_empty() || event.data.contains(' ') {
                 // Add accumulated time from removed events
                 event.time += accumulated_time;
                 accumulated_time = 0.0;
@@ -93,6 +85,72 @@ impl Transform for FilterEmptyEvents {
             } else {
                 // Accumulate time from removed event
                 accumulated_time += event.time;
+            }
+        }
+
+        *events = output;
+    }
+}
+
+/// Collapses consecutive empty lines within and across events.
+pub struct EmptyLineFilter {
+    last_line_was_empty: bool,
+}
+
+impl EmptyLineFilter {
+    pub fn new() -> Self {
+        Self {
+            last_line_was_empty: false,
+        }
+    }
+}
+
+impl Default for EmptyLineFilter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Transform for EmptyLineFilter {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        let mut accumulated_time = 0.0;
+        let mut output = Vec::with_capacity(events.len());
+
+        for mut event in events.drain(..) {
+            if !event.is_output() {
+                event.time += accumulated_time;
+                accumulated_time = 0.0;
+                output.push(event);
+                continue;
+            }
+
+            let mut new_data = String::with_capacity(event.data.len());
+            for line in event.data.split_inclusive('\n') {
+                // A line is truly empty if it only contains \n or \r\n
+                let is_empty = line == "\n" || line == "\r\n";
+
+                if is_empty && self.last_line_was_empty {
+                    // Skip consecutive truly empty line
+                    continue;
+                }
+
+                new_data.push_str(line);
+                self.last_line_was_empty = is_empty;
+            }
+
+            if !new_data.is_empty() {
+                event.data = new_data;
+                event.time += accumulated_time;
+                accumulated_time = 0.0;
+                output.push(event);
+            } else {
+                accumulated_time += event.time;
+            }
+        }
+
+        if accumulated_time > 0.0 {
+            if let Some(last) = output.last_mut() {
+                last.time += accumulated_time;
             }
         }
 
@@ -155,13 +213,15 @@ mod tests {
     fn removes_whitespace_only_events() {
         let mut events = vec![
             Event::output(0.1, "hello"),
-            Event::output(0.1, "   \n\t  "),
+            Event::output(0.1, "   "), // preserved (contains spaces)
+            Event::output(0.1, "\t\n"), // removed (no spaces)
             Event::output(0.1, "world"),
         ];
 
         FilterEmptyEvents.transform(&mut events);
 
-        assert_eq!(events.len(), 2);
+        // hello, "   ", and world are kept
+        assert_eq!(events.len(), 3);
     }
 
     #[test]
@@ -204,22 +264,21 @@ mod tests {
     fn accumulates_time_across_multiple_removed_events() {
         let mut events = vec![
             Event::output(1.0, "start"),
-            Event::output(2.0, ""),     // removed
-            Event::output(3.0, "   "),  // removed
-            Event::output(4.0, "\t\n"), // removed
+            Event::output(2.0, ""),     // removed (empty)
+            Event::output(3.0, " "),    // preserved (space)
+            Event::output(4.0, "\t\n"), // removed (no space)
             Event::output(5.0, "end"),
         ];
 
         FilterEmptyEvents.transform(&mut events);
 
-        assert_eq!(events.len(), 2);
+        // start, " ", end are kept
+        assert_eq!(events.len(), 3);
         assert!((events[0].time - 1.0).abs() < 0.001);
-        // Second event: 2 + 3 + 4 + 5 = 14
-        assert!(
-            (events[1].time - 14.0).abs() < 0.001,
-            "Expected 14.0, got {}",
-            events[1].time
-        );
+        // Second event (" "): accumulated 2.0 from previous empty
+        assert!((events[1].time - 5.0).abs() < 0.001);
+        // Third event ("end"): accumulated 4.0 from previous tab/nl
+        assert!((events[2].time - 9.0).abs() < 0.001);
     }
 
     #[test]

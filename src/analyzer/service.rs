@@ -228,7 +228,8 @@ impl AnalyzerService {
         // 3. Extract content (Stage 1)
         let config = ExtractionConfig::default();
         let extractor = ContentExtractor::new(config);
-        let content = extractor.extract(&mut cast.events);
+        let (cols, rows) = cast.terminal_size();
+        let content = extractor.extract(&mut cast.events, cols as usize, rows as usize);
 
         // Show extraction stats (before NoContent check so --debug always sees them)
         if !self.options.quiet {
@@ -238,19 +239,24 @@ impl AnalyzerService {
             } else {
                 0.0
             };
-            eprintln!(
-                "Extracted: {}KB \u{2192} {}KB ({:.0}% reduction, {} ANSI stripped, {} deduped, {} coalesced, {} global, {} window, {} collapsed, {} truncated)",
-                stats.original_bytes / 1024,
-                stats.extracted_bytes / 1024,
-                compression,
-                stats.ansi_sequences_stripped,
-                stats.progress_lines_deduplicated,
-                stats.events_coalesced,
-                stats.global_lines_deduped,
-                stats.window_events_deduped,
-                stats.lines_collapsed,
-                stats.blocks_truncated
+
+            eprintln!("\nExtraction Summary:");
+            eprintln!("──────────────────────────────────────────────────────────────────────────────");
+            eprintln!("  Size Reduction:    {:>8}KB → {:>8}KB ({:.1}%)", 
+                stats.original_bytes / 1024, 
+                stats.extracted_bytes / 1024, 
+                compression
             );
+            eprintln!("──────────────────────────────────────────────────────────────────────────────");
+            eprintln!("  Redraw Cleanup:    {:>8} redraw frames coalesced", stats.events_coalesced);
+            eprintln!("                     {:>8} status lines deduped", stats.windowed_lines_deduped);
+            eprintln!("  Content Pruning:   {:>8} redundant lines removed", stats.global_lines_deduped);
+            eprintln!("                     {:>8} similar blocks collapsed", stats.lines_collapsed);
+            eprintln!("                     {:>8} large output bursts truncated", stats.bursts_collapsed);
+            eprintln!("                     {:>8} massive events truncated", stats.blocks_truncated);
+            eprintln!("  Sanitization:      {:>8} ANSI sequences stripped", stats.ansi_sequences_stripped);
+            eprintln!("                     {:>8} control characters removed", stats.control_chars_stripped);
+            eprintln!("──────────────────────────────────────────────────────────────────────────────\n");
         }
 
         // Handle debug output if requested (--debug AND --output flags)

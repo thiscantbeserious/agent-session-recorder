@@ -16,8 +16,13 @@ mod aggressive;
 mod cleaner;
 mod dedupe;
 mod normalize;
+mod terminal;
 
-pub use aggressive::{BlockTruncator, EventCoalescer, GlobalDeduplicator, SimilarityFilter};
+pub use aggressive::{
+    BlockTruncator, EventCoalescer, FileDumpFilter, GlobalDeduplicator, SimilarityFilter,
+    WindowedLineDeduplicator,
+};
 pub use cleaner::ContentCleaner;
 pub use dedupe::DeduplicateProgressLines;
-pub use normalize::{FilterEmptyEvents, NormalizeWhitespace};
+pub use normalize::{EmptyLineFilter, FilterEmptyEvents, NormalizeWhitespace};
+pub use terminal::TerminalTransform;

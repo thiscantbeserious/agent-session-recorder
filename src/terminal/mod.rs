@@ -171,8 +171,7 @@ impl TerminalBuffer {
 impl fmt::Display for TerminalBuffer {
     /// Display the current screen content as a string (without colors).
     ///
-    /// Returns the visible content with trailing whitespace trimmed from each line.
-    /// Empty trailing lines are removed.
+    /// Returns the visible content. Empty trailing lines are removed.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut lines: Vec<String> = self
             .buffer
@@ -181,13 +180,11 @@ impl fmt::Display for TerminalBuffer {
                 row.iter()
                     .map(|c| c.char)
                     .collect::<String>()
-                    .trim_end()
-                    .to_string()
             })
             .collect();
 
         // Remove empty trailing lines
-        while lines.last().map(|s| s.is_empty()).unwrap_or(false) {
+        while lines.last().map(|s| s.trim().is_empty()).unwrap_or(false) {
             lines.pop();
         }
 

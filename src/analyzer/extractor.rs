@@ -7,8 +7,9 @@ use crate::asciicast::{Event, Transform};
 
 use super::config::ExtractionConfig;
 use super::transforms::{
-    BlockTruncator, ContentCleaner, DeduplicateProgressLines, EventCoalescer, FilterEmptyEvents,
-    GlobalDeduplicator, NormalizeWhitespace, SimilarityFilter,
+    BlockTruncator, ContentCleaner, EmptyLineFilter, EventCoalescer, FileDumpFilter,
+    FilterEmptyEvents, GlobalDeduplicator, NormalizeWhitespace, SimilarityFilter,
+    TerminalTransform, WindowedLineDeduplicator,
 };
 use super::types::{AnalysisContent, AnalysisSegment, ExtractionStats, TokenEstimator};
 
@@ -26,11 +27,11 @@ impl ContentExtractor {
     /// Extract analysis content from events.
     ///
     /// Applies the transform pipeline and creates segments from the cleaned events.
-    pub fn extract(&self, events: &mut Vec<Event>) -> AnalysisContent {
+    pub fn extract(&self, events: &mut Vec<Event>, cols: usize, rows: usize) -> AnalysisContent {
         let original_bytes: usize = events.iter().map(|e| e.data.len()).sum();
         let original_event_count = events.len();
 
-        let stats = self.apply_transforms(events, original_bytes, original_event_count);
+        let stats = self.apply_transforms(events, cols, rows, original_bytes, original_event_count);
 
         // Create segments from events
         self.create_segments(events, stats)
@@ -40,24 +41,33 @@ impl ContentExtractor {
     fn apply_transforms(
         &self,
         events: &mut Vec<Event>,
+        cols: usize,
+        rows: usize,
         original_bytes: usize,
         original_event_count: usize,
     ) -> ExtractionStats {
-        // 1. Basic Cleaning (ANSI, Controls, Visual noise)
+        // 1. Terminal Rendering (Layout preservation, ANSI stripping, Redraw reduction)
+        let mut term_transform = TerminalTransform::new(cols, rows);
+        term_transform.transform(events);
+
+        // 1b. Basic Cleaning (Controls, Visual noise)
         let mut cleaner = ContentCleaner::new(&self.config);
         cleaner.transform(events);
+
+        // 1c. Collapse consecutive empty lines
+        EmptyLineFilter::new().transform(events);
 
         // 2. Event Coalescing (Rapid, similar events)
         let events_coalesced = self.apply_coalescing(events);
 
+        // 2b. Windowed Line Deduplication (Keeps FIRST and LAST version of status lines)
+        let windowed_lines_deduped = self.apply_windowed_dedupe(events);
+
         // 3. Global Deduplication (Frequent lines & windowed event hashing)
         let (global_lines_deduped, window_events_deduped) = self.apply_global_dedupe(events);
 
-        // 4. Carriage Return Deduplication
-        //    Disabled by default: SimilarityFilter handles progress bars well enough,
-        //    and DeduplicateProgressLines is too aggressive on TUI/interactive sessions
-        //    where \r is used for all line updates, not just progress bars.
-        let deduped_count = self.apply_progress_dedupe(events);
+        // 3b. File Dump Filtering (Long bursts of output)
+        let bursts_collapsed = self.apply_file_dump_filter(events);
 
         // 5. Similarity Filtering (Consecutive redundant lines)
         let lines_collapsed = self.apply_similarity_filter(events);
@@ -75,12 +85,14 @@ impl ContentExtractor {
             extracted_bytes,
             ansi_sequences_stripped: cleaner.ansi_stripped_count(),
             control_chars_stripped: cleaner.control_stripped_count(),
-            progress_lines_deduplicated: deduped_count,
+            progress_lines_deduplicated: 0,
             events_coalesced,
             global_lines_deduped,
+            windowed_lines_deduped,
             window_events_deduped,
             lines_collapsed,
             blocks_truncated,
+            bursts_collapsed,
             events_processed: original_event_count,
             events_retained: events.len(),
         }
@@ -99,6 +111,12 @@ impl ContentExtractor {
         }
     }
 
+    fn apply_windowed_dedupe(&self, events: &mut Vec<Event>) -> usize {
+        let mut deduplicator = WindowedLineDeduplicator::new(self.config.event_window_size);
+        deduplicator.transform(events);
+        deduplicator.deduped_count()
+    }
+
     fn apply_global_dedupe(&self, events: &mut Vec<Event>) -> (usize, usize) {
         let mut global_deduper =
             GlobalDeduplicator::new(self.config.max_line_repeats, self.config.event_window_size);
@@ -106,12 +124,10 @@ impl ContentExtractor {
         global_deduper.stats()
     }
 
-    fn apply_progress_dedupe(&self, events: &mut Vec<Event>) -> usize {
-        let mut deduper = DeduplicateProgressLines::new();
-        if self.config.dedupe_progress_lines {
-            deduper.transform(events);
-        }
-        deduper.deduped_count()
+    fn apply_file_dump_filter(&self, events: &mut Vec<Event>) -> usize {
+        let mut filter = FileDumpFilter::new(self.config.max_burst_lines);
+        filter.transform(events);
+        filter.collapsed_count()
     }
 
     fn apply_similarity_filter(&self, events: &mut Vec<Event>) -> usize {
@@ -227,7 +243,7 @@ mod tests {
             Event::output(5.0, "after gap\n"), // 5 second gap
         ];
 
-        let content = extractor.extract(&mut events);
+        let content = extractor.extract(&mut events, 80, 24);
 
         // Should have 2 segments (split by time gap > 2s default threshold)
         assert_eq!(content.segments.len(), 2);
@@ -243,7 +259,7 @@ mod tests {
             Event::output(0.1, " world"),
         ];
 
-        let content = extractor.extract(&mut events);
+        let content = extractor.extract(&mut events, 80, 24);
 
         assert!(content.stats.ansi_sequences_stripped > 0);
         assert!(content.stats.extracted_bytes < content.stats.original_bytes);
@@ -254,7 +270,7 @@ mod tests {
         let extractor = ContentExtractor::default();
         let mut events = vec![Event::output(0.1, "hello world this is a test")];
 
-        let content = extractor.extract(&mut events);
+        let content = extractor.extract(&mut events, 80, 24);
 
         // Token estimate should be reasonable (chars/3 * 0.70)
         assert!(content.total_tokens > 0);

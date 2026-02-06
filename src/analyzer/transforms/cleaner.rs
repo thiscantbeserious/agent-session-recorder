@@ -189,11 +189,6 @@ impl ContentCleaner {
             }
         }
 
-        // Handle incomplete sequences (reset state for next event)
-        if !matches!(self.ansi_state, AnsiParseState::Normal) {
-            self.ansi_state = AnsiParseState::Normal;
-        }
-
         self.buffer.clone()
     }
 

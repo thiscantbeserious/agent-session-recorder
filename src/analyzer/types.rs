@@ -84,12 +84,16 @@ pub struct ExtractionStats {
     pub events_coalesced: usize,
     /// Number of lines removed by global frequency cap (repetitive separators/logs)
     pub global_lines_deduped: usize,
+    /// Number of lines removed by windowed deduplication (status line updates)
+    pub windowed_lines_deduped: usize,
     /// Number of events removed by windowed hashing (exact redraw frames)
     pub window_events_deduped: usize,
     /// Number of similar lines collapsed (consecutive redundancy)
     pub lines_collapsed: usize,
     /// Number of large output blocks truncated (head/tail preservation)
     pub blocks_truncated: usize,
+    /// Number of output bursts collapsed (file dumps/log explosions)
+    pub bursts_collapsed: usize,
     /// Number of events processed
     pub events_processed: usize,
     /// Number of events retained after filtering
