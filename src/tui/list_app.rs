@@ -19,10 +19,10 @@ use ratatui::{
 use super::app::App;
 use super::event::Event;
 use super::preview_cache::PreviewCache;
-use super::theme::current_theme;
 use super::widgets::{FileExplorer, FileExplorerWidget, FileItem};
 use crate::asciicast::{apply_transforms, TransformResult};
 use crate::files::backup::{backup_path_for, create_backup, has_backup, restore_from_backup};
+use crate::theme::current_theme;
 
 /// UI mode for the list application
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

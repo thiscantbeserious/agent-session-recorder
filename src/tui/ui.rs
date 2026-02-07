@@ -9,8 +9,8 @@ use ratatui::{
     Frame,
 };
 
-use super::current_theme;
 use super::widgets::Logo;
+use crate::theme::current_theme;
 
 /// Render the logo centered at the top of the frame.
 pub fn render_logo(frame: &mut Frame) {

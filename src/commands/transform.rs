@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 
 use agr::asciicast::{AsciicastFile, SilenceRemoval, Transform, DEFAULT_SILENCE_THRESHOLD};
-use agr::tui::current_theme;
+use agr::theme::current_theme;
 use agr::Config;
 
 use agr::asciicast::integrity::check_file_integrity;

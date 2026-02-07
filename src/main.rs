@@ -14,6 +14,7 @@ use agr::cli::{
     build_cli_styles, AgentCommands, Cli, Commands, ConfigCommands, MarkerCommands, NoWrapCommands,
     ShellCommands,
 };
+use agr::theme;
 use agr::tui;
 
 /// Generate the ASCII logo with dynamic-width REC line.
@@ -236,7 +237,7 @@ fn show_tui_help() -> Result<()> {
 fn print_themed_help(err: &clap::Error) {
     // Get the rendered help from the error
     let help_text = err.to_string();
-    let colored = tui::colorize_help(&help_text);
+    let colored = theme::colorize_help(&help_text);
     print!("{}", colored);
 }
 

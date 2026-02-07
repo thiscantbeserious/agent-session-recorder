@@ -11,12 +11,8 @@ pub mod cleanup_app;
 pub mod event;
 pub mod list_app;
 pub mod preview_cache;
-pub mod theme;
 pub mod ui;
 pub mod widgets;
-
-// Re-export theme for convenience
-pub use theme::{colorize_help, current_theme};
 
 // Re-export apps for commands
 pub use cleanup_app::CleanupApp;

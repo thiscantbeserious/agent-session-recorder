@@ -10,7 +10,7 @@ use ratatui::{
     widgets::Widget,
 };
 
-use crate::tui::current_theme;
+use crate::theme::current_theme;
 
 /// The AGR ASCII logo
 const LOGO_LINES: [&str; 6] = [

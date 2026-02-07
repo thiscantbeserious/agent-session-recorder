@@ -6,8 +6,9 @@
 pub mod analyzer;
 
 pub mod asciicast;
-pub mod branding;
 pub mod cli;
+pub mod theme;
+
 pub mod clipboard;
 pub mod config;
 pub mod files;

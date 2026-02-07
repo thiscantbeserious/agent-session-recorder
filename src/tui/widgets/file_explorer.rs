@@ -24,7 +24,7 @@ use ratatui::{
 use crate::asciicast::EventType;
 use crate::files::backup::has_backup;
 use crate::storage::SessionInfo;
-use crate::tui::current_theme;
+use crate::theme::current_theme;
 
 /// A file item in the explorer
 #[derive(Debug, Clone, PartialEq, Eq)]

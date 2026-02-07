@@ -6,8 +6,9 @@ use anyhow::Result;
 use std::io::{self, BufRead, Write};
 
 use agr::storage::{SessionInfo, StorageStats};
+use agr::theme::current_theme;
 use agr::tui::widgets::FileItem;
-use agr::tui::{current_theme, CleanupApp};
+use agr::tui::CleanupApp;
 use agr::{Config, StorageManager};
 
 use super::truncate_string;
