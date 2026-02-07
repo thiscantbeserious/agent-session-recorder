@@ -56,9 +56,20 @@ impl AgentBackend for CodexBackend {
             ));
         }
 
-        // Build command with --sandbox read-only for read-only analysis
+        // Build command: run in /tmp to avoid loading project skills/context.
+        // --skip-git-repo-check prevents git repo discovery errors.
+        // --sandbox read-only prevents any writes.
+        // When stdout is piped, codex writes the response to stdout and
+        // status/thinking to stderr, so no -o flag needed.
         let mut cmd = Command::new(Self::command());
-        cmd.args(["exec", "--sandbox", "read-only"]);
+        cmd.args([
+            "exec",
+            "--cd",
+            "/tmp",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+        ]);
 
         // Optionally add schema enforcement (slower but more reliable)
         if use_schema {
@@ -91,8 +102,10 @@ impl AgentBackend for CodexBackend {
 
         match result {
             Ok(output) => {
-                if output.status.success() {
-                    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+
+                if output.status.success() || !stdout.trim().is_empty() {
+                    Ok(stdout)
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 

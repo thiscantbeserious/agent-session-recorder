@@ -29,7 +29,8 @@ use std::time::Duration;
 use thiserror::Error;
 
 /// JSON Schema for marker output (minified, for inline CLI args like Claude's --json-schema).
-pub const MARKER_JSON_SCHEMA: &str = r#"{"type":"object","properties":{"markers":{"type":"array","items":{"type":"object","properties":{"timestamp":{"type":"number"},"label":{"type":"string"},"category":{"type":"string","enum":["planning","design","implementation","success","failure"]}},"required":["timestamp","label","category"]}}},"required":["markers"]}"#;
+/// Includes `additionalProperties: false` at each object level as required by OpenAI's API.
+pub const MARKER_JSON_SCHEMA: &str = r#"{"type":"object","properties":{"markers":{"type":"array","items":{"type":"object","properties":{"timestamp":{"type":"number"},"label":{"type":"string"},"category":{"type":"string","enum":["planning","design","implementation","success","failure"]}},"required":["timestamp","label","category"],"additionalProperties":false}}},"required":["markers"],"additionalProperties":false}"#;
 
 /// Get the path to the marker schema JSON file (for CLIs that need a file path like Codex).
 ///
