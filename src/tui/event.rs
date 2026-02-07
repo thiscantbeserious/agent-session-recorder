@@ -4,7 +4,8 @@
 
 use anyhow::Result;
 use crossterm::event::{self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers};
-use std::sync::mpsc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 
@@ -25,8 +26,10 @@ pub enum Event {
 pub struct EventHandler {
     /// Receiver for events
     rx: mpsc::Receiver<Event>,
-    /// Handle to the event thread (kept for cleanup)
-    _handle: thread::JoinHandle<()>,
+    /// Handle to the event thread
+    handle: Option<thread::JoinHandle<()>>,
+    /// Flag to signal the thread to stop
+    running: Arc<AtomicBool>,
 }
 
 impl EventHandler {
@@ -35,12 +38,18 @@ impl EventHandler {
     /// The tick rate determines how often Tick events are generated.
     pub fn new(tick_rate: Duration) -> Self {
         let (tx, rx) = mpsc::channel();
+        let running = Arc::new(AtomicBool::new(true));
+        let thread_running = running.clone();
 
         let handle = thread::spawn(move || {
-            loop {
+            while thread_running.load(Ordering::Relaxed) {
                 // Poll for events with timeout using explicit pattern matching
                 match event::poll(tick_rate) {
                     Ok(true) => {
+                        // Check stop flag before blocking read
+                        if !thread_running.load(Ordering::Relaxed) {
+                            break;
+                        }
                         // Event available
                         match event::read() {
                             Ok(CrosstermEvent::Key(key)) => {
@@ -82,7 +91,8 @@ impl EventHandler {
 
         Self {
             rx,
-            _handle: handle,
+            handle: Some(handle),
+            running,
         }
     }
 
@@ -91,6 +101,18 @@ impl EventHandler {
         self.rx
             .recv()
             .map_err(|e| anyhow::anyhow!("Event channel closed: {}", e))
+    }
+
+    /// Stop the event handler thread and wait for it to exit.
+    ///
+    /// This must be called before spawning subprocesses that read from stdin,
+    /// otherwise the event thread will race the subprocess for input.
+    pub fn stop(&mut self) {
+        self.running.store(false, Ordering::Relaxed);
+        if let Some(handle) = self.handle.take() {
+            // Thread will exit within one tick_rate cycle (250ms)
+            let _ = handle.join();
+        }
     }
 }
 
@@ -112,5 +134,13 @@ mod tests {
         let event = Event::Tick;
         let cloned = event.clone();
         assert!(matches!(cloned, Event::Tick));
+    }
+
+    #[test]
+    fn event_handler_stop() {
+        let mut handler = EventHandler::new(Duration::from_millis(50));
+        handler.stop();
+        // After stop, the thread should have exited and next() should fail
+        assert!(handler.next().is_err());
     }
 }

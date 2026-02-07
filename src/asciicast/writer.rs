@@ -67,17 +67,33 @@ impl Event {
 impl AsciicastFile {
     /// Write the asciicast file to a filesystem path.
     ///
-    /// Creates or overwrites the file at the given path.
+    /// Uses atomic write (temp file + rename) to prevent corruption if the
+    /// write is interrupted (crash, disk full, etc.). The original file is
+    /// only replaced after the new content is fully written.
     ///
     /// # Errors
     ///
     /// Returns an error if the file cannot be created or written.
     pub fn write<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-        let mut file =
-            fs::File::create(path).with_context(|| format!("Failed to create file: {:?}", path))?;
+        let temp_path = path.with_extension("cast.tmp");
 
-        self.write_to(&mut file)
+        let mut file = fs::File::create(&temp_path)
+            .with_context(|| format!("Failed to create temp file: {:?}", temp_path))?;
+
+        self.write_to(&mut file)?;
+
+        // Ensure data is flushed to disk before renaming
+        file.sync_all()
+            .with_context(|| format!("Failed to sync temp file: {:?}", temp_path))?;
+        drop(file);
+
+        if let Err(e) = fs::rename(&temp_path, path) {
+            let _ = fs::remove_file(&temp_path);
+            return Err(e).with_context(|| format!("Failed to replace file: {:?}", path));
+        }
+
+        Ok(())
     }
 
     /// Write the asciicast file to any writer.

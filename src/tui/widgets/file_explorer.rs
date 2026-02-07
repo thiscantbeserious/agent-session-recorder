@@ -21,7 +21,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Widget},
 };
 
-use crate::asciicast::{has_backup, EventType};
+use crate::asciicast::EventType;
+use crate::files::backup::has_backup;
 use crate::storage::SessionInfo;
 use crate::tui::current_theme;
 
@@ -163,7 +164,7 @@ impl SessionPreview {
                 if !preview_captured {
                     if event_type == EventType::Output {
                         if let Some(output) = data {
-                            buffer.process(&output);
+                            buffer.process(&output, None);
                         }
                     }
 
@@ -737,6 +738,28 @@ impl FileExplorer {
             }
         }
         false
+    }
+
+    /// Update an item's path and name (e.g., after a rename).
+    /// Returns true if the old path was found and the item was updated.
+    pub fn update_item_path(&mut self, old_path: &str, new_path: &str) -> bool {
+        if let Some(idx) = self.items.iter().position(|item| item.path == old_path) {
+            let new_p = std::path::Path::new(new_path);
+            self.items[idx].path = new_path.to_string();
+            self.items[idx].name = new_p
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(new_path)
+                .to_string();
+            // Reload metadata from disk
+            if let Ok(metadata) = std::fs::metadata(new_path) {
+                self.items[idx].size = metadata.len();
+            }
+            self.items[idx].has_backup = has_backup(new_p);
+            true
+        } else {
+            false
+        }
     }
 
     // === Rendering helpers ===

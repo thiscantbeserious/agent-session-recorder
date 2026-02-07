@@ -230,4 +230,15 @@ mod tests {
         let file = AsciicastFile::parse_str(content).unwrap();
         assert_eq!(file.events.len(), 2);
     }
+
+    #[test]
+    fn parse_fails_on_null_byte_lines() {
+        let mut content = String::from("{\"version\":3}\n[0.1, \"o\", \"hello\"]\n");
+        content.push_str(&"\0".repeat(100));
+        content.push('\n');
+        content.push_str("[0.2, \"o\", \" world\"]");
+
+        let result = AsciicastFile::parse_str(&content);
+        assert!(result.is_err());
+    }
 }

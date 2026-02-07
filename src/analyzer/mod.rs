@@ -32,6 +32,7 @@ mod config;
 pub mod error;
 mod extractor;
 pub mod progress;
+mod prompt;
 pub mod result;
 mod service;
 pub mod tracker;
@@ -49,6 +50,7 @@ pub use backend::{
 pub use chunk::{AnalysisChunk, ChunkCalculator, ChunkConfig, TimeRange, TokenBudget};
 
 // Re-export other types
+pub use crate::config::{AgentAnalysisConfig, AnalysisConfig};
 pub use config::ExtractionConfig;
 pub use extractor::ContentExtractor;
 pub use progress::DefaultProgressReporter;
@@ -73,4 +75,5 @@ pub use error::AnalysisError;
 pub use tracker::{ChunkUsage, RetryCoordinator, RetryPolicy, TokenTracker, UsageSummary};
 
 // Re-export service types (main entry point)
-pub use service::{build_prompt, AnalysisResult, AnalyzeOptions, AnalyzerService};
+pub use prompt::build_analyze_prompt;
+pub use service::{AnalysisResult, AnalyzeOptions, AnalyzerService};

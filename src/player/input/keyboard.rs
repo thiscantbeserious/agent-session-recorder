@@ -250,7 +250,7 @@ fn handle_seek_forward(
             break;
         }
         if event.is_output() {
-            buffer.process(&event.data);
+            buffer.process(&event.data, None);
         } else if let Some((cols, rows)) = event.parse_resize() {
             buffer.resize(cols as usize, rows as usize);
         }
@@ -290,7 +290,7 @@ fn handle_seek_to_end(
     // Process all events
     for event in &cast.events {
         if event.is_output() {
-            buffer.process(&event.data);
+            buffer.process(&event.data, None);
         } else if let Some((cols, rows)) = event.parse_resize() {
             buffer.resize(cols as usize, rows as usize);
         }

@@ -17,6 +17,7 @@ expression: output
      │  p           Play session                                │     
      │  c           Copy to clipboard                           │     
      │  t           Optimize (removes silence)                  │     
+     │  a           Analyze session                             │     
      │  d           Delete session                              │     
      │                                                          │     
      │Filtering                                                 │     
@@ -28,5 +29,4 @@ expression: output
      │  q           Quit                                        │     
      │                                                          │     
      │Press any key to close                                    │     
-     │                                                          │     
      └──────────────────────────────────────────────────────────┘

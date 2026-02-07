@@ -10,13 +10,17 @@ use agr::tui::current_theme;
 use agr::tui::theme::ansi;
 use agr::Config;
 
-/// Show current configuration as TOML.
+/// Show current configuration as TOML with inline documentation comments.
 #[cfg(not(tarpaulin_include))]
 pub fn handle_show() -> Result<()> {
     let config = Config::load()?;
     let toml_str = toml::to_string_pretty(&config)?;
+    // Insert commented-out templates for optional fields (e.g. # workers = auto)
+    // before annotation so they also get documentation comments
+    let with_templates = agr::config::docs::insert_optional_field_templates(&toml_str);
+    let annotated = agr::config::docs::annotate_config(&with_templates);
     let theme = current_theme();
-    println!("{}", theme.primary_text(&toml_str));
+    println!("{}", theme.primary_text(&annotated));
     Ok(())
 }
 
@@ -54,10 +58,10 @@ pub fn handle_edit() -> Result<()> {
     Ok(())
 }
 
-/// Migrate config file by adding missing fields.
+/// Migrate config file to the latest schema version.
 ///
 /// Reads the existing config file (or empty if it doesn't exist),
-/// adds any missing fields from the current default config,
+/// runs versioned migrations, adds any missing fields from defaults,
 /// shows a preview of changes, and prompts for confirmation.
 ///
 /// # Arguments
@@ -111,24 +115,50 @@ pub fn handle_migrate(auto_confirm: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Case 3: Config exists but has missing fields - show diff and confirm
-    let total_fields = result.added_fields.len();
-    let total_sections = result.sections_added.len();
-
-    // Print summary
-    if total_sections > 0 {
+    // Case 3: Config exists but needs changes - show diff and confirm
+    // Print version info
+    if result.old_version != result.new_version {
         println!(
             "{}",
             theme.primary_text(&format!(
-                "Found {} missing field(s) in {} new section(s):",
-                total_fields, total_sections
+                "Migrating config from v{} to v{}",
+                result.old_version, result.new_version
             ))
         );
-    } else {
+    }
+
+    // Print removed/moved fields
+    if !result.removed_fields.is_empty() {
         println!(
             "{}",
-            theme.primary_text(&format!("Found {} missing field(s):", total_fields))
+            theme.primary_text(&format!(
+                "Removed/moved {} deprecated field(s):",
+                result.removed_fields.len()
+            ))
         );
+        for field in &result.removed_fields {
+            println!("{}  - {}{}", ansi::RED, field, ansi::RESET);
+        }
+    }
+
+    // Print added fields summary
+    let total_fields = result.added_fields.len();
+    let total_sections = result.sections_added.len();
+    if total_fields > 0 {
+        if total_sections > 0 {
+            println!(
+                "{}",
+                theme.primary_text(&format!(
+                    "Adding {} missing field(s) in {} new section(s):",
+                    total_fields, total_sections
+                ))
+            );
+        } else {
+            println!(
+                "{}",
+                theme.primary_text(&format!("Adding {} missing field(s):", total_fields))
+            );
+        }
     }
     println!();
 
@@ -148,6 +178,60 @@ pub fn handle_migrate(auto_confirm: bool) -> Result<()> {
     // Write the updated config atomically
     atomic_write(&config_path, &result.content)?;
     println!("{}", theme.success_text("Config updated successfully."));
+
+    Ok(())
+}
+
+/// Reset config to defaults, backing up the current file.
+#[cfg(not(tarpaulin_include))]
+pub fn handle_reset(auto_confirm: bool) -> Result<()> {
+    let theme = current_theme();
+    let config_path = Config::config_path()?;
+
+    // Generate fresh default config through the migration pipeline.
+    // Using migrate_config("") ensures the reset config has the same structure,
+    // section ordering, and commented-out templates as a freshly migrated config.
+    let result = migrate_config("")?;
+
+    if !config_path.exists() {
+        println!(
+            "{}",
+            theme.primary_text("No config file exists. Creating with default settings.")
+        );
+    } else {
+        println!(
+            "{}",
+            theme.primary_text("This will replace your config with default settings.")
+        );
+    }
+
+    if !should_proceed("Reset configuration to defaults?", auto_confirm)? {
+        println!("{}", theme.primary_text("No changes made."));
+        return Ok(());
+    }
+
+    // Back up existing config (use numbered suffix to avoid overwriting previous backups)
+    if config_path.exists() {
+        let mut backup_path = config_path.with_extension("toml.bak");
+        let mut counter = 1u32;
+        while backup_path.exists() {
+            backup_path = config_path.with_extension(format!("toml.bak.{}", counter));
+            counter += 1;
+        }
+        fs::copy(&config_path, &backup_path)
+            .with_context(|| format!("Failed to back up config to {}", backup_path.display()))?;
+        println!(
+            "{}",
+            theme.secondary_text(&format!("Backed up to {}", backup_path.display()))
+        );
+    }
+
+    // Write fresh default config
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    atomic_write(&config_path, &result.content)?;
+    println!("{}", theme.success_text("Config reset to defaults."));
 
     Ok(())
 }

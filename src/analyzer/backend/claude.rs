@@ -17,12 +17,22 @@ use std::time::Duration;
 /// Uses `claude --print --output-format json --tools ""`
 /// for non-interactive analysis. Optionally enforces JSON schema.
 #[derive(Debug, Clone, Default)]
-pub struct ClaudeBackend;
+pub struct ClaudeBackend {
+    /// Extra CLI arguments to pass before the stdin passthrough args.
+    extra_args: Vec<String>,
+}
 
 impl ClaudeBackend {
-    /// Create a new Claude backend.
+    /// Create a new Claude backend with no extra arguments.
     pub fn new() -> Self {
-        Self
+        Self {
+            extra_args: Vec::new(),
+        }
+    }
+
+    /// Create a new Claude backend with extra CLI arguments.
+    pub fn with_extra_args(extra_args: Vec<String>) -> Self {
+        Self { extra_args }
     }
 
     /// Get the CLI command name.
@@ -54,6 +64,11 @@ impl AgentBackend for ClaudeBackend {
         // Optionally add schema enforcement (slower but more reliable)
         if use_schema {
             cmd.args(["--json-schema", MARKER_JSON_SCHEMA]);
+        }
+
+        // Append extra args from per-agent config BEFORE the stdin passthrough
+        for arg in &self.extra_args {
+            cmd.arg(arg);
         }
 
         // Disable tools for read-only analysis

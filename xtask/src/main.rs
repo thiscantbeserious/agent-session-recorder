@@ -371,6 +371,7 @@ fn generate_wiki(output: &Path) -> Result<()> {
     let mut home = String::new();
     home.push_str("# AGR Wiki\n\n");
     home.push_str("Welcome to the AGR (Agent Session Recorder) wiki.\n\n");
+    home.push_str("## [[Configuration]]\n\n");
     home.push_str("## Commands\n\n");
 
     for subcommand in cmd.get_subcommands() {
@@ -387,6 +388,11 @@ fn generate_wiki(output: &Path) -> Result<()> {
 
     fs::write(wiki_dir.join("Home.md"), home)?;
     println!("Generated: {}/Home.md", wiki_dir.display());
+
+    // Configuration page (auto-generated from config::docs)
+    let config_md = agr::config::docs::generate_config_markdown();
+    fs::write(wiki_dir.join("Configuration.md"), config_md)?;
+    println!("Generated: {}/Configuration.md", wiki_dir.display());
 
     // Individual command pages
     for subcommand in cmd.get_subcommands() {

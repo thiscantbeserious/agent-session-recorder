@@ -1,19 +1,45 @@
 //! Configuration type definitions and defaults
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
+use super::analysis::{AgentAnalysisConfig, AnalysisConfig};
+use crate::config::migrate::CURRENT_VERSION;
+
 /// Main configuration structure
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    #[serde(default)]
-    pub storage: StorageConfig,
-    #[serde(default)]
-    pub agents: AgentsConfig,
+    /// Schema version — used by the migration system to track applied migrations.
+    #[serde(default = "default_config_version")]
+    pub config_version: u32,
     #[serde(default)]
     pub shell: ShellConfig,
     #[serde(default)]
+    pub storage: StorageConfig,
+    #[serde(default)]
     pub recording: RecordingConfig,
+    #[serde(default)]
+    pub analysis: AnalysisConfig,
+    #[serde(default)]
+    pub agents: AgentsConfig,
+}
+
+fn default_config_version() -> u32 {
+    CURRENT_VERSION
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            config_version: CURRENT_VERSION,
+            shell: ShellConfig::default(),
+            storage: StorageConfig::default(),
+            recording: RecordingConfig::default(),
+            analysis: AnalysisConfig::default(),
+            agents: AgentsConfig::default(),
+        }
+    }
 }
 
 /// Shell integration configuration
@@ -46,19 +72,12 @@ pub struct RecordingConfig {
     /// Whether to automatically analyze the recording after session ends
     #[serde(default)]
     pub auto_analyze: bool,
-    /// Which agent to use for analysis ("claude", "codex", "gemini")
-    #[serde(default = "default_analysis_agent")]
-    pub analysis_agent: String,
     /// Filename template using tags like {directory}, {date}, {time}
     #[serde(default = "default_filename_template")]
     pub filename_template: String,
-    /// Maximum length for directory component in filename (default: 50)
+    /// Maximum length for directory component in filename
     #[serde(default = "default_directory_max_length")]
     pub directory_max_length: usize,
-}
-
-pub fn default_analysis_agent() -> String {
-    "claude".to_string()
 }
 
 pub fn default_filename_template() -> String {
@@ -73,7 +92,6 @@ impl Default for RecordingConfig {
     fn default() -> Self {
         Self {
             auto_analyze: false,
-            analysis_agent: default_analysis_agent(),
             filename_template: default_filename_template(),
             directory_max_length: default_directory_max_length(),
         }
@@ -121,6 +139,13 @@ pub struct AgentsConfig {
     /// Agents that should not be auto-wrapped (even if in enabled list)
     #[serde(default)]
     pub no_wrap: Vec<String>,
+    /// Per-agent analysis configuration (e.g. extra CLI args, token budget)
+    #[serde(default)]
+    pub claude: AgentAnalysisConfig,
+    #[serde(default)]
+    pub codex: AgentAnalysisConfig,
+    #[serde(default)]
+    pub gemini: AgentAnalysisConfig,
 }
 
 pub fn default_agents() -> Vec<String> {
@@ -136,6 +161,30 @@ impl Default for AgentsConfig {
         Self {
             enabled: default_agents(),
             no_wrap: Vec::new(),
+            claude: AgentAnalysisConfig::default(),
+            codex: AgentAnalysisConfig::default(),
+            gemini: AgentAnalysisConfig::default(),
         }
+    }
+}
+
+impl AgentsConfig {
+    /// Look up per-agent analysis configuration by name.
+    pub fn agent_config(&self, name: &str) -> Option<&AgentAnalysisConfig> {
+        match name {
+            "claude" => Some(&self.claude),
+            "codex" => Some(&self.codex),
+            "gemini" => Some(&self.gemini),
+            _ => None,
+        }
+    }
+
+    /// Get all per-agent configs as a HashMap (for validation).
+    pub fn agent_configs_map(&self) -> HashMap<String, &AgentAnalysisConfig> {
+        let mut map = HashMap::new();
+        map.insert("claude".to_string(), &self.claude);
+        map.insert("codex".to_string(), &self.codex);
+        map.insert("gemini".to_string(), &self.gemini);
+        map
     }
 }

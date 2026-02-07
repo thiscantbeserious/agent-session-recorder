@@ -16,12 +16,22 @@ use std::time::Duration;
 /// Uses `codex exec --sandbox read-only` for non-interactive analysis.
 /// The sandbox flag prevents tool execution for read-only analysis.
 #[derive(Debug, Clone, Default)]
-pub struct CodexBackend;
+pub struct CodexBackend {
+    /// Extra CLI arguments to pass to the codex command.
+    extra_args: Vec<String>,
+}
 
 impl CodexBackend {
-    /// Create a new Codex backend.
+    /// Create a new Codex backend with no extra arguments.
     pub fn new() -> Self {
-        Self
+        Self {
+            extra_args: Vec::new(),
+        }
+    }
+
+    /// Create a new Codex backend with extra CLI arguments.
+    pub fn with_extra_args(extra_args: Vec<String>) -> Self {
+        Self { extra_args }
     }
 
     /// Get the CLI command name.
@@ -46,9 +56,14 @@ impl AgentBackend for CodexBackend {
             ));
         }
 
-        // Build command with --sandbox read-only for read-only analysis
+        // Build command: run in /tmp to avoid loading project skills/context.
+        // --skip-git-repo-check prevents git repo discovery errors.
+        // --sandbox read-only prevents any writes (placed AFTER extra_args
+        // so user config cannot override the sandbox restriction).
+        // When stdout is piped, codex writes the response to stdout and
+        // status/thinking to stderr, so no -o flag needed.
         let mut cmd = Command::new(Self::command());
-        cmd.args(["exec", "--sandbox", "read-only"]);
+        cmd.args(["exec", "--cd", "/tmp", "--skip-git-repo-check"]);
 
         // Optionally add schema enforcement (slower but more reliable)
         if use_schema {
@@ -56,6 +71,14 @@ impl AgentBackend for CodexBackend {
             cmd.arg("--output-schema");
             cmd.arg(&schema_path);
         }
+
+        // Append extra args from per-agent config BEFORE safety flags
+        for arg in &self.extra_args {
+            cmd.arg(arg);
+        }
+
+        // Safety-critical: sandbox must come last to prevent override by extra_args
+        cmd.args(["--sandbox", "read-only"]);
 
         // Pass prompt via stdin to avoid ARG_MAX limits
         cmd.stdin(Stdio::piped());
@@ -76,8 +99,10 @@ impl AgentBackend for CodexBackend {
 
         match result {
             Ok(output) => {
-                if output.status.success() {
-                    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+                let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+
+                if output.status.success() || !stdout.trim().is_empty() {
+                    Ok(stdout)
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 

@@ -22,6 +22,8 @@ pub(crate) struct TerminalPerformer<'a> {
     pub scroll_top: usize,
     /// Bottom margin of scroll region (0-indexed, inclusive)
     pub scroll_bottom: usize,
+    /// Optional callback for lines that are scrolled off the screen
+    pub scroll_callback: Option<&'a mut dyn FnMut(Vec<Cell>)>,
 }
 
 impl<'a> TerminalPerformer<'a> {
@@ -55,7 +57,13 @@ impl<'a> TerminalPerformer<'a> {
         for _ in 0..n {
             if self.scroll_top < self.height && self.scroll_bottom < self.height {
                 // Remove the line at scroll_top
-                self.buffer.remove(self.scroll_top);
+                let line = self.buffer.remove(self.scroll_top);
+
+                // If a callback is registered, pass the scrolled-off line to it
+                if let Some(ref mut cb) = self.scroll_callback {
+                    cb(line);
+                }
+
                 // Insert a new blank line at scroll_bottom
                 self.buffer
                     .insert(self.scroll_bottom, vec![Cell::default(); self.width]);

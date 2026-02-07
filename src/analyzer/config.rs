@@ -1,7 +1,9 @@
 //! Configuration for the content extraction pipeline.
 
+use serde::{Deserialize, Serialize};
+
 /// Configuration for the content extraction pipeline.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtractionConfig {
     /// Strip ANSI escape sequences (always true)
     pub strip_ansi: bool,
@@ -35,6 +37,8 @@ pub struct ExtractionConfig {
     pub max_line_repeats: usize,
     /// Window size for event hashing (number of events to check for redraws)
     pub event_window_size: usize,
+    /// Maximum number of lines in a burst before it's considered a file dump
+    pub max_burst_lines: usize,
     /// Maximum size of an output block before truncation (bytes)
     pub max_block_size: usize,
     /// Number of lines to keep at head/tail during truncation
@@ -46,7 +50,7 @@ impl Default for ExtractionConfig {
         Self {
             strip_ansi: true,
             strip_control_chars: true,
-            dedupe_progress_lines: true,
+            dedupe_progress_lines: false,
             normalize_whitespace: true,
             max_consecutive_newlines: 2,
             strip_box_drawing: true,
@@ -57,11 +61,12 @@ impl Default for ExtractionConfig {
             similarity_threshold: 0.80,
             coalesce_events: true,
             coalesce_time_threshold: 0.2, // 200ms
-            max_line_repeats: 5,
+            max_line_repeats: 10,
             event_window_size: 50,
+            max_burst_lines: 500,
             truncate_large_blocks: true,
-            max_block_size: 10 * 1024, // 10KB
-            truncation_context_lines: 30,
+            max_block_size: 8 * 1024, // 8KB
+            truncation_context_lines: 50,
         }
     }
 }

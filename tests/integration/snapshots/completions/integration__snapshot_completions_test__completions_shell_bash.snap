@@ -147,6 +147,9 @@ _agr() {
             agr__config,migrate)
                 cmd="agr__config__migrate"
                 ;;
+            agr__config,reset)
+                cmd="agr__config__reset"
+                ;;
             agr__config,show)
                 cmd="agr__config__show"
                 ;;
@@ -158,6 +161,9 @@ _agr() {
                 ;;
             agr__config__help,migrate)
                 cmd="agr__config__help__migrate"
+                ;;
+            agr__config__help,reset)
+                cmd="agr__config__help__reset"
                 ;;
             agr__config__help,show)
                 cmd="agr__config__help__show"
@@ -233,6 +239,9 @@ _agr() {
                 ;;
             agr__help__config,migrate)
                 cmd="agr__help__config__migrate"
+                ;;
+            agr__help__config,reset)
+                cmd="agr__help__config__reset"
                 ;;
             agr__help__config,show)
                 cmd="agr__help__config__show"
@@ -651,7 +660,7 @@ _agr() {
             return 0
             ;;
         agr__analyze)
-            opts="-a -w -t -o -h --agent --workers --timeout --no-parallel --curate --debug --output --fast --help <FILE>"
+            opts="-a -w -t -o -h --agent --workers --timeout --no-parallel --curate --debug --output --fast --wait --help <FILE>"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -745,7 +754,7 @@ _agr() {
             return 0
             ;;
         agr__config)
-            opts="-h --help show edit migrate help"
+            opts="-h --help show edit migrate reset help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -773,7 +782,7 @@ _agr() {
             return 0
             ;;
         agr__config__help)
-            opts="show edit migrate help"
+            opts="show edit migrate reset help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -828,6 +837,20 @@ _agr() {
             COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
             return 0
             ;;
+        agr__config__help__reset)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
         agr__config__help__show)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
@@ -843,6 +866,20 @@ _agr() {
             return 0
             ;;
         agr__config__migrate)
+            opts="-y -h --yes --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        agr__config__reset)
             opts="-y -h --yes --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
@@ -1067,7 +1104,7 @@ _agr() {
             return 0
             ;;
         agr__help__config)
-            opts="show edit migrate"
+            opts="show edit migrate reset"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1095,6 +1132,20 @@ _agr() {
             return 0
             ;;
         agr__help__config__migrate)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        agr__help__config__reset)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

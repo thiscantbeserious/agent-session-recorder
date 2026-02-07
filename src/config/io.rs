@@ -27,6 +27,10 @@ pub fn load() -> Result<Config> {
             .with_context(|| format!("Failed to read config file: {:?}", config_path))?;
         let config: Config = toml::from_str(&contents)
             .with_context(|| format!("Failed to parse config file: {:?}", config_path))?;
+        config
+            .analysis
+            .validate()
+            .map_err(|e| anyhow::anyhow!("Invalid config: {}", e))?;
         Ok(config)
     } else {
         Ok(Config::default())

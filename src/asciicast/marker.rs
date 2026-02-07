@@ -118,13 +118,35 @@ impl MarkerManager {
         Ok(count)
     }
 
-    /// Clear all markers from an asciicast file in memory
+    /// Clear all markers from an asciicast file in memory.
+    ///
+    /// Redistributes each removed marker's relative time to the next event
+    /// so that cumulative timestamps are preserved.
     ///
     /// Returns the number of markers removed.
     pub fn clear_markers_from_cast(cast: &mut AsciicastFile) -> usize {
-        let original_len = cast.events.len();
-        cast.events.retain(|e| e.event_type != EventType::Marker);
-        original_len - cast.events.len()
+        let mut removed = 0usize;
+        let mut carry_time = 0.0f64;
+        let mut output = Vec::with_capacity(cast.events.len());
+
+        for mut event in cast.events.drain(..) {
+            if event.event_type == EventType::Marker {
+                carry_time += event.time;
+                removed += 1;
+            } else {
+                event.time += carry_time;
+                carry_time = 0.0;
+                output.push(event);
+            }
+        }
+        // If trailing markers had time, add it to the last event
+        if carry_time > 0.0 {
+            if let Some(last) = output.last_mut() {
+                last.time += carry_time;
+            }
+        }
+        cast.events = output;
+        removed
     }
 
     /// Count markers in an asciicast file

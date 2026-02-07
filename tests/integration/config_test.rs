@@ -165,25 +165,23 @@ auto_analyze = true
 }
 
 #[test]
-fn recording_config_with_analysis_agent() {
+fn analysis_config_with_agent() {
     let toml_str = r#"
-[recording]
-auto_analyze = true
-analysis_agent = "codex"
+[analysis]
+agent = "codex"
 "#;
     let config: Config = toml::from_str(toml_str).unwrap();
-    assert!(config.recording.auto_analyze);
-    assert_eq!(config.recording.analysis_agent, "codex");
+    assert_eq!(config.analysis.agent, Some("codex".to_string()));
 }
 
 #[test]
-fn recording_config_defaults_analysis_agent_to_claude() {
+fn analysis_config_defaults_agent_to_none() {
     let toml_str = r#"
-[recording]
-auto_analyze = true
+[analysis]
+timeout = 60
 "#;
     let config: Config = toml::from_str(toml_str).unwrap();
-    assert_eq!(config.recording.analysis_agent, "claude");
+    assert_eq!(config.analysis.agent, None);
 }
 
 #[test]

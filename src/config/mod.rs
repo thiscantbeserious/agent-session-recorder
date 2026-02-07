@@ -1,14 +1,19 @@
 //! Configuration management for ASR
 
+pub mod analysis;
+pub mod docs;
 mod io;
 mod migrate;
 mod types;
 
+pub use analysis::*;
 pub use migrate::*;
 pub use types::*;
 
 use anyhow::Result;
 use std::path::PathBuf;
+
+use crate::analyzer::backend::command_exists;
 
 impl Config {
     /// Get the config file path (~/.config/agr/config.toml)
@@ -88,5 +93,37 @@ impl Config {
         let initial_len = self.agents.no_wrap.len();
         self.agents.no_wrap.retain(|a| a != name);
         self.agents.no_wrap.len() < initial_len
+    }
+
+    /// Resolve the analysis agent with cascade:
+    /// 1. `[analysis].agent` (explicit config)
+    /// 2. Auto-detect first available agent binary on PATH
+    /// 3. Fall back to "claude"
+    pub fn resolve_analysis_agent(&self) -> String {
+        // 1. Prefer explicit [analysis].agent
+        if let Some(ref agent) = self.analysis.agent {
+            return agent.clone();
+        }
+
+        // 2. Auto-detect first available agent binary
+        for (cmd, name) in &[
+            ("claude", "claude"),
+            ("codex", "codex"),
+            ("gemini", "gemini"),
+        ] {
+            if command_exists(cmd) {
+                return name.to_string();
+            }
+        }
+
+        // 3. Ultimate fallback
+        "claude".to_string()
+    }
+
+    /// Look up per-agent analysis configuration.
+    ///
+    /// Returns `None` if the agent name is not recognized.
+    pub fn analysis_agent_config(&self, agent_name: &str) -> Option<&AgentAnalysisConfig> {
+        self.agents.agent_config(agent_name)
     }
 }

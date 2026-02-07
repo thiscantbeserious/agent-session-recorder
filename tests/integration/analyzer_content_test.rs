@@ -286,15 +286,17 @@ fn filter_empty_preserves_all_non_output_events() {
     let mut events = vec![
         Event::output(0.1, ""),                        // Empty - remove
         Event::marker(0.1, "marker"),                  // Keep
-        Event::output(0.1, "   \n\t  "),               // Whitespace only - remove
+        Event::output(0.1, "   \n\t  "),               // Has spaces - keep (TUI preserves spaces)
         Event::new(0.1, agr::EventType::Input, "key"), // Keep
         Event::output(0.1, "content"),                 // Keep
     ];
 
     FilterEmptyEvents.transform(&mut events);
 
-    assert_eq!(events.len(), 3);
+    // FilterEmptyEvents keeps events containing spaces (for TUI compatibility)
+    assert_eq!(events.len(), 4);
     assert!(events[0].is_marker());
-    assert_eq!(events[1].event_type, agr::EventType::Input);
-    assert!(events[2].is_output());
+    assert!(events[1].is_output()); // "   \n\t  " kept because it contains spaces
+    assert_eq!(events[2].event_type, agr::EventType::Input);
+    assert!(events[3].is_output());
 }

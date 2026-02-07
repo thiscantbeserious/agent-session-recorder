@@ -295,14 +295,25 @@ impl Transform for EventCoalescer {
 ///
 /// Implements a global frequency cap for lines and a sliding window for
 /// exact event content hashing to catch redundant TUI redraws.
+///
+/// **Important**: Windowed hashing only applies to events larger than
+/// `min_hash_bytes` to avoid discarding small but meaningful events
+/// like individual keystrokes and short output fragments.
 pub struct GlobalDeduplicator {
     line_counts: HashMap<String, usize>,
     max_line_repeats: usize,
     event_hashes: VecDeque<u64>,
+    event_hash_set: HashSet<u64>,
     window_size: usize,
+    min_hash_bytes: usize,
     total_deduped_lines: usize,
     total_deduped_events: usize,
 }
+
+/// Minimum event data size (bytes) for windowed hash deduplication.
+/// Events smaller than this are kept regardless of duplicates, since they
+/// typically represent keystrokes or short output rather than TUI redraws.
+const DEFAULT_MIN_HASH_BYTES: usize = 128;
 
 impl GlobalDeduplicator {
     /// Create a new global deduplicator.
@@ -311,7 +322,9 @@ impl GlobalDeduplicator {
             line_counts: HashMap::new(),
             max_line_repeats,
             event_hashes: VecDeque::with_capacity(window_size),
+            event_hash_set: HashSet::with_capacity(window_size),
             window_size,
+            min_hash_bytes: DEFAULT_MIN_HASH_BYTES,
             total_deduped_lines: 0,
             total_deduped_events: 0,
         }
@@ -347,23 +360,36 @@ impl Transform for GlobalDeduplicator {
             }
 
             // Windowed event hashing (targets TUI redraw frames)
-            let h = Self::hash_string(&event.data);
-            if self.event_hashes.contains(&h) {
-                self.total_deduped_events += 1;
-                accumulated_time += event.time;
-                continue;
-            }
-            self.event_hashes.push_back(h);
-            if self.event_hashes.len() > self.window_size {
-                self.event_hashes.pop_front();
+            // Skip small events: keystrokes and short output are not redraws
+            if event.data.len() >= self.min_hash_bytes {
+                let h = Self::hash_string(&event.data);
+                if self.event_hash_set.contains(&h) {
+                    self.total_deduped_events += 1;
+                    accumulated_time += event.time;
+                    continue;
+                }
+                self.event_hashes.push_back(h);
+                self.event_hash_set.insert(h);
+                if self.event_hashes.len() > self.window_size {
+                    if let Some(old) = self.event_hashes.pop_front() {
+                        self.event_hash_set.remove(&old);
+                    }
+                }
             }
 
-            // Line frequency capping
+            // Line frequency capping (Global)
+            // We keep only the last few instances of any given non-empty line
             let mut new_data = String::with_capacity(event.data.len());
-            for line in event.data.split_inclusive('\n') {
+            let lines: Vec<String> = event
+                .data
+                .split_inclusive('\n')
+                .map(|s| s.to_string())
+                .collect();
+
+            for line in lines {
                 let trimmed = line.trim();
                 if trimmed.is_empty() {
-                    new_data.push_str(line);
+                    new_data.push_str(&line);
                     continue;
                 }
 
@@ -373,7 +399,7 @@ impl Transform for GlobalDeduplicator {
                     continue;
                 }
                 *count += 1;
-                new_data.push_str(line);
+                new_data.push_str(&line);
             }
 
             if !new_data.is_empty() {
@@ -393,5 +419,236 @@ impl Transform for GlobalDeduplicator {
         }
 
         *events = output_events;
+    }
+}
+
+/// Detects and collapses long bursts of output across multiple events.
+///
+/// This targets file dumps (e.g. cat, find) or massive log output that
+/// happens in a short time window without user interaction.
+pub struct FileDumpFilter {
+    max_burst_lines: usize,
+    burst_events: Vec<Event>,
+    burst_line_count: usize,
+    total_collapsed: usize,
+}
+
+impl FileDumpFilter {
+    /// Create a new file dump filter with given line limit.
+    pub fn new(max_burst_lines: usize) -> Self {
+        Self {
+            max_burst_lines,
+            burst_events: Vec::new(),
+            burst_line_count: 0,
+            total_collapsed: 0,
+        }
+    }
+
+    pub fn collapsed_count(&self) -> usize {
+        self.total_collapsed
+    }
+
+    fn flush_burst(&mut self, output: &mut Vec<Event>) {
+        if self.burst_events.is_empty() {
+            return;
+        }
+
+        if self.burst_line_count > self.max_burst_lines {
+            // Collapse the burst
+            let head_count = 50; // Keep first 50 lines
+            let tail_count = 10; // Keep last 10 lines
+
+            let all_content: String = self.burst_events.iter().map(|e| e.data.as_str()).collect();
+            let all_lines: Vec<&str> = all_content.split_inclusive('\n').collect();
+
+            if all_lines.len() > (head_count + tail_count) {
+                let head: String = all_lines[..head_count].concat();
+                let tail: String = all_lines[all_lines.len() - tail_count..].concat();
+                let collapsed = all_lines.len() - (head_count + tail_count);
+
+                self.total_collapsed += collapsed;
+                let total_time: f64 = self.burst_events.iter().map(|e| e.time).sum();
+
+                output.push(Event::output(
+                    total_time,
+                    format!(
+                        "{}\n[... collapsed {} lines of file/log output ...]\n{}",
+                        head.trim_end(),
+                        collapsed,
+                        tail.trim_start()
+                    ),
+                ));
+            } else {
+                output.append(&mut self.burst_events);
+            }
+        } else {
+            output.append(&mut self.burst_events);
+        }
+
+        self.burst_events.clear();
+        self.burst_line_count = 0;
+    }
+}
+
+impl Default for FileDumpFilter {
+    fn default() -> Self {
+        Self::new(500)
+    }
+}
+
+impl Transform for FileDumpFilter {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        let mut output = Vec::with_capacity(events.len());
+
+        for event in events.drain(..) {
+            if !event.is_output() || event.time > 0.5 {
+                // Non-output or significant time gap ends a burst
+                self.flush_burst(&mut output);
+                output.push(event);
+                continue;
+            }
+
+            // Group output event into current burst
+            let lines = event.data.chars().filter(|&c| c == '\n').count();
+            self.burst_line_count += lines;
+            self.burst_events.push(event);
+
+            // If burst already too large, we can stop early
+            if self.burst_line_count > self.max_burst_lines * 2 {
+                self.flush_burst(&mut output);
+            }
+        }
+
+        self.flush_burst(&mut output);
+        *events = output;
+    }
+}
+
+/// Deduplicates lines within a sliding window of events.
+///
+/// Keeps ONLY the last instance of any non-empty line that repeats
+/// within the window. This is highly effective at cleaning up status
+/// lines, repetitive TUI elements, and log bursts while keeping the
+/// final (most relevant) state.
+pub struct WindowedLineDeduplicator {
+    window_size: usize,
+    line_buffer: VecDeque<(String, f64)>,
+    total_deduped: usize,
+}
+
+impl WindowedLineDeduplicator {
+    pub fn new(window_size: usize) -> Self {
+        Self {
+            window_size,
+            line_buffer: VecDeque::with_capacity(window_size),
+            total_deduped: 0,
+        }
+    }
+
+    pub fn deduped_count(&self) -> usize {
+        self.total_deduped
+    }
+
+    fn flush_lines(&mut self, output: &mut Vec<Event>) {
+        if self.line_buffer.is_empty() {
+            return;
+        }
+
+        let lines: Vec<_> = self.line_buffer.drain(..).collect();
+
+        // Build a map of trimmed_end -> last index for O(1) repeat detection
+        let mut last_occurrence: HashMap<&str, usize> = HashMap::with_capacity(lines.len());
+        for (i, (ref line, _)) in lines.iter().enumerate() {
+            let trimmed = line.trim_end();
+            if !trimmed.trim().is_empty() {
+                last_occurrence.insert(trimmed, i);
+            }
+        }
+
+        let mut current_data = String::new();
+        let mut current_time = 0.0;
+
+        for (i, (ref line_text, time)) in lines.iter().enumerate() {
+            let trimmed = line_text.trim();
+
+            if trimmed.is_empty() {
+                current_data.push_str(line_text);
+                current_time += *time;
+                continue;
+            }
+
+            let line_trimmed_end = line_text.trim_end();
+
+            // O(1) repeat detection via HashMap
+            let is_repeated = last_occurrence
+                .get(line_trimmed_end)
+                .map(|&last| last > i)
+                .unwrap_or(false);
+
+            // O(n) prefix detection only when line is not already a repeat
+            let is_prefix = if !is_repeated {
+                lines[(i + 1)..].iter().any(|(later, _)| {
+                    let later_trimmed = later.trim_end();
+                    later_trimmed.starts_with(line_trimmed_end)
+                        && later_trimmed.len() > line_trimmed_end.len()
+                })
+            } else {
+                false
+            };
+
+            if !is_prefix && !is_repeated {
+                current_data.push_str(line_text);
+                current_time += *time;
+            } else {
+                self.total_deduped += 1;
+                current_time += *time;
+            }
+        }
+
+        if !current_data.is_empty() {
+            output.push(Event::output(current_time, current_data));
+        }
+    }
+}
+
+impl Default for WindowedLineDeduplicator {
+    fn default() -> Self {
+        Self::new(1000) // 1000-line window
+    }
+}
+
+impl Transform for WindowedLineDeduplicator {
+    fn transform(&mut self, events: &mut Vec<Event>) {
+        let mut output = Vec::with_capacity(events.len());
+
+        for event in events.drain(..) {
+            if !event.is_output() {
+                self.flush_lines(&mut output);
+                output.push(event);
+                continue;
+            }
+
+            let lines: Vec<String> = event
+                .data
+                .split_inclusive('\n')
+                .map(|s| s.to_string())
+                .collect();
+            let line_count = lines.len();
+            let time_per_line = if line_count == 0 {
+                event.time
+            } else {
+                event.time / line_count as f64
+            };
+
+            for line in lines {
+                self.line_buffer.push_back((line, time_per_line));
+                if self.line_buffer.len() >= self.window_size {
+                    self.flush_lines(&mut output);
+                }
+            }
+        }
+
+        self.flush_lines(&mut output);
+        *events = output;
     }
 }

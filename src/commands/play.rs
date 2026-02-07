@@ -4,7 +4,8 @@ use anyhow::Result;
 
 use agr::{play_session, Config};
 
-use super::resolve_file_path;
+use agr::asciicast::integrity::check_file_integrity;
+use agr::files::resolve::resolve_file_path;
 
 /// Play a recording file using the native player.
 ///
@@ -27,6 +28,9 @@ pub fn handle(file: &str) -> Result<()> {
     if filepath.extension().and_then(|e| e.to_str()) != Some("cast") {
         eprintln!("Warning: File does not have .cast extension");
     }
+
+    // Check for file corruption before playing
+    check_file_integrity(&filepath)?;
 
     // Play the session using the native player
     let result = play_session(&filepath)?;

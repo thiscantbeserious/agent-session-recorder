@@ -423,7 +423,7 @@ fn seek_to_time(
             break;
         }
         if event.is_output() {
-            buffer.process(&event.data);
+            buffer.process(&event.data, None);
         } else if let Some((new_cols, new_rows)) = event.parse_resize() {
             buffer.resize(new_cols as usize, new_rows as usize);
         }
@@ -709,10 +709,10 @@ fn snapshot_help_overlay_small() {
 #[test]
 fn snapshot_viewport_normal_playback() {
     let mut buffer = TerminalBuffer::new(80, 24);
-    buffer.process("$ cargo build\r\n");
-    buffer.process("\x1b[32m   Compiling\x1b[0m agr v0.1.0\r\n");
-    buffer.process("\x1b[32m    Finished\x1b[0m release\r\n");
-    buffer.process("$ ");
+    buffer.process("$ cargo build\r\n", None);
+    buffer.process("\x1b[32m   Compiling\x1b[0m agr v0.1.0\r\n", None);
+    buffer.process("\x1b[32m    Finished\x1b[0m release\r\n", None);
+    buffer.process("$ ", None);
 
     let output = render_viewport_snapshot(&buffer, 0, 0, 10, 40, None);
     insta::with_settings!({
@@ -725,11 +725,11 @@ fn snapshot_viewport_normal_playback() {
 #[test]
 fn snapshot_viewport_with_highlight() {
     let mut buffer = TerminalBuffer::new(80, 24);
-    buffer.process("Line 0\r\n");
-    buffer.process("Line 1\r\n");
-    buffer.process("Line 2 - highlighted\r\n");
-    buffer.process("Line 3\r\n");
-    buffer.process("Line 4\r\n");
+    buffer.process("Line 0\r\n", None);
+    buffer.process("Line 1\r\n", None);
+    buffer.process("Line 2 - highlighted\r\n", None);
+    buffer.process("Line 3\r\n", None);
+    buffer.process("Line 4\r\n", None);
 
     let output = render_viewport_snapshot(&buffer, 0, 0, 10, 40, Some(2));
     insta::with_settings!({
@@ -743,7 +743,10 @@ fn snapshot_viewport_with_highlight() {
 fn snapshot_viewport_scrolled() {
     let mut buffer = TerminalBuffer::new(100, 30);
     for i in 0..30 {
-        buffer.process(&format!("Line {} - some content here with offset\r\n", i));
+        buffer.process(
+            &format!("Line {} - some content here with offset\r\n", i),
+            None,
+        );
     }
 
     let output = render_viewport_snapshot(&buffer, 10, 5, 10, 40, None);
@@ -758,7 +761,7 @@ fn snapshot_viewport_scrolled() {
 fn snapshot_viewport_free_mode_highlight() {
     let mut buffer = TerminalBuffer::new(80, 24);
     for i in 0..15 {
-        buffer.process(&format!("Line {}: content\r\n", i));
+        buffer.process(&format!("Line {}: content\r\n", i), None);
     }
 
     // Free mode with highlight at line 7
@@ -881,9 +884,9 @@ fn render_full_player_frame(
 #[test]
 fn snapshot_full_frame_playing() {
     let mut buffer = TerminalBuffer::new(80, 24);
-    buffer.process("$ cargo build\r\n");
-    buffer.process("\x1b[32m   Compiling\x1b[0m agr v0.1.0\r\n");
-    buffer.process("$ ");
+    buffer.process("$ cargo build\r\n", None);
+    buffer.process("\x1b[32m   Compiling\x1b[0m agr v0.1.0\r\n", None);
+    buffer.process("$ ", None);
 
     let output = render_full_player_frame(
         &buffer,
@@ -912,9 +915,9 @@ fn snapshot_full_frame_playing() {
 #[test]
 fn snapshot_full_frame_paused() {
     let mut buffer = TerminalBuffer::new(80, 24);
-    buffer.process("$ cargo test\r\n");
-    buffer.process("\x1b[32mrunning 42 tests\x1b[0m\r\n");
-    buffer.process("$ ");
+    buffer.process("$ cargo test\r\n", None);
+    buffer.process("\x1b[32mrunning 42 tests\x1b[0m\r\n", None);
+    buffer.process("$ ", None);
 
     let output = render_full_player_frame(
         &buffer,
@@ -943,10 +946,10 @@ fn snapshot_full_frame_paused() {
 #[test]
 fn snapshot_full_frame_with_markers() {
     let mut buffer = TerminalBuffer::new(100, 30);
-    buffer.process("$ make build\r\n");
-    buffer.process("Building...\r\n");
-    buffer.process("Done!\r\n");
-    buffer.process("$ ");
+    buffer.process("$ make build\r\n", None);
+    buffer.process("Building...\r\n", None);
+    buffer.process("Done!\r\n", None);
+    buffer.process("$ ", None);
 
     let markers = vec![
         MarkerPosition {
@@ -973,7 +976,7 @@ fn snapshot_full_frame_with_markers() {
 fn snapshot_full_frame_viewport_mode() {
     let mut buffer = TerminalBuffer::new(120, 48);
     for i in 0..48 {
-        buffer.process(&format!("Line {}: This is a long line of content that extends beyond the viewport width for testing\r\n", i));
+        buffer.process(&format!("Line {}: This is a long line of content that extends beyond the viewport width for testing\r\n", i), None);
     }
 
     let output = render_full_player_frame(
@@ -1004,7 +1007,7 @@ fn snapshot_full_frame_viewport_mode() {
 fn snapshot_full_frame_free_mode() {
     let mut buffer = TerminalBuffer::new(80, 24);
     for i in 0..20 {
-        buffer.process(&format!("Line {}: content here\r\n", i));
+        buffer.process(&format!("Line {}: content here\r\n", i), None);
     }
 
     let output = render_full_player_frame(

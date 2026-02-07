@@ -245,13 +245,13 @@ impl Recorder {
             return;
         }
 
-        let agent_name = &self.config.recording.analysis_agent;
+        let agent_name = self.config.resolve_analysis_agent();
 
         // Parse agent type
         let agent = match agent_name.to_lowercase().as_str() {
             "claude" => AgentType::Claude,
             "codex" => AgentType::Codex,
-            "gemini" | "gemini-cli" => AgentType::Gemini,
+            "gemini" => AgentType::Gemini,
             _ => {
                 eprintln!(
                     "Auto-analyze skipped: unknown agent '{}'. Supported: claude, codex, gemini",
@@ -269,7 +269,7 @@ impl Recorder {
         if !service.is_agent_available() {
             println!();
             println!(
-                "Auto-analyze skipped: '{}' not installed. Install it or change analysis_agent in config.",
+                "Auto-analyze skipped: '{}' not installed. Install it or set [analysis].agent in config.",
                 agent_name
             );
             println!(

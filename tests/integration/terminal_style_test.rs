@@ -28,7 +28,7 @@ fn cell_default_is_space() {
 #[test]
 fn styled_lines_returns_correct_count() {
     let mut buf = TerminalBuffer::new(80, 3);
-    buf.process("Line 1\r\nLine 2\r\nLine 3");
+    buf.process("Line 1\r\nLine 2\r\nLine 3", None);
     let lines = buf.styled_lines();
     assert_eq!(lines.len(), 3);
 }
@@ -36,7 +36,7 @@ fn styled_lines_returns_correct_count() {
 #[test]
 fn styled_lines_preserves_red_foreground() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[31mRed");
+    buf.process("\x1b[31mRed", None);
     let lines = buf.styled_lines();
     assert!(!lines.is_empty());
     let first_line = &lines[0];
@@ -46,7 +46,7 @@ fn styled_lines_preserves_red_foreground() {
 #[test]
 fn styled_lines_preserves_green_foreground() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[32mGreen");
+    buf.process("\x1b[32mGreen", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line.cells.iter().any(|c| c.style.fg == Color::Green));
@@ -55,7 +55,7 @@ fn styled_lines_preserves_green_foreground() {
 #[test]
 fn styled_lines_preserves_blue_background() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[44mBlue BG");
+    buf.process("\x1b[44mBlue BG", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line.cells.iter().any(|c| c.style.bg == Color::Blue));
@@ -64,7 +64,7 @@ fn styled_lines_preserves_blue_background() {
 #[test]
 fn styled_lines_preserves_bold() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[1mBold");
+    buf.process("\x1b[1mBold", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line.cells.iter().any(|c| c.style.bold));
@@ -73,7 +73,7 @@ fn styled_lines_preserves_bold() {
 #[test]
 fn styled_lines_reset_clears_style() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[31mRed\x1b[0mNormal");
+    buf.process("\x1b[31mRed\x1b[0mNormal", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line.cells.iter().any(|c| c.style.fg == Color::Red));
@@ -86,7 +86,7 @@ fn styled_lines_reset_clears_style() {
 #[test]
 fn styled_lines_bright_colors() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[91mBright Red");
+    buf.process("\x1b[91mBright Red", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -98,7 +98,7 @@ fn styled_lines_bright_colors() {
 #[test]
 fn styled_lines_256_color() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[38;5;196mIndexed");
+    buf.process("\x1b[38;5;196mIndexed", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -110,7 +110,7 @@ fn styled_lines_256_color() {
 #[test]
 fn styled_lines_rgb_color() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[38;2;255;128;64mRGB");
+    buf.process("\x1b[38;2;255;128;64mRGB", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -122,7 +122,7 @@ fn styled_lines_rgb_color() {
 #[test]
 fn styled_lines_multiple_attributes() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[1;4;31mBold Underline Red");
+    buf.process("\x1b[1;4;31mBold Underline Red", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -134,7 +134,7 @@ fn styled_lines_multiple_attributes() {
 #[test]
 fn process_colored_text_applies_style() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[1;32mBold Green\x1b[0m Normal");
+    buf.process("\x1b[1;32mBold Green\x1b[0m Normal", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
 
@@ -156,7 +156,7 @@ fn process_colored_text_applies_style() {
 #[test]
 fn styled_lines_dim_attribute() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[2mDim");
+    buf.process("\x1b[2mDim", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line.cells.iter().any(|c| c.style.dim));
@@ -165,7 +165,7 @@ fn styled_lines_dim_attribute() {
 #[test]
 fn styled_lines_italic_attribute() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[3mItalic");
+    buf.process("\x1b[3mItalic", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line.cells.iter().any(|c| c.style.italic));
@@ -185,7 +185,7 @@ fn styled_lines_all_basic_foreground_colors() {
     ];
     for (seq, expected) in colors {
         let mut buf = TerminalBuffer::new(80, 24);
-        buf.process(&format!("{}X", seq));
+        buf.process(&format!("{}X", seq), None);
         let lines = buf.styled_lines();
         assert!(
             lines[0].cells.iter().any(|c| c.style.fg == expected),
@@ -210,7 +210,7 @@ fn styled_lines_all_basic_background_colors() {
     ];
     for (seq, expected) in colors {
         let mut buf = TerminalBuffer::new(80, 24);
-        buf.process(&format!("{}X", seq));
+        buf.process(&format!("{}X", seq), None);
         let lines = buf.styled_lines();
         assert!(
             lines[0].cells.iter().any(|c| c.style.bg == expected),
@@ -224,7 +224,7 @@ fn styled_lines_all_basic_background_colors() {
 #[test]
 fn styled_lines_default_foreground_reset() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[31mR\x1b[39mD");
+    buf.process("\x1b[31mR\x1b[39mD", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -240,7 +240,7 @@ fn styled_lines_default_foreground_reset() {
 #[test]
 fn styled_lines_default_background_reset() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[41mR\x1b[49mD");
+    buf.process("\x1b[41mR\x1b[49mD", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -256,7 +256,7 @@ fn styled_lines_default_background_reset() {
 #[test]
 fn styled_lines_bright_background_colors() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[100mX");
+    buf.process("\x1b[100mX", None);
     let lines = buf.styled_lines();
     assert!(lines[0]
         .cells
@@ -267,7 +267,7 @@ fn styled_lines_bright_background_colors() {
 #[test]
 fn styled_lines_256_background_color() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[48;5;82mX");
+    buf.process("\x1b[48;5;82mX", None);
     let lines = buf.styled_lines();
     assert!(lines[0]
         .cells
@@ -278,7 +278,7 @@ fn styled_lines_256_background_color() {
 #[test]
 fn styled_lines_rgb_background_color() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[48;2;100;150;200mX");
+    buf.process("\x1b[48;2;100;150;200mX", None);
     let lines = buf.styled_lines();
     assert!(lines[0]
         .cells
@@ -289,7 +289,7 @@ fn styled_lines_rgb_background_color() {
 #[test]
 fn sgr_reset_bold_and_dim() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[1;2mX\x1b[22mY");
+    buf.process("\x1b[1;2mX\x1b[22mY", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -305,7 +305,7 @@ fn sgr_reset_bold_and_dim() {
 #[test]
 fn sgr_reset_italic() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[3mX\x1b[23mY");
+    buf.process("\x1b[3mX\x1b[23mY", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -321,7 +321,7 @@ fn sgr_reset_italic() {
 #[test]
 fn sgr_reset_underline() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[4mX\x1b[24mY");
+    buf.process("\x1b[4mX\x1b[24mY", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -348,7 +348,7 @@ fn all_bright_foreground_colors() {
     ];
     for (seq, expected) in colors {
         let mut buf = TerminalBuffer::new(80, 24);
-        buf.process(&format!("{}X", seq));
+        buf.process(&format!("{}X", seq), None);
         let lines = buf.styled_lines();
         assert!(
             lines[0].cells.iter().any(|c| c.style.fg == expected),
@@ -373,7 +373,7 @@ fn all_bright_background_colors() {
     ];
     for (seq, expected) in colors {
         let mut buf = TerminalBuffer::new(80, 24);
-        buf.process(&format!("{}X", seq));
+        buf.process(&format!("{}X", seq), None);
         let lines = buf.styled_lines();
         assert!(
             lines[0].cells.iter().any(|c| c.style.bg == expected),
@@ -387,7 +387,7 @@ fn all_bright_background_colors() {
 #[test]
 fn unknown_sgr_code_is_ignored() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[999mX");
+    buf.process("\x1b[999mX", None);
     let lines = buf.styled_lines();
     assert!(lines[0].cells.iter().any(|c| c.char == 'X'));
 }
@@ -395,7 +395,7 @@ fn unknown_sgr_code_is_ignored() {
 #[test]
 fn reverse_video_attribute() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[7mReversed\x1b[27mNormal");
+    buf.process("\x1b[7mReversed\x1b[27mNormal", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -411,7 +411,7 @@ fn reverse_video_attribute() {
 #[test]
 fn reverse_video_reset_by_sgr0() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[7mReversed\x1b[0mNormal");
+    buf.process("\x1b[7mReversed\x1b[0mNormal", None);
     let lines = buf.styled_lines();
     let first_line = &lines[0];
     assert!(first_line
@@ -427,7 +427,7 @@ fn reverse_video_reset_by_sgr0() {
 #[test]
 fn reverse_video_combined_with_colors() {
     let mut buf = TerminalBuffer::new(80, 24);
-    buf.process("\x1b[31;7mX");
+    buf.process("\x1b[31;7mX", None);
     let lines = buf.styled_lines();
     let cell = lines[0].cells.iter().find(|c| c.char == 'X').unwrap();
     assert!(cell.style.reverse);

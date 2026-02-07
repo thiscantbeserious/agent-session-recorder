@@ -29,7 +29,8 @@ use std::time::Duration;
 use thiserror::Error;
 
 /// JSON Schema for marker output (minified, for inline CLI args like Claude's --json-schema).
-pub const MARKER_JSON_SCHEMA: &str = r#"{"type":"object","properties":{"markers":{"type":"array","items":{"type":"object","properties":{"timestamp":{"type":"number"},"label":{"type":"string"},"category":{"type":"string","enum":["planning","design","implementation","success","failure"]}},"required":["timestamp","label","category"]}}},"required":["markers"]}"#;
+/// Includes `additionalProperties: false` at each object level as required by OpenAI's API.
+pub const MARKER_JSON_SCHEMA: &str = r#"{"type":"object","properties":{"markers":{"type":"array","items":{"type":"object","properties":{"timestamp":{"type":"number"},"label":{"type":"string"},"category":{"type":"string","enum":["planning","design","implementation","success","failure"]}},"required":["timestamp","label","category"],"additionalProperties":false}}},"required":["markers"],"additionalProperties":false}"#;
 
 /// Get the path to the marker schema JSON file (for CLIs that need a file path like Codex).
 ///
@@ -46,10 +47,12 @@ pub fn get_schema_file_path() -> std::io::Result<PathBuf> {
     Ok(schema_path)
 }
 
-/// Wait for child process with timeout.
+/// Wait for child process with timeout, draining pipes concurrently.
 ///
-/// Uses a simple polling approach since std::process doesn't have
-/// native timeout support. Includes proper process reaping to prevent zombies.
+/// Spawns reader threads for stdout/stderr to prevent pipe buffer deadlocks.
+/// Without concurrent reading, a child that produces more than the OS pipe
+/// buffer (~16KB on macOS) will block on write while the parent blocks
+/// waiting for exit.
 pub(crate) fn wait_with_timeout(
     child: &mut std::process::Child,
     timeout_secs: u64,
@@ -58,31 +61,38 @@ pub(crate) fn wait_with_timeout(
     use std::thread;
     use std::time::Instant;
 
+    // Take ownership of pipes and drain them in background threads.
+    // This prevents the child from blocking on a full pipe buffer.
+    let stdout_handle = child.stdout.take().map(|pipe| {
+        thread::spawn(move || {
+            let mut buf = Vec::new();
+            let mut pipe = pipe;
+            pipe.read_to_end(&mut buf).ok();
+            buf
+        })
+    });
+
+    let stderr_handle = child.stderr.take().map(|pipe| {
+        thread::spawn(move || {
+            let mut buf = Vec::new();
+            let mut pipe = pipe;
+            pipe.read_to_end(&mut buf).ok();
+            buf
+        })
+    });
+
     let start = Instant::now();
     let poll_interval = Duration::from_millis(100);
 
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                // Process finished - collect output
-                let stdout = child
-                    .stdout
-                    .take()
-                    .map(|mut s| {
-                        let mut buf = Vec::new();
-                        s.read_to_end(&mut buf).ok();
-                        buf
-                    })
+                // Process finished — join reader threads
+                let stdout = stdout_handle
+                    .and_then(|h| h.join().ok())
                     .unwrap_or_default();
-
-                let stderr = child
-                    .stderr
-                    .take()
-                    .map(|mut s| {
-                        let mut buf = Vec::new();
-                        s.read_to_end(&mut buf).ok();
-                        buf
-                    })
+                let stderr = stderr_handle
+                    .and_then(|h| h.join().ok())
                     .unwrap_or_default();
 
                 return Ok(std::process::Output {
@@ -92,7 +102,7 @@ pub(crate) fn wait_with_timeout(
                 });
             }
             Ok(None) => {
-                // Still running - check timeout
+                // Still running — check timeout
                 if start.elapsed().as_secs() >= timeout_secs {
                     // Kill and reap to prevent zombie process
                     let _ = child.kill();
@@ -156,11 +166,11 @@ pub enum AgentType {
 
 impl AgentType {
     /// Create the appropriate backend for this agent type.
-    pub fn create_backend(&self) -> Box<dyn AgentBackend> {
+    pub fn create_backend(&self, extra_args: Vec<String>) -> Box<dyn AgentBackend> {
         match self {
-            AgentType::Claude => Box::new(ClaudeBackend::new()),
-            AgentType::Codex => Box::new(CodexBackend::new()),
-            AgentType::Gemini => Box::new(GeminiBackend::new()),
+            AgentType::Claude => Box::new(ClaudeBackend::with_extra_args(extra_args)),
+            AgentType::Codex => Box::new(CodexBackend::with_extra_args(extra_args)),
+            AgentType::Gemini => Box::new(GeminiBackend::with_extra_args(extra_args)),
         }
     }
 
@@ -882,8 +892,8 @@ Done."#;
     #[test]
     fn agent_type_create_backend() {
         // Just verify it creates without panic
-        let _ = AgentType::Claude.create_backend();
-        let _ = AgentType::Codex.create_backend();
-        let _ = AgentType::Gemini.create_backend();
+        let _ = AgentType::Claude.create_backend(vec![]);
+        let _ = AgentType::Codex.create_backend(vec![]);
+        let _ = AgentType::Gemini.create_backend(vec![]);
     }
 }

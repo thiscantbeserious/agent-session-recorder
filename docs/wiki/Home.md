@@ -2,6 +2,8 @@
 
 Welcome to the AGR (Agent Session Recorder) wiki.
 
+## [[Configuration]]
+
 ## Commands
 
 - [[record|Command-record]] - Start recording a session

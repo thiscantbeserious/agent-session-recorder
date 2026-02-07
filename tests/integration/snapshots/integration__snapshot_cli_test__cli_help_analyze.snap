@@ -16,7 +16,7 @@ For large files, analysis is parallelized across multiple chunks, with
 automatic retry and rate limit handling.
 
 The default agent is configured in ~/.config/agr/config.toml under
-[recording].analysis_agent. Use --agent to override for a single run.
+[analysis].agent. Use --agent to override for a single run.
 
 EXAMPLES:
     agr analyze session.cast                     [37mAnalyze with default agent[0m

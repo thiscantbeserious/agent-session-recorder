@@ -1,0 +1,54 @@
+---
+source: src/config/migrate/mod.rs
+expression: result.content
+---
+config_version = 1
+
+[shell]
+auto_wrap = true
+
+[storage]
+directory = "~/recorded_agent_sessions"
+size_threshold_gb = 5.0
+age_threshold_days = 30
+
+[recording]
+auto_analyze = false
+filename_template = "{directory}_{date}_{time}"
+directory_max_length = 14
+
+[analysis]
+timeout = 120
+fast = false
+curate = true
+# agent = auto-detect
+# workers = auto
+
+[agents]
+enabled = [
+    "claude",
+    "codex",
+    "gemini",
+]
+no_wrap = []
+
+[agents.claude]
+extra_args = []
+analyze_extra_args = []
+curate_extra_args = []
+rename_extra_args = []
+# token_budget = auto
+
+[agents.codex]
+extra_args = []
+analyze_extra_args = []
+curate_extra_args = []
+rename_extra_args = []
+# token_budget = auto
+
+[agents.gemini]
+extra_args = []
+analyze_extra_args = []
+curate_extra_args = []
+rename_extra_args = []
+# token_budget = auto

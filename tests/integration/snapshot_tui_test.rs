@@ -684,7 +684,7 @@ use agr::tui::list_app::ListApp;
 /// Render the context menu modal to a buffer and return as string.
 fn render_context_menu_to_string(selected_idx: usize, backup_exists: bool) -> String {
     let width = 60u16;
-    let height = 15u16;
+    let height = 18u16;
     let area = Rect::new(0, 0, width, height);
 
     // Create a mock terminal backend
@@ -736,13 +736,13 @@ fn snapshot_context_menu_restore_selected_no_backup() {
 
 #[test]
 fn snapshot_context_menu_delete_selected() {
-    let output = render_context_menu_to_string(3, true);
+    let output = render_context_menu_to_string(5, true);
     insta::assert_snapshot!("context_menu_delete_selected", output);
 }
 
 #[test]
 fn snapshot_context_menu_last_item_selected() {
-    let output = render_context_menu_to_string(4, true);
+    let output = render_context_menu_to_string(6, true);
     insta::assert_snapshot!("context_menu_last_item", output);
 }
 

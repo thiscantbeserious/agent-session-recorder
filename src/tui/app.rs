@@ -113,6 +113,10 @@ impl App {
     /// - Clears screen and moves cursor to home
     /// - Resets colors and attributes
     pub fn suspend(&mut self) -> Result<()> {
+        // Stop the event handler thread FIRST so it releases stdin.
+        // Without this, the thread races subprocesses for keyboard input.
+        self.events.stop();
+
         disable_raw_mode()?;
         execute!(
             self.terminal.backend_mut(),

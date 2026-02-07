@@ -5,7 +5,8 @@ use anyhow::Result;
 use agr::tui::current_theme;
 use agr::{Config, MarkerManager};
 
-use super::resolve_file_path;
+use agr::asciicast::integrity::check_file_integrity;
+use agr::files::resolve::resolve_file_path;
 
 /// Add a marker to a cast file at a specific timestamp.
 ///
@@ -16,6 +17,7 @@ pub fn handle_add(file: &str, time: f64, label: &str) -> Result<()> {
     let theme = current_theme();
     // Resolve file path (supports short format like "claude/session.cast")
     let filepath = resolve_file_path(file, &config)?;
+    check_file_integrity(&filepath)?;
     MarkerManager::add_marker(&filepath, time, label)?;
     println!(
         "{}",
@@ -31,6 +33,7 @@ pub fn handle_list(file: &str) -> Result<()> {
     let theme = current_theme();
     // Resolve file path (supports short format like "claude/session.cast")
     let filepath = resolve_file_path(file, &config)?;
+    check_file_integrity(&filepath)?;
     let markers = MarkerManager::list_markers(&filepath)?;
 
     if markers.is_empty() {

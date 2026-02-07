@@ -4,6 +4,7 @@ expression: output
 ---
                                                             
                                                             
+                                                            
           ┌ Menu ────────────────────────────────┐          
           │Actions                               │          
           │                                      │          
@@ -11,7 +12,8 @@ expression: output
           │    Copy to clipboard (c)             │          
           │    Optimize (t)                      │          
           │       Removes silence from recording │          
-          │>   Restore from backup (r)           │          
-          │    Delete (d)                        │          
+          │    Analyze (a)                       │          
+          │    Restore from backup (r)           │          
+          │>   Delete (d)                        │          
           │    Add marker (m)                    │          
           └──────────────────────────────────────┘

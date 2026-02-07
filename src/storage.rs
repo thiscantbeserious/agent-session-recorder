@@ -400,9 +400,12 @@ mod tests {
             agents: crate::config::AgentsConfig {
                 enabled: vec!["claude".to_string(), "codex".to_string()],
                 no_wrap: vec![],
+                ..Default::default()
             },
             shell: Default::default(),
             recording: Default::default(),
+            analysis: Default::default(),
+            ..Default::default()
         }
     }
 

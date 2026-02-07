@@ -31,6 +31,14 @@ if [ -z "$_AGR_TEST_DIR_CREATED" ]; then
     ORIGINAL_HOME="$HOME"
     export HOME="$TEST_DIR"
     mkdir -p "$HOME/recorded_agent_sessions"
+
+    # Install fake claude binary for tests that need an analysis agent
+    FAKE_BIN_DIR="$TEST_DIR/fake-bin"
+    mkdir -p "$FAKE_BIN_DIR"
+    cp "$SCRIPT_DIR/fake-claude.sh" "$FAKE_BIN_DIR/claude"
+    chmod +x "$FAKE_BIN_DIR/claude"
+    export PATH="$FAKE_BIN_DIR:$PATH"
+
     _AGR_TEST_DIR_CREATED=1
 fi
 
