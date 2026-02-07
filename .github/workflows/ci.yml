@@ -24,6 +24,8 @@ jobs:
   # 1. Build - ensure it compiles and share artifacts
   build:
     name: Build (${{ matrix.os == 'ubuntu-latest' && 'Linux' || 'macOS' }})
+    needs: detect-changes
+    if: needs.detect-changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -124,7 +126,7 @@ jobs:
 
   miri:
     name: "Final Check: Undefined Behavior (Miri)"
-    needs: [build, detect-changes]
+    needs: detect-changes
     runs-on: ubuntu-latest
     steps:
       - name: Check if final checks needed
@@ -192,7 +194,7 @@ jobs:
 
   asan:
     name: "Final Check: Memory Leaks (ASan/LSan)"
-    needs: [build, detect-changes]
+    needs: detect-changes
     runs-on: ubuntu-latest
     steps:
       - name: Check if final checks needed
