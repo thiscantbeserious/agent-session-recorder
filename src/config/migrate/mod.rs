@@ -91,8 +91,8 @@ pub fn migrate_config(existing_content: &str) -> Result<MigrateResult> {
 
     // Validate that migrated values pass config validation (e.g. agent names).
     // This catches invalid values carried forward from old configs before writing.
-    let migrated_config: Config = toml::from_str(&doc.to_string())
-        .context("Migrated config is not valid TOML")?;
+    let migrated_config: Config =
+        toml::from_str(&doc.to_string()).context("Migrated config is not valid TOML")?;
     migrated_config
         .analysis
         .validate()

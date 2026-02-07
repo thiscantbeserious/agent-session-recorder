@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run cargo fmt on staged Rust files
+
+set -e
+
+# Get list of staged .rs files
+staged_rs_files=$(git diff --cached --name-only --diff-filter=ACM -- '*.rs')
+
+if [ -n "$staged_rs_files" ]; then
+    cargo fmt 2>&1
+    # Re-stage any files that were reformatted
+    echo "$staged_rs_files" | xargs git add
+fi

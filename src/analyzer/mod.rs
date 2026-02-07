@@ -50,7 +50,8 @@ pub use backend::{
 pub use chunk::{AnalysisChunk, ChunkCalculator, ChunkConfig, TimeRange, TokenBudget};
 
 // Re-export other types
-pub use config::{AgentAnalysisConfig, AnalysisConfig, ExtractionConfig};
+pub use crate::config::{AgentAnalysisConfig, AnalysisConfig};
+pub use config::ExtractionConfig;
 pub use extractor::ContentExtractor;
 pub use progress::DefaultProgressReporter;
 pub use transforms::{

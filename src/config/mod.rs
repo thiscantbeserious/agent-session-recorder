@@ -1,17 +1,19 @@
 //! Configuration management for ASR
 
+pub mod analysis;
 pub mod docs;
 mod io;
 mod migrate;
 mod types;
 
+pub use analysis::*;
 pub use migrate::*;
 pub use types::*;
 
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::analyzer::{backend::command_exists, AgentAnalysisConfig};
+use crate::analyzer::backend::command_exists;
 
 impl Config {
     /// Get the config file path (~/.config/agr/config.toml)

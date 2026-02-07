@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::analyzer::{AgentAnalysisConfig, AnalysisConfig};
+use super::analysis::{AgentAnalysisConfig, AnalysisConfig};
 use crate::config::migrate::CURRENT_VERSION;
 
 /// Main configuration structure

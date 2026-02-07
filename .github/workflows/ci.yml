@@ -142,13 +142,15 @@ jobs:
           #                     (memory safety covered by ASan/LSan job instead)
           #   storage        - tempfile::TempDir, fs::File::create, std::process::Command("df")
           #   commands::copy/completions/tests - tempfile::TempDir filesystem I/O
+          #   config::migrate - insta snapshots call `cargo metadata` (process spawning)
           cargo miri test --lib -- \
             --skip transform_ops \
             --skip analyzer \
             --skip storage \
             --skip commands::copy \
             --skip commands::completions \
-            --skip commands::tests
+            --skip commands::tests \
+            --skip config::migrate
 
   asan:
     name: "Final Check: Memory Leaks (ASan/LSan)"
