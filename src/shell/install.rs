@@ -15,7 +15,7 @@ use super::status::{is_installed_in, MARKER_END, MARKER_START};
 pub const MARKER_WARNING: &str = "# DO NOT EDIT - managed by 'agr shell install/uninstall'";
 
 /// The embedded shell script content (wrapper functions for agents)
-pub const SHELL_SCRIPT: &str = include_str!("../../shell/agr.sh");
+pub const SHELL_SCRIPT: &str = include_str!("assets/agr.sh");
 
 /// Shell type for completion generation
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
