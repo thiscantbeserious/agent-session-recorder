@@ -500,16 +500,16 @@ impl AnalyzerService {
     /// Suggest a better filename for the recording based on markers.
     ///
     /// Uses the LLM to generate a descriptive filename from the analysis markers.
-    /// Includes project name and git branch for better context.
+    /// Passes the current filename so the LLM can see what the file is called now.
     /// Returns the suggested filename (without extension) or None on failure.
     pub fn suggest_rename(
         &self,
         markers: &[ValidatedMarker],
         total_duration: f64,
         timeout: Duration,
-        project_context: &str,
+        current_filename: &str,
     ) -> Option<String> {
-        let prompt = build_rename_prompt(markers, total_duration, project_context);
+        let prompt = build_rename_prompt(markers, total_duration, current_filename);
 
         let response = self
             .backend
@@ -654,7 +654,7 @@ fn truncate_content_if_needed(content: &str, estimated_tokens: usize) -> String 
 fn build_rename_prompt(
     markers: &[ValidatedMarker],
     total_duration: f64,
-    project_context: &str,
+    current_filename: &str,
 ) -> String {
     const TEMPLATE: &str = include_str!("prompts/rename.txt");
 
@@ -679,7 +679,7 @@ fn build_rename_prompt(
             &format!("{:.1}", total_duration / 60.0),
         )
         .replace("{marker_count}", &markers.len().to_string())
-        .replace("{project_context}", project_context)
+        .replace("{current_filename}", current_filename)
         .replace("{markers_json}", &markers_json_str)
 }
 

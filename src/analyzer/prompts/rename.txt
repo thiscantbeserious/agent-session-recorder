@@ -1,35 +1,39 @@
-You are naming a terminal session recording based on its analysis markers.
+You are naming a terminal session recording of an AI coding agent.
 
 ## Recording Info
 
+Current filename: {current_filename}
 Total duration: {total_duration} seconds ({duration_minutes} minutes)
 Marker count: {marker_count}
-{project_context}
 
-## Session Markers
+## Session Markers (chronological)
 
 {markers_json}
 
 ## Your Task
 
-Generate a SHORT, descriptive filename (without extension) for this recording session.
+Generate a SHORT, descriptive kebab-case filename (without extension).
 
-Rules:
-1. Use lowercase kebab-case (e.g., "fix-auth-login-bug")
-2. Maximum 5 words / 40 characters
-3. Capture the PRIMARY activity or outcome of the session
-4. Be specific - avoid generic names like "coding-session" or "bug-fix"
-5. Use the project/branch context to be more specific if available
+**How to pick the name:**
+1. Read ALL markers to understand the full session arc, not just the last event
+2. Identify the MAIN feature or task the session is about (look at what was planned/designed/implemented)
+3. Name after the feature or task, not a single failure or debug step
+4. If the session spans a full lifecycle (plan → implement → test), name the feature
+5. If the current filename already describes the session well, return it unchanged
 
-Good examples:
-- "refactor-auth-middleware"
-- "fix-ci-worker-panic"
-- "add-json-schema-validation"
-- "migrate-db-to-postgres"
+**Format rules:**
+- Lowercase kebab-case only
+- 3-6 words, max 50 characters
+- No quotes, no extension, no explanation
 
-Bad examples:
-- "session-recording" (too generic)
-- "my-coding-session" (not descriptive)
-- "fix" (too short)
+**Good names** (describe the feature/task):
+- "add-clipboard-copy-feature" (session that plans+implements clipboard support)
+- "refactor-auth-middleware" (session that redesigns auth)
+- "fix-ci-pipeline-timeouts" (session focused on CI timeout issues)
 
-Return ONLY the filename. No quotes, no extension, no explanation.
+**Bad names** (too narrow, describe a single step):
+- "debug-macos-clipboard" (names one failure, misses the full session)
+- "fix-test-assertion" (names the last thing that happened)
+- "coding-session" (too generic)
+
+Return ONLY the filename, nothing else.

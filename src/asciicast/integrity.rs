@@ -198,7 +198,7 @@ pub fn check_file_integrity(path: &Path) -> Result<()> {
     io::stdout().flush()?;
 
     let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
+    io::stdin().lock().read_line(&mut input)?;
 
     if input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes") {
         let removed = repair(path)?;
