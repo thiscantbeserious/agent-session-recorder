@@ -5,6 +5,7 @@ use std::io::IsTerminal;
 use anyhow::Result;
 
 use agr::theme::current_theme;
+use agr::tui::app::TuiApp;
 use agr::tui::widgets::FileItem;
 use agr::tui::ListApp;
 use agr::{Config, StorageManager};

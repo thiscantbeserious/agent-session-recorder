@@ -7,6 +7,7 @@ use std::io::{self, BufRead, Write};
 
 use agr::storage::{SessionInfo, StorageStats};
 use agr::theme::current_theme;
+use agr::tui::app::TuiApp;
 use agr::tui::widgets::FileItem;
 use agr::tui::CleanupApp;
 use agr::{Config, StorageManager};
@@ -47,23 +48,19 @@ pub fn handle(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()>
 
     // Check if we're in a TTY - if so, use interactive TUI
     if std::io::stdout().is_terminal() {
-        handle_tui(sessions, agent_filter, storage)
+        handle_tui(sessions, agent_filter)
     } else {
         handle_text(sessions, agent_filter, older_than, age_threshold, storage)
     }
 }
 
 /// Handle cleanup command with interactive TUI.
-fn handle_tui(
-    sessions: Vec<SessionInfo>,
-    agent_filter: Option<&str>,
-    storage: StorageManager,
-) -> Result<()> {
+fn handle_tui(sessions: Vec<SessionInfo>, agent_filter: Option<&str>) -> Result<()> {
     // Convert sessions to FileItems
     let items: Vec<FileItem> = sessions.into_iter().map(FileItem::from).collect();
 
     // Create and run the cleanup app
-    let mut app = CleanupApp::new(items, storage)?;
+    let mut app = CleanupApp::new(items)?;
 
     // If agent filter was specified on command line, it's already applied
     // (sessions were filtered before being passed to this function)

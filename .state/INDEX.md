@@ -33,6 +33,7 @@ git log --oneline -5
 **Current focus:** None (phase complete)
 
 **Recently completed:**
+- Modularize TUI apps into shared framework: TuiApp trait, SharedState, unified keybindings, thread pool preview cache, generic AsyncLruCache (PR #125)
 - Refactor analyze command: parallel LLM analysis with content extraction pipeline, multi-backend support, and aggressive noise reduction (PR #112)
 - Final checks: Miri + ASan/LSan CI jobs for memory safety (PR #109)
 - Miri CI job with label-based trigger (PR #108)
@@ -50,6 +51,7 @@ Historical context for all state directories:
 
 | Directory | Description |
 |-----------|-------------|
+| refactor-tui-apps | TuiApp trait framework, SharedState, unified keybindings, thread pool preview cache, generic AsyncLruCache |
 | refactor-analyze-command | Parallel LLM analysis with content extraction, multi-backend support, noise reduction |
 | feature-clipboard-copy | Clipboard copy for recordings - CLI and TUI with cross-platform support |
 | enhance-shell-minification | Aggressive shell script minification for compact RC file embedding |
