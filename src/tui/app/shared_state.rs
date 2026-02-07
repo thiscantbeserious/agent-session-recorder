@@ -3,7 +3,7 @@
 //! Contains the fields that are common across all TUI explorer apps
 //! (search input, agent filter, explorer, status message, preview cache).
 
-use crate::tui::lru_cache::{new_preview_cache, PreviewCache};
+use crate::tui::preview_cache::PreviewCache;
 use crate::tui::widgets::{FileExplorer, FileItem};
 
 /// Shared state fields used by all TUI explorer applications.
@@ -44,7 +44,7 @@ impl SharedState {
             agent_filter_idx: 0,
             available_agents,
             status_message: None,
-            preview_cache: new_preview_cache(),
+            preview_cache: PreviewCache::default(),
         }
     }
 

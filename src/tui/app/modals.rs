@@ -1,7 +1,6 @@
 //! Shared modal utilities for TUI explorer applications
 //!
-//! Provides `center_modal()` for creating centered modal areas,
-//! `clear_area()` for clearing a rect before drawing, and
+//! Provides `center_modal()` for creating centered modal areas and
 //! shared modal rendering functions used by both apps.
 
 use ratatui::{
@@ -25,14 +24,6 @@ pub fn center_modal(area: Rect, width: u16, height: u16) -> Rect {
     let x = area.x + (area.width.saturating_sub(modal_width)) / 2;
     let y = area.y + (area.height.saturating_sub(modal_height)) / 2;
     Rect::new(x, y, modal_width, modal_height)
-}
-
-/// Clear a rectangular area before drawing a modal overlay.
-///
-/// Renders a `Clear` widget to erase whatever is behind the modal.
-#[allow(dead_code)]
-pub fn clear_area(frame: &mut Frame, area: Rect) {
-    frame.render_widget(Clear, area);
 }
 
 /// Render a confirm-delete modal for a single file.

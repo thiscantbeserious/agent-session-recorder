@@ -270,7 +270,7 @@ impl SessionPreview {
 /// Extracted from `list_app.rs` and `cleanup_app.rs` which had identical logic.
 pub fn prefetch_adjacent_previews(
     explorer: &super::FileExplorer,
-    cache: &mut crate::tui::lru_cache::PreviewCache,
+    cache: &mut crate::tui::preview_cache::PreviewCache,
 ) {
     let selected = explorer.selected();
     let len = explorer.len();
@@ -300,19 +300,6 @@ pub fn prefetch_adjacent_previews(
 
     // Request prefetch for all
     cache.prefetch(&paths_to_prefetch);
-}
-
-/// Extract the current preview from cache for the selected item.
-///
-/// Returns `None` if no item is selected or preview is not yet cached.
-/// Extracted from the draw methods of `list_app.rs` and `cleanup_app.rs`.
-#[allow(dead_code)]
-pub fn extract_preview<'a>(
-    explorer: &super::FileExplorer,
-    cache: &'a mut crate::tui::lru_cache::PreviewCache,
-) -> Option<&'a SessionPreview> {
-    let path = explorer.selected_item().map(|i| i.path.clone())?;
-    cache.get(&path)
 }
 
 #[cfg(test)]

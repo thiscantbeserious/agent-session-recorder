@@ -71,14 +71,14 @@ fn handle_search_key(key: KeyEvent, state: &mut SharedState) -> KeyResult {
         }
         KeyCode::Backspace => {
             state.search_input.pop();
-            apply_live_search(state);
+            apply_search_filter(state);
             KeyResult::Consumed
         }
         KeyCode::Char(c) => {
             // Ignore ctrl+c etc in search mode
             if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
                 state.search_input.push(c);
-                apply_live_search(state);
+                apply_search_filter(state);
             }
             KeyResult::Consumed
         }
@@ -88,17 +88,6 @@ fn handle_search_key(key: KeyEvent, state: &mut SharedState) -> KeyResult {
 
 /// Apply the search filter from the current search input.
 fn apply_search_filter(state: &mut SharedState) {
-    if state.search_input.is_empty() {
-        state.explorer.set_search_filter(None);
-    } else {
-        state
-            .explorer
-            .set_search_filter(Some(state.search_input.clone()));
-    }
-}
-
-/// Apply live search filtering as the user types.
-fn apply_live_search(state: &mut SharedState) {
     if state.search_input.is_empty() {
         state.explorer.set_search_filter(None);
     } else {

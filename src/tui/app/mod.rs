@@ -30,7 +30,7 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 
-use super::event_bus::{Event, EventHandler};
+use crate::tui::event::{Event, EventHandler};
 
 /// TUI Application wrapper
 ///
@@ -220,12 +220,6 @@ pub trait TuiApp {
 
     /// Access the shared state (explorer, search, agent filter, etc.).
     fn shared_state(&mut self) -> &mut SharedState;
-
-    /// Check if the app is in normal (browsing) mode.
-    fn is_normal_mode(&self) -> bool;
-
-    /// Reset the app to normal (browsing) mode.
-    fn set_normal_mode(&mut self);
 
     /// Handle a key event. Called from the default `run()` event loop.
     fn handle_key(&mut self, key: KeyEvent) -> Result<()>;
