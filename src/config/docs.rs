@@ -232,8 +232,8 @@ pub fn insert_optional_field_templates(toml_str: &str) -> String {
             // Find last non-blank content line in this section so templates
             // appear right after the section's fields, not before the next header.
             let mut last_content = start;
-            for i in (start + 1)..section_end {
-                if !lines[i].trim().is_empty() {
+            for (i, line) in lines.iter().enumerate().take(section_end).skip(start + 1) {
+                if !line.trim().is_empty() {
                     last_content = i;
                 }
             }

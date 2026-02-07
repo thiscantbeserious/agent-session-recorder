@@ -208,12 +208,8 @@ pub fn handle_reset(auto_confirm: bool) -> Result<()> {
     // Back up existing config
     if config_path.exists() {
         let backup_path = config_path.with_extension("toml.bak");
-        fs::copy(&config_path, &backup_path).with_context(|| {
-            format!(
-                "Failed to back up config to {}",
-                backup_path.display()
-            )
-        })?;
+        fs::copy(&config_path, &backup_path)
+            .with_context(|| format!("Failed to back up config to {}", backup_path.display()))?;
         println!(
             "{}",
             theme.secondary_text(&format!("Backed up to {}", backup_path.display()))
