@@ -1,6 +1,18 @@
-//! Application state and event loop for TUI
+//! TUI application framework
 //!
-//! Manages the main TUI application lifecycle.
+//! Contains the terminal lifecycle manager (`App`), the shared `TuiApp` trait,
+//! and framework modules for keybindings, layout, modals, and rendering.
+
+pub mod keybindings;
+pub mod layout;
+pub mod list_view;
+pub mod modals;
+pub mod shared_state;
+pub mod status_footer;
+
+// Re-exports for convenient access
+pub use keybindings::{handle_shared_key, KeyResult, SharedMode};
+pub use shared_state::SharedState;
 
 use std::io::{self, Stdout};
 use std::time::Duration;
@@ -8,7 +20,7 @@ use std::time::Duration;
 use anyhow::Result;
 use crossterm::{
     cursor::MoveTo,
-    event::{DisableMouseCapture, EnableMouseCapture},
+    event::{DisableMouseCapture, EnableMouseCapture, KeyEvent},
     execute,
     style::ResetColor,
     terminal::{
@@ -194,6 +206,54 @@ impl Drop for App {
             DisableMouseCapture
         );
         let _ = self.terminal.show_cursor();
+    }
+}
+
+/// Trait for TUI explorer applications.
+///
+/// Provides a shared event loop (`run`) and requires each app to implement
+/// its own key handling and drawing logic. Shared key handling and state
+/// are delegated to `SharedState` and `handle_shared_key()`.
+#[allow(dead_code)]
+pub trait TuiApp {
+    /// Access the terminal lifecycle manager.
+    fn app(&mut self) -> &mut App;
+
+    /// Access the shared state (explorer, search, agent filter, etc.).
+    fn shared_state(&mut self) -> &mut SharedState;
+
+    /// Check if the app is in normal (browsing) mode.
+    fn is_normal_mode(&self) -> bool;
+
+    /// Reset the app to normal (browsing) mode.
+    fn set_normal_mode(&mut self);
+
+    /// Handle a key event. Called from the default `run()` event loop.
+    fn handle_key(&mut self, key: KeyEvent) -> Result<()>;
+
+    /// Draw the current UI state. Called from the default `run()` event loop.
+    fn draw(&mut self) -> Result<()>;
+
+    /// Shared event loop used by all TUI explorer applications.
+    ///
+    /// Draws the UI, waits for events, and dispatches to `handle_key()`.
+    /// Exits when a `Quit` event is received or `app().should_quit()` is true.
+    fn run(&mut self) -> Result<()> {
+        loop {
+            self.draw()?;
+
+            match self.app().next_event()? {
+                Event::Key(key) => self.handle_key(key)?,
+                Event::Resize(_, _) => {}
+                Event::Tick => {}
+                Event::Quit => break,
+            }
+
+            if self.app().should_quit() {
+                break;
+            }
+        }
+        Ok(())
     }
 }
 

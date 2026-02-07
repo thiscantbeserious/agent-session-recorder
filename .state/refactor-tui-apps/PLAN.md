@@ -55,11 +55,11 @@ Extract `FileItem` and `SessionPreview` into their own files under `widgets/`. T
 
 ### Stage 3a: Extract `widgets/file_item.rs`
 
-- [ ] Create `src/tui/widgets/file_item.rs` (~90 lines): move `FileItem` struct, `FileItem::new()`, `impl From<SessionInfo>`, and `format_size()` (the one from `file_explorer.rs`, lines 1038-1052)
-- [ ] Update `src/tui/widgets/file_explorer.rs`: remove `FileItem`, `From<SessionInfo>`, `format_size()`; add `use super::file_item::{FileItem, format_size};`
-- [ ] Update `src/tui/widgets/mod.rs`: add `pub mod file_item;` and `pub use file_item::{FileItem, format_size};`
-- [ ] Ensure `format_size` tests from `file_explorer.rs` move to `file_item.rs` inline tests
-- [ ] Verify: `cargo test && cargo clippy -- -D warnings && cargo insta test --check`
+- [x] Create `src/tui/widgets/file_item.rs` (~90 lines): move `FileItem` struct, `FileItem::new()`, `impl From<SessionInfo>`, and `format_size()` (the one from `file_explorer.rs`, lines 1038-1052)
+- [x] Update `src/tui/widgets/file_explorer.rs`: remove `FileItem`, `From<SessionInfo>`, `format_size()`; add `use super::file_item::{FileItem, format_size};`
+- [x] Update `src/tui/widgets/mod.rs`: add `pub mod file_item;` and `pub use file_item::{FileItem, format_size};`
+- [x] Ensure `format_size` tests from `file_explorer.rs` move to `file_item.rs` inline tests
+- [x] Verify: `cargo test && cargo clippy -- -D warnings && cargo insta test --check`
 
 **Files created:** `src/tui/widgets/file_item.rs`
 **Files modified:** `src/tui/widgets/file_explorer.rs`, `src/tui/widgets/mod.rs`
@@ -67,12 +67,12 @@ Extract `FileItem` and `SessionPreview` into their own files under `widgets/`. T
 
 ### Stage 3b: Extract `widgets/preview.rs`
 
-- [ ] Create `src/tui/widgets/preview.rs` (~280 lines): move `SessionPreview` struct and full impl (`load`, `load_streaming`, `parse_event_minimal`, `styled_line_to_ratatui`, `to_ratatui_color`, `format_duration`) from `file_explorer.rs`
-- [ ] Move the `use crate::terminal::{Color, StyledLine};` and `use crate::asciicast::EventType;` imports to `preview.rs` (only if no longer needed in `file_explorer.rs`)
-- [ ] Update `src/tui/widgets/file_explorer.rs`: remove `SessionPreview` and all its impl methods; add `use super::preview::SessionPreview;` if needed internally
-- [ ] Update `src/tui/widgets/mod.rs`: add `pub mod preview;` and `pub use preview::SessionPreview;`
-- [ ] Add stub functions `prefetch_adjacent_previews()` and `extract_preview()` to `preview.rs` (bodies will be filled in Stage 5 when extracting from `list_app.rs`; for now, just create the function signatures as dead code or leave as TODO comments)
-- [ ] Verify: `cargo test && cargo clippy -- -D warnings && cargo insta test --check`
+- [x] Create `src/tui/widgets/preview.rs` (~280 lines): move `SessionPreview` struct and full impl (`load`, `load_streaming`, `parse_event_minimal`, `styled_line_to_ratatui`, `to_ratatui_color`, `format_duration`) from `file_explorer.rs`
+- [x] Move the `use crate::terminal::{Color, StyledLine};` and `use crate::asciicast::EventType;` imports to `preview.rs` (only if no longer needed in `file_explorer.rs`)
+- [x] Update `src/tui/widgets/file_explorer.rs`: remove `SessionPreview` and all its impl methods; add `use super::preview::SessionPreview;` if needed internally
+- [x] Update `src/tui/widgets/mod.rs`: add `pub mod preview;` and `pub use preview::SessionPreview;`
+- [x] Do NOT add `prefetch_adjacent_previews()` or `extract_preview()` stubs -- those come in Stage 5 when extracting from `list_app.rs`
+- [x] Verify: `cargo test && cargo clippy -- -D warnings && cargo insta test --check`
 
 **Files created:** `src/tui/widgets/preview.rs`
 **Files modified:** `src/tui/widgets/file_explorer.rs`, `src/tui/widgets/mod.rs`
