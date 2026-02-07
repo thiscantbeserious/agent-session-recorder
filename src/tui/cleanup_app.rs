@@ -8,17 +8,19 @@ use std::time::Duration;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
-    layout::{Alignment, Constraint, Layout, Rect},
+    layout::{Alignment, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
 
-use super::app::App;
-use super::event_bus::Event;
-use super::lru_cache::{new_preview_cache, PreviewCache};
-use super::widgets::{FileExplorer, FileExplorerWidget, FileItem};
+use super::app::layout::build_explorer_layout;
+use super::app::list_view::render_explorer_list;
+use super::app::status_footer::{render_footer_text, render_status_line};
+use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
+use super::widgets::preview::prefetch_adjacent_previews;
+use super::widgets::FileItem;
 use crate::theme::current_theme;
 
 /// UI mode for the cleanup application
@@ -39,55 +41,55 @@ pub enum Mode {
     ConfirmDelete,
 }
 
+impl Mode {
+    fn to_shared(self) -> Option<SharedMode> {
+        match self {
+            Mode::Normal => Some(SharedMode::Normal),
+            Mode::Search => Some(SharedMode::Search),
+            Mode::AgentFilter => Some(SharedMode::AgentFilter),
+            Mode::Help => Some(SharedMode::Help),
+            Mode::ConfirmDelete => Some(SharedMode::ConfirmDelete),
+            Mode::GlobSelect => None, // app-specific
+        }
+    }
+
+    fn from_shared(mode: SharedMode) -> Self {
+        match mode {
+            SharedMode::Normal => Mode::Normal,
+            SharedMode::Search => Mode::Search,
+            SharedMode::AgentFilter => Mode::AgentFilter,
+            SharedMode::Help => Mode::Help,
+            SharedMode::ConfirmDelete => Mode::ConfirmDelete,
+        }
+    }
+}
+
 /// Cleanup application state
 pub struct CleanupApp {
     /// Base app for terminal handling
     app: App,
-    /// File explorer widget
-    explorer: FileExplorer,
+    /// Shared state (explorer, search, agent filter, preview cache, status)
+    shared: SharedState,
     /// Current UI mode
     mode: Mode,
-    /// Search input buffer
-    search_input: String,
     /// Glob pattern input buffer
     glob_input: String,
-    /// Selected agent filter index (for cycling through agents)
-    agent_filter_idx: usize,
-    /// Available agents (including "All")
-    available_agents: Vec<String>,
-    /// Status message to display
-    status_message: Option<String>,
     /// Whether files were deleted (for success message)
     files_deleted: bool,
-    /// Preview cache with async loading
-    preview_cache: PreviewCache,
 }
 
 impl CleanupApp {
     /// Create a new cleanup application with the given sessions.
     pub fn new(items: Vec<FileItem>) -> Result<Self> {
         let app = App::new(Duration::from_millis(250))?;
-
-        // Collect unique agents and add "All" option
-        let mut available_agents: Vec<String> = vec!["All".to_string()];
-        let mut agents: Vec<String> = items.iter().map(|i| i.agent.clone()).collect();
-        agents.sort();
-        agents.dedup();
-        available_agents.extend(agents);
-
-        let explorer = FileExplorer::new(items);
+        let shared = SharedState::new(items);
 
         Ok(Self {
             app,
-            explorer,
+            shared,
             mode: Mode::Normal,
-            search_input: String::new(),
             glob_input: String::new(),
-            agent_filter_idx: 0,
-            available_agents,
-            status_message: None,
             files_deleted: false,
-            preview_cache: new_preview_cache(),
         })
     }
 
@@ -96,273 +98,48 @@ impl CleanupApp {
         self.files_deleted
     }
 
-    /// Run the cleanup application event loop.
-    pub fn run(&mut self) -> Result<()> {
-        loop {
-            // Draw the UI
-            self.draw()?;
-
-            // Handle events
-            match self.app.next_event()? {
-                Event::Key(key) => self.handle_key(key)?,
-                Event::Resize(_, _) => {
-                    // Resize handled automatically by ratatui
-                }
-                Event::Tick => {
-                    // Could clear status message after some time
-                }
-                Event::Quit => break,
-            }
-
-            if self.app.should_quit() {
-                break;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Draw the UI.
-    fn draw(&mut self) -> Result<()> {
-        // Get terminal size for page calculations
-        let (_, height) = self.app.size()?;
-        self.explorer
-            .set_page_size((height.saturating_sub(6)) as usize);
-
-        // Poll cache for completed loads and request prefetch
-        self.preview_cache.poll();
-        self.prefetch_adjacent_previews();
-
-        let explorer = &mut self.explorer;
-        let mode = self.mode;
-        let search_input = &self.search_input;
-        let glob_input = &self.glob_input;
-        let status = self.status_message.clone();
-        let agent_filter_idx = self.agent_filter_idx;
-        let available_agents = &self.available_agents;
-
-        // Calculate selected size for status bar
-        let selected_size: u64 = explorer.selected_items().iter().map(|i| i.size).sum();
-        let selected_count = explorer.selected_count();
-
-        // Get preview for current selection from cache
-        let current_path = explorer.selected_item().map(|i| i.path.clone());
-        let preview = current_path
-            .as_ref()
-            .and_then(|p| self.preview_cache.get(p));
-
-        self.app.draw(|frame| {
-            let area = frame.area();
-
-            // Main layout: explorer + footer
-            let chunks = Layout::vertical([
-                Constraint::Min(1),    // Explorer
-                Constraint::Length(1), // Status line
-                Constraint::Length(1), // Footer
-            ])
-            .split(area);
-
-            // Render file explorer with preview
-            let widget = FileExplorerWidget::new(explorer).session_preview(preview);
-            frame.render_widget(widget, chunks[0]);
-
-            // Render status line
-            let theme = current_theme();
-            let status_text = if let Some(msg) = &status {
-                msg.clone()
-            } else {
-                match mode {
-                    Mode::Search => format!("Search: {}_", search_input),
-                    Mode::GlobSelect => format!("Glob pattern: {}_", glob_input),
-                    Mode::AgentFilter => {
-                        let agent = &available_agents[agent_filter_idx];
-                        format!("Filter by agent: {} (left/right to change, Enter to apply)", agent)
-                    }
-                    Mode::ConfirmDelete => String::new(), // Modal shows this
-                    Mode::Help => String::new(),
-                    Mode::Normal => {
-                        // Show selection info
-                        if selected_count > 0 {
-                            format!(
-                                "{} selected ({}) | {} total sessions",
-                                selected_count,
-                                format_size(selected_size),
-                                explorer.len()
-                            )
-                        } else {
-                            let mut parts = vec![];
-                            if let Some(search) = explorer.search_filter() {
-                                parts.push(format!("search: \"{}\"", search));
-                            }
-                            if let Some(agent) = explorer.agent_filter() {
-                                parts.push(format!("agent: {}", agent));
-                            }
-                            if parts.is_empty() {
-                                format!("{} sessions | Space to select", explorer.len())
-                            } else {
-                                format!("{} sessions ({}) | Space to select", explorer.len(), parts.join(", "))
-                            }
-                        }
-                    }
-                }
-            };
-            let status_line =
-                Paragraph::new(status_text).style(Style::default().fg(theme.text_secondary));
-            frame.render_widget(status_line, chunks[1]);
-
-            // Render footer with keybindings
-            let footer_text = match mode {
-                Mode::Search => "Esc: cancel | Enter: apply | Backspace: delete",
-                Mode::GlobSelect => "Esc: cancel | Enter: select matching | Backspace: delete",
-                Mode::AgentFilter => "left/right: change | Enter: apply | Esc: cancel",
-                Mode::ConfirmDelete => "y: confirm | n/Esc: cancel",
-                Mode::Help => "Press any key to close",
-                Mode::Normal => {
-                    if selected_count > 0 {
-                        "Space: toggle | a: toggle all | Enter: delete selected | Esc: clear | ?: help"
-                    } else {
-                        "Space: select | a: all | g: glob | /: search | f: filter | ?: help | q: quit"
-                    }
-                }
-            };
-            let footer = Paragraph::new(footer_text)
-                .style(Style::default().fg(theme.text_secondary))
-                .alignment(Alignment::Center);
-            frame.render_widget(footer, chunks[2]);
-
-            // Render modal overlays
-            match mode {
-                Mode::Help => Self::render_help_modal(frame, area),
-                Mode::ConfirmDelete => {
-                    Self::render_confirm_delete_modal(frame, area, selected_count, selected_size);
-                }
-                _ => {}
-            }
-        })?;
-
-        Ok(())
-    }
-
-    /// Handle keyboard input based on current mode.
-    fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
-        match self.mode {
-            Mode::Normal => self.handle_normal_key(key)?,
-            Mode::Search => self.handle_search_key(key)?,
-            Mode::GlobSelect => self.handle_glob_key(key)?,
-            Mode::AgentFilter => self.handle_agent_filter_key(key)?,
-            Mode::Help => self.handle_help_key(key)?,
-            Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
-        }
-        Ok(())
-    }
-
-    /// Handle keys in normal mode.
+    /// Handle keys in normal mode (app-specific only).
+    ///
+    /// Navigation (up/down/pgup/pgdn/home/end) and mode transitions
+    /// (`/`, `f`, `?`) are handled by `handle_shared_key`. This only
+    /// handles app-specific keys: Space, a, g, Enter, Esc, q.
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            // Navigation
-            KeyCode::Up | KeyCode::Char('k') => self.explorer.up(),
-            KeyCode::Down | KeyCode::Char('j') => self.explorer.down(),
-            KeyCode::PageUp => self.explorer.page_up(),
-            KeyCode::PageDown => self.explorer.page_down(),
-            KeyCode::Home => self.explorer.home(),
-            KeyCode::End => self.explorer.end(),
-
             // Selection
             KeyCode::Char(' ') => {
-                self.explorer.toggle_select();
+                self.shared.explorer.toggle_select();
             }
             KeyCode::Char('a') => {
-                self.explorer.toggle_all();
+                self.shared.explorer.toggle_all();
             }
             KeyCode::Char('g') => {
                 self.mode = Mode::GlobSelect;
                 self.glob_input.clear();
             }
 
-            // Filtering
-            KeyCode::Char('/') => {
-                self.mode = Mode::Search;
-                self.search_input.clear();
-                self.status_message = None;
-            }
-            KeyCode::Char('f') => {
-                self.mode = Mode::AgentFilter;
-                // Set agent_filter_idx based on current filter
-                if let Some(current) = self.explorer.agent_filter() {
-                    self.agent_filter_idx = self
-                        .available_agents
-                        .iter()
-                        .position(|a| a == current)
-                        .unwrap_or(0);
-                } else {
-                    self.agent_filter_idx = 0; // "All"
-                }
-            }
-
             // Actions
             KeyCode::Enter => {
-                if self.explorer.selected_count() > 0 {
+                if self.shared.explorer.selected_count() > 0 {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
-            KeyCode::Char('?') => self.mode = Mode::Help,
 
             // Clear/Cancel
             KeyCode::Esc => {
-                if self.explorer.selected_count() > 0 {
+                if self.shared.explorer.selected_count() > 0 {
                     // First Esc clears selection
-                    self.explorer.select_none();
+                    self.shared.explorer.select_none();
                 } else {
                     // Second Esc clears filters
-                    self.explorer.clear_filters();
-                    self.search_input.clear();
-                    self.agent_filter_idx = 0;
+                    self.shared.explorer.clear_filters();
+                    self.shared.search_input.clear();
+                    self.shared.agent_filter_idx = 0;
                 }
             }
 
             // Quit
             KeyCode::Char('q') => self.app.quit(),
 
-            _ => {}
-        }
-        Ok(())
-    }
-
-    /// Handle keys in search mode.
-    fn handle_search_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            KeyCode::Enter => {
-                // Apply search filter
-                if self.search_input.is_empty() {
-                    self.explorer.set_search_filter(None);
-                } else {
-                    self.explorer
-                        .set_search_filter(Some(self.search_input.clone()));
-                }
-                self.mode = Mode::Normal;
-            }
-            KeyCode::Backspace => {
-                self.search_input.pop();
-                // Live filter as user types
-                if self.search_input.is_empty() {
-                    self.explorer.set_search_filter(None);
-                } else {
-                    self.explorer
-                        .set_search_filter(Some(self.search_input.clone()));
-                }
-            }
-            KeyCode::Char(c) => {
-                // Ignore ctrl+c etc in search mode
-                if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
-                    self.search_input.push(c);
-                    // Live filter as user types
-                    self.explorer
-                        .set_search_filter(Some(self.search_input.clone()));
-                }
-            }
             _ => {}
         }
         Ok(())
@@ -379,7 +156,8 @@ impl CleanupApp {
                 if !self.glob_input.is_empty() {
                     let pattern = self.glob_input.clone();
                     let matched = self.select_by_glob(&pattern);
-                    self.status_message = Some(format!("Selected {} matching files", matched));
+                    self.shared.status_message =
+                        Some(format!("Selected {} matching files", matched));
                 }
                 self.mode = Mode::Normal;
             }
@@ -410,6 +188,7 @@ impl CleanupApp {
 
         // Collect matching items that aren't already selected
         let items_to_select: Vec<(usize, String, String, bool)> = self
+            .shared
             .explorer
             .visible_items()
             .map(|(vis_idx, item, is_selected)| {
@@ -418,7 +197,7 @@ impl CleanupApp {
             .collect();
 
         // Track original position
-        let original_selected = self.explorer.selected();
+        let original_selected = self.shared.explorer.selected();
         let mut actual_count = 0;
 
         // Select matching items
@@ -430,62 +209,22 @@ impl CleanupApp {
             };
             if matches && !is_selected {
                 // Navigate to this item and select it
-                self.explorer.home();
+                self.shared.explorer.home();
                 for _ in 0..vis_idx {
-                    self.explorer.down();
+                    self.shared.explorer.down();
                 }
-                self.explorer.toggle_select();
+                self.shared.explorer.toggle_select();
                 actual_count += 1;
             }
         }
 
         // Restore original position
-        self.explorer.home();
-        for _ in 0..original_selected.min(self.explorer.len().saturating_sub(1)) {
-            self.explorer.down();
+        self.shared.explorer.home();
+        for _ in 0..original_selected.min(self.shared.explorer.len().saturating_sub(1)) {
+            self.shared.explorer.down();
         }
 
         actual_count
-    }
-
-    /// Handle keys in agent filter mode.
-    fn handle_agent_filter_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Esc | KeyCode::Enter => {
-                self.mode = Mode::Normal;
-            }
-            KeyCode::Left | KeyCode::Char('h') => {
-                if self.agent_filter_idx > 0 {
-                    self.agent_filter_idx -= 1;
-                } else {
-                    self.agent_filter_idx = self.available_agents.len() - 1;
-                }
-                self.apply_agent_filter();
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                self.agent_filter_idx = (self.agent_filter_idx + 1) % self.available_agents.len();
-                self.apply_agent_filter();
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    /// Apply the currently selected agent filter
-    fn apply_agent_filter(&mut self) {
-        let selected = &self.available_agents[self.agent_filter_idx];
-        if selected == "All" {
-            self.explorer.set_agent_filter(None);
-        } else {
-            self.explorer.set_agent_filter(Some(selected.clone()));
-        }
-    }
-
-    /// Handle keys in help mode.
-    fn handle_help_key(&mut self, _key: KeyEvent) -> Result<()> {
-        // Any key closes help
-        self.mode = Mode::Normal;
-        Ok(())
     }
 
     /// Handle keys in confirm delete mode.
@@ -505,7 +244,7 @@ impl CleanupApp {
 
     /// Delete all selected sessions.
     fn delete_selected(&mut self) -> Result<()> {
-        let selected_items = self.explorer.selected_items();
+        let selected_items = self.shared.explorer.selected_items();
         if selected_items.is_empty() {
             return Ok(());
         }
@@ -528,19 +267,19 @@ impl CleanupApp {
 
         // Remove from explorer
         for path in &paths {
-            self.explorer.remove_item(path);
+            self.shared.explorer.remove_item(path);
         }
 
         // Update status
         if deleted == count {
-            self.status_message = Some(format!(
+            self.shared.status_message = Some(format!(
                 "Deleted {} sessions (freed {})",
                 deleted,
                 format_size(total_freed)
             ));
             self.files_deleted = true;
         } else {
-            self.status_message = Some(format!(
+            self.shared.status_message = Some(format!(
                 "Deleted {}/{} sessions (some files could not be removed)",
                 deleted, count
             ));
@@ -550,38 +289,6 @@ impl CleanupApp {
         }
 
         Ok(())
-    }
-
-    /// Prefetch previews for current, previous, and next items.
-    fn prefetch_adjacent_previews(&mut self) {
-        let selected = self.explorer.selected();
-        let len = self.explorer.len();
-        if len == 0 {
-            return;
-        }
-
-        // Collect paths to prefetch (current, prev, next)
-        let mut paths_to_prefetch = Vec::with_capacity(3);
-
-        // Current selection
-        if let Some(item) = self.explorer.selected_item() {
-            paths_to_prefetch.push(item.path.clone());
-        }
-
-        // Previous item (with wrap)
-        let prev_idx = if selected > 0 { selected - 1 } else { len - 1 };
-        if let Some((_, item, _)) = self.explorer.visible_items().nth(prev_idx) {
-            paths_to_prefetch.push(item.path.clone());
-        }
-
-        // Next item (with wrap)
-        let next_idx = if selected < len - 1 { selected + 1 } else { 0 };
-        if let Some((_, item, _)) = self.explorer.visible_items().nth(next_idx) {
-            paths_to_prefetch.push(item.path.clone());
-        }
-
-        // Request prefetch for all
-        self.preview_cache.prefetch(&paths_to_prefetch);
     }
 
     /// Render the help modal overlay.
@@ -727,6 +434,156 @@ impl CleanupApp {
             .alignment(Alignment::Center);
 
         frame.render_widget(confirm, modal_area);
+    }
+}
+
+impl TuiApp for CleanupApp {
+    fn app(&mut self) -> &mut App {
+        &mut self.app
+    }
+
+    fn shared_state(&mut self) -> &mut SharedState {
+        &mut self.shared
+    }
+
+    fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Try shared key handling first (navigation, search, agent filter, help)
+        if let Some(shared_mode) = self.mode.to_shared() {
+            match handle_shared_key(&shared_mode, key, &mut self.shared) {
+                KeyResult::Consumed => return Ok(()),
+                KeyResult::EnterMode(m) => {
+                    self.mode = Mode::from_shared(m);
+                    return Ok(());
+                }
+                KeyResult::NotConsumed => {}
+            }
+        }
+
+        // Handle app-specific modes
+        match self.mode {
+            Mode::Normal => self.handle_normal_key(key)?,
+            Mode::GlobSelect => self.handle_glob_key(key)?,
+            Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn draw(&mut self) -> Result<()> {
+        // Get terminal size for page calculations
+        let (_, height) = self.app.size()?;
+        self.shared
+            .explorer
+            .set_page_size((height.saturating_sub(6)) as usize);
+
+        // Poll cache for completed loads and request prefetch
+        self.shared.preview_cache.poll();
+        prefetch_adjacent_previews(&self.shared.explorer, &mut self.shared.preview_cache);
+
+        // Extract shared fields into local variables before closure
+        let explorer = &mut self.shared.explorer;
+        let mode = self.mode;
+        let search_input = &self.shared.search_input;
+        let glob_input = &self.glob_input;
+        let status = self.shared.status_message.clone();
+        let agent_filter_idx = self.shared.agent_filter_idx;
+        let available_agents = &self.shared.available_agents;
+
+        // Calculate selected size for status bar
+        let selected_size: u64 = explorer.selected_items().iter().map(|i| i.size).sum();
+        let selected_count = explorer.selected_count();
+
+        // Get preview for current selection from cache
+        let current_path = explorer.selected_item().map(|i| i.path.clone());
+        let preview = current_path
+            .as_ref()
+            .and_then(|p| self.shared.preview_cache.get(p));
+
+        self.app.draw(|frame| {
+            let area = frame.area();
+
+            // Main layout: explorer + status + footer
+            let chunks = build_explorer_layout(area);
+
+            // Render file explorer with checkboxes (cleanup uses multi-select)
+            render_explorer_list(frame, chunks[0], explorer, preview, true, false);
+
+            // Render status line
+            let status_text = if let Some(msg) = &status {
+                msg.clone()
+            } else {
+                match mode {
+                    Mode::Search => format!("Search: {}_", search_input),
+                    Mode::GlobSelect => format!("Glob pattern: {}_", glob_input),
+                    Mode::AgentFilter => {
+                        let agent = &available_agents[agent_filter_idx];
+                        format!(
+                            "Filter by agent: {} (left/right to change, Enter to apply)",
+                            agent
+                        )
+                    }
+                    Mode::ConfirmDelete => String::new(), // Modal shows this
+                    Mode::Help => String::new(),
+                    Mode::Normal => {
+                        // Show selection info
+                        if selected_count > 0 {
+                            format!(
+                                "{} selected ({}) | {} total sessions",
+                                selected_count,
+                                format_size(selected_size),
+                                explorer.len()
+                            )
+                        } else {
+                            let mut parts = vec![];
+                            if let Some(search) = explorer.search_filter() {
+                                parts.push(format!("search: \"{}\"", search));
+                            }
+                            if let Some(agent) = explorer.agent_filter() {
+                                parts.push(format!("agent: {}", agent));
+                            }
+                            if parts.is_empty() {
+                                format!("{} sessions | Space to select", explorer.len())
+                            } else {
+                                format!(
+                                    "{} sessions ({}) | Space to select",
+                                    explorer.len(),
+                                    parts.join(", ")
+                                )
+                            }
+                        }
+                    }
+                }
+            };
+            render_status_line(frame, chunks[1], &status_text);
+
+            // Render footer with keybindings
+            let footer_text = match mode {
+                Mode::Search => "Esc: cancel | Enter: apply | Backspace: delete",
+                Mode::GlobSelect => "Esc: cancel | Enter: select matching | Backspace: delete",
+                Mode::AgentFilter => "left/right: change | Enter: apply | Esc: cancel",
+                Mode::ConfirmDelete => "y: confirm | n/Esc: cancel",
+                Mode::Help => "Press any key to close",
+                Mode::Normal => {
+                    if selected_count > 0 {
+                        "Space: toggle | a: toggle all | Enter: delete selected | Esc: clear | ?: help"
+                    } else {
+                        "Space: select | a: all | g: glob | /: search | f: filter | ?: help | q: quit"
+                    }
+                }
+            };
+            render_footer_text(frame, chunks[2], footer_text);
+
+            // Render modal overlays
+            match mode {
+                Mode::Help => Self::render_help_modal(frame, area),
+                Mode::ConfirmDelete => {
+                    Self::render_confirm_delete_modal(frame, area, selected_count, selected_size);
+                }
+                _ => {}
+            }
+        })?;
+
+        Ok(())
     }
 }
 

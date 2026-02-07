@@ -170,6 +170,10 @@ fn handle_normal_navigation(key: KeyEvent, state: &mut SharedState) -> KeyResult
             KeyResult::EnterMode(SharedMode::Search)
         }
         KeyCode::Char('f') => {
+            if state.available_agents.len() <= 1 {
+                state.status_message = Some("No agents to filter by".to_string());
+                return KeyResult::Consumed;
+            }
             // Set agent_filter_idx based on current filter
             if let Some(current) = state.explorer.agent_filter() {
                 state.agent_filter_idx = state

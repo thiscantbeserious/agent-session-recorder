@@ -7,19 +7,22 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
-    layout::{Alignment, Constraint, Layout, Rect},
+    layout::{Alignment, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
 
-use super::app::App;
-use super::event_bus::Event;
-use super::lru_cache::{new_preview_cache, PreviewCache};
-use super::widgets::{FileExplorer, FileExplorerWidget, FileItem};
+use super::app::layout::build_explorer_layout;
+use super::app::list_view::render_explorer_list;
+use super::app::modals;
+use super::app::status_footer::{render_footer_text, render_status_line};
+use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
+use super::widgets::preview::prefetch_adjacent_previews;
+use super::widgets::FileItem;
 use crate::asciicast::{apply_transforms, TransformResult};
 use crate::files::backup::{backup_path_for, create_backup, has_backup, restore_from_backup};
 use crate::theme::current_theme;
@@ -42,6 +45,29 @@ pub enum Mode {
     ContextMenu,
     /// Optimize result mode - showing optimization results or error
     OptimizeResult,
+}
+
+impl Mode {
+    fn to_shared(self) -> Option<SharedMode> {
+        match self {
+            Mode::Normal => Some(SharedMode::Normal),
+            Mode::Search => Some(SharedMode::Search),
+            Mode::AgentFilter => Some(SharedMode::AgentFilter),
+            Mode::Help => Some(SharedMode::Help),
+            Mode::ConfirmDelete => Some(SharedMode::ConfirmDelete),
+            Mode::ContextMenu | Mode::OptimizeResult => None,
+        }
+    }
+
+    fn from_shared(mode: SharedMode) -> Self {
+        match mode {
+            SharedMode::Normal => Mode::Normal,
+            SharedMode::Search => Mode::Search,
+            SharedMode::AgentFilter => Mode::AgentFilter,
+            SharedMode::Help => Mode::Help,
+            SharedMode::ConfirmDelete => Mode::ConfirmDelete,
+        }
+    }
 }
 
 /// Context menu item definition
@@ -108,20 +134,10 @@ pub struct OptimizeResultState {
 pub struct ListApp {
     /// Base app for terminal handling
     app: App,
-    /// File explorer widget
-    explorer: FileExplorer,
+    /// Shared state (explorer, search, agent filter, preview cache, status)
+    shared: SharedState,
     /// Current UI mode
     mode: Mode,
-    /// Search input buffer
-    search_input: String,
-    /// Selected agent filter index (for cycling through agents)
-    agent_filter_idx: usize,
-    /// Available agents (including "All")
-    available_agents: Vec<String>,
-    /// Status message to display
-    status_message: Option<String>,
-    /// Preview cache with async loading
-    preview_cache: PreviewCache,
     /// Context menu selected index
     context_menu_idx: usize,
     /// Optimize result for modal display
@@ -132,25 +148,12 @@ impl ListApp {
     /// Create a new list application with the given sessions.
     pub fn new(items: Vec<FileItem>) -> Result<Self> {
         let app = App::new(Duration::from_millis(250))?;
-
-        // Collect unique agents and add "All" option
-        let mut available_agents: Vec<String> = vec!["All".to_string()];
-        let mut agents: Vec<String> = items.iter().map(|i| i.agent.clone()).collect();
-        agents.sort();
-        agents.dedup();
-        available_agents.extend(agents);
-
-        let explorer = FileExplorer::new(items);
+        let shared = SharedState::new(items);
 
         Ok(Self {
             app,
-            explorer,
+            shared,
             mode: Mode::Normal,
-            search_input: String::new(),
-            agent_filter_idx: 0,
-            available_agents,
-            status_message: None,
-            preview_cache: new_preview_cache(),
             context_menu_idx: 0,
             optimize_result: None,
         })
@@ -159,318 +162,49 @@ impl ListApp {
     /// Set initial agent filter (for CLI argument support)
     pub fn set_agent_filter(&mut self, agent: &str) {
         // Find the agent in available_agents and set the index
-        if let Some(idx) = self.available_agents.iter().position(|a| a == agent) {
-            self.agent_filter_idx = idx;
-            self.apply_agent_filter();
+        if let Some(idx) = self.shared.available_agents.iter().position(|a| a == agent) {
+            self.shared.agent_filter_idx = idx;
+            self.shared.apply_agent_filter();
         }
     }
 
-    /// Run the list application event loop.
-    pub fn run(&mut self) -> Result<()> {
-        loop {
-            // Draw the UI
-            self.draw()?;
-
-            // Handle events
-            match self.app.next_event()? {
-                Event::Key(key) => self.handle_key(key)?,
-                Event::Resize(_, _) => {
-                    // Resize handled automatically by ratatui
-                }
-                Event::Tick => {
-                    // Clear status message after some time (could add timer)
-                }
-                Event::Quit => break,
-            }
-
-            if self.app.should_quit() {
-                break;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Draw the UI.
-    fn draw(&mut self) -> Result<()> {
-        // Get terminal size for page calculations
-        let (_, height) = self.app.size()?;
-        self.explorer
-            .set_page_size((height.saturating_sub(6)) as usize);
-
-        // Poll cache for completed loads and request prefetch
-        self.preview_cache.poll();
-        self.prefetch_adjacent_previews();
-
-        let explorer = &mut self.explorer;
-        let mode = self.mode;
-        let search_input = &self.search_input;
-        let status = self.status_message.clone();
-        let agent_filter_idx = self.agent_filter_idx;
-        let available_agents = &self.available_agents;
-        let context_menu_idx = self.context_menu_idx;
-        let optimize_result = self.optimize_result.clone();
-
-        // Get preview for current selection from cache
-        let current_path = explorer.selected_item().map(|i| i.path.clone());
-        let preview = current_path
-            .as_ref()
-            .and_then(|p| self.preview_cache.get(p));
-
-        // Check if backup exists for selected file (for context menu)
-        let backup_exists = current_path
-            .as_ref()
-            .map(|p| has_backup(std::path::Path::new(p)))
-            .unwrap_or(false);
-
-        self.app.draw(|frame| {
-            let area = frame.area();
-
-            // Main layout: explorer + footer
-            let chunks = Layout::vertical([
-                Constraint::Min(1),    // Explorer
-                Constraint::Length(1), // Status line
-                Constraint::Length(1), // Footer
-            ])
-            .split(area);
-
-            // Render file explorer (no checkboxes in list view - it's single-select)
-            let widget = FileExplorerWidget::new(explorer)
-                .show_checkboxes(false)
-                .session_preview(preview)
-                .has_backup(backup_exists);
-            frame.render_widget(widget, chunks[0]);
-
-            // Render status line
-            let theme = current_theme();
-            let status_text = if let Some(msg) = &status {
-                msg.clone()
-            } else {
-                match mode {
-                    Mode::Search => format!("Search: {}_", search_input),
-                    Mode::AgentFilter => {
-                        let agent = &available_agents[agent_filter_idx];
-                        format!("Filter by agent: {} (←/→ to change, Enter to apply)", agent)
-                    }
-                    Mode::ConfirmDelete => "Delete this session? (y/n)".to_string(),
-                    Mode::Help => String::new(),
-                    Mode::ContextMenu => String::new(),
-                    Mode::OptimizeResult => String::new(),
-                    Mode::Normal => {
-                        // Show current filters if any
-                        let mut parts = vec![];
-                        if let Some(search) = explorer.search_filter() {
-                            parts.push(format!("search: \"{}\"", search));
-                        }
-                        if let Some(agent) = explorer.agent_filter() {
-                            parts.push(format!("agent: {}", agent));
-                        }
-                        if parts.is_empty() {
-                            format!("{} sessions", explorer.len())
-                        } else {
-                            format!("{} sessions ({})", explorer.len(), parts.join(", "))
-                        }
-                    }
-                }
-            };
-            let status_line =
-                Paragraph::new(status_text).style(Style::default().fg(theme.text_secondary));
-            frame.render_widget(status_line, chunks[1]);
-
-            // Render footer with keybindings
-            let footer_text = match mode {
-                Mode::Search => "Esc: cancel | Enter: apply search | Backspace: delete char",
-                Mode::AgentFilter => "←/→: change agent | Enter: apply | Esc: cancel",
-                Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
-                Mode::Help => "Press any key to close help",
-                Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
-                Mode::OptimizeResult => "Enter/Esc: dismiss",
-                Mode::Normal => {
-                    "↑↓: navigate | Enter: menu | p: play | c: copy | t: optimize | a: analyze | d: delete | ?: help | q: quit"
-                }
-            };
-            let footer = Paragraph::new(footer_text)
-                .style(Style::default().fg(theme.text_secondary))
-                .alignment(Alignment::Center);
-            frame.render_widget(footer, chunks[2]);
-
-            // Render modal overlays
-            match mode {
-                Mode::Help => Self::render_help_modal(frame, area),
-                Mode::ConfirmDelete => {
-                    if let Some(item) = explorer.selected_item() {
-                        Self::render_confirm_delete_modal(frame, area, item);
-                    }
-                }
-                Mode::ContextMenu => {
-                    Self::render_context_menu_modal(frame, area, context_menu_idx, backup_exists);
-                }
-                Mode::OptimizeResult => {
-                    if let Some(ref result_state) = optimize_result {
-                        Self::render_optimize_result_modal(frame, area, result_state);
-                    }
-                }
-                _ => {}
-            }
-        })?;
-
-        Ok(())
-    }
-
-    /// Handle keyboard input based on current mode.
-    fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
-        match self.mode {
-            Mode::Normal => self.handle_normal_key(key)?,
-            Mode::Search => self.handle_search_key(key)?,
-            Mode::AgentFilter => self.handle_agent_filter_key(key)?,
-            Mode::Help => self.handle_help_key(key)?,
-            Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
-            Mode::ContextMenu => self.handle_context_menu_key(key)?,
-            Mode::OptimizeResult => self.handle_optimize_result_key(key)?,
-        }
-        Ok(())
-    }
-
-    /// Handle keys in normal mode.
+    /// Handle keys in normal mode (app-specific only).
+    ///
+    /// Navigation (up/down/pgup/pgdn/home/end) and mode transitions
+    /// (`/`, `f`, `?`) are handled by `handle_shared_key`. This only
+    /// handles app-specific keys: Enter, shortcuts, and Esc.
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            // Navigation
-            KeyCode::Up | KeyCode::Char('k') => self.explorer.up(),
-            KeyCode::Down | KeyCode::Char('j') => self.explorer.down(),
-            KeyCode::PageUp => self.explorer.page_up(),
-            KeyCode::PageDown => self.explorer.page_down(),
-            KeyCode::Home => self.explorer.home(),
-            KeyCode::End => self.explorer.end(),
-
             // Actions
             KeyCode::Enter => {
-                if self.explorer.selected_item().is_some() {
+                if self.shared.explorer.selected_item().is_some() {
                     self.context_menu_idx = 0; // Reset to first item (Play)
                     self.mode = Mode::ContextMenu;
                 }
             }
-            KeyCode::Char('/') => {
-                self.mode = Mode::Search;
-                self.search_input.clear();
-                self.status_message = None;
-            }
-            KeyCode::Char('f') => {
-                self.mode = Mode::AgentFilter;
-                // Set agent_filter_idx based on current filter
-                if let Some(current) = self.explorer.agent_filter() {
-                    self.agent_filter_idx = self
-                        .available_agents
-                        .iter()
-                        .position(|a| a == current)
-                        .unwrap_or(0);
-                } else {
-                    self.agent_filter_idx = 0; // "All"
-                }
-            }
+
             // Direct shortcuts (bypass context menu)
             KeyCode::Char('p') => self.play_session()?,
             KeyCode::Char('c') => self.copy_to_clipboard()?,
             KeyCode::Char('t') => self.optimize_session()?,
             KeyCode::Char('a') => self.analyze_session()?,
             KeyCode::Char('d') => {
-                if self.explorer.selected_item().is_some() {
+                if self.shared.explorer.selected_item().is_some() {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
             KeyCode::Char('m') => self.add_marker()?,
-            KeyCode::Char('?') => self.mode = Mode::Help,
 
             // Clear filters
             KeyCode::Esc => {
-                self.explorer.clear_filters();
-                self.search_input.clear();
-                self.agent_filter_idx = 0;
+                self.shared.explorer.clear_filters();
+                self.shared.search_input.clear();
+                self.shared.agent_filter_idx = 0;
             }
 
             // Quit is handled by EventHandler
             _ => {}
         }
-        Ok(())
-    }
-
-    /// Handle keys in search mode.
-    fn handle_search_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Esc => {
-                self.mode = Mode::Normal;
-                // Keep the search filter if any was applied
-            }
-            KeyCode::Enter => {
-                // Apply search filter
-                if self.search_input.is_empty() {
-                    self.explorer.set_search_filter(None);
-                } else {
-                    self.explorer
-                        .set_search_filter(Some(self.search_input.clone()));
-                }
-                self.mode = Mode::Normal;
-            }
-            KeyCode::Backspace => {
-                self.search_input.pop();
-                // Live filter as user types
-                if self.search_input.is_empty() {
-                    self.explorer.set_search_filter(None);
-                } else {
-                    self.explorer
-                        .set_search_filter(Some(self.search_input.clone()));
-                }
-            }
-            KeyCode::Char(c) => {
-                // Ignore ctrl+c etc in search mode
-                if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
-                    self.search_input.push(c);
-                    // Live filter as user types
-                    self.explorer
-                        .set_search_filter(Some(self.search_input.clone()));
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    /// Handle keys in agent filter mode.
-    fn handle_agent_filter_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Esc | KeyCode::Enter => {
-                self.mode = Mode::Normal;
-            }
-            KeyCode::Left | KeyCode::Char('h') => {
-                if self.agent_filter_idx > 0 {
-                    self.agent_filter_idx -= 1;
-                } else {
-                    self.agent_filter_idx = self.available_agents.len() - 1;
-                }
-                self.apply_agent_filter();
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                self.agent_filter_idx = (self.agent_filter_idx + 1) % self.available_agents.len();
-                self.apply_agent_filter();
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    /// Apply the currently selected agent filter
-    fn apply_agent_filter(&mut self) {
-        let selected = &self.available_agents[self.agent_filter_idx];
-        if selected == "All" {
-            self.explorer.set_agent_filter(None);
-        } else {
-            self.explorer.set_agent_filter(Some(selected.clone()));
-        }
-    }
-
-    /// Handle keys in help mode.
-    fn handle_help_key(&mut self, _key: KeyEvent) -> Result<()> {
-        // Any key closes help
-        self.mode = Mode::Normal;
         Ok(())
     }
 
@@ -586,11 +320,11 @@ impl ListApp {
 
         // Guard: check if Restore is disabled (no backup)
         if matches!(action, ContextMenuItem::Restore) {
-            if let Some(item) = self.explorer.selected_item() {
+            if let Some(item) = self.shared.explorer.selected_item() {
                 let path = std::path::Path::new(&item.path);
                 if !has_backup(path) {
                     self.mode = Mode::Normal;
-                    self.status_message =
+                    self.shared.status_message =
                         Some(format!("No backup exists for: {}", item.name.clone()));
                     return Ok(());
                 }
@@ -606,7 +340,7 @@ impl ListApp {
             ContextMenuItem::Analyze => self.analyze_session()?,
             ContextMenuItem::Restore => self.restore_session()?,
             ContextMenuItem::Delete => {
-                if self.explorer.selected_item().is_some() {
+                if self.shared.explorer.selected_item().is_some() {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
@@ -619,7 +353,7 @@ impl ListApp {
     fn play_session(&mut self) -> Result<()> {
         use crate::player;
 
-        if let Some(item) = self.explorer.selected_item() {
+        if let Some(item) = self.shared.explorer.selected_item() {
             let path = Path::new(&item.path);
 
             // Suspend TUI - restores normal terminal mode
@@ -630,7 +364,7 @@ impl ListApp {
 
             // Resume TUI - re-enters alternate screen and raw mode
             self.app.resume()?;
-            self.status_message = Some(result.message());
+            self.shared.status_message = Some(result.message());
         }
         Ok(())
     }
@@ -639,7 +373,7 @@ impl ListApp {
     fn copy_to_clipboard(&mut self) -> Result<()> {
         use crate::clipboard::copy_file_to_clipboard;
 
-        if let Some(item) = self.explorer.selected_item() {
+        if let Some(item) = self.shared.explorer.selected_item() {
             let path = Path::new(&item.path);
 
             // Extract filename without .cast extension
@@ -650,10 +384,10 @@ impl ListApp {
 
             match copy_file_to_clipboard(path) {
                 Ok(result) => {
-                    self.status_message = Some(result.message(filename));
+                    self.shared.status_message = Some(result.message(filename));
                 }
                 Err(e) => {
-                    self.status_message = Some(format!("Copy failed: {}", e));
+                    self.shared.status_message = Some(format!("Copy failed: {}", e));
                 }
             }
         }
@@ -662,23 +396,23 @@ impl ListApp {
 
     /// Delete the selected session.
     fn delete_session(&mut self) -> Result<()> {
-        if let Some(item) = self.explorer.selected_item() {
+        if let Some(item) = self.shared.explorer.selected_item() {
             let path = item.path.clone();
             let name = item.name.clone();
 
             // Delete the file
             if let Err(e) = std::fs::remove_file(&path) {
-                self.status_message = Some(format!("Failed to delete: {}", e));
+                self.shared.status_message = Some(format!("Failed to delete: {}", e));
             } else {
                 // Also delete backup if it exists (remove_file returns Err if not found)
                 let backup = backup_path_for(std::path::Path::new(&path));
                 let backup_deleted = std::fs::remove_file(&backup).is_ok();
 
                 // Remove from explorer to keep UI in sync
-                self.explorer.remove_item(&path);
+                self.shared.explorer.remove_item(&path);
 
                 // Update status message
-                self.status_message = Some(if backup_deleted {
+                self.shared.status_message = Some(if backup_deleted {
                     format!("Deleted: {} (and backup)", name)
                 } else {
                     format!("Deleted: {}", name)
@@ -690,7 +424,7 @@ impl ListApp {
 
     /// Restore the selected session from its backup.
     fn restore_session(&mut self) -> Result<()> {
-        if let Some(item) = self.explorer.selected_item() {
+        if let Some(item) = self.shared.explorer.selected_item() {
             let path = std::path::Path::new(&item.path);
             let name = item.name.clone();
             let path_str = item.path.clone();
@@ -699,13 +433,13 @@ impl ListApp {
             match restore_from_backup(path) {
                 Ok(()) => {
                     // Invalidate the preview cache for this file
-                    self.preview_cache.invalidate(&path_str);
+                    self.shared.preview_cache.invalidate(&path_str);
                     // Refresh file metadata in explorer
-                    self.explorer.update_item_metadata(&path_str);
-                    self.status_message = Some(format!("Restored from backup: {}", name));
+                    self.shared.explorer.update_item_metadata(&path_str);
+                    self.shared.status_message = Some(format!("Restored from backup: {}", name));
                 }
                 Err(e) => {
-                    self.status_message = Some(format!("Failed to restore: {}", e));
+                    self.shared.status_message = Some(format!("Failed to restore: {}", e));
                 }
             }
         }
@@ -714,7 +448,7 @@ impl ListApp {
 
     /// Optimize the selected session (apply silence removal).
     fn optimize_session(&mut self) -> Result<()> {
-        if let Some(item) = self.explorer.selected_item() {
+        if let Some(item) = self.shared.explorer.selected_item() {
             let path = std::path::Path::new(&item.path);
             let name = item.name.clone();
             let path_str = item.path.clone();
@@ -723,9 +457,9 @@ impl ListApp {
             let result = match apply_transforms(path) {
                 Ok(result) => {
                     // Invalidate the preview cache for this file
-                    self.preview_cache.invalidate(&path_str);
+                    self.shared.preview_cache.invalidate(&path_str);
                     // Refresh file metadata in explorer
-                    self.explorer.update_item_metadata(&path_str);
+                    self.shared.explorer.update_item_metadata(&path_str);
                     Ok(result)
                 }
                 Err(e) => Err(e.to_string()),
@@ -743,13 +477,14 @@ impl ListApp {
 
     /// Analyze the selected session using the analyze subcommand.
     fn analyze_session(&mut self) -> Result<()> {
-        if let Some(item) = self.explorer.selected_item() {
+        if let Some(item) = self.shared.explorer.selected_item() {
             let path = item.path.clone();
 
             // Create backup before analysis
             let file_path = std::path::Path::new(&path);
             if let Err(e) = create_backup(file_path) {
-                self.status_message = Some(format!("ERROR: Backup failed for {}: {}", path, e));
+                self.shared.status_message =
+                    Some(format!("ERROR: Backup failed for {}: {}", path, e));
                 return Ok(());
             }
 
@@ -789,9 +524,9 @@ impl ListApp {
 
                         if let Some(new_path) = new_file {
                             let new_path_str = new_path.to_string_lossy().to_string();
-                            self.preview_cache.invalidate(&new_path_str);
-                            self.explorer.update_item_path(&path, &new_path_str);
-                            self.status_message = Some(format!(
+                            self.shared.preview_cache.invalidate(&new_path_str);
+                            self.shared.explorer.update_item_path(&path, &new_path_str);
+                            self.shared.status_message = Some(format!(
                                 "Analysis complete (renamed to {})",
                                 new_path
                                     .file_name()
@@ -800,66 +535,34 @@ impl ListApp {
                             ));
                         } else {
                             // Couldn't find any .cast file — remove the stale item
-                            self.explorer.remove_item(&path);
-                            self.status_message =
+                            self.shared.explorer.remove_item(&path);
+                            self.shared.status_message =
                                 Some("Analysis complete (file was renamed)".to_string());
                         }
                     } else {
                         // File still exists at original path — just invalidate cache
-                        self.preview_cache.invalidate(&path);
-                        self.explorer.update_item_metadata(&path);
-                        self.status_message = Some("Analysis complete".to_string());
+                        self.shared.preview_cache.invalidate(&path);
+                        self.shared.explorer.update_item_metadata(&path);
+                        self.shared.status_message = Some("Analysis complete".to_string());
                     }
                 }
                 Ok(s) => {
-                    self.status_message = Some(format!(
+                    self.shared.status_message = Some(format!(
                         "Analyze exited with code {}",
                         s.code().unwrap_or(-1)
                     ));
                 }
                 Err(e) => {
-                    self.status_message = Some(format!("Failed to run analyze: {}", e));
+                    self.shared.status_message = Some(format!("Failed to run analyze: {}", e));
                 }
             }
         }
         Ok(())
     }
 
-    /// Prefetch previews for current, previous, and next items.
-    fn prefetch_adjacent_previews(&mut self) {
-        let selected = self.explorer.selected();
-        let len = self.explorer.len();
-        if len == 0 {
-            return;
-        }
-
-        // Collect paths to prefetch (current, prev, next)
-        let mut paths_to_prefetch = Vec::with_capacity(3);
-
-        // Current selection
-        if let Some(item) = self.explorer.selected_item() {
-            paths_to_prefetch.push(item.path.clone());
-        }
-
-        // Previous item (with wrap)
-        let prev_idx = if selected > 0 { selected - 1 } else { len - 1 };
-        if let Some((_, item, _)) = self.explorer.visible_items().nth(prev_idx) {
-            paths_to_prefetch.push(item.path.clone());
-        }
-
-        // Next item (with wrap)
-        let next_idx = if selected < len - 1 { selected + 1 } else { 0 };
-        if let Some((_, item, _)) = self.explorer.visible_items().nth(next_idx) {
-            paths_to_prefetch.push(item.path.clone());
-        }
-
-        // Request prefetch for all
-        self.preview_cache.prefetch(&paths_to_prefetch);
-    }
-
     /// Add a marker to the selected session (placeholder).
     fn add_marker(&mut self) -> Result<()> {
-        self.status_message = Some("Marker feature coming soon!".to_string());
+        self.shared.status_message = Some("Marker feature coming soon!".to_string());
         Ok(())
     }
 
@@ -978,50 +681,6 @@ impl ListApp {
             .wrap(Wrap { trim: false });
 
         frame.render_widget(help, modal_area);
-    }
-
-    /// Render the confirm delete modal overlay.
-    fn render_confirm_delete_modal(frame: &mut Frame, area: Rect, item: &FileItem) {
-        let theme = current_theme();
-
-        // Center the modal
-        let modal_width = 50.min(area.width.saturating_sub(4));
-        let modal_height = 7.min(area.height.saturating_sub(4));
-        let x = (area.width - modal_width) / 2;
-        let y = (area.height - modal_height) / 2;
-        let modal_area = Rect::new(x, y, modal_width, modal_height);
-
-        // Clear the area behind the modal
-        frame.render_widget(Clear, modal_area);
-
-        let text = vec![
-            Line::from(Span::styled(
-                "Delete Session?",
-                Style::default()
-                    .fg(theme.error)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(""),
-            Line::from(format!("File: {}", item.name)),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("y", Style::default().fg(theme.error)),
-                Span::raw(": Yes, delete  |  "),
-                Span::styled("n", Style::default().fg(theme.accent)),
-                Span::raw(": No, cancel"),
-            ]),
-        ];
-
-        let confirm = Paragraph::new(text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.error))
-                    .title(" Confirm Delete "),
-            )
-            .alignment(Alignment::Center);
-
-        frame.render_widget(confirm, modal_area);
     }
 
     /// Render the context menu modal overlay.
@@ -1224,6 +883,152 @@ impl ListApp {
             .wrap(Wrap { trim: false });
 
         frame.render_widget(modal, modal_area);
+    }
+}
+
+impl TuiApp for ListApp {
+    fn app(&mut self) -> &mut App {
+        &mut self.app
+    }
+
+    fn shared_state(&mut self) -> &mut SharedState {
+        &mut self.shared
+    }
+
+    fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Try shared key handling first (navigation, search, agent filter, help)
+        if let Some(shared_mode) = self.mode.to_shared() {
+            match handle_shared_key(&shared_mode, key, &mut self.shared) {
+                KeyResult::Consumed => return Ok(()),
+                KeyResult::EnterMode(m) => {
+                    self.mode = Mode::from_shared(m);
+                    return Ok(());
+                }
+                KeyResult::NotConsumed => {}
+            }
+        }
+
+        // Handle app-specific modes
+        match self.mode {
+            Mode::Normal => self.handle_normal_key(key)?,
+            Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
+            Mode::ContextMenu => self.handle_context_menu_key(key)?,
+            Mode::OptimizeResult => self.handle_optimize_result_key(key)?,
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn draw(&mut self) -> Result<()> {
+        // Get terminal size for page calculations
+        let (_, height) = self.app.size()?;
+        self.shared
+            .explorer
+            .set_page_size((height.saturating_sub(6)) as usize);
+
+        // Poll cache for completed loads and request prefetch
+        self.shared.preview_cache.poll();
+        prefetch_adjacent_previews(&self.shared.explorer, &mut self.shared.preview_cache);
+
+        // Extract shared fields into local variables before closure
+        let explorer = &mut self.shared.explorer;
+        let mode = self.mode;
+        let search_input = &self.shared.search_input;
+        let status = self.shared.status_message.clone();
+        let agent_filter_idx = self.shared.agent_filter_idx;
+        let available_agents = &self.shared.available_agents;
+        let context_menu_idx = self.context_menu_idx;
+        let optimize_result = self.optimize_result.clone();
+
+        // Get preview for current selection from cache
+        let current_path = explorer.selected_item().map(|i| i.path.clone());
+        let preview = current_path
+            .as_ref()
+            .and_then(|p| self.shared.preview_cache.get(p));
+
+        // Check if backup exists for selected file (for context menu)
+        let backup_exists = current_path
+            .as_ref()
+            .map(|p| has_backup(std::path::Path::new(p)))
+            .unwrap_or(false);
+
+        self.app.draw(|frame| {
+            let area = frame.area();
+
+            // Main layout: explorer + status + footer
+            let chunks = build_explorer_layout(area);
+
+            // Render file explorer (no checkboxes in list view - it's single-select)
+            render_explorer_list(frame, chunks[0], explorer, preview, false, backup_exists);
+
+            // Render status line
+            let status_text = if let Some(msg) = &status {
+                msg.clone()
+            } else {
+                match mode {
+                    Mode::Search => format!("Search: {}_", search_input),
+                    Mode::AgentFilter => {
+                        let agent = &available_agents[agent_filter_idx];
+                        format!("Filter by agent: {} (←/→ to change, Enter to apply)", agent)
+                    }
+                    Mode::ConfirmDelete => "Delete this session? (y/n)".to_string(),
+                    Mode::Help => String::new(),
+                    Mode::ContextMenu => String::new(),
+                    Mode::OptimizeResult => String::new(),
+                    Mode::Normal => {
+                        // Show current filters if any
+                        let mut parts = vec![];
+                        if let Some(search) = explorer.search_filter() {
+                            parts.push(format!("search: \"{}\"", search));
+                        }
+                        if let Some(agent) = explorer.agent_filter() {
+                            parts.push(format!("agent: {}", agent));
+                        }
+                        if parts.is_empty() {
+                            format!("{} sessions", explorer.len())
+                        } else {
+                            format!("{} sessions ({})", explorer.len(), parts.join(", "))
+                        }
+                    }
+                }
+            };
+            render_status_line(frame, chunks[1], &status_text);
+
+            // Render footer with keybindings
+            let footer_text = match mode {
+                Mode::Search => "Esc: cancel | Enter: apply search | Backspace: delete char",
+                Mode::AgentFilter => "←/→: change agent | Enter: apply | Esc: cancel",
+                Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
+                Mode::Help => "Press any key to close help",
+                Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
+                Mode::OptimizeResult => "Enter/Esc: dismiss",
+                Mode::Normal => {
+                    "↑↓: navigate | Enter: menu | p: play | c: copy | t: optimize | a: analyze | d: delete | ?: help | q: quit"
+                }
+            };
+            render_footer_text(frame, chunks[2], footer_text);
+
+            // Render modal overlays
+            match mode {
+                Mode::Help => Self::render_help_modal(frame, area),
+                Mode::ConfirmDelete => {
+                    if let Some(item) = explorer.selected_item() {
+                        modals::render_confirm_delete_modal(frame, area, &item.name);
+                    }
+                }
+                Mode::ContextMenu => {
+                    Self::render_context_menu_modal(frame, area, context_menu_idx, backup_exists);
+                }
+                Mode::OptimizeResult => {
+                    if let Some(ref result_state) = optimize_result {
+                        Self::render_optimize_result_modal(frame, area, result_state);
+                    }
+                }
+                _ => {}
+            }
+        })?;
+
+        Ok(())
     }
 }
 
