@@ -10,7 +10,7 @@ pub use types::*;
 use anyhow::Result;
 use std::path::PathBuf;
 
-use crate::analyzer::AgentAnalysisConfig;
+use crate::analyzer::{backend::command_exists, AgentAnalysisConfig};
 
 impl Config {
     /// Get the config file path (~/.config/agr/config.toml)
@@ -92,18 +92,18 @@ impl Config {
         self.agents.no_wrap.len() < initial_len
     }
 
-    /// Resolve the analysis agent, preferring `[analysis].default_agent` over
-    /// the deprecated `[recording].analysis_agent`.
-    ///
-    /// If neither is set, returns the default ("claude").
-    /// Emits a deprecation warning to stderr when the old field is being used.
+    /// Resolve the analysis agent with cascade:
+    /// 1. `[analysis].default_agent` (new config)
+    /// 2. `[recording].analysis_agent` (deprecated, warns if non-default)
+    /// 3. Auto-detect first available agent binary on PATH
+    /// 4. Fall back to "claude"
     pub fn resolve_analysis_agent(&self) -> String {
-        // Prefer new [analysis].default_agent
+        // 1. Prefer new [analysis].default_agent
         if let Some(ref agent) = self.analysis.default_agent {
             return agent.clone();
         }
 
-        // Fall back to deprecated [recording].analysis_agent
+        // 2. Fall back to deprecated [recording].analysis_agent
         let old_value = &self.recording.analysis_agent;
         let default_value = default_analysis_agent();
 
@@ -112,9 +112,22 @@ impl Config {
                 "Warning: [recording].analysis_agent is deprecated. \
                  Use [analysis].default_agent instead."
             );
+            return old_value.clone();
         }
 
-        old_value.clone()
+        // 3. Auto-detect first available agent binary
+        for (cmd, name) in &[
+            ("claude", "claude"),
+            ("codex", "codex"),
+            ("gemini", "gemini"),
+        ] {
+            if command_exists(cmd) {
+                return name.to_string();
+            }
+        }
+
+        // 4. Ultimate fallback
+        "claude".to_string()
     }
 
     /// Look up per-agent analysis configuration.

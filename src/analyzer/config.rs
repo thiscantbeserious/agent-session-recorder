@@ -99,7 +99,7 @@ pub struct AnalysisConfig {
 }
 
 pub fn default_analysis_default_agent() -> Option<String> {
-    Some("claude".to_string())
+    None
 }
 
 pub fn default_analysis_timeout() -> Option<u64> {

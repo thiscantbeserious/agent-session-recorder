@@ -223,18 +223,20 @@ reset_config
 create_config << 'TOMLEOF'
 [recording]
 auto_analyze = false
-analysis_agent = "fake-default-agent-xyz"
+
+[analysis]
+default_agent = "claude"
 TOMLEOF
 # Create a valid cast file if not already present
 $AGR record echo -- "test default agent" </dev/null 2>&1
 CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
 if [ -f "$CAST_FILE" ]; then
+    # Fake claude is in PATH, so this should succeed with the configured agent
     OUTPUT=$($AGR analyze "$CAST_FILE" 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
-    # Should fail because fake-default-agent-xyz is not a supported agent
-    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "Unknown agent"; then
-        pass "agr analyze fails gracefully with unknown default agent"
+    if [ "$EXIT_CODE" -eq 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "marker"; then
+        pass "agr analyze uses config's default_agent (claude)"
     else
-        fail "agr analyze should use config's analysis_agent (exit=$EXIT_CODE): $OUTPUT"
+        fail "agr analyze should use config's default_agent (exit=$EXIT_CODE): $OUTPUT"
     fi
 else
     skip "Could not create test cast file for default agent test"
