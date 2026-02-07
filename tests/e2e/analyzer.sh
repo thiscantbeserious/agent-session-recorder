@@ -44,7 +44,7 @@ fi
 test_header "Default analysis agent is auto-detect"
 reset_config
 CONFIG=$($AGR config show)
-if echo "$CONFIG" | /usr/bin/grep -q 'agent = "claude"\|# agent = auto-detect'; then
+if echo "$CONFIG" | /usr/bin/grep -qE 'agent = "claude"|# agent = auto-detect'; then
     pass "Default analysis agent is auto-detect or claude"
 else
     fail "Default analysis agent unexpected: $CONFIG"
