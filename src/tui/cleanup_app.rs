@@ -18,8 +18,8 @@ use ratatui::{
 use super::app::App;
 use super::event::Event;
 use super::preview_cache::PreviewCache;
-use super::theme::current_theme;
 use super::widgets::{FileExplorer, FileExplorerWidget, FileItem};
+use crate::theme::current_theme;
 use crate::StorageManager;
 
 /// UI mode for the cleanup application

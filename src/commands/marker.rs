@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 
-use agr::tui::current_theme;
+use agr::theme::current_theme;
 use agr::{Config, MarkerManager};
 
 use agr::asciicast::integrity::check_file_integrity;

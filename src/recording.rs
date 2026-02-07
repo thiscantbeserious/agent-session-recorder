@@ -14,10 +14,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::analyzer::{AgentType, AnalyzeOptions, AnalyzerService};
-use crate::branding;
 use crate::config::Config;
 use crate::files::filename;
 use crate::storage::StorageManager;
+use crate::theme;
 
 /// Session recorder that wraps asciinema
 pub struct Recorder {
@@ -136,9 +136,9 @@ impl Recorder {
         })
         .ok(); // Ignore if handler already set
 
-        branding::print_start_banner();
-        branding::print_box_line(&format!("  ⏺ {}/{}", agent, filename));
-        branding::print_box_bottom();
+        theme::print_start_banner();
+        theme::print_box_line(&format!("  ⏺ {}/{}", agent, filename));
+        theme::print_box_bottom();
         println!();
 
         // Run asciinema rec
@@ -156,26 +156,26 @@ impl Recorder {
             .context("Failed to start asciinema")?;
 
         println!();
-        branding::print_done_banner();
+        theme::print_done_banner();
 
         // Handle exit and get final filepath (may have been renamed)
         let final_filepath = if self.interrupted.load(Ordering::SeqCst) {
-            branding::print_box_line(&format!("  ⏹ {}", filename));
-            branding::print_box_bottom();
+            theme::print_box_line(&format!("  ⏹ {}", filename));
+            theme::print_box_bottom();
             filepath.clone()
         } else if status.success() {
             // Skip rename prompt if name was explicitly provided
             if session_name.is_some() {
-                branding::print_box_line(&format!("  ⏹ {}", filename));
-                branding::print_box_bottom();
+                theme::print_box_line(&format!("  ⏹ {}", filename));
+                theme::print_box_bottom();
                 filepath.clone()
             } else {
                 // Prompt for rename on normal exit
                 self.prompt_rename(&filepath, &filename)?
             }
         } else {
-            branding::print_box_line(&format!("  ⏹ {} (error)", filename));
-            branding::print_box_bottom();
+            theme::print_box_line(&format!("  ⏹ {} (error)", filename));
+            theme::print_box_bottom();
             filepath.clone()
         };
 
@@ -192,13 +192,13 @@ impl Recorder {
     fn prompt_rename(&self, filepath: &PathBuf, original_filename: &str) -> Result<PathBuf> {
         // Skip prompt if stdin is not a TTY (non-interactive)
         if !atty::is(atty::Stream::Stdin) {
-            branding::print_box_line(&format!("  ⏹ {}", original_filename));
-            branding::print_box_bottom();
+            theme::print_box_line(&format!("  ⏹ {}", original_filename));
+            theme::print_box_bottom();
             return Ok(filepath.clone());
         }
 
-        branding::print_box_line(&format!("  ⏹ {}", original_filename));
-        branding::print_box_bottom();
+        theme::print_box_line(&format!("  ⏹ {}", original_filename));
+        theme::print_box_bottom();
         print!("  ⏎ Rename: ");
         io::stdout().flush()?;
 

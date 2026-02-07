@@ -1,6 +1,6 @@
-//! Unit tests for branding module
+//! Unit tests for theme logo/branding
 
-use agr::branding::{
+use agr::theme::{
     print_box_bottom, print_box_line, print_box_line_end, print_box_prompt, print_done_banner,
     print_full_logo, print_start_banner, truncate_str, BOX_BOTTOM, BOX_WIDTH, LOGO_DONE, LOGO_FULL,
     LOGO_START,

@@ -6,8 +6,8 @@ use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use agr::config::migrate_config;
-use agr::tui::current_theme;
-use agr::tui::theme::ansi;
+use agr::theme::ansi;
+use agr::theme::current_theme;
 use agr::Config;
 
 /// Show current configuration as TOML with inline documentation comments.

@@ -2,7 +2,7 @@
 //!
 //! Uses insta for snapshot testing to ensure visual output is correct.
 
-use agr::tui::theme::current_theme;
+use agr::theme::current_theme;
 use agr::tui::widgets::Logo;
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
@@ -191,28 +191,28 @@ fn snapshot_cli_ansi_theme_colors() {
 #[test]
 fn snapshot_branding_logo_start() {
     // Small logo shown when starting a recording session
-    let logo = agr::branding::LOGO_START;
+    let logo = agr::theme::LOGO_START;
     insta::assert_snapshot!("branding_logo_start", logo);
 }
 
 #[test]
 fn snapshot_branding_logo_done() {
     // Small logo shown when a recording session ends
-    let logo = agr::branding::LOGO_DONE;
+    let logo = agr::theme::LOGO_DONE;
     insta::assert_snapshot!("branding_logo_done", logo);
 }
 
 #[test]
 fn snapshot_branding_logo_full() {
     // Full ASCII logo for interactive CLI mode
-    let logo = agr::branding::LOGO_FULL;
+    let logo = agr::theme::LOGO_FULL;
     insta::assert_snapshot!("branding_logo_full", logo);
 }
 
 #[test]
 fn snapshot_branding_box_bottom() {
     // Bottom border of the box
-    let border = agr::branding::BOX_BOTTOM;
+    let border = agr::theme::BOX_BOTTOM;
     insta::assert_snapshot!("branding_box_bottom", border);
 }
 
@@ -222,7 +222,7 @@ fn snapshot_branding_box_bottom() {
 
 #[test]
 fn snapshot_colorize_help_commands() {
-    use agr::tui::colorize_help;
+    use agr::theme::colorize_help;
 
     // Test colorize_help with typical command list output
     let input = r#"
@@ -240,7 +240,7 @@ Commands:
 
 #[test]
 fn snapshot_colorize_help_logo() {
-    use agr::tui::colorize_help;
+    use agr::theme::colorize_help;
 
     // Test colorize_help with logo (should apply green to logo lines)
     let input = r#" █████╗  ██████╗ ██████╗
@@ -258,7 +258,7 @@ fn snapshot_colorize_help_logo() {
 
 #[test]
 fn snapshot_colorize_help_mixed() {
-    use agr::tui::colorize_help;
+    use agr::theme::colorize_help;
 
     // Test colorize_help with mixed content (logo + commands)
     let input = r#" █████╗  ██████╗ ██████╗
