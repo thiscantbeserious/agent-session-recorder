@@ -13,12 +13,12 @@ cargo test && cargo clippy -- -D warnings && cargo insta test --check
 
 Infrastructure rename. No logic changes. Updates all import paths directly (no shim).
 
-- [ ] Rename `src/tui/event.rs` to `src/tui/event_bus.rs`
-- [ ] Update `src/tui/mod.rs`: change `pub mod event;` to `pub mod event_bus;`
-- [ ] Update `src/tui/app.rs`: change `use super::event::{Event, EventHandler};` to `use super::event_bus::{Event, EventHandler};`
-- [ ] Update `src/tui/list_app.rs`: change `use super::event::Event;` to `use super::event_bus::Event;`
-- [ ] Update `src/tui/cleanup_app.rs`: change `use super::event::Event;` to `use super::event_bus::Event;`
-- [ ] Verify: `cargo test && cargo clippy -- -D warnings && cargo insta test --check`
+- [x] Rename `src/tui/event.rs` to `src/tui/event_bus.rs`
+- [x] Update `src/tui/mod.rs`: change `pub mod event;` to `pub mod event_bus;`
+- [x] Update `src/tui/app.rs`: change `use super::event::{Event, EventHandler};` to `use super::event_bus::{Event, EventHandler};`
+- [x] Update `src/tui/list_app.rs`: change `use super::event::Event;` to `use super::event_bus::Event;`
+- [x] Update `src/tui/cleanup_app.rs`: change `use super::event::Event;` to `use super::event_bus::Event;`
+- [x] Verify: `cargo test && cargo clippy -- -D warnings && cargo insta test --check`
 
 **Files created:** none
 **Files modified:** `src/tui/event_bus.rs` (renamed from `event.rs`), `src/tui/mod.rs`, `src/tui/app.rs`, `src/tui/list_app.rs`, `src/tui/cleanup_app.rs`

@@ -17,7 +17,7 @@ use ratatui::{
 };
 
 use super::app::App;
-use super::event::Event;
+use super::event_bus::Event;
 use super::preview_cache::PreviewCache;
 use super::widgets::{FileExplorer, FileExplorerWidget, FileItem};
 use crate::asciicast::{apply_transforms, TransformResult};

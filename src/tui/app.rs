@@ -18,7 +18,7 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 
-use super::event::{Event, EventHandler};
+use super::event_bus::{Event, EventHandler};
 
 /// TUI Application wrapper
 ///
