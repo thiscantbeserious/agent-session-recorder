@@ -57,9 +57,8 @@ fi
 
 section "Analyzer E2E Tests (conditional)"
 
-# Test: Analyzer detection for missing binary
-test_header "Analyzer detection for missing binary"
-# Create config with auto_analyze enabled and a fake agent
+# Test: Config validation rejects unknown agent
+test_header "Config validation rejects unknown agent"
 reset_config
 create_config << 'TOMLEOF'
 [recording]
@@ -68,18 +67,12 @@ auto_analyze = true
 [analysis]
 agent = "definitely-not-a-real-agent-12345"
 TOMLEOF
-# Record a simple command - should complete without crashing even with missing analyzer
-RECORD_OUTPUT=$($AGR record echo -- "test auto-analyze hint" </dev/null 2>&1)
-if echo "$RECORD_OUTPUT" | /usr/bin/grep -qiE "(auto.?analyze|skipping|not installed)"; then
-    pass "Auto-analyze gracefully handles missing agent"
+# Config::load() validates agent names — commands should fail gracefully
+OUTPUT=$($AGR config show 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
+if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qiE "Unknown agent"; then
+    pass "Config validation rejects unknown agent name"
 else
-    # Even if no hint printed, recording should complete
-    CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
-    if [ -f "$CAST_FILE" ]; then
-        pass "Recording completes even with missing analyzer agent"
-    else
-        fail "Recording failed with auto_analyze and missing agent"
-    fi
+    fail "Config should reject unknown agent (exit=$EXIT_CODE): $OUTPUT"
 fi
 
 # Test: Config with custom analysis agent persists
@@ -99,21 +92,21 @@ else
     fail "Custom analysis agent not persisted: $CONFIG"
 fi
 
-# Test: Config with gemini-cli as analysis agent
-test_header "Config with gemini-cli analysis agent"
+# Test: Config with gemini as analysis agent
+test_header "Config with gemini analysis agent"
 reset_config
 create_config << 'TOMLEOF'
 [recording]
 auto_analyze = true
 
 [analysis]
-agent = "gemini-cli"
+agent = "gemini"
 TOMLEOF
 CONFIG=$($AGR config show)
-if echo "$CONFIG" | /usr/bin/grep -q 'agent = "gemini-cli"'; then
-    pass "gemini-cli as analysis agent accepted"
+if echo "$CONFIG" | /usr/bin/grep -q 'agent = "gemini"'; then
+    pass "gemini as analysis agent accepted"
 else
-    fail "gemini-cli analysis agent not accepted: $CONFIG"
+    fail "gemini analysis agent not accepted: $CONFIG"
 fi
 
 # Test: Conditional agent detection tests (skip if not installed)
@@ -204,7 +197,7 @@ fi
 test_header "agr analyze nonexistent.cast fails gracefully"
 reset_config
 OUTPUT=$($AGR analyze /nonexistent/path/to/file.cast 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
-if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "not found\|no such file"; then
+if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qiE "not found|no such file"; then
     pass "agr analyze fails gracefully with nonexistent file"
 else
     fail "agr analyze should fail with nonexistent file (exit=$EXIT_CODE): $OUTPUT"

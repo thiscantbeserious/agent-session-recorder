@@ -251,7 +251,7 @@ impl Recorder {
         let agent = match agent_name.to_lowercase().as_str() {
             "claude" => AgentType::Claude,
             "codex" => AgentType::Codex,
-            "gemini" | "gemini-cli" => AgentType::Gemini,
+            "gemini" => AgentType::Gemini,
             _ => {
                 eprintln!(
                     "Auto-analyze skipped: unknown agent '{}'. Supported: claude, codex, gemini",

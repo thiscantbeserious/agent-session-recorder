@@ -290,7 +290,7 @@ fn parse_agent_type(name: &str) -> Result<AgentType> {
     match name.to_lowercase().as_str() {
         "claude" => Ok(AgentType::Claude),
         "codex" => Ok(AgentType::Codex),
-        "gemini" | "gemini-cli" => Ok(AgentType::Gemini),
+        "gemini" => Ok(AgentType::Gemini),
         _ => anyhow::bail!(
             "Unknown agent: '{}'. Supported agents: claude, codex, gemini",
             name
@@ -316,7 +316,6 @@ mod tests {
     #[test]
     fn parse_agent_type_gemini() {
         assert_eq!(parse_agent_type("gemini").unwrap(), AgentType::Gemini);
-        assert_eq!(parse_agent_type("gemini-cli").unwrap(), AgentType::Gemini);
     }
 
     #[test]
