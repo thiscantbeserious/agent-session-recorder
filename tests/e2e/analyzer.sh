@@ -40,14 +40,15 @@ else
     fail "Config missing agent: $CONFIG"
 fi
 
-# Test: Default analysis agent is auto-detect (commented out template)
-test_header "Default analysis agent is auto-detect"
+# Test: Default config has no explicit analysis agent (auto-detect)
+test_header "Default analysis agent is auto-detect (absent from config)"
 reset_config
 CONFIG=$($AGR config show)
-if echo "$CONFIG" | /usr/bin/grep -qE 'agent = "claude"|# agent = auto-detect'; then
-    pass "Default analysis agent is auto-detect or claude"
+# agent field is Option<None> by default — should NOT appear in config show
+if echo "$CONFIG" | /usr/bin/grep -q '^\s*agent\s*='; then
+    fail "Default config should not have explicit agent field: $CONFIG"
 else
-    fail "Default analysis agent unexpected: $CONFIG"
+    pass "Default config has no explicit agent (auto-detect behavior)"
 fi
 
 # ============================================
