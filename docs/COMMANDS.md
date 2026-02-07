@@ -174,6 +174,7 @@ Analyze a recording with AI
 - `--debug`: Enable debug mode (required for --output)
 - `-o, --output`: Save cleaned content and exit (optionally specify filename)
 - `--fast`: Skip JSON schema enforcement (faster but less reliable)
+- `--wait`: Wait for keypress before exiting (used by TUI)
 
 ### Description
 
@@ -188,7 +189,7 @@ For large files, analysis is parallelized across multiple chunks, with
 automatic retry and rate limit handling.
 
 The default agent is configured in ~/.config/agr/config.toml under
-[recording].analysis_agent. Use --agent to override for a single run.
+[analysis].agent. Use --agent to override for a single run.
 
 EXAMPLES:
     agr analyze session.cast                     Analyze with default agent
@@ -486,6 +487,23 @@ and asks for confirmation before writing.
 EXAMPLES:
     agr config migrate              Interactive mode (shows preview, asks confirmation)
     agr config migrate --yes        Apply changes without confirmation (for scripts/CI)
+```
+
+#### agr config reset
+
+Reset configuration to defaults
+
+- `-y, --yes`: Skip confirmation prompt
+
+```
+Reset configuration to default values.
+
+Backs up the current config file (if it exists) to config.toml.bak,
+then writes a fresh default configuration.
+
+EXAMPLES:
+    agr config reset               Interactive mode (asks confirmation)
+    agr config reset --yes         Reset without confirmation (for scripts/CI)
 ```
 
 ---

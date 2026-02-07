@@ -1,0 +1,23 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH reset 1  "reset " 
+.SH NAME
+reset \- Reset configuration to defaults
+.SH SYNOPSIS
+\fBreset\fR [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Reset configuration to default values.
+.PP
+Backs up the current config file (if it exists) to config.toml.bak,
+then writes a fresh default configuration.
+.PP
+EXAMPLES:
+    agr config reset               Interactive mode (asks confirmation)
+    agr config reset \-\-yes         Reset without confirmation (for scripts/CI)
+.SH OPTIONS
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Skip confirmation prompt
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
