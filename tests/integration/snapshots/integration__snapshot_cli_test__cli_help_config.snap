@@ -21,6 +21,7 @@ Commands:
   show     [37mShow current configuration as TOML[0m
   edit     [37mOpen configuration file in your default editor[0m
   migrate  [37mAdd missing fields to config file[0m
+  reset    [37mReset configuration to defaults[0m
   help     [37mPrint this message or the help of the given subcommand(s)[0m
 
 Options:

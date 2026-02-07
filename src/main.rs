@@ -338,6 +338,7 @@ fn main() -> Result<()> {
             ConfigCommands::Show => commands::config::handle_show(),
             ConfigCommands::Edit => commands::config::handle_edit(),
             ConfigCommands::Migrate { yes } => commands::config::handle_migrate(yes),
+            ConfigCommands::Reset { yes } => commands::config::handle_reset(yes),
         },
         Commands::Shell(cmd) => match cmd {
             ShellCommands::Status => commands::shell::handle_status(),
@@ -923,6 +924,28 @@ mod tests {
                 assert!(yes);
             }
             _ => panic!("Expected Config Migrate command"),
+        }
+    }
+
+    #[test]
+    fn cli_config_reset_parses() {
+        let cli = Cli::try_parse_from(["agr", "config", "reset"]).unwrap();
+        match cli.command {
+            Commands::Config(ConfigCommands::Reset { yes }) => {
+                assert!(!yes);
+            }
+            _ => panic!("Expected Config Reset command"),
+        }
+    }
+
+    #[test]
+    fn cli_config_reset_parses_with_yes_flag() {
+        let cli = Cli::try_parse_from(["agr", "config", "reset", "--yes"]).unwrap();
+        match cli.command {
+            Commands::Config(ConfigCommands::Reset { yes }) => {
+                assert!(yes);
+            }
+            _ => panic!("Expected Config Reset command"),
         }
     }
 

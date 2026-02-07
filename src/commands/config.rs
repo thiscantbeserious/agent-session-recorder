@@ -179,6 +179,57 @@ pub fn handle_migrate(auto_confirm: bool) -> Result<()> {
     Ok(())
 }
 
+/// Reset config to defaults, backing up the current file.
+#[cfg(not(tarpaulin_include))]
+pub fn handle_reset(auto_confirm: bool) -> Result<()> {
+    let theme = current_theme();
+    let config_path = Config::config_path()?;
+
+    // Generate fresh default config through the migration pipeline
+    let result = migrate_config("")?;
+
+    if !config_path.exists() {
+        println!(
+            "{}",
+            theme.primary_text("No config file exists. Creating with default settings.")
+        );
+    } else {
+        println!(
+            "{}",
+            theme.primary_text("This will replace your config with default settings.")
+        );
+    }
+
+    if !should_proceed("Reset configuration to defaults?", auto_confirm)? {
+        println!("{}", theme.primary_text("No changes made."));
+        return Ok(());
+    }
+
+    // Back up existing config
+    if config_path.exists() {
+        let backup_path = config_path.with_extension("toml.bak");
+        fs::copy(&config_path, &backup_path).with_context(|| {
+            format!(
+                "Failed to back up config to {}",
+                backup_path.display()
+            )
+        })?;
+        println!(
+            "{}",
+            theme.secondary_text(&format!("Backed up to {}", backup_path.display()))
+        );
+    }
+
+    // Write fresh default config
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    atomic_write(&config_path, &result.content)?;
+    println!("{}", theme.success_text("Config reset to defaults."));
+
+    Ok(())
+}
+
 /// Print a diff-style preview of the config changes.
 ///
 /// Shows lines that contain added fields with a green `+` prefix.

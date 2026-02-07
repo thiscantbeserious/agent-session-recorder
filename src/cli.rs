@@ -153,7 +153,7 @@ For large files, analysis is parallelized across multiple chunks, with
 automatic retry and rate limit handling.
 
 The default agent is configured in ~/.config/agr/config.toml under
-[recording].analysis_agent. Use --agent to override for a single run.
+[analysis].agent. Use --agent to override for a single run.
 
 EXAMPLES:
     agr analyze session.cast                     Analyze with default agent
@@ -202,6 +202,9 @@ SUPPORTED AGENTS:
         /// Skip JSON schema enforcement for faster analysis (less reliable)
         #[arg(long, help = "Skip JSON schema enforcement (faster but less reliable)")]
         fast: bool,
+        /// Wait for keypress before exiting (used by TUI)
+        #[arg(long, hide = true)]
+        wait: bool,
     },
 
     /// Play a recording with the native player
@@ -554,6 +557,20 @@ EXAMPLES:
     agr config migrate --yes        Apply changes without confirmation (for scripts/CI)")]
     Migrate {
         /// Apply changes without confirmation prompt
+        #[arg(long, short = 'y', help = "Skip confirmation prompt")]
+        yes: bool,
+    },
+    /// Reset configuration to defaults
+    #[command(long_about = "Reset configuration to default values.
+
+Backs up the current config file (if it exists) to config.toml.bak,
+then writes a fresh default configuration.
+
+EXAMPLES:
+    agr config reset               Interactive mode (asks confirmation)
+    agr config reset --yes         Reset without confirmation (for scripts/CI)")]
+    Reset {
+        /// Apply reset without confirmation prompt
         #[arg(long, short = 'y', help = "Skip confirmation prompt")]
         yes: bool,
     },
