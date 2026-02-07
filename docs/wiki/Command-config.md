@@ -64,3 +64,16 @@ EXAMPLES:
     agr config migrate              Interactive mode (shows preview, asks confirmation)
     agr config migrate --yes        Apply changes without confirmation (for scripts/CI)
 
+### config reset
+
+Reset configuration to defaults
+
+Reset configuration to default values.
+
+Backs up the current config file (if it exists) to config.toml.bak,
+then writes a fresh default configuration.
+
+EXAMPLES:
+    agr config reset               Interactive mode (asks confirmation)
+    agr config reset --yes         Reset without confirmation (for scripts/CI)
+
