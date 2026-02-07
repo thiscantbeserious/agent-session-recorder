@@ -68,7 +68,8 @@ jobs:
   # 2. Unit Tests - verify logic (uses cached build)
   unit-tests:
     name: Unit Tests (${{ matrix.os == 'ubuntu-latest' && 'Linux' || 'macOS' }})
-    needs: build
+    needs: [build, detect-changes]
+    if: needs.detect-changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -103,6 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       src: ${{ steps.filter.outputs.src }}
+      code: ${{ steps.filter.outputs.code }}
     steps:
       - uses: actions/checkout@v5
 
@@ -112,6 +114,11 @@ jobs:
           filters: |
             src:
               - 'src/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+            code:
+              - 'src/**'
+              - 'tests/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
 
@@ -239,7 +246,8 @@ jobs:
   # 3. Coverage - generate test coverage and upload to Codecov
   coverage:
     name: Coverage
-    needs: build
+    needs: [build, detect-changes]
+    if: needs.detect-changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     env:
       TARPAULIN_VERSION: 0.32.7
@@ -307,7 +315,8 @@ jobs:
   # 4. E2E Tests - verify integration (uses build artifacts, runs parallel with unit tests)
   e2e-tests:
     name: E2E Tests (${{ matrix.os == 'ubuntu-latest' && 'Linux' || 'macOS' }})
-    needs: build
+    needs: [build, detect-changes]
+    if: needs.detect-changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -367,7 +376,8 @@ jobs:
   # 5. Snapshot Tests - verify UI snapshots match committed versions
   snapshot-tests:
     name: Snapshot Tests
-    needs: build
+    needs: [build, detect-changes]
+    if: needs.detect-changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
