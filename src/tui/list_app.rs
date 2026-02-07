@@ -1013,7 +1013,7 @@ impl TuiApp for ListApp {
                 Mode::Help => Self::render_help_modal(frame, area),
                 Mode::ConfirmDelete => {
                     if let Some(item) = explorer.selected_item() {
-                        modals::render_confirm_delete_modal(frame, area, &item.name);
+                        modals::render_confirm_delete_modal(frame, area, 1, item.size);
                     }
                 }
                 Mode::ContextMenu => {

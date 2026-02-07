@@ -26,27 +26,35 @@ pub fn center_modal(area: Rect, width: u16, height: u16) -> Rect {
     Rect::new(x, y, modal_width, modal_height)
 }
 
-/// Render a confirm-delete modal for a single file.
+/// Render a confirm-delete modal showing count and storage impact.
 ///
-/// Shows the filename and y/n confirmation prompt. Extracted from
-/// `list_app.rs` `render_confirm_delete_modal`. The cleanup app uses
-/// a different bulk-delete modal, so it keeps its own version.
-pub fn render_confirm_delete_modal(frame: &mut Frame, area: Rect, filename: &str) {
+/// Used by both list (single delete) and cleanup (bulk delete) apps.
+pub fn render_confirm_delete_modal(frame: &mut Frame, area: Rect, count: usize, size: u64) {
     let theme = current_theme();
-    let modal_area = center_modal(area, 50, 7);
+    let modal_area = center_modal(area, 50, 8);
 
     // Clear the area behind the modal
     frame.render_widget(Clear, modal_area);
 
+    let title = if count == 1 {
+        "Delete Session?"
+    } else {
+        "Delete Sessions?"
+    };
+
     let text = vec![
         Line::from(Span::styled(
-            "Delete Session?",
+            title,
             Style::default()
                 .fg(theme.error)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(format!("File: {}", filename)),
+        Line::from(format!("Sessions to delete: {}", count)),
+        Line::from(format!(
+            "Storage to free: {}",
+            humansize::format_size(size, humansize::BINARY)
+        )),
         Line::from(""),
         Line::from(vec![
             Span::styled("y", Style::default().fg(theme.error)),

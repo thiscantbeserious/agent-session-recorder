@@ -8,7 +8,7 @@ use std::time::Duration;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
-    layout::{Alignment, Rect},
+    layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
@@ -17,6 +17,7 @@ use ratatui::{
 
 use super::app::layout::build_explorer_layout;
 use super::app::list_view::render_explorer_list;
+use super::app::modals;
 use super::app::status_footer::{render_footer_text, render_status_line};
 use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
 use super::widgets::preview::prefetch_adjacent_previews;
@@ -390,51 +391,6 @@ impl CleanupApp {
 
         frame.render_widget(help, modal_area);
     }
-
-    /// Render the confirm delete modal overlay.
-    fn render_confirm_delete_modal(frame: &mut Frame, area: Rect, count: usize, size: u64) {
-        let theme = current_theme();
-
-        // Center the modal
-        let modal_width = 50.min(area.width.saturating_sub(4));
-        let modal_height = 8.min(area.height.saturating_sub(4));
-        let x = (area.width - modal_width) / 2;
-        let y = (area.height - modal_height) / 2;
-        let modal_area = Rect::new(x, y, modal_width, modal_height);
-
-        // Clear the area behind the modal
-        frame.render_widget(Clear, modal_area);
-
-        let text = vec![
-            Line::from(Span::styled(
-                "Delete Sessions?",
-                Style::default()
-                    .fg(theme.error)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(""),
-            Line::from(format!("Sessions to delete: {}", count)),
-            Line::from(format!("Storage to free: {}", format_size(size))),
-            Line::from(""),
-            Line::from(vec![
-                Span::styled("y", Style::default().fg(theme.error)),
-                Span::raw(": Yes, delete  |  "),
-                Span::styled("n", Style::default().fg(theme.accent)),
-                Span::raw(": No, cancel"),
-            ]),
-        ];
-
-        let confirm = Paragraph::new(text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.error))
-                    .title(" Confirm Delete "),
-            )
-            .alignment(Alignment::Center);
-
-        frame.render_widget(confirm, modal_area);
-    }
 }
 
 impl TuiApp for CleanupApp {
@@ -577,7 +533,12 @@ impl TuiApp for CleanupApp {
             match mode {
                 Mode::Help => Self::render_help_modal(frame, area),
                 Mode::ConfirmDelete => {
-                    Self::render_confirm_delete_modal(frame, area, selected_count, selected_size);
+                    modals::render_confirm_delete_modal(
+                        frame,
+                        area,
+                        selected_count,
+                        selected_size,
+                    );
                 }
                 _ => {}
             }
