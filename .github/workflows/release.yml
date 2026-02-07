@@ -100,8 +100,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
-          name: asr-${{ matrix.artifact }}
-          path: target/${{ matrix.target }}/release/asr
+          name: agr-${{ matrix.artifact }}
+          path: target/${{ matrix.target }}/release/agr
 
   # Create GitHub Release with binaries attached
   release:
@@ -123,10 +123,10 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
-          for dir in artifacts/asr-*; do
+          for dir in artifacts/agr-*; do
             artifact_name=$(basename "$dir")
-            chmod +x "$dir/asr"
-            mv "$dir/asr" "release-assets/$artifact_name"
+            chmod +x "$dir/agr"
+            mv "$dir/agr" "release-assets/$artifact_name"
           done
           ls -la release-assets/
 
