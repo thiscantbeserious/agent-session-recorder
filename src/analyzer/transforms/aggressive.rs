@@ -303,6 +303,7 @@ pub struct GlobalDeduplicator {
     line_counts: HashMap<String, usize>,
     max_line_repeats: usize,
     event_hashes: VecDeque<u64>,
+    event_hash_set: HashSet<u64>,
     window_size: usize,
     min_hash_bytes: usize,
     total_deduped_lines: usize,
@@ -321,6 +322,7 @@ impl GlobalDeduplicator {
             line_counts: HashMap::new(),
             max_line_repeats,
             event_hashes: VecDeque::with_capacity(window_size),
+            event_hash_set: HashSet::with_capacity(window_size),
             window_size,
             min_hash_bytes: DEFAULT_MIN_HASH_BYTES,
             total_deduped_lines: 0,
@@ -361,14 +363,17 @@ impl Transform for GlobalDeduplicator {
             // Skip small events: keystrokes and short output are not redraws
             if event.data.len() >= self.min_hash_bytes {
                 let h = Self::hash_string(&event.data);
-                if self.event_hashes.contains(&h) {
+                if self.event_hash_set.contains(&h) {
                     self.total_deduped_events += 1;
                     accumulated_time += event.time;
                     continue;
                 }
                 self.event_hashes.push_back(h);
+                self.event_hash_set.insert(h);
                 if self.event_hashes.len() > self.window_size {
-                    self.event_hashes.pop_front();
+                    if let Some(old) = self.event_hashes.pop_front() {
+                        self.event_hash_set.remove(&old);
+                    }
                 }
             }
 
@@ -620,7 +625,12 @@ impl Transform for WindowedLineDeduplicator {
             }
 
             let lines: Vec<String> = event.data.split_inclusive('\n').map(|s| s.to_string()).collect();
-            let time_per_line = event.time / lines.len().max(1) as f64;
+            let line_count = lines.len();
+            let time_per_line = if line_count == 0 {
+                event.time
+            } else {
+                event.time / line_count as f64
+            };
 
             for line in lines {
                 self.line_buffer.push_back((line, time_per_line));
