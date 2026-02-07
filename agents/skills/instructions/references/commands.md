@@ -29,7 +29,6 @@ cargo run -- <args>   # Run in development
 ## Build Scripts
 
 ```bash
-./build.sh            # Docker build (runs tests + builds binary)
 ./install.sh          # Install to system
 ./uninstall.sh        # Remove from system
 ./tests/e2e_test.sh   # Run E2E tests

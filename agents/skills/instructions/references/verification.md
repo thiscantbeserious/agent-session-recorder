@@ -18,7 +18,6 @@ cargo fmt && cargo clippy && cargo test && ./tests/e2e_test.sh
 | Snapshot tests | `cargo test tui_test` |
 | E2E tests | `./tests/e2e_test.sh` |
 | Release build | `cargo build --release` |
-| Docker build | `./build.sh && ls dist/` |
 
 ## Requirements
 
