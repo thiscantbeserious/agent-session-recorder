@@ -150,17 +150,23 @@ impl PlaybackState {
     /// # Arguments
     /// * `new_cols` - New terminal width
     /// * `new_rows` - New terminal height
-    /// * `rec_cols` - Recording width (for clamping)
-    /// * `rec_rows` - Recording height (for clamping)
-    pub fn handle_resize(&mut self, new_cols: u16, new_rows: u16, rec_cols: u32, rec_rows: u32) {
+    /// * `buf_cols` - Current buffer width (for clamping)
+    /// * `buf_rows` - Current buffer height (for clamping)
+    pub fn handle_resize(
+        &mut self,
+        new_cols: u16,
+        new_rows: u16,
+        buf_cols: usize,
+        buf_rows: usize,
+    ) {
         self.term_cols = new_cols;
         self.term_rows = new_rows;
         self.view_rows = (new_rows.saturating_sub(Self::STATUS_LINES)) as usize;
         self.view_cols = new_cols as usize;
 
         // Clamp viewport offset to valid range
-        let max_row_offset = (rec_rows as usize).saturating_sub(self.view_rows);
-        let max_col_offset = (rec_cols as usize).saturating_sub(self.view_cols);
+        let max_row_offset = buf_rows.saturating_sub(self.view_rows);
+        let max_col_offset = buf_cols.saturating_sub(self.view_cols);
         self.view_row_offset = self.view_row_offset.min(max_row_offset);
         self.view_col_offset = self.view_col_offset.min(max_col_offset);
 

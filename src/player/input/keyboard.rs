@@ -76,7 +76,7 @@ pub fn handle_key_event(
 
         // === Resize terminal ===
         KeyCode::Char('r') => {
-            handle_resize_to_recording(state, rec_cols, rec_rows);
+            handle_resize_to_recording(state, buffer);
             InputResult::Continue
         }
 
@@ -134,7 +134,7 @@ pub fn handle_key_event(
             InputResult::Continue
         }
         KeyCode::Down => {
-            handle_down_key(state, rec_rows);
+            handle_down_key(state, buffer);
             InputResult::Continue
         }
 
@@ -142,14 +142,16 @@ pub fn handle_key_event(
     }
 }
 
-/// Handle resize terminal to match recording size.
-fn handle_resize_to_recording(state: &mut PlaybackState, rec_cols: u32, rec_rows: u32) {
+/// Handle resize terminal to match current buffer size.
+fn handle_resize_to_recording(state: &mut PlaybackState, buffer: &TerminalBuffer) {
     // NOTE: This uses xterm escape sequence which only works on
     // xterm-compatible terminals (iTerm2, xterm, etc.)
-    let target_rows = rec_rows + PlaybackState::STATUS_LINES as u32;
+    let buf_rows = buffer.height();
+    let buf_cols = buffer.width();
+    let target_rows = buf_rows as u32 + PlaybackState::STATUS_LINES as u32;
     let mut stdout = io::stdout();
     // Intentionally ignore errors - terminal may not support xterm resize sequences
-    let _ = write!(stdout, "\x1b[8;{};{}t", target_rows, rec_cols);
+    let _ = write!(stdout, "\x1b[8;{};{}t", target_rows, buf_cols);
     let _ = stdout.flush();
 
     // Small delay for terminal to resize
@@ -162,21 +164,21 @@ fn handle_resize_to_recording(state: &mut PlaybackState, rec_cols: u32, rec_rows
         state.view_rows = (new_rows.saturating_sub(PlaybackState::STATUS_LINES)) as usize;
         state.view_cols = new_cols as usize;
 
-        // Check if resize succeeded (terminal at least as big as recording)
-        let resize_ok = new_cols as u32 >= rec_cols
-            && new_rows >= PlaybackState::STATUS_LINES + rec_rows as u16;
+        // Check if resize succeeded (terminal at least as big as buffer)
+        let resize_ok = new_cols as usize >= buf_cols
+            && new_rows as usize >= PlaybackState::STATUS_LINES as usize + buf_rows;
         if resize_ok {
             // Reset viewport offset since we now fit
-            if state.view_rows >= rec_rows as usize {
+            if state.view_rows >= buf_rows {
                 state.set_view_row_offset(0, 0);
             }
-            if state.view_cols >= rec_cols as usize {
+            if state.view_cols >= buf_cols {
                 state.set_view_col_offset(0, 0);
             }
         } else {
             // Clamp to new maximums in case the viewport grew but still doesn't fit
-            let max_row_offset = (rec_rows as usize).saturating_sub(state.view_rows);
-            let max_col_offset = (rec_cols as usize).saturating_sub(state.view_cols);
+            let max_row_offset = buf_rows.saturating_sub(state.view_rows);
+            let max_col_offset = buf_cols.saturating_sub(state.view_cols);
             state.set_view_row_offset(state.view_row_offset(), max_row_offset);
             state.set_view_col_offset(state.view_col_offset(), max_col_offset);
         }
@@ -338,7 +340,7 @@ fn handle_right_key(
     rec_rows: u32,
 ) {
     if state.viewport_mode {
-        let max_offset = (rec_cols as usize).saturating_sub(state.view_cols);
+        let max_offset = buffer.width().saturating_sub(state.view_cols);
         let new_offset = state.view_col_offset() + 1;
         state.set_view_col_offset(new_offset, max_offset);
         state.needs_render = true;
@@ -388,11 +390,11 @@ fn handle_up_key(state: &mut PlaybackState) {
 }
 
 /// Handle down arrow key (free mode or viewport scroll).
-fn handle_down_key(state: &mut PlaybackState, rec_rows: u32) {
+fn handle_down_key(state: &mut PlaybackState, buffer: &TerminalBuffer) {
     if state.free_mode {
         // Move highlight down one line
         let old_offset = state.view_row_offset();
-        let max_line = (rec_rows as usize).saturating_sub(1);
+        let max_line = buffer.height().saturating_sub(1);
         let new_free_line = state.free_line() + 1;
         state.set_free_line(new_free_line, max_line);
 
@@ -408,7 +410,7 @@ fn handle_down_key(state: &mut PlaybackState, rec_rows: u32) {
         }
         state.needs_render = true;
     } else if state.viewport_mode {
-        let max_offset = (rec_rows as usize).saturating_sub(state.view_rows);
+        let max_offset = buffer.height().saturating_sub(state.view_rows);
         let new_offset = state.view_row_offset() + 1;
         state.set_view_row_offset(new_offset, max_offset);
         state.needs_render = true;
@@ -990,7 +992,7 @@ mod tests {
         let mut state = create_test_state();
         state.viewport_mode = true;
         state.set_view_col_offset(5, 100);
-        let mut buffer = TerminalBuffer::new(80, 24);
+        let mut buffer = TerminalBuffer::new(120, 24); // Wider buffer to allow scrolling
         let cast = create_test_cast();
         let markers = vec![];
 
@@ -1001,7 +1003,7 @@ mod tests {
             &cast,
             &markers,
             10.0,
-            120, // Wider recording to allow scrolling
+            120,
             24,
         );
 
@@ -1109,8 +1111,9 @@ mod tests {
         let mut state = create_test_state();
         state.free_mode = true;
         state.set_free_line(5, 100);
+        let buffer = TerminalBuffer::new(80, 24);
 
-        handle_down_key(&mut state, 24);
+        handle_down_key(&mut state, &buffer);
 
         assert_eq!(state.free_line(), 6);
         assert_eq!(state.prev_free_line, 5);
@@ -1121,8 +1124,9 @@ mod tests {
         let mut state = create_test_state();
         state.free_mode = true;
         state.set_free_line(23, 100); // Last line (0-indexed)
+        let buffer = TerminalBuffer::new(80, 24);
 
-        handle_down_key(&mut state, 24);
+        handle_down_key(&mut state, &buffer);
 
         assert_eq!(state.free_line(), 23); // Can't go past last line
     }
@@ -1134,8 +1138,9 @@ mod tests {
         state.set_free_line(23, 100); // Bottom of viewport
         state.view_rows = 24;
         state.set_view_row_offset(0, 100);
+        let buffer = TerminalBuffer::new(80, 48); // Buffer taller than viewport
 
-        handle_down_key(&mut state, 48); // Recording taller than viewport
+        handle_down_key(&mut state, &buffer);
 
         assert_eq!(state.free_line(), 24);
         assert_eq!(state.view_row_offset(), 1); // Auto-scrolled down
@@ -1168,8 +1173,9 @@ mod tests {
         let mut state = create_test_state();
         state.viewport_mode = true;
         state.set_view_row_offset(5, 100);
+        let buffer = TerminalBuffer::new(80, 48);
 
-        handle_down_key(&mut state, 48);
+        handle_down_key(&mut state, &buffer);
 
         assert_eq!(state.view_row_offset(), 6);
     }
@@ -1180,8 +1186,9 @@ mod tests {
         state.viewport_mode = true;
         state.view_rows = 24;
         state.set_view_row_offset(24, 100); // max offset for 48 rows
+        let buffer = TerminalBuffer::new(80, 48);
 
-        handle_down_key(&mut state, 48);
+        handle_down_key(&mut state, &buffer);
 
         assert_eq!(state.view_row_offset(), 24); // At max
     }
@@ -1200,8 +1207,9 @@ mod tests {
     fn test_handle_down_key_normal_mode_does_nothing() {
         let mut state = create_test_state();
         state.set_view_row_offset(5, 100);
+        let buffer = TerminalBuffer::new(80, 48);
 
-        handle_down_key(&mut state, 48);
+        handle_down_key(&mut state, &buffer);
 
         assert_eq!(state.view_row_offset(), 5); // Unchanged
     }

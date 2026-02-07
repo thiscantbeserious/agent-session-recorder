@@ -256,8 +256,8 @@ fn run_main_loop(
                     state.view_col_offset(),
                     state.view_rows,
                     state.view_cols,
-                    rec_rows as usize,
-                    rec_cols as usize,
+                    buffer.height(),
+                    buffer.width(),
                 )?;
 
                 render_separator_line(stdout, state.term_cols, state.term_rows.saturating_sub(3))?;
@@ -277,8 +277,8 @@ fn run_main_loop(
                     state.term_rows.saturating_sub(1),
                     state.paused,
                     state.speed,
-                    rec_cols,
-                    rec_rows,
+                    buffer.width() as u32,
+                    buffer.height() as u32,
                     state.view_cols,
                     state.view_rows,
                     state.view_col_offset(),

@@ -62,7 +62,7 @@ pub fn handle_event(
             rec_rows,
         ),
         Event::Resize(new_cols, new_rows) => {
-            state.handle_resize(new_cols, new_rows, rec_cols, rec_rows);
+            state.handle_resize(new_cols, new_rows, buffer.width(), buffer.height());
             InputResult::Continue
         }
         _ => InputResult::Continue, // Ignore focus events, etc.
