@@ -52,6 +52,7 @@ crossterm = "0.28"
 vte = "0.15"
 tracing = "0.1.44"
 rayon = "1.10"
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3.10"

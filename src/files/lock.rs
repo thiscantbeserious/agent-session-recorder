@@ -121,12 +121,14 @@ pub fn find_by_header(dir: &Path, target_header: &str) -> Option<PathBuf> {
 
 /// Check whether a process with the given PID is still running.
 ///
-/// Uses `kill -0` which checks for process existence without sending a signal.
-pub fn is_pid_alive(pid: u32) -> bool {
-    std::process::Command::new("kill")
-        .arg("-0")
-        .arg(pid.to_string())
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+/// Uses `kill(pid, 0)` which checks for process existence without sending a signal.
+#[cfg(unix)]
+pub(crate) fn is_pid_alive(pid: u32) -> bool {
+    // SAFETY: kill with signal 0 only checks process existence, no signal is sent.
+    unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+}
+
+#[cfg(not(unix))]
+pub(crate) fn is_pid_alive(_pid: u32) -> bool {
+    false
 }

@@ -361,20 +361,8 @@ impl ListApp {
             }
 
             // Direct shortcuts (bypass context menu)
-            KeyCode::Char('p') => {
-                if self.is_selected_locked() {
-                    self.mode = Mode::ConfirmUnlock;
-                } else {
-                    self.play_session()?;
-                }
-            }
-            KeyCode::Char('c') => {
-                if self.is_selected_locked() {
-                    self.mode = Mode::ConfirmUnlock;
-                } else {
-                    self.copy_to_clipboard()?;
-                }
-            }
+            KeyCode::Char('p') => self.play_session()?,
+            KeyCode::Char('c') => self.copy_to_clipboard()?,
             KeyCode::Char('t') => {
                 if self.is_selected_locked() {
                     self.mode = Mode::ConfirmUnlock;

@@ -145,7 +145,7 @@ impl Recorder {
         println!();
 
         // Run asciinema rec
-        let status = Command::new("asciinema")
+        let status = match Command::new("asciinema")
             .arg("rec")
             .arg(&filepath)
             .arg("--title")
@@ -156,17 +156,23 @@ impl Recorder {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .status()
-            .context("Failed to start asciinema")?;
+        {
+            Ok(s) => s,
+            Err(e) => {
+                lock::remove_lock(&filepath);
+                return Err(anyhow::Error::new(e).context("Failed to start asciinema"));
+            }
+        };
 
         println!();
         theme::print_done_banner();
 
-        // Recording is done - remove lock before any post-processing
-        lock::remove_lock(&filepath);
-
         // Capture file identity for recovery if file gets moved
         let inode = Self::capture_inode(&filepath);
         let header = Self::read_header_line(&filepath);
+
+        // Recording is done - remove lock after capturing identity
+        lock::remove_lock(&filepath);
 
         // Handle exit and get final filepath (may have been renamed)
         let final_filepath = if self.interrupted.load(Ordering::SeqCst) {

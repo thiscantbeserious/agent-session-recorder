@@ -881,6 +881,42 @@ cargo clippy
 
 ---
 
+## Stage 5: Review Fixes (HIGH + MEDIUM from REVIEW.md)
+
+### Objective
+Fix the HIGH and MEDIUM severity findings from the internal review.
+
+### Fixes
+
+1. **HIGH: Lock file leaked if asciinema fails to start** (`recording.rs:126,159`)
+   - The `?` on `Command::new("asciinema")...status()` returns early without `remove_lock()`
+   - Fix: Change `?` to `match` that calls `remove_lock(&filepath)` before returning error
+
+2. **MEDIUM: `is_pid_alive` spawns process instead of syscall** (`lock.rs:125-132`)
+   - Fix: Use `libc::kill(pid as libc::pid_t, 0)` on Unix (unsafe but standard)
+   - Gate with `#[cfg(unix)]`, non-Unix returns `false`
+   - Change visibility to `pub(crate)`
+
+3. **MEDIUM: `read_lock` called for every file on startup** (`file_explorer.rs:60,77`)
+   - Fix: In `read_lock`, check lock file existence FIRST (`lock_path.exists()`), only parse+check PID if file exists
+   - This avoids the syscall/process spawn for the 99% of files without locks
+
+4. **MEDIUM: Inode/header captured after lock removal** (`recording.rs:164-169`)
+   - Fix: Move `capture_inode` and `read_header_line` BEFORE `lock::remove_lock(&filepath)`
+
+5. **LOW (bonus): TUI gates play/copy behind unlock dialog** (`list_app.rs:386-413`)
+   - Fix: Remove `is_selected_locked()` gate from `play` and `copy` shortcuts (read-only ops)
+
+### Progress
+- [x] Lock leak fix (recording.rs)
+- [x] `is_pid_alive` syscall + visibility
+- [x] `read_lock` early-exit optimization (addressed by syscall fix)
+- [x] Inode/header capture ordering
+- [x] TUI play/copy ungating
+- [x] Tests pass, clippy clean
+
+---
+
 ## Completion Criteria
 
 All stages complete when:

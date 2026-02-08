@@ -19,6 +19,7 @@ dependencies = [
  "dirs",
  "humansize",
  "insta",
+ "libc",
  "predicates",
  "ratatui",
  "rayon",
