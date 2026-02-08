@@ -53,6 +53,7 @@ vte = "0.15"
 tracing = "0.1.44"
 rayon = "1.10"
 libc = "0.2"
+signal-hook = "0.4.3"
 
 [dev-dependencies]
 tempfile = "3.10"

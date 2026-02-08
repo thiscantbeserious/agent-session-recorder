@@ -132,12 +132,16 @@ impl Recorder {
             format!("{} {}", agent, args.join(" "))
         };
 
-        // Set up interrupt handler
+        // Set up signal handlers for clean shutdown
         let interrupted = self.interrupted.clone();
         ctrlc::set_handler(move || {
             interrupted.store(true, Ordering::SeqCst);
         })
         .ok(); // Ignore if handler already set
+
+        // Handle SIGHUP (terminal closed) - prevents orphaned recordings and stale locks
+        #[cfg(unix)]
+        Self::register_sighup_handler(&self.interrupted);
 
         theme::print_start_banner();
         theme::print_box_line(&format!("  ⏺ {}/{}", agent, filename));
@@ -261,6 +265,16 @@ impl Recorder {
                 Ok(new_filepath)
             }
         }
+    }
+
+    /// Register a SIGHUP handler to prevent orphaned recordings when the terminal closes.
+    ///
+    /// Without this, force-closing a terminal leaves `agr record` running as an orphan
+    /// with a stale lock file that blocks other commands.
+    #[cfg(unix)]
+    fn register_sighup_handler(interrupted: &Arc<AtomicBool>) {
+        use signal_hook::flag::register;
+        let _ = register(libc::SIGHUP, interrupted.clone());
     }
 
     /// Capture the inode of a file for later recovery if it gets renamed.
