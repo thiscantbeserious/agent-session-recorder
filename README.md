@@ -17,6 +17,7 @@
 [![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![asciinema](https://img.shields.io/badge/powered%20by-asciinema-d40000)](https://asciinema.org/)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-informational)]()
 
 **Record, replay, and understand your AI agent sessions.**
 
