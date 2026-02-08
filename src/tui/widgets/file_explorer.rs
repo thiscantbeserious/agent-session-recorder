@@ -23,6 +23,7 @@ use ratatui::{
 
 use crate::asciicast::EventType;
 use crate::files::backup::has_backup;
+use crate::files::lock::{self, LockInfo};
 use crate::storage::SessionInfo;
 use crate::theme::current_theme;
 
@@ -41,6 +42,8 @@ pub struct FileItem {
     pub modified: DateTime<Local>,
     /// Whether a backup file exists for this item (cached)
     pub has_backup: bool,
+    /// Lock info if file is actively being recorded (cached)
+    pub lock_info: Option<LockInfo>,
 }
 
 impl FileItem {
@@ -54,6 +57,7 @@ impl FileItem {
     ) -> Self {
         let path_str = path.into();
         let has_backup = has_backup(std::path::Path::new(&path_str));
+        let lock_info = lock::read_lock(std::path::Path::new(&path_str));
         Self {
             path: path_str,
             name: name.into(),
@@ -61,6 +65,7 @@ impl FileItem {
             size,
             modified,
             has_backup,
+            lock_info,
         }
     }
 }
@@ -69,6 +74,7 @@ impl From<SessionInfo> for FileItem {
     fn from(session: SessionInfo) -> Self {
         let path_str = session.path.to_string_lossy().to_string();
         let has_backup = has_backup(std::path::Path::new(&path_str));
+        let lock_info = lock::read_lock(std::path::Path::new(&path_str));
         Self {
             path: path_str,
             name: session.filename,
@@ -76,6 +82,7 @@ impl From<SessionInfo> for FileItem {
             size: session.size,
             modified: session.modified,
             has_backup,
+            lock_info,
         }
     }
 }
@@ -732,8 +739,9 @@ impl FileExplorer {
             // Reload metadata from disk
             if let Ok(metadata) = std::fs::metadata(path) {
                 self.items[idx].size = metadata.len();
-                // Also update cached has_backup status
+                // Also update cached has_backup and lock status
                 self.items[idx].has_backup = has_backup(std::path::Path::new(path));
+                self.items[idx].lock_info = lock::read_lock(std::path::Path::new(path));
                 return true;
             }
         }
@@ -759,6 +767,18 @@ impl FileExplorer {
             true
         } else {
             false
+        }
+    }
+
+    /// Refresh lock_info for visible items that currently have a lock.
+    ///
+    /// Called periodically to detect when recordings end.
+    pub fn refresh_visible_locks(&mut self) {
+        for &item_idx in &self.visible_indices {
+            if self.items[item_idx].lock_info.is_some() {
+                let path = self.items[item_idx].path.clone();
+                self.items[item_idx].lock_info = lock::read_lock(std::path::Path::new(&path));
+            }
         }
     }
 
@@ -842,8 +862,8 @@ impl Widget for FileExplorerWidget<'_> {
         };
 
         // Build list items (collect data first to avoid borrow issues)
-        // Note: has_backup is cached in FileItem to avoid filesystem calls on every render
-        let item_data: Vec<(String, String, String, bool, bool)> = self
+        // Note: has_backup and lock_info are cached in FileItem
+        let item_data: Vec<(String, String, String, bool, bool, bool)> = self
             .explorer
             .visible_items()
             .map(|(_, item, is_checked)| {
@@ -853,6 +873,7 @@ impl Widget for FileExplorerWidget<'_> {
                     format_size(item.size),
                     is_checked,
                     item.has_backup,
+                    item.lock_info.is_some(),
                 )
             })
             .collect();
@@ -860,7 +881,7 @@ impl Widget for FileExplorerWidget<'_> {
         let show_checkboxes = self.show_checkboxes;
         let items: Vec<ListItem> = item_data
             .iter()
-            .map(|(name, agent, size_str, is_checked, has_bak)| {
+            .map(|(name, agent, size_str, is_checked, has_bak, is_locked)| {
                 let mut spans = vec![];
                 if show_checkboxes {
                     let checkbox = if *is_checked { "[x] " } else { "[ ] " };
@@ -872,7 +893,18 @@ impl Widget for FileExplorerWidget<'_> {
                     spans.push(Span::styled("[opt] ", theme.accent_style()));
                 }
 
-                spans.push(Span::styled(name.as_str(), theme.text_style()));
+                // Use greyed style for locked (actively recording) files
+                let name_style = if *is_locked {
+                    theme.text_secondary_style()
+                } else {
+                    theme.text_style()
+                };
+                spans.push(Span::styled(name.as_str(), name_style));
+
+                // Add recording indicator for locked files
+                if *is_locked {
+                    spans.push(Span::styled(" \u{1F4F9}", theme.text_secondary_style()));
+                }
 
                 spans.push(Span::raw("  "));
                 spans.push(Span::styled(
@@ -892,6 +924,7 @@ impl Widget for FileExplorerWidget<'_> {
                     item.size,
                     item.modified,
                     item.path.clone(),
+                    item.lock_info.clone(),
                 )
             })
         } else {
@@ -931,96 +964,107 @@ impl Widget for FileExplorerWidget<'_> {
 
         // Render preview panel if enabled
         if self.show_preview && chunks.len() > 1 {
-            let preview_text = if let Some((name, agent, size, modified, path)) = preview_data {
-                let mut lines = vec![
-                    Line::from(vec![
-                        Span::styled("Name: ", theme.text_secondary_style()),
-                        Span::styled(name, theme.text_style()),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("Agent: ", theme.text_secondary_style()),
-                        Span::styled(agent, theme.accent_style()),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("Size: ", theme.text_secondary_style()),
-                        Span::styled(format_size(size), theme.text_style()),
-                    ]),
-                ];
+            let preview_text =
+                if let Some((name, agent, size, modified, path, lock_data)) = preview_data {
+                    let mut lines = vec![
+                        Line::from(vec![
+                            Span::styled("Name: ", theme.text_secondary_style()),
+                            Span::styled(name, theme.text_style()),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("Agent: ", theme.text_secondary_style()),
+                            Span::styled(agent, theme.accent_style()),
+                        ]),
+                        Line::from(vec![
+                            Span::styled("Size: ", theme.text_secondary_style()),
+                            Span::styled(format_size(size), theme.text_style()),
+                        ]),
+                    ];
 
-                // Add duration and markers if session preview is available
-                if let Some((duration, markers, styled_preview)) = session_preview_data {
-                    lines.push(Line::from(vec![
-                        Span::styled("Duration: ", theme.text_secondary_style()),
-                        Span::styled(duration, theme.text_style()),
-                    ]));
-                    lines.push(Line::from(vec![
-                        Span::styled("Markers: ", theme.text_secondary_style()),
-                        Span::styled(markers.to_string(), theme.text_style()),
-                    ]));
-                    // Show backup status
-                    if has_backup {
+                    // Add duration and markers if session preview is available
+                    if let Some((duration, markers, styled_preview)) = session_preview_data {
                         lines.push(Line::from(vec![
-                            Span::styled("Backup: ", theme.text_secondary_style()),
+                            Span::styled("Duration: ", theme.text_secondary_style()),
+                            Span::styled(duration, theme.text_style()),
+                        ]));
+                        lines.push(Line::from(vec![
+                            Span::styled("Markers: ", theme.text_secondary_style()),
+                            Span::styled(markers.to_string(), theme.text_style()),
+                        ]));
+                        // Show backup status
+                        if has_backup {
+                            lines.push(Line::from(vec![
+                                Span::styled("Backup: ", theme.text_secondary_style()),
+                                Span::styled(
+                                    "Available",
+                                    Style::default()
+                                        .fg(theme.success)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                            ]));
+                        }
+                        // Show lock/recording status
+                        if let Some(ref lock) = lock_data {
+                            lines.push(Line::from(vec![
+                                Span::styled("Status: ", theme.text_secondary_style()),
+                                Span::styled(
+                                    format!("\u{1F4F9} Recording (PID {})", lock.pid),
+                                    theme.text_secondary_style(),
+                                ),
+                            ]));
+                        }
+                        lines.push(Line::from(vec![
+                            Span::styled("Modified: ", theme.text_secondary_style()),
                             Span::styled(
-                                "Available",
-                                Style::default()
-                                    .fg(theme.success)
-                                    .add_modifier(Modifier::BOLD),
+                                modified.format("%Y-%m-%d %H:%M").to_string(),
+                                theme.text_style(),
                             ),
                         ]));
-                    }
-                    lines.push(Line::from(vec![
-                        Span::styled("Modified: ", theme.text_secondary_style()),
-                        Span::styled(
-                            modified.format("%Y-%m-%d %H:%M").to_string(),
-                            theme.text_style(),
-                        ),
-                    ]));
 
-                    // Add terminal preview section if not empty
-                    if !styled_preview.is_empty() {
-                        lines.push(Line::from("")); // Empty line separator
-                        lines.push(Line::from(vec![Span::styled(
-                            "Preview",
-                            theme.text_secondary_style(),
-                        )]));
+                        // Add terminal preview section if not empty
+                        if !styled_preview.is_empty() {
+                            lines.push(Line::from("")); // Empty line separator
+                            lines.push(Line::from(vec![Span::styled(
+                                "Preview",
+                                theme.text_secondary_style(),
+                            )]));
 
-                        // Add terminal preview lines with colors (limited to fit)
-                        for styled_line in styled_preview.iter().take(12) {
-                            // Prepend a space and convert to ratatui Line with colors
-                            let mut ratatui_line =
-                                SessionPreview::styled_line_to_ratatui(styled_line);
-                            // Insert space at start
-                            if let Some(first_span) = ratatui_line.spans.first_mut() {
-                                *first_span = Span::styled(
-                                    format!(" {}", first_span.content),
-                                    first_span.style,
-                                );
-                            } else {
-                                ratatui_line.spans.insert(0, Span::raw(" "));
+                            // Add terminal preview lines with colors (limited to fit)
+                            for styled_line in styled_preview.iter().take(12) {
+                                // Prepend a space and convert to ratatui Line with colors
+                                let mut ratatui_line =
+                                    SessionPreview::styled_line_to_ratatui(styled_line);
+                                // Insert space at start
+                                if let Some(first_span) = ratatui_line.spans.first_mut() {
+                                    *first_span = Span::styled(
+                                        format!(" {}", first_span.content),
+                                        first_span.style,
+                                    );
+                                } else {
+                                    ratatui_line.spans.insert(0, Span::raw(" "));
+                                }
+                                lines.push(ratatui_line);
                             }
-                            lines.push(ratatui_line);
                         }
+                    } else {
+                        // Fallback when no session preview is available
+                        lines.push(Line::from(vec![
+                            Span::styled("Modified: ", theme.text_secondary_style()),
+                            Span::styled(
+                                modified.format("%Y-%m-%d %H:%M").to_string(),
+                                theme.text_style(),
+                            ),
+                        ]));
+                        lines.push(Line::from(vec![
+                            Span::styled("Path: ", theme.text_secondary_style()),
+                            Span::styled(path, theme.text_secondary_style()),
+                        ]));
                     }
-                } else {
-                    // Fallback when no session preview is available
-                    lines.push(Line::from(vec![
-                        Span::styled("Modified: ", theme.text_secondary_style()),
-                        Span::styled(
-                            modified.format("%Y-%m-%d %H:%M").to_string(),
-                            theme.text_style(),
-                        ),
-                    ]));
-                    lines.push(Line::from(vec![
-                        Span::styled("Path: ", theme.text_secondary_style()),
-                        Span::styled(path, theme.text_secondary_style()),
-                    ]));
-                }
 
-                lines
-            } else {
-                vec![Line::from("No file selected")]
-            };
+                    lines
+                } else {
+                    vec![Line::from("No file selected")]
+                };
 
             let preview = Paragraph::new(preview_text).block(
                 Block::default()

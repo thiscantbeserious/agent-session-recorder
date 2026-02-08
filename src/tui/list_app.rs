@@ -45,6 +45,8 @@ pub enum Mode {
     ContextMenu,
     /// Optimize result mode - showing optimization results or error
     OptimizeResult,
+    /// Confirm unlock mode - asking user to unlock a locked file
+    ConfirmUnlock,
 }
 
 impl Mode {
@@ -142,6 +144,8 @@ pub struct ListApp {
     context_menu_idx: usize,
     /// Optimize result for modal display
     optimize_result: Option<OptimizeResultState>,
+    /// Last time lock states were refreshed for visible items
+    last_lock_refresh: std::time::Instant,
 }
 
 impl ListApp {
@@ -156,6 +160,7 @@ impl ListApp {
             mode: Mode::Normal,
             context_menu_idx: 0,
             optimize_result: None,
+            last_lock_refresh: std::time::Instant::now(),
         })
     }
 
@@ -168,32 +173,237 @@ impl ListApp {
         }
     }
 
-    /// Handle keys in normal mode (app-specific only).
-    ///
-    /// Navigation (up/down/pgup/pgdn/home/end) and mode transitions
-    /// (`/`, `f`, `?`) are handled by `handle_shared_key`. This only
-    /// handles app-specific keys: Enter, shortcuts, and Esc.
+    /// Run the list application event loop.
+    pub fn run(&mut self) -> Result<()> {
+        loop {
+            // Draw the UI
+            self.draw()?;
+
+            // Handle events
+            match self.app.next_event()? {
+                Event::Key(key) => self.handle_key(key)?,
+                Event::Resize(_, _) => {
+                    // Resize handled automatically by ratatui
+                }
+                Event::Tick => {
+                    self.maybe_refresh_lock_states();
+                }
+                Event::Quit => break,
+            }
+
+            if self.app.should_quit() {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Draw the UI.
+    fn draw(&mut self) -> Result<()> {
+        // Get terminal size for page calculations
+        let (_, height) = self.app.size()?;
+        self.explorer
+            .set_page_size((height.saturating_sub(6)) as usize);
+
+        // Poll cache for completed loads and request prefetch
+        self.preview_cache.poll();
+        self.prefetch_adjacent_previews();
+
+        let explorer = &mut self.explorer;
+        let mode = self.mode;
+        let search_input = &self.search_input;
+        let status = self.status_message.clone();
+        let agent_filter_idx = self.agent_filter_idx;
+        let available_agents = &self.available_agents;
+        let context_menu_idx = self.context_menu_idx;
+        let optimize_result = self.optimize_result.clone();
+
+        // Get preview for current selection from cache
+        let current_path = explorer.selected_item().map(|i| i.path.clone());
+        let preview = current_path
+            .as_ref()
+            .and_then(|p| self.preview_cache.get(p));
+
+        // Check if backup exists for selected file (for context menu)
+        let backup_exists = current_path
+            .as_ref()
+            .map(|p| has_backup(std::path::Path::new(p)))
+            .unwrap_or(false);
+
+        self.app.draw(|frame| {
+            let area = frame.area();
+
+            // Main layout: explorer + footer
+            let chunks = Layout::vertical([
+                Constraint::Min(1),    // Explorer
+                Constraint::Length(1), // Status line
+                Constraint::Length(1), // Footer
+            ])
+            .split(area);
+
+            // Render file explorer (no checkboxes in list view - it's single-select)
+            let widget = FileExplorerWidget::new(explorer)
+                .show_checkboxes(false)
+                .session_preview(preview)
+                .has_backup(backup_exists);
+            frame.render_widget(widget, chunks[0]);
+
+            // Render status line
+            let theme = current_theme();
+            let status_text = if let Some(msg) = &status {
+                msg.clone()
+            } else {
+                match mode {
+                    Mode::Search => format!("Search: {}_", search_input),
+                    Mode::AgentFilter => {
+                        let agent = &available_agents[agent_filter_idx];
+                        format!("Filter by agent: {} (←/→ to change, Enter to apply)", agent)
+                    }
+                    Mode::ConfirmDelete => "Delete this session? (y/n)".to_string(),
+                    Mode::ConfirmUnlock => String::new(),
+                    Mode::Help => String::new(),
+                    Mode::ContextMenu => String::new(),
+                    Mode::OptimizeResult => String::new(),
+                    Mode::Normal => {
+                        // Show current filters if any
+                        let mut parts = vec![];
+                        if let Some(search) = explorer.search_filter() {
+                            parts.push(format!("search: \"{}\"", search));
+                        }
+                        if let Some(agent) = explorer.agent_filter() {
+                            parts.push(format!("agent: {}", agent));
+                        }
+                        if parts.is_empty() {
+                            format!("{} sessions", explorer.len())
+                        } else {
+                            format!("{} sessions ({})", explorer.len(), parts.join(", "))
+                        }
+                    }
+                }
+            };
+            let status_line =
+                Paragraph::new(status_text).style(Style::default().fg(theme.text_secondary));
+            frame.render_widget(status_line, chunks[1]);
+
+            // Render footer with keybindings
+            let footer_text = match mode {
+                Mode::Search => "Esc: cancel | Enter: apply search | Backspace: delete char",
+                Mode::AgentFilter => "←/→: change agent | Enter: apply | Esc: cancel",
+                Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
+                Mode::ConfirmUnlock => "y: unlock | n/Esc: cancel",
+                Mode::Help => "Press any key to close help",
+                Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
+                Mode::OptimizeResult => "Enter/Esc: dismiss",
+                Mode::Normal => {
+                    "↑↓: navigate | Enter: menu | p: play | c: copy | t: optimize | a: analyze | d: delete | ?: help | q: quit"
+                }
+            };
+            let footer = Paragraph::new(footer_text)
+                .style(Style::default().fg(theme.text_secondary))
+                .alignment(Alignment::Center);
+            frame.render_widget(footer, chunks[2]);
+
+            // Render modal overlays
+            match mode {
+                Mode::Help => Self::render_help_modal(frame, area),
+                Mode::ConfirmDelete => {
+                    if let Some(item) = explorer.selected_item() {
+                        Self::render_confirm_delete_modal(frame, area, item);
+                    }
+                }
+                Mode::ContextMenu => {
+                    Self::render_context_menu_modal(frame, area, context_menu_idx, backup_exists);
+                }
+                Mode::OptimizeResult => {
+                    if let Some(ref result_state) = optimize_result {
+                        Self::render_optimize_result_modal(frame, area, result_state);
+                    }
+                }
+                Mode::ConfirmUnlock => {
+                    Self::render_confirm_unlock_modal(frame, area);
+                }
+                _ => {}
+            }
+        })?;
+
+        Ok(())
+    }
+
+    /// Handle keyboard input based on current mode.
+    fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
+        match self.mode {
+            Mode::Normal => self.handle_normal_key(key)?,
+            Mode::Search => self.handle_search_key(key)?,
+            Mode::AgentFilter => self.handle_agent_filter_key(key)?,
+            Mode::Help => self.handle_help_key(key)?,
+            Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
+            Mode::ContextMenu => self.handle_context_menu_key(key)?,
+            Mode::OptimizeResult => self.handle_optimize_result_key(key)?,
+            Mode::ConfirmUnlock => self.handle_confirm_unlock_key(key)?,
+        }
+        Ok(())
+    }
+
+    /// Handle keys in normal mode.
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             // Actions
             KeyCode::Enter => {
-                if self.shared.explorer.selected_item().is_some() {
-                    self.context_menu_idx = 0; // Reset to first item (Play)
-                    self.mode = Mode::ContextMenu;
+                if self.explorer.selected_item().is_some() {
+                    if self.is_selected_locked() {
+                        self.mode = Mode::ConfirmUnlock;
+                    } else {
+                        self.context_menu_idx = 0;
+                        self.mode = Mode::ContextMenu;
+                    }
                 }
             }
 
             // Direct shortcuts (bypass context menu)
-            KeyCode::Char('p') => self.play_session()?,
-            KeyCode::Char('c') => self.copy_to_clipboard()?,
-            KeyCode::Char('t') => self.optimize_session()?,
-            KeyCode::Char('a') => self.analyze_session()?,
+            KeyCode::Char('p') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                } else {
+                    self.play_session()?;
+                }
+            }
+            KeyCode::Char('c') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                } else {
+                    self.copy_to_clipboard()?;
+                }
+            }
+            KeyCode::Char('t') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                } else {
+                    self.optimize_session()?;
+                }
+            }
+            KeyCode::Char('a') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                } else {
+                    self.analyze_session()?;
+                }
+            }
             KeyCode::Char('d') => {
-                if self.shared.explorer.selected_item().is_some() {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                } else if self.explorer.selected_item().is_some() {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
-            KeyCode::Char('m') => self.add_marker()?,
+            KeyCode::Char('m') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                } else {
+                    self.add_marker()?;
+                }
+            }
+            KeyCode::Char('?') => self.mode = Mode::Help,
 
             // Clear filters
             KeyCode::Esc => {
@@ -312,6 +522,47 @@ impl ListApp {
             self.optimize_result = None;
         }
         Ok(())
+    }
+
+    /// Check if the currently selected file is locked.
+    fn is_selected_locked(&self) -> bool {
+        self.explorer
+            .selected_item()
+            .map(|item| item.lock_info.is_some())
+            .unwrap_or(false)
+    }
+
+    /// Handle keys in confirm unlock mode.
+    fn handle_confirm_unlock_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                if let Some(item) = self.explorer.selected_item() {
+                    let path = std::path::Path::new(&item.path);
+                    crate::files::lock::remove_lock(path);
+                    let path_str = item.path.clone();
+                    self.explorer.update_item_metadata(&path_str);
+                }
+                self.context_menu_idx = 0;
+                self.mode = Mode::ContextMenu;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.mode = Mode::Normal;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Periodically refresh lock states for visible locked items.
+    ///
+    /// Only checks items that currently have a lock, every ~15 seconds.
+    fn maybe_refresh_lock_states(&mut self) {
+        let interval = std::time::Duration::from_secs(15);
+        if self.last_lock_refresh.elapsed() < interval {
+            return;
+        }
+        self.last_lock_refresh = std::time::Instant::now();
+        self.explorer.refresh_visible_locks();
     }
 
     /// Execute the currently selected context menu action.
@@ -450,6 +701,13 @@ impl ListApp {
     fn optimize_session(&mut self) -> Result<()> {
         if let Some(item) = self.shared.explorer.selected_item() {
             let path = std::path::Path::new(&item.path);
+
+            // Refuse to optimize a file being actively recorded
+            if let Err(e) = crate::files::lock::check_not_locked(path) {
+                self.status_message = Some(format!("Cannot optimize: {}", e));
+                return Ok(());
+            }
+
             let name = item.name.clone();
             let path_str = item.path.clone();
 
@@ -768,6 +1026,50 @@ impl ListApp {
             .alignment(Alignment::Left);
 
         frame.render_widget(menu, modal_area);
+    }
+
+    /// Render the unlock confirmation dialog.
+    ///
+    /// This function is public to allow snapshot testing.
+    pub fn render_confirm_unlock_modal(frame: &mut Frame, area: Rect) {
+        let theme = current_theme();
+        let modal_width = 50.min(area.width.saturating_sub(4));
+        let modal_height = 7.min(area.height.saturating_sub(4));
+        let x = (area.width - modal_width) / 2;
+        let y = (area.height - modal_height) / 2;
+        let modal_area = Rect::new(x, y, modal_width, modal_height);
+
+        frame.render_widget(Clear, modal_area);
+
+        let lines = vec![
+            Line::from(Span::styled(
+                "\u{1F4F9} File is being recorded",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "This file has an active recording lock.",
+                theme.text_style(),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "y: unlock and proceed | n/Esc: cancel",
+                Style::default().fg(theme.text_secondary),
+            )),
+        ];
+
+        let dialog = Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme.accent))
+                    .title(" Lock "),
+            )
+            .alignment(Alignment::Left);
+
+        frame.render_widget(dialog, modal_area);
     }
 
     /// Render the optimize result modal overlay.

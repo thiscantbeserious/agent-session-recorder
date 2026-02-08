@@ -79,6 +79,9 @@ pub fn handle_remove_silence(
     // Check for file corruption before transforming
     check_file_integrity(&filepath)?;
 
+    // Refuse to transform a file being actively recorded
+    agr::files::lock::check_not_locked(&filepath)?;
+
     // Parse the file
     let mut cast = AsciicastFile::parse(&filepath)
         .with_context(|| format!("Failed to parse asciicast file: {}", filepath.display()))?;

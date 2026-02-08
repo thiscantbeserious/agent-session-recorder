@@ -80,3 +80,6 @@ mod copy_test;
 
 #[path = "integration/analyzer_content_test.rs"]
 mod analyzer_content_test;
+
+#[path = "integration/lock_test.rs"]
+mod lock_test;
