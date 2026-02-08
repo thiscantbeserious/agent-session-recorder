@@ -210,9 +210,10 @@ mod tests {
                 size: 1024,
                 modified: Local::now(),
                 has_backup: false,
+                lock_info: None,
             })
             .collect();
-        SharedState::new(items)
+        SharedState::new(items, None)
     }
 
     fn key(code: KeyCode) -> KeyEvent {

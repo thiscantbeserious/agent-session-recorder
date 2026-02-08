@@ -23,7 +23,7 @@ use super::truncate_string;
 pub fn handle(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()> {
     let config = Config::load()?;
     let age_threshold = config.storage.age_threshold_days;
-    let storage = StorageManager::new(config);
+    let storage = StorageManager::new(config.clone());
 
     // Get sessions, optionally filtered by agent
     let mut sessions = storage.list_sessions(agent_filter)?;
@@ -48,19 +48,23 @@ pub fn handle(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()>
 
     // Check if we're in a TTY - if so, use interactive TUI
     if std::io::stdout().is_terminal() {
-        handle_tui(sessions, agent_filter)
+        handle_tui(sessions, agent_filter, config)
     } else {
         handle_text(sessions, agent_filter, older_than, age_threshold, storage)
     }
 }
 
 /// Handle cleanup command with interactive TUI.
-fn handle_tui(sessions: Vec<SessionInfo>, agent_filter: Option<&str>) -> Result<()> {
+fn handle_tui(
+    sessions: Vec<SessionInfo>,
+    agent_filter: Option<&str>,
+    config: Config,
+) -> Result<()> {
     // Convert sessions to FileItems
     let items: Vec<FileItem> = sessions.into_iter().map(FileItem::from).collect();
 
     // Create and run the cleanup app
-    let mut app = CleanupApp::new(items)?;
+    let mut app = CleanupApp::new(items, config)?;
 
     // If agent filter was specified on command line, it's already applied
     // (sessions were filtered before being passed to this function)

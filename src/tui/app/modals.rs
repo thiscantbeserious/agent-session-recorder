@@ -76,6 +76,47 @@ pub fn render_confirm_delete_modal(frame: &mut Frame, area: Rect, count: usize, 
     frame.render_widget(confirm, modal_area);
 }
 
+/// Render a confirm-unlock modal showing lock details.
+///
+/// Prompts the user to force-unlock a session that is currently being recorded.
+pub fn render_confirm_unlock_modal(frame: &mut Frame, area: Rect, lock_msg: &str) {
+    let theme = current_theme();
+    let modal_area = center_modal(area, 55, 8);
+
+    // Clear the area behind the modal
+    frame.render_widget(Clear, modal_area);
+
+    let text = vec![
+        Line::from(Span::styled(
+            "Session Locked",
+            Style::default()
+                .fg(theme.error)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+        Line::from("This session is being recorded.".to_string()),
+        Line::from(format!("Lock: {}", lock_msg)),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("y", Style::default().fg(theme.error)),
+            Span::raw(": Force unlock  |  "),
+            Span::styled("n", Style::default().fg(theme.accent)),
+            Span::raw(": Cancel"),
+        ]),
+    ];
+
+    let confirm = Paragraph::new(text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.error))
+                .title(" Confirm Unlock "),
+        )
+        .alignment(Alignment::Center);
+
+    frame.render_widget(confirm, modal_area);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

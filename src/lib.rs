@@ -1,8 +1,5 @@
-//! Agent Session Recorder (ASR) Library
-//!
-//! A Rust library for recording AI agent terminal sessions with asciinema.
+//! Agent Session Recorder (AGR) Library
 
-// Analyzer module with content extraction pipeline and AI analysis
 pub mod analyzer;
 
 pub mod asciicast;
@@ -18,6 +15,7 @@ pub mod shell;
 pub mod storage;
 pub mod terminal;
 pub mod tui;
+pub mod utils;
 
 pub use asciicast::{AsciicastFile, Event, EventType, Header, MarkerInfo, MarkerManager};
 pub use config::Config;

@@ -238,7 +238,9 @@ pub trait TuiApp {
             match self.app().next_event()? {
                 Event::Key(key) => self.handle_key(key)?,
                 Event::Resize(_, _) => {}
-                Event::Tick => {}
+                Event::Tick => {
+                    self.shared_state().maybe_refresh_tick();
+                }
                 Event::Quit => break,
             }
 

@@ -864,3 +864,113 @@ fn snapshot_help_modal() {
     let output = render_help_modal_to_string();
     insta::assert_snapshot!("help_modal", output);
 }
+
+// ============================================================================
+// Lock / Recording Icon Snapshots
+// ============================================================================
+
+use agr::files::lock::LockInfo;
+
+/// Create test file items with one item actively being recorded (locked).
+fn create_test_file_items_with_lock() -> Vec<FileItem> {
+    let mut items = vec![
+        FileItem {
+            path: "/sessions/claude/20240115-session1.cast".to_string(),
+            name: "20240115-session1.cast".to_string(),
+            agent: "claude".to_string(),
+            size: 1024 * 50,
+            modified: Local.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap(),
+            has_backup: false,
+            lock_info: None,
+        },
+        FileItem {
+            path: "/sessions/claude/20240116-recording.cast".to_string(),
+            name: "20240116-recording.cast".to_string(),
+            agent: "claude".to_string(),
+            size: 1024 * 10,
+            modified: Local.with_ymd_and_hms(2024, 1, 16, 14, 0, 0).unwrap(),
+            has_backup: false,
+            lock_info: Some(LockInfo {
+                pid: 12345,
+                started: "2024-01-16T14:00:00".to_string(),
+            }),
+        },
+        FileItem {
+            path: "/sessions/codex/20240114-session3.cast".to_string(),
+            name: "20240114-session3.cast".to_string(),
+            agent: "codex".to_string(),
+            size: 1024 * 100,
+            modified: Local.with_ymd_and_hms(2024, 1, 14, 9, 0, 0).unwrap(),
+            has_backup: false,
+            lock_info: None,
+        },
+    ];
+    // Sort by date descending (default) - the locked item should be first
+    items.sort_by(|a, b| b.modified.cmp(&a.modified));
+    items
+}
+
+#[test]
+fn snapshot_file_explorer_with_locked_item() {
+    let mut explorer = FileExplorer::new(create_test_file_items_with_lock());
+
+    let output = render_explorer_to_string(&mut explorer, 100, 12);
+    insta::assert_snapshot!("file_explorer_with_locked_item", output);
+}
+
+#[test]
+fn snapshot_file_explorer_locked_item_preview() {
+    use agr::terminal::{Cell, CellStyle, StyledLine};
+    use agr::tui::widgets::SessionPreview;
+
+    let mut explorer = FileExplorer::new(create_test_file_items_with_lock());
+
+    // Create a preview for the locked item (first item = selected by default)
+    let preview = SessionPreview {
+        duration_secs: 42.0,
+        marker_count: 0,
+        styled_preview: vec![StyledLine {
+            cells: "$ claude"
+                .chars()
+                .map(|c| Cell {
+                    char: c,
+                    style: CellStyle::default(),
+                })
+                .collect(),
+        }],
+    };
+
+    let output = render_explorer_with_preview(&mut explorer, Some(&preview), 100, 15);
+    insta::assert_snapshot!("file_explorer_locked_item_preview", output);
+}
+
+#[test]
+fn snapshot_confirm_unlock_modal() {
+    let width = 60u16;
+    let height = 12u16;
+    let area = Rect::new(0, 0, width, height);
+
+    let backend = ratatui::backend::TestBackend::new(width, height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| {
+            agr::tui::app::modals::render_confirm_unlock_modal(
+                frame,
+                area,
+                "PID 12345 since 2025-01-15T10:30",
+            );
+        })
+        .unwrap();
+
+    let backend = terminal.backend();
+    let mut output = String::new();
+    for y in 0..height {
+        for x in 0..width {
+            let cell = backend.buffer()[(x, y)].symbol();
+            output.push_str(cell);
+        }
+        output.push('\n');
+    }
+    insta::assert_snapshot!("confirm_unlock_modal", output);
+}

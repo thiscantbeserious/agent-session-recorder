@@ -18,6 +18,10 @@ pub fn handle_add(file: &str, time: f64, label: &str) -> Result<()> {
     // Resolve file path (supports short format like "claude/session.cast")
     let filepath = resolve_file_path(file, &config)?;
     check_file_integrity(&filepath)?;
+
+    // Refuse to add markers to a file being actively recorded
+    agr::files::lock::check_not_locked(&filepath)?;
+
     MarkerManager::add_marker(&filepath, time, label)?;
     println!(
         "{}",

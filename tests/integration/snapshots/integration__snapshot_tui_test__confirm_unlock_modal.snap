@@ -1,0 +1,14 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+expression: output
+---
+                                                            
+                                                            
+  ┌ Confirm Unlock ─────────────────────────────────────┐   
+  │                   Session Locked                    │   
+  │                                                     │   
+  │           This session is being recorded.           │   
+  │       Lock: PID 12345 since 2025-01-15T10:30        │   
+  │                                                     │   
+  │            y: Force unlock  |  n: Cancel            │   
+  └─────────────────────────────────────────────────────┘

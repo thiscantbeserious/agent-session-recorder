@@ -69,6 +69,9 @@ pub fn handle(
     // Check for file corruption before proceeding
     check_file_integrity(&filepath)?;
 
+    // Refuse to analyze a file being actively recorded
+    agr::files::lock::check_not_locked(&filepath)?;
+
     // Look up per-agent config
     let agent_config = config.analysis_agent_config(&resolved_agent);
 

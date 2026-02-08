@@ -19,7 +19,7 @@ use super::truncate_string;
 #[cfg(not(tarpaulin_include))]
 pub fn handle(agent: Option<&str>) -> Result<()> {
     let config = Config::load()?;
-    let storage = StorageManager::new(config);
+    let storage = StorageManager::new(config.clone());
     let sessions = storage.list_sessions(agent)?;
 
     if sessions.is_empty() {
@@ -37,19 +37,23 @@ pub fn handle(agent: Option<&str>) -> Result<()> {
 
     // Check if we're in a TTY - if so, use interactive TUI
     if std::io::stdout().is_terminal() {
-        handle_tui(sessions, agent)
+        handle_tui(sessions, agent, config)
     } else {
         handle_text(sessions, agent, &storage)
     }
 }
 
 /// Handle list command with interactive TUI.
-fn handle_tui(sessions: Vec<agr::storage::SessionInfo>, agent: Option<&str>) -> Result<()> {
+fn handle_tui(
+    sessions: Vec<agr::storage::SessionInfo>,
+    agent: Option<&str>,
+    config: Config,
+) -> Result<()> {
     // Convert sessions to FileItems
     let items: Vec<FileItem> = sessions.into_iter().map(FileItem::from).collect();
 
     // Create and run the list app
-    let mut app = ListApp::new(items)?;
+    let mut app = ListApp::new(items, config)?;
 
     // If agent filter was specified on command line, apply it
     if let Some(agent_name) = agent {

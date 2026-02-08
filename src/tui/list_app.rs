@@ -24,7 +24,9 @@ use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, Tui
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
 use crate::asciicast::{apply_transforms, TransformResult};
+use crate::config::Config;
 use crate::files::backup::{backup_path_for, create_backup, has_backup, restore_from_backup};
+use crate::files::lock;
 use crate::theme::current_theme;
 
 /// UI mode for the list application
@@ -45,6 +47,8 @@ pub enum Mode {
     ContextMenu,
     /// Optimize result mode - showing optimization results or error
     OptimizeResult,
+    /// Confirm unlock mode - asking user to confirm force-unlock
+    ConfirmUnlock,
 }
 
 impl Mode {
@@ -55,7 +59,7 @@ impl Mode {
             Mode::AgentFilter => Some(SharedMode::AgentFilter),
             Mode::Help => Some(SharedMode::Help),
             Mode::ConfirmDelete => Some(SharedMode::ConfirmDelete),
-            Mode::ContextMenu | Mode::OptimizeResult => None,
+            Mode::ContextMenu | Mode::OptimizeResult | Mode::ConfirmUnlock => None,
         }
     }
 
@@ -146,9 +150,9 @@ pub struct ListApp {
 
 impl ListApp {
     /// Create a new list application with the given sessions.
-    pub fn new(items: Vec<FileItem>) -> Result<Self> {
+    pub fn new(items: Vec<FileItem>, config: Config) -> Result<Self> {
         let app = App::new(Duration::from_millis(250))?;
-        let shared = SharedState::new(items);
+        let shared = SharedState::new(items, Some(config));
 
         Ok(Self {
             app,
@@ -177,23 +181,55 @@ impl ListApp {
         match key.code {
             // Actions
             KeyCode::Enter => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                    return Ok(());
+                }
                 if self.shared.explorer.selected_item().is_some() {
-                    self.context_menu_idx = 0; // Reset to first item (Play)
+                    self.context_menu_idx = 0;
                     self.mode = Mode::ContextMenu;
                 }
             }
 
             // Direct shortcuts (bypass context menu)
-            KeyCode::Char('p') => self.play_session()?,
+            KeyCode::Char('p') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                    return Ok(());
+                }
+                self.play_session()?;
+            }
             KeyCode::Char('c') => self.copy_to_clipboard()?,
-            KeyCode::Char('t') => self.optimize_session()?,
-            KeyCode::Char('a') => self.analyze_session()?,
+            KeyCode::Char('t') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                    return Ok(());
+                }
+                self.optimize_session()?;
+            }
+            KeyCode::Char('a') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                    return Ok(());
+                }
+                self.analyze_session()?;
+            }
             KeyCode::Char('d') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                    return Ok(());
+                }
                 if self.shared.explorer.selected_item().is_some() {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
-            KeyCode::Char('m') => self.add_marker()?,
+            KeyCode::Char('m') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                    return Ok(());
+                }
+                self.add_marker()?;
+            }
 
             // Clear filters
             KeyCode::Esc => {
@@ -310,6 +346,37 @@ impl ListApp {
         if matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
             self.mode = Mode::Normal;
             self.optimize_result = None;
+        }
+        Ok(())
+    }
+
+    /// Check if the currently selected item is locked by an active recording.
+    fn is_selected_locked(&self) -> bool {
+        self.shared
+            .explorer
+            .selected_item()
+            .and_then(|item| item.lock_info.as_ref())
+            .is_some()
+    }
+
+    /// Handle keys in confirm unlock mode.
+    fn handle_confirm_unlock_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                // Force-unlock: remove the lock file and proceed
+                if let Some(item) = self.shared.explorer.selected_item() {
+                    let path = std::path::Path::new(&item.path);
+                    lock::remove_lock(path);
+                    // Refresh the lock state for this item
+                    self.shared.explorer.refresh_visible_locks();
+                    self.shared.status_message = Some("Lock removed".to_string());
+                }
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.mode = Mode::Normal;
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -914,6 +981,7 @@ impl TuiApp for ListApp {
             Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
             Mode::ContextMenu => self.handle_context_menu_key(key)?,
             Mode::OptimizeResult => self.handle_optimize_result_key(key)?,
+            Mode::ConfirmUnlock => self.handle_confirm_unlock_key(key)?,
             _ => {}
         }
         Ok(())
@@ -972,6 +1040,9 @@ impl TuiApp for ListApp {
                         format!("Filter by agent: {} (←/→ to change, Enter to apply)", agent)
                     }
                     Mode::ConfirmDelete => "Delete this session? (y/n)".to_string(),
+                    Mode::ConfirmUnlock => {
+                        "This session is being recorded. Force unlock? (y/n)".to_string()
+                    }
                     Mode::Help => String::new(),
                     Mode::ContextMenu => String::new(),
                     Mode::OptimizeResult => String::new(),
@@ -999,6 +1070,7 @@ impl TuiApp for ListApp {
                 Mode::Search => "Esc: cancel | Enter: apply search | Backspace: delete char",
                 Mode::AgentFilter => "←/→: change agent | Enter: apply | Esc: cancel",
                 Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
+                Mode::ConfirmUnlock => "y: force unlock | n/Esc: cancel",
                 Mode::Help => "Press any key to close help",
                 Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
                 Mode::OptimizeResult => "Enter/Esc: dismiss",
@@ -1022,6 +1094,16 @@ impl TuiApp for ListApp {
                 Mode::OptimizeResult => {
                     if let Some(ref result_state) = optimize_result {
                         Self::render_optimize_result_modal(frame, area, result_state);
+                    }
+                }
+                Mode::ConfirmUnlock => {
+                    if let Some(item) = explorer.selected_item() {
+                        let lock_msg = if let Some(ref info) = item.lock_info {
+                            format!("PID {} since {}", info.pid, &info.started[..19])
+                        } else {
+                            "Unknown lock".to_string()
+                        };
+                        modals::render_confirm_unlock_modal(frame, area, &lock_msg);
                     }
                 }
                 _ => {}

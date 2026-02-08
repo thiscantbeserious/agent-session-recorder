@@ -10,21 +10,20 @@ use std::env;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use crate::analyzer::{AgentType, AnalyzeOptions, AnalyzerService};
 use crate::config::Config;
-use crate::files::filename;
+use crate::files::{backup, filename, lock};
 use crate::storage::StorageManager;
 use crate::theme;
+use crate::utils::process_guard::ProcessGuard;
 
 /// Session recorder that wraps asciinema
 pub struct Recorder {
     #[allow(dead_code)]
     config: Config,
     storage: StorageManager,
-    interrupted: Arc<AtomicBool>,
+    guard: ProcessGuard,
 }
 
 impl Recorder {
@@ -34,7 +33,7 @@ impl Recorder {
         Self {
             config,
             storage,
-            interrupted: Arc::new(AtomicBool::new(false)),
+            guard: ProcessGuard::new(),
         }
     }
 
@@ -122,6 +121,9 @@ impl Recorder {
         };
         let filepath = agent_dir.join(&filename);
 
+        // Lock the file before recording starts
+        lock::create_lock(&filepath)?;
+
         // Build the command to run
         let command = if args.is_empty() {
             agent.to_string()
@@ -129,20 +131,16 @@ impl Recorder {
             format!("{} {}", agent, args.join(" "))
         };
 
-        // Set up interrupt handler
-        let interrupted = self.interrupted.clone();
-        ctrlc::set_handler(move || {
-            interrupted.store(true, Ordering::SeqCst);
-        })
-        .ok(); // Ignore if handler already set
+        // Set up signal handlers for clean shutdown (SIGINT + SIGHUP)
+        self.guard.register_signal_handlers();
 
         theme::print_start_banner();
         theme::print_box_line(&format!("  ⏺ {}/{}", agent, filename));
         theme::print_box_bottom();
         println!();
 
-        // Run asciinema rec
-        let status = Command::new("asciinema")
+        // Spawn asciinema rec (spawn + poll so we can react to signals)
+        let mut child = match Command::new("asciinema")
             .arg("rec")
             .arg(&filepath)
             .arg("--title")
@@ -152,14 +150,35 @@ impl Recorder {
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
-            .status()
-            .context("Failed to start asciinema")?;
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                lock::remove_lock(&filepath);
+                return Err(anyhow::Error::new(e).context("Failed to start asciinema"));
+            }
+        };
+
+        let status = match self.guard.wait_or_kill(&mut child) {
+            Ok(s) => s,
+            Err(e) => {
+                lock::remove_lock(&filepath);
+                return Err(e);
+            }
+        };
 
         println!();
         theme::print_done_banner();
 
+        // Capture file identity for recovery if file gets moved
+        let inode = Self::capture_inode(&filepath);
+        let header = Self::read_header_line(&filepath);
+
+        // Recording is done - remove lock after capturing identity
+        lock::remove_lock(&filepath);
+
         // Handle exit and get final filepath (may have been renamed)
-        let final_filepath = if self.interrupted.load(Ordering::SeqCst) {
+        let final_filepath = if self.guard.is_interrupted() {
             theme::print_box_line(&format!("  ⏹ {}", filename));
             theme::print_box_bottom();
             filepath.clone()
@@ -170,8 +189,14 @@ impl Recorder {
                 theme::print_box_bottom();
                 filepath.clone()
             } else {
-                // Prompt for rename on normal exit
-                self.prompt_rename(&filepath, &filename)?
+                // Prompt for rename on normal exit (non-fatal)
+                match self.prompt_rename(&filepath, &filename, inode, &header, &agent_dir) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        eprintln!("  \u{26a0} Rename failed: {}", e);
+                        filepath.clone()
+                    }
+                }
             }
         } else {
             theme::print_box_line(&format!("  ⏹ {} (error)", filename));
@@ -188,18 +213,36 @@ impl Recorder {
         Ok(())
     }
 
-    /// Prompt user to rename the session file, returns final filepath
-    fn prompt_rename(&self, filepath: &PathBuf, original_filename: &str) -> Result<PathBuf> {
+    /// Prompt user to rename the session file, returns final filepath.
+    ///
+    /// Performs recovery if the file was moved during recording.
+    fn prompt_rename(
+        &self,
+        filepath: &Path,
+        original_filename: &str,
+        inode: Option<u64>,
+        header: &Option<String>,
+        agent_dir: &Path,
+    ) -> Result<PathBuf> {
+        // Resolve actual file path - may have been moved during recording
+        let actual_path = Self::resolve_actual_path(filepath, inode, header, agent_dir);
+
         // Skip prompt if stdin is not a TTY (non-interactive)
         if !atty::is(atty::Stream::Stdin) {
-            theme::print_box_line(&format!("  ⏹ {}", original_filename));
+            theme::print_box_line(&format!("  \u{23f9} {}", original_filename));
             theme::print_box_bottom();
-            return Ok(filepath.clone());
+            return Ok(actual_path);
         }
 
-        theme::print_box_line(&format!("  ⏹ {}", original_filename));
+        // Show current filename (might differ from original if file was moved)
+        let display_name = actual_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(original_filename);
+
+        theme::print_box_line(&format!("  \u{23f9} {}", display_name));
         theme::print_box_bottom();
-        print!("  ⏎ Rename: ");
+        print!("  \u{23ce} Rename: ");
         io::stdout().flush()?;
 
         let mut input = String::new();
@@ -207,20 +250,88 @@ impl Recorder {
         let input = input.trim();
 
         if input.is_empty() {
-            Ok(filepath.clone())
+            Ok(actual_path)
         } else {
             let new_filename = Self::sanitize_filename(input);
-            let new_filepath = filepath.parent().unwrap().join(&new_filename);
+            let new_filepath = actual_path.parent().unwrap().join(&new_filename);
 
             if new_filepath.exists() {
-                println!("  ⚠ Exists, kept original");
-                Ok(filepath.clone())
+                println!("  \u{26a0} Exists, kept original");
+                Ok(actual_path)
             } else {
-                std::fs::rename(filepath, &new_filepath).context("Failed to rename file")?;
-                println!("  ✓ {}", new_filename);
+                std::fs::rename(&actual_path, &new_filepath).context("Failed to rename file")?;
+                println!("  \u{2713} {}", new_filename);
                 Ok(new_filepath)
             }
         }
+    }
+
+    /// Capture the inode of a file for later recovery if it gets renamed.
+    #[cfg(unix)]
+    fn capture_inode(path: &Path) -> Option<u64> {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata(path).ok().map(|m| m.ino())
+    }
+
+    /// Capture the inode of a file (stub for non-Unix platforms).
+    #[cfg(not(unix))]
+    fn capture_inode(_path: &Path) -> Option<u64> {
+        None
+    }
+
+    /// Read the first line of a cast file for header fingerprint recovery.
+    fn read_header_line(path: &Path) -> Option<String> {
+        use std::io::BufReader;
+        let file = std::fs::File::open(path).ok()?;
+        let mut reader = BufReader::new(file);
+        let mut line = String::new();
+        reader.read_line(&mut line).ok()?;
+        let trimmed = line.trim_end().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    }
+
+    /// Resolve the actual file path, recovering from renames during recording.
+    ///
+    /// Tries: original path -> inode scan -> header fingerprint -> original (with warning).
+    fn resolve_actual_path(
+        filepath: &Path,
+        inode: Option<u64>,
+        header: &Option<String>,
+        agent_dir: &Path,
+    ) -> PathBuf {
+        if filepath.exists() {
+            return filepath.to_path_buf();
+        }
+
+        eprintln!("  \u{26a0} Recording file was moved during session");
+
+        // Try inode-based recovery
+        #[cfg(unix)]
+        if let Some(ino) = inode {
+            if let Some(found) = lock::find_by_inode(agent_dir, ino) {
+                eprintln!("  \u{2713} Found at: {}", found.display());
+                return found;
+            }
+        }
+
+        // Try header fingerprint recovery
+        if let Some(ref hdr) = header {
+            if let Some(found) = lock::find_by_header(agent_dir, hdr) {
+                eprintln!("  \u{2713} Found at: {}", found.display());
+                return found;
+            }
+        }
+
+        // File not found - warn and suggest backup
+        let bak = backup::backup_path_for(filepath);
+        if bak.exists() {
+            eprintln!("  Backup available at: {}", bak.display());
+        }
+        filepath.to_path_buf()
     }
 
     /// Show storage warning if threshold exceeded

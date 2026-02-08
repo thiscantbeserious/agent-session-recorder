@@ -22,6 +22,7 @@ use super::app::status_footer::{render_footer_text, render_status_line};
 use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
+use crate::config::Config;
 use crate::theme::current_theme;
 
 /// UI mode for the cleanup application
@@ -81,9 +82,9 @@ pub struct CleanupApp {
 
 impl CleanupApp {
     /// Create a new cleanup application with the given sessions.
-    pub fn new(items: Vec<FileItem>) -> Result<Self> {
+    pub fn new(items: Vec<FileItem>, config: Config) -> Result<Self> {
         let app = App::new(Duration::from_millis(250))?;
-        let shared = SharedState::new(items);
+        let shared = SharedState::new(items, Some(config));
 
         Ok(Self {
             app,
