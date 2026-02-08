@@ -43,13 +43,22 @@ impl ProcessGuard {
     /// Register SIGINT (Ctrl+C) and SIGHUP (terminal hangup) handlers.
     ///
     /// Both set the same `interrupted` flag checked by `wait_or_kill`.
-    /// Safe to call multiple times — duplicate registrations are ignored.
+    ///
+    /// **Limitation:** `ctrlc::set_handler` can only be called once per process.
+    /// If a handler is already registered, the SIGINT registration silently fails
+    /// and this guard's `interrupted` flag will not be set on Ctrl+C.
+    /// Callers must ensure only one `ProcessGuard` registers signal handlers.
+    /// SIGHUP (via `signal_hook`) supports multiple registrations.
     pub fn register_signal_handlers(&self) {
         let flag = self.interrupted.clone();
-        ctrlc::set_handler(move || {
+        let handler_result = ctrlc::set_handler(move || {
             flag.store(true, Ordering::SeqCst);
-        })
-        .ok(); // Ignore if handler already set
+        });
+        if handler_result.is_err() {
+            eprintln!(
+                "Warning: SIGINT handler already registered, Ctrl+C may not interrupt this guard"
+            );
+        }
 
         #[cfg(unix)]
         {
