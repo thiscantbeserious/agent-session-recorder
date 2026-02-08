@@ -24,6 +24,12 @@ pub struct ProcessGuard {
     initial_ppid: u32,
 }
 
+impl Default for ProcessGuard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProcessGuard {
     /// Snapshot the current parent PID for later orphan detection.
     pub fn new() -> Self {

@@ -94,7 +94,7 @@ pub fn render_confirm_unlock_modal(frame: &mut Frame, area: Rect, lock_msg: &str
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(format!("This session is being recorded.")),
+        Line::from("This session is being recorded.".to_string()),
         Line::from(format!("Lock: {}", lock_msg)),
         Line::from(""),
         Line::from(vec![
