@@ -203,8 +203,8 @@ Customize how recording filenames are generated using template tags:
 
 ```toml
 [recording]
-filename_template = "{directory}_{date}_{time}"  # Default
-directory_max_length = 50                         # Truncate long directory names
+filename_template = "{directory}{?branch}_{id}"  # Default
+directory_max_length = 14                         # Truncate long directory names
 ```
 
 **Available tags:**
@@ -212,22 +212,28 @@ directory_max_length = 50                         # Truncate long directory name
 | Tag | Description | Example Output |
 |-----|-------------|----------------|
 | `{directory}` | Current working directory name | `my-project` |
+| `{?branch}` | Optional git branch (wrapped in parens) | `(feature--login)` or empty |
+| `{branch}` | Git branch name (sanitized) | `feature--login` |
+| `{id}` | Base36 epoch timestamp (7 chars, sortable) | `0ta73n2` |
 | `{date}` | Date in YYMMDD format | `260129` |
 | `{date:FORMAT}` | Date with custom strftime | `{date:%Y-%m-%d}` → `2026-01-29` |
-| `{time}` | Time in HHMMSS format | `143022` |
+| `{time}` | Time in HHMM format | `1430` |
 | `{time:FORMAT}` | Time with custom strftime | `{time:%H:%M}` → `14:30` |
 
 **Example configurations:**
 
 ```toml
-# Default: project_260129_143022.cast
-filename_template = "{directory}_{date}_{time}"
+# Default: project(feature--login)_0ta73n2.cast
+filename_template = "{directory}{?branch}_{id}"
+
+# Branch + date: project_main_260129.cast
+filename_template = "{directory}_{branch}_{date}"
 
 # ISO date: project_2026-01-29.cast
 filename_template = "{directory}_{date:%Y-%m-%d}"
 
-# Simple timestamp: 260129-1430.cast (minutes only)
-filename_template = "{date:%y%m%d}-{time:%H%M}"
+# Simple ID only: 0ta73n2.cast
+filename_template = "{id}"
 ```
 
 See the [Wiki](../../wiki) for full configuration reference.
