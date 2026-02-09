@@ -76,13 +76,24 @@ pub fn sanitize(input: &str, _config: &Config) -> String {
 
 /// Sanitizes a branch name for use in filenames.
 ///
-/// Replaces `/` with `@` to preserve namespace visibility, then passes
-/// through the standard sanitization pipeline (unicode transliteration,
-/// invalid char removal, etc.). Does NOT apply length truncation.
+/// Replaces `/` with `@` to preserve namespace visibility, then removes
+/// only filesystem-invalid characters (`INVALID_CHARS`) and control chars.
+/// More permissive than `sanitize()` — keeps `@`, `#`, `~`, etc. which
+/// are valid on all major filesystems. Does NOT apply length truncation.
 #[allow(dead_code)]
-pub fn sanitize_branch(input: &str, config: &Config) -> String {
-    let slashes_replaced = input.replace('/', "@");
-    sanitize(&slashes_replaced, config)
+pub fn sanitize_branch(input: &str) -> String {
+    input
+        .chars()
+        .filter_map(|c| {
+            if c == '/' {
+                Some('@')
+            } else if INVALID_CHARS.contains(&c) || c.is_control() {
+                None
+            } else {
+                Some(c)
+            }
+        })
+        .collect()
 }
 
 /// Sanitizes a directory name with length truncation.

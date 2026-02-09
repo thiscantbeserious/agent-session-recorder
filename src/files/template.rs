@@ -143,13 +143,13 @@ impl Template {
                 }
                 Segment::Branch => {
                     if let Some(branch) = ctx.branch {
-                        result.push_str(&sanitize_branch(branch, config));
+                        result.push_str(&sanitize_branch(branch));
                     }
                 }
                 Segment::OptionalBranch => {
                     if let Some(branch) = ctx.branch {
                         result.push('(');
-                        result.push_str(&sanitize_branch(branch, config));
+                        result.push_str(&sanitize_branch(branch));
                         result.push(')');
                     }
                 }
