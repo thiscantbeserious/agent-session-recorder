@@ -2369,13 +2369,13 @@ fn branch_tag_sanitizes_slashes() {
         branch: Some("feature/foo"),
     };
     let result = template.render(&ctx, &config);
-    // Slash is replaced with @
-    assert_eq!(result, "feature@foo");
+    // Slash is replaced with --
+    assert_eq!(result, "feature--foo");
 }
 
 #[test]
 fn sanitize_branch_handles_special_chars() {
-    // @ is preserved (valid filesystem char, used as / replacement)
+    // @ is preserved (valid filesystem char)
     assert_eq!(filename::sanitize_branch("user@feature"), "user@feature");
     // # is preserved (valid on macOS/Linux/NTFS)
     assert_eq!(filename::sanitize_branch("fix#123"), "fix#123");
@@ -2435,10 +2435,10 @@ fn branch_tag_combined_with_directory() {
 
 #[test]
 fn sanitize_branch_multiple_slashes() {
-    // Multiple slashes all become @
+    // Multiple slashes all become --
     assert_eq!(
         filename::sanitize_branch("feature/sub/deep"),
-        "feature@sub@deep"
+        "feature--sub--deep"
     );
 }
 
@@ -2544,8 +2544,8 @@ fn optional_branch_sanitizes_slashes() {
         branch: Some("feature/foo"),
     };
     let result = template.render(&ctx, &config);
-    // Slash is replaced with @, wrapped in parens
-    assert_eq!(result, "(feature@foo)");
+    // Slash is replaced with --, wrapped in parens
+    assert_eq!(result, "(feature--foo)");
 }
 
 #[test]
@@ -2728,7 +2728,7 @@ fn base36_overflow_panics_in_debug() {
 
 #[test]
 fn sanitize_branch_preserves_at_sign() {
-    // @ is valid on all major filesystems and used as our / replacement
+    // @ is valid on all major filesystems
     assert_eq!(filename::sanitize_branch("user@feature"), "user@feature");
 }
 
@@ -2745,10 +2745,10 @@ fn sanitize_branch_preserves_tilde() {
 }
 
 #[test]
-fn sanitize_branch_replaces_multiple_slashes_with_at() {
+fn sanitize_branch_replaces_multiple_slashes_with_double_dash() {
     assert_eq!(
         filename::sanitize_branch("feature/sub/deep"),
-        "feature@sub@deep"
+        "feature--sub--deep"
     );
 }
 
@@ -2800,7 +2800,7 @@ fn generate_with_new_default_template_and_branch() {
         branch: Some("fix/rename-file"),
     };
     let result = filename::generate(&ctx, "{directory}{?branch}_{id}", &config).unwrap();
-    // Slash is replaced with @
-    assert!(result.starts_with("agnt-ses-rec(fix@rename-file)_"));
+    // Slash is replaced with --
+    assert!(result.starts_with("agnt-ses-rec(fix--rename-file)_"));
     assert!(result.ends_with(".cast"));
 }
