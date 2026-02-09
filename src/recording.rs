@@ -123,7 +123,9 @@ impl Recorder {
 
         // Resolve same-second collisions (append a..z suffix)
         let filename =
-            filename::resolve_collision(&agent_dir, &base_filename).unwrap_or(base_filename);
+            filename::resolve_collision(&agent_dir, &base_filename).ok_or_else(|| {
+                anyhow::anyhow!("All collision suffixes exhausted for {}", base_filename)
+            })?;
         let filepath = agent_dir.join(&filename);
 
         // Lock the file before recording starts

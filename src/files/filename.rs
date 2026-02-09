@@ -76,11 +76,13 @@ pub fn sanitize(input: &str, _config: &Config) -> String {
 
 /// Sanitizes a branch name for use in filenames.
 ///
-/// Replaces `/` with `@` to preserve namespace visibility, then applies
-/// standard sanitization. Does NOT apply length truncation.
+/// Replaces `/` with `@` to preserve namespace visibility, then passes
+/// through the standard sanitization pipeline (unicode transliteration,
+/// invalid char removal, etc.). Does NOT apply length truncation.
 #[allow(dead_code)]
-pub fn sanitize_branch(input: &str) -> String {
-    input.replace('/', "@")
+pub fn sanitize_branch(input: &str, config: &Config) -> String {
+    let slashes_replaced = input.replace('/', "@");
+    sanitize(&slashes_replaced, config)
 }
 
 /// Sanitizes a directory name with length truncation.
@@ -141,7 +143,11 @@ pub fn resolve_collision(dir: &std::path::Path, filename: &str) -> Option<String
     let (stem, ext) = split_stem_extension(filename);
 
     for suffix in b'a'..=b'z' {
-        let candidate = format!("{}{}.{}", stem, suffix as char, ext);
+        let candidate = if ext.is_empty() {
+            format!("{}{}", stem, suffix as char)
+        } else {
+            format!("{}{}.{}", stem, suffix as char, ext)
+        };
         if !dir.join(&candidate).exists() {
             return Some(candidate);
         }

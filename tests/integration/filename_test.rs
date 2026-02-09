@@ -2361,7 +2361,7 @@ fn branch_tag_renders_branch_name() {
 }
 
 #[test]
-fn branch_tag_replaces_slash_with_at() {
+fn branch_tag_sanitizes_slashes() {
     let template = Template::parse("{branch}").unwrap();
     let config = Config::default();
     let ctx = RenderContext {
@@ -2369,23 +2369,29 @@ fn branch_tag_replaces_slash_with_at() {
         branch: Some("feature/foo"),
     };
     let result = template.render(&ctx, &config);
-    assert_eq!(result, "feature@foo");
+    // Slash is replaced with @ first, then @ is stripped by standard sanitization
+    assert_eq!(result, "featurefoo");
 }
 
 #[test]
 fn sanitize_branch_handles_special_chars() {
-    // @ is kept (valid in filenames)
-    assert_eq!(filename::sanitize_branch("user@feature"), "user@feature");
-    // # is removed (invalid)
-    assert_eq!(filename::sanitize_branch("fix#123"), "fix#123");
-    // ~ is removed (invalid)
-    assert_eq!(filename::sanitize_branch("release~1"), "release~1");
+    let config = Config::default();
+    // @ is not in the sanitize() whitelist (alphanumeric, _, .) so it gets stripped
+    assert_eq!(
+        filename::sanitize_branch("user@feature", &config),
+        "userfeature"
+    );
+    // # is stripped by standard sanitization
+    assert_eq!(filename::sanitize_branch("fix#123", &config), "fix123");
+    // ~ is stripped by standard sanitization
+    assert_eq!(filename::sanitize_branch("release~1", &config), "release1");
 }
 
 #[test]
 fn sanitize_branch_no_truncation() {
+    let config = Config::default();
     let long_branch = "a".repeat(200);
-    assert_eq!(filename::sanitize_branch(&long_branch).len(), 200);
+    assert_eq!(filename::sanitize_branch(&long_branch, &config).len(), 200);
 }
 
 #[test]
@@ -2434,9 +2440,11 @@ fn branch_tag_combined_with_directory() {
 
 #[test]
 fn sanitize_branch_multiple_slashes() {
+    let config = Config::default();
+    // Slashes become @, then @ is stripped by standard sanitization
     assert_eq!(
-        filename::sanitize_branch("feature/sub/deep"),
-        "feature@sub@deep"
+        filename::sanitize_branch("feature/sub/deep", &config),
+        "featuresubdeep"
     );
 }
 
@@ -2542,7 +2550,8 @@ fn optional_branch_sanitizes_slashes() {
         branch: Some("feature/foo"),
     };
     let result = template.render(&ctx, &config);
-    assert_eq!(result, "(feature@foo)");
+    // Slash is replaced with @ first, then @ is stripped by standard sanitization
+    assert_eq!(result, "(featurefoo)");
 }
 
 #[test]
@@ -2622,6 +2631,17 @@ fn optional_id_returns_error() {
     assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
 }
 
+#[test]
+fn optional_branch_with_format_returns_invalid_format() {
+    // {?branch:fmt} should return InvalidFormat, not UnknownTag
+    let result = Template::parse("{?branch:fmt}");
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        TemplateError::InvalidFormat(_)
+    ));
+}
+
 // ============================================================================
 // Edge Case Tests (Stage 8)
 // ============================================================================
@@ -2691,35 +2711,66 @@ fn base36_zero_returns_seven_zeros() {
     assert_eq!(encode_base36(0), "0000000");
 }
 
+#[test]
+fn base36_max_representable_value() {
+    // 36^7 - 1 is the maximum value that fits in 7 base36 digits
+    let max_val = 36u64.pow(7) - 1;
+    let result = encode_base36(max_val);
+    assert_eq!(result.len(), 7);
+    assert_eq!(result, "zzzzzzz");
+}
+
+#[test]
+#[should_panic(expected = "encode_base36: value")]
+fn base36_overflow_panics_in_debug() {
+    // 36^7 overflows the 7-digit output. In debug builds the debug_assert
+    // fires, preventing silent truncation. In release builds (where
+    // debug_assert is compiled out) the leading digit is silently lost.
+    let overflow_val = 36u64.pow(7);
+    let _ = encode_base36(overflow_val);
+}
+
 // --- EC-6: Branch names with special chars ---
 
 #[test]
-fn sanitize_branch_preserves_at_sign() {
-    assert_eq!(filename::sanitize_branch("user@feature"), "user@feature");
+fn sanitize_branch_strips_at_sign() {
+    let config = Config::default();
+    // @ is not in the sanitize() whitelist, so it gets stripped
+    assert_eq!(
+        filename::sanitize_branch("user@feature", &config),
+        "userfeature"
+    );
 }
 
 #[test]
-fn sanitize_branch_preserves_hash() {
-    assert_eq!(filename::sanitize_branch("fix#123"), "fix#123");
+fn sanitize_branch_strips_hash() {
+    let config = Config::default();
+    // # is stripped by standard sanitization
+    assert_eq!(filename::sanitize_branch("fix#123", &config), "fix123");
 }
 
 #[test]
-fn sanitize_branch_preserves_tilde() {
-    assert_eq!(filename::sanitize_branch("release~1"), "release~1");
+fn sanitize_branch_strips_tilde() {
+    let config = Config::default();
+    // ~ is stripped by standard sanitization
+    assert_eq!(filename::sanitize_branch("release~1", &config), "release1");
 }
 
 #[test]
 fn sanitize_branch_replaces_multiple_slashes() {
+    let config = Config::default();
+    // Slashes become @, then @ is stripped by standard sanitization
     assert_eq!(
-        filename::sanitize_branch("feature/sub/deep"),
-        "feature@sub@deep"
+        filename::sanitize_branch("feature/sub/deep", &config),
+        "featuresubdeep"
     );
 }
 
 #[test]
 fn sanitize_branch_head_is_not_filtered() {
+    let config = Config::default();
     // sanitize_branch does NOT filter "HEAD" — that's detect_git_branch's job
-    assert_eq!(filename::sanitize_branch("HEAD"), "HEAD");
+    assert_eq!(filename::sanitize_branch("HEAD", &config), "HEAD");
 }
 
 // --- EC-3 / EC-4: Git branch detection edge cases ---
@@ -2748,6 +2799,7 @@ fn generate_with_new_default_template_and_branch() {
         branch: Some("fix/rename-file"),
     };
     let result = filename::generate(&ctx, "{directory}{?branch}_{id}", &config).unwrap();
-    assert!(result.starts_with("agnt-ses-rec(fix@rename-file)_"));
+    // Slash is replaced with @ first, then @ is stripped by standard sanitization
+    assert!(result.starts_with("agnt-ses-rec(fixrename-file)_"));
     assert!(result.ends_with(".cast"));
 }

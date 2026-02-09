@@ -143,13 +143,13 @@ impl Template {
                 }
                 Segment::Branch => {
                     if let Some(branch) = ctx.branch {
-                        result.push_str(&sanitize_branch(branch));
+                        result.push_str(&sanitize_branch(branch, config));
                     }
                 }
                 Segment::OptionalBranch => {
                     if let Some(branch) = ctx.branch {
                         result.push('(');
-                        result.push_str(&sanitize_branch(branch));
+                        result.push_str(&sanitize_branch(branch, config));
                         result.push(')');
                     }
                 }
@@ -227,6 +227,11 @@ fn parse_tag(content: &str) -> Result<Segment, TemplateError> {
 fn parse_optional_tag(tag_name: &str) -> Result<Segment, TemplateError> {
     if tag_name.is_empty() {
         return Err(TemplateError::UnknownTag("?".to_string()));
+    }
+    if tag_name.contains(':') {
+        return Err(TemplateError::InvalidFormat(
+            "optional tags do not accept format specifiers".to_string(),
+        ));
     }
     match tag_name {
         "branch" => Ok(Segment::OptionalBranch),
@@ -316,7 +321,16 @@ const BASE36_WIDTH: usize = 7;
 const BASE36_DIGITS: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
 
 /// Encodes a u64 value as a zero-padded 7-character base36 string.
+///
+/// The maximum representable value is `36^7 - 1` (78_364_164_095). Values
+/// above this silently overflow and produce incorrect (truncated) output.
 pub fn encode_base36(mut value: u64) -> String {
+    debug_assert!(
+        value < 36u64.pow(7),
+        "encode_base36: value {} exceeds max representable 36^7-1 ({})",
+        value,
+        36u64.pow(7) - 1
+    );
     let mut buf = [b'0'; BASE36_WIDTH];
     let mut i = BASE36_WIDTH;
 
