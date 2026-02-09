@@ -68,22 +68,6 @@ impl SessionInfo {
         format_size(self.size, BINARY)
     }
 
-    /// Return a sort key: filename with optional branch `(...)` stripped,
-    /// so `project(branch)_id` and `project_id` sort together.
-    pub fn sort_key(&self) -> String {
-        let mut result = String::with_capacity(self.filename.len());
-        let mut in_parens = false;
-        for c in self.filename.chars() {
-            match c {
-                '(' => in_parens = true,
-                ')' if in_parens => in_parens = false,
-                _ if !in_parens => result.push(c),
-                _ => {}
-            }
-        }
-        result.to_lowercase()
-    }
-
     /// Format age for display - smart format based on age
     /// - <1 hour: "  45m" (minutes only)
     /// - <1 day:  "   5h" (hours only)
@@ -255,26 +239,8 @@ impl StorageManager {
             }
         }
 
-        // Group by project, ordered by most recent activity per project, newest first within each group
-        // 1. Find the newest modified time per project (sort_key)
-        let mut project_latest: std::collections::HashMap<String, DateTime<Local>> =
-            std::collections::HashMap::new();
-        for s in &sessions {
-            let key = s.sort_key();
-            let entry = project_latest.entry(key).or_insert(s.modified);
-            if s.modified > *entry {
-                *entry = s.modified;
-            }
-        }
-        // 2. Sort: most recently active project first, then newest within each project
-        sessions.sort_by(|a, b| {
-            let a_latest = project_latest.get(&a.sort_key()).unwrap();
-            let b_latest = project_latest.get(&b.sort_key()).unwrap();
-            b_latest
-                .cmp(a_latest)
-                .then_with(|| a.sort_key().cmp(&b.sort_key()))
-                .then_with(|| b.modified.cmp(&a.modified))
-        });
+        // Sort by modification time, newest first
+        sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
 
         Ok(sessions)
     }
