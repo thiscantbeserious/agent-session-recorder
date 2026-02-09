@@ -259,11 +259,11 @@ Updated by implementer as work progresses.
 
 | Stage | Status | Notes |
 |-------|--------|-------|
-| 1 | pending | Remove AddMarker, silence hint, reorder menu |
-| 2 | pending | Validation helpers + Mode::RenameInput + key handling + menu item |
-| 3 | pending | Filesystem rename logic |
-| 4 | pending | Snapshot test regeneration |
-| 5 | pending | Documentation |
+| 1 | done | Remove AddMarker, silence hint, reorder menu |
+| 2 | done | Validation helpers + Mode::RenameInput + key handling + menu item |
+| 3 | done | Filesystem rename logic |
+| 4 | done | Snapshot test regeneration (handled inline with stages 1-3) |
+| 5 | done | Documentation |
 
 ---
 

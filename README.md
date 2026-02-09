@@ -144,11 +144,15 @@ Use `agr list` or `agr ls` to open the interactive TUI for browsing recordings.
 
 | Key | Action |
 |-----|--------|
-| `Enter` | Play selected recording |
+| `Enter` | Open context menu |
+| `p` | Play selected recording |
 | `c` | Copy recording to clipboard |
-| `d` | Delete recording |
-| `e` | Explore recording in file viewer |
+| `r` | Rename recording |
+| `t` | Optimize (remove silence) |
 | `a` | Analyze recording with AI |
+| `d` | Delete recording |
+| `/` | Search by filename |
+| `f` | Filter by agent |
 | `?` | Show help overlay |
 | `q` / `Esc` | Quit browser |
 

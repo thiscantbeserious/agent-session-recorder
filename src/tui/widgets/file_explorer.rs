@@ -602,7 +602,7 @@ impl FileExplorer {
     }
 
     /// Apply current sort to visible indices
-    fn apply_sort(&mut self) {
+    pub fn apply_sort(&mut self) {
         let items = &self.items;
         let dir = self.sort_direction;
 
@@ -698,7 +698,7 @@ impl FileExplorer {
     }
 
     /// Apply current filter to rebuild visible indices
-    fn apply_filter(&mut self) {
+    pub fn apply_filter(&mut self) {
         self.visible_indices = self
             .items
             .iter()

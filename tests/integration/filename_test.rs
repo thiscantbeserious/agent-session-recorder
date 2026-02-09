@@ -2116,3 +2116,140 @@ fn first_word_result_never_shorter_than_syllable() {
         );
     }
 }
+
+// ============================================================================
+// Rename File Tests
+// ============================================================================
+
+use agr::files::filename::RenameError;
+use tempfile::TempDir;
+
+#[test]
+fn rename_file_empty_name_errors() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("old.cast");
+    std::fs::write(&file, "test").unwrap();
+
+    let result = filename::rename_file(&file, "");
+    assert!(matches!(result, Err(RenameError::EmptyName)));
+}
+
+#[test]
+fn rename_file_same_name_is_noop() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("old.cast");
+    std::fs::write(&file, "test").unwrap();
+
+    let result = filename::rename_file(&file, "old").unwrap();
+    assert_eq!(result, file);
+    assert!(file.exists());
+}
+
+#[test]
+fn rename_file_success() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("old.cast");
+    std::fs::write(&file, "test content").unwrap();
+
+    let result = filename::rename_file(&file, "new-name").unwrap();
+    assert_eq!(result, dir.path().join("new-name.cast"));
+    assert!(!file.exists());
+    assert!(result.exists());
+    assert_eq!(std::fs::read_to_string(&result).unwrap(), "test content");
+}
+
+#[test]
+fn rename_file_preserves_extension() {
+    let dir = TempDir::new().unwrap();
+
+    // Test with .cast extension
+    let cast_file = dir.path().join("session.cast");
+    std::fs::write(&cast_file, "cast").unwrap();
+    let result = filename::rename_file(&cast_file, "renamed").unwrap();
+    assert_eq!(result.extension().unwrap(), "cast");
+
+    // Test with .txt extension
+    let txt_file = dir.path().join("notes.txt");
+    std::fs::write(&txt_file, "txt").unwrap();
+    let result = filename::rename_file(&txt_file, "renamed-notes").unwrap();
+    assert_eq!(result.extension().unwrap(), "txt");
+}
+
+#[test]
+fn rename_file_renames_backup_too() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("session.cast");
+    let backup = dir.path().join("session.cast.bak");
+    std::fs::write(&file, "main").unwrap();
+    std::fs::write(&backup, "backup").unwrap();
+
+    let result = filename::rename_file(&file, "renamed").unwrap();
+    assert_eq!(result, dir.path().join("renamed.cast"));
+
+    let new_backup = dir.path().join("renamed.cast.bak");
+    assert!(new_backup.exists());
+    assert!(!backup.exists());
+    assert_eq!(std::fs::read_to_string(&new_backup).unwrap(), "backup");
+}
+
+#[test]
+fn rename_file_conflict_errors() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("old.cast");
+    let conflict = dir.path().join("existing.cast");
+    std::fs::write(&file, "old").unwrap();
+    std::fs::write(&conflict, "existing").unwrap();
+
+    let result = filename::rename_file(&file, "existing");
+    assert!(matches!(result, Err(RenameError::AlreadyExists(_))));
+    // Original file should still exist
+    assert!(file.exists());
+}
+
+#[test]
+fn rename_file_invalid_chars_errors() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("old.cast");
+    std::fs::write(&file, "test").unwrap();
+
+    let result = filename::rename_file(&file, "bad/name");
+    assert!(matches!(result, Err(RenameError::InvalidChars)));
+
+    let result = filename::rename_file(&file, "bad:name");
+    assert!(matches!(result, Err(RenameError::InvalidChars)));
+}
+
+#[test]
+fn rename_file_reserved_name_errors() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("old.cast");
+    std::fs::write(&file, "test").unwrap();
+
+    let result = filename::rename_file(&file, "CON");
+    assert!(matches!(result, Err(RenameError::ReservedName)));
+
+    let result = filename::rename_file(&file, "nul");
+    assert!(matches!(result, Err(RenameError::ReservedName)));
+}
+
+#[test]
+fn is_valid_filename_char_rejects_invalid() {
+    for &c in filename::INVALID_CHARS {
+        assert!(
+            !filename::is_valid_filename_char(c),
+            "Should reject '{}'",
+            c
+        );
+    }
+}
+
+#[test]
+fn is_valid_filename_char_accepts_normal_chars() {
+    assert!(filename::is_valid_filename_char('a'));
+    assert!(filename::is_valid_filename_char('Z'));
+    assert!(filename::is_valid_filename_char('0'));
+    assert!(filename::is_valid_filename_char('-'));
+    assert!(filename::is_valid_filename_char('_'));
+    assert!(filename::is_valid_filename_char('.'));
+    assert!(filename::is_valid_filename_char(' '));
+}
