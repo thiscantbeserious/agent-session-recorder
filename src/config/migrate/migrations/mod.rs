@@ -10,6 +10,7 @@
 //! 3. Bump `CURRENT_VERSION` in the parent module
 
 mod v1;
+mod v2;
 
 use crate::config::MigrateResult;
 use toml_edit::Table;
@@ -21,6 +22,7 @@ type MigrationFn = fn(&mut Table, &mut MigrateResult);
 #[rustfmt::skip]
 const MIGRATIONS: &[(u32, MigrationFn)] = &[
     (v1::VERSION, v1::migrate),
+    (v2::VERSION, v2::migrate),
 ];
 
 /// Run all applicable migrations from `from_version` to latest.

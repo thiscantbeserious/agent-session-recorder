@@ -81,7 +81,7 @@ pub struct RecordingConfig {
 }
 
 pub fn default_filename_template() -> String {
-    "{directory}_{date}_{time}".to_string()
+    "{directory}{?branch}_{id}".to_string()
 }
 
 pub fn default_directory_max_length() -> usize {

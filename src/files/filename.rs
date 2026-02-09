@@ -128,6 +128,36 @@ pub fn generate(
     Ok(filename)
 }
 
+/// Resolves same-second filename collisions by appending a suffix (`a`..`z`).
+///
+/// If `dir/filename.cast` already exists, tries `dir/filenamea.cast` through
+/// `dir/filenamez.cast`. Returns `None` if all 26 suffixes are taken.
+pub fn resolve_collision(dir: &std::path::Path, filename: &str) -> Option<String> {
+    let path = dir.join(filename);
+    if !path.exists() {
+        return Some(filename.to_string());
+    }
+
+    let (stem, ext) = split_stem_extension(filename);
+
+    for suffix in b'a'..=b'z' {
+        let candidate = format!("{}{}.{}", stem, suffix as char, ext);
+        if !dir.join(&candidate).exists() {
+            return Some(candidate);
+        }
+    }
+
+    None
+}
+
+/// Splits a filename into stem and extension.
+fn split_stem_extension(filename: &str) -> (&str, &str) {
+    match filename.rfind('.') {
+        Some(pos) => (&filename[..pos], &filename[pos + 1..]),
+        None => (filename, ""),
+    }
+}
+
 /// Errors that can occur during filename generation.
 #[derive(Debug)]
 pub enum GenerateError {

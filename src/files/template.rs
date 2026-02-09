@@ -50,6 +50,8 @@ pub enum Segment {
     Time(String),
     /// Git branch name tag.
     Branch,
+    /// Optional git branch — renders `(sanitized-branch)` when present, empty when absent.
+    OptionalBranch,
     /// Base36 epoch timestamp tag.
     Id,
 }
@@ -61,7 +63,7 @@ const DEFAULT_DATE_FORMAT: &str = "%y%m%d";
 const DEFAULT_TIME_FORMAT: &str = "%H%M%S";
 
 /// Default template string.
-pub const DEFAULT_TEMPLATE: &str = "{directory}_{date}_{time}";
+pub const DEFAULT_TEMPLATE: &str = "{directory}{?branch}_{id}";
 
 /// Context passed to `Template::render()` with all dynamic values.
 #[derive(Debug, Clone)]
@@ -144,6 +146,13 @@ impl Template {
                         result.push_str(&sanitize_branch(branch));
                     }
                 }
+                Segment::OptionalBranch => {
+                    if let Some(branch) = ctx.branch {
+                        result.push('(');
+                        result.push_str(&sanitize_branch(branch));
+                        result.push(')');
+                    }
+                }
                 Segment::Id => {
                     result.push_str(&epoch_base36());
                 }
@@ -189,6 +198,10 @@ fn parse_brace_content(
 
 /// Parses a tag content string (without braces) into a Segment.
 fn parse_tag(content: &str) -> Result<Segment, TemplateError> {
+    if let Some(rest) = content.strip_prefix('?') {
+        return parse_optional_tag(rest);
+    }
+
     let (tag_name, format) = split_tag_format(content);
 
     match tag_name {
@@ -207,6 +220,17 @@ fn parse_tag(content: &str) -> Result<Segment, TemplateError> {
             Ok(Segment::Id)
         }
         _ => Err(TemplateError::UnknownTag(tag_name.to_string())),
+    }
+}
+
+/// Parses an optional `{?tag}` into a Segment. Only `{?branch}` is supported.
+fn parse_optional_tag(tag_name: &str) -> Result<Segment, TemplateError> {
+    if tag_name.is_empty() {
+        return Err(TemplateError::UnknownTag("?".to_string()));
+    }
+    match tag_name {
+        "branch" => Ok(Segment::OptionalBranch),
+        _ => Err(TemplateError::UnknownTag(format!("?{}", tag_name))),
     }
 }
 

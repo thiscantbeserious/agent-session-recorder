@@ -7,7 +7,6 @@
 
 use anyhow::{bail, Context, Result};
 use std::env;
-use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -117,10 +116,14 @@ impl Recorder {
         let agent_dir = self.storage.ensure_agent_dir(agent)?;
 
         // Generate filename - use provided name or template-based
-        let filename = match session_name {
+        let base_filename = match session_name {
             Some(name) => Self::sanitize_filename(name),
             None => self.generate_filename(),
         };
+
+        // Resolve same-second collisions (append a..z suffix)
+        let filename =
+            filename::resolve_collision(&agent_dir, &base_filename).unwrap_or(base_filename);
         let filepath = agent_dir.join(&filename);
 
         // Lock the file before recording starts
@@ -179,32 +182,21 @@ impl Recorder {
         // Recording is done - remove lock after capturing identity
         lock::remove_lock(&filepath);
 
-        // Handle exit and get final filepath (may have been renamed)
-        let final_filepath = if self.guard.is_interrupted() {
-            theme::print_box_line(&format!("  ⏹ {}", filename));
-            theme::print_box_bottom();
-            filepath.clone()
-        } else if status.success() {
-            // Skip rename prompt if name was explicitly provided
-            if session_name.is_some() {
-                theme::print_box_line(&format!("  ⏹ {}", filename));
-                theme::print_box_bottom();
-                filepath.clone()
-            } else {
-                // Prompt for rename on normal exit (non-fatal)
-                match self.prompt_rename(&filepath, &filename, inode, &header, &agent_dir) {
-                    Ok(path) => path,
-                    Err(e) => {
-                        eprintln!("  \u{26a0} Rename failed: {}", e);
-                        filepath.clone()
-                    }
-                }
-            }
+        // Resolve actual path (file may have been moved during recording)
+        let actual_path = Self::resolve_actual_path(&filepath, inode, &header, &agent_dir);
+        let display_name = actual_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&filename);
+
+        // Display final filename
+        if !status.success() && !self.guard.is_interrupted() {
+            theme::print_box_line(&format!("  \u{23f9} {} (error)", display_name));
         } else {
-            theme::print_box_line(&format!("  ⏹ {} (error)", filename));
-            theme::print_box_bottom();
-            filepath.clone()
-        };
+            theme::print_box_line(&format!("  \u{23f9} {}", display_name));
+        }
+        theme::print_box_bottom();
+        let final_filepath = actual_path;
 
         // Run auto-analyze if enabled
         self.maybe_auto_analyze(&final_filepath);
@@ -213,59 +205,6 @@ impl Recorder {
         self.show_storage_warning()?;
 
         Ok(())
-    }
-
-    /// Prompt user to rename the session file, returns final filepath.
-    ///
-    /// Performs recovery if the file was moved during recording.
-    fn prompt_rename(
-        &self,
-        filepath: &Path,
-        original_filename: &str,
-        inode: Option<u64>,
-        header: &Option<String>,
-        agent_dir: &Path,
-    ) -> Result<PathBuf> {
-        // Resolve actual file path - may have been moved during recording
-        let actual_path = Self::resolve_actual_path(filepath, inode, header, agent_dir);
-
-        // Skip prompt if stdin is not a TTY (non-interactive)
-        if !atty::is(atty::Stream::Stdin) {
-            theme::print_box_line(&format!("  \u{23f9} {}", original_filename));
-            theme::print_box_bottom();
-            return Ok(actual_path);
-        }
-
-        // Show current filename (might differ from original if file was moved)
-        let display_name = actual_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(original_filename);
-
-        theme::print_box_line(&format!("  \u{23f9} {}", display_name));
-        theme::print_box_bottom();
-        print!("  \u{23ce} Rename: ");
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().lock().read_line(&mut input)?;
-        let input = input.trim();
-
-        if input.is_empty() {
-            Ok(actual_path)
-        } else {
-            let new_filename = Self::sanitize_filename(input);
-            let new_filepath = actual_path.parent().unwrap().join(&new_filename);
-
-            if new_filepath.exists() {
-                println!("  \u{26a0} Exists, kept original");
-                Ok(actual_path)
-            } else {
-                std::fs::rename(&actual_path, &new_filepath).context("Failed to rename file")?;
-                println!("  \u{2713} {}", new_filename);
-                Ok(new_filepath)
-            }
-        }
     }
 
     /// Capture the inode of a file for later recovery if it gets renamed.
@@ -283,7 +222,7 @@ impl Recorder {
 
     /// Read the first line of a cast file for header fingerprint recovery.
     fn read_header_line(path: &Path) -> Option<String> {
-        use std::io::BufReader;
+        use std::io::{BufRead, BufReader};
         let file = std::fs::File::open(path).ok()?;
         let mut reader = BufReader::new(file);
         let mut line = String::new();

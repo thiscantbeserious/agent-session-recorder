@@ -2509,3 +2509,245 @@ fn id_tag_renders_7_chars() {
         .chars()
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
 }
+
+// ============================================================================
+// {?branch} Optional Branch Tests (Stage 5)
+// ============================================================================
+
+#[test]
+fn optional_branch_parses_as_segment() {
+    let template = Template::parse("{?branch}").unwrap();
+    assert_eq!(template.segments().len(), 1);
+    assert_eq!(template.segments()[0], Segment::OptionalBranch);
+}
+
+#[test]
+fn optional_branch_renders_with_parentheses() {
+    let template = Template::parse("{?branch}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: Some("main"),
+    };
+    let result = template.render(&ctx, &config);
+    assert_eq!(result, "(main)");
+}
+
+#[test]
+fn optional_branch_sanitizes_slashes() {
+    let template = Template::parse("{?branch}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: Some("feature/foo"),
+    };
+    let result = template.render(&ctx, &config);
+    assert_eq!(result, "(feature@foo)");
+}
+
+#[test]
+fn optional_branch_absent_renders_empty() {
+    let template = Template::parse("{?branch}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
+    assert_eq!(result, "");
+}
+
+#[test]
+fn optional_branch_in_full_template_with_branch() {
+    let template = Template::parse("{directory}{?branch}_{id}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: Some("main"),
+    };
+    let result = template.render(&ctx, &config);
+    // "my-project" + "(main)" + "_" + 7-char-id
+    assert!(result.starts_with("my-project(main)_"));
+    let id_part = &result["my-project(main)_".len()..];
+    assert_eq!(id_part.len(), 7);
+}
+
+#[test]
+fn optional_branch_in_full_template_without_branch() {
+    let template = Template::parse("{directory}{?branch}_{id}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
+    // "my-project" + "" + "_" + 7-char-id => no dangling separators
+    assert!(result.starts_with("my-project_"));
+    let id_part = &result["my-project_".len()..];
+    assert_eq!(id_part.len(), 7);
+}
+
+#[test]
+fn optional_unknown_tag_returns_error() {
+    let result = Template::parse("{?unknown}");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
+}
+
+#[test]
+fn optional_empty_tag_returns_error() {
+    let result = Template::parse("{?}");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
+}
+
+#[test]
+fn optional_date_returns_error() {
+    let result = Template::parse("{?date}");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
+}
+
+#[test]
+fn optional_directory_returns_error() {
+    let result = Template::parse("{?directory}");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
+}
+
+#[test]
+fn optional_id_returns_error() {
+    let result = Template::parse("{?id}");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
+}
+
+// ============================================================================
+// Edge Case Tests (Stage 8)
+// ============================================================================
+
+// --- EC-2: Same-second collision ---
+
+#[test]
+fn collision_returns_original_when_no_conflict() {
+    let dir = tempfile::tempdir().unwrap();
+    let result = filename::resolve_collision(dir.path(), "test.cast");
+    assert_eq!(result, Some("test.cast".to_string()));
+}
+
+#[test]
+fn collision_appends_suffix_a_on_first_conflict() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("test.cast"), "").unwrap();
+
+    let result = filename::resolve_collision(dir.path(), "test.cast");
+    assert_eq!(result, Some("testa.cast".to_string()));
+}
+
+#[test]
+fn collision_increments_suffix_correctly() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("test.cast"), "").unwrap();
+    std::fs::write(dir.path().join("testa.cast"), "").unwrap();
+    std::fs::write(dir.path().join("testb.cast"), "").unwrap();
+
+    let result = filename::resolve_collision(dir.path(), "test.cast");
+    assert_eq!(result, Some("testc.cast".to_string()));
+}
+
+#[test]
+fn collision_returns_none_when_all_suffixes_taken() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("test.cast"), "").unwrap();
+    for c in b'a'..=b'z' {
+        let name = format!("test{}.cast", c as char);
+        std::fs::write(dir.path().join(name), "").unwrap();
+    }
+
+    let result = filename::resolve_collision(dir.path(), "test.cast");
+    assert_eq!(result, None);
+}
+
+// --- EC-5: Base36 zero-padding sortability ---
+
+#[test]
+fn base36_padding_ensures_sortability_across_rollover() {
+    // Last 6-char value (unpadded) = 36^6 - 1
+    let last_six = 36u64.pow(6) - 1;
+    // First 7-char value (unpadded) = 36^6
+    let first_seven = 36u64.pow(6);
+
+    let a = encode_base36(last_six);
+    let b = encode_base36(first_seven);
+
+    // Both should be 7 chars when zero-padded
+    assert_eq!(a.len(), 7);
+    assert_eq!(b.len(), 7);
+    assert!(a < b, "Expected {} < {}", a, b);
+}
+
+#[test]
+fn base36_zero_returns_seven_zeros() {
+    assert_eq!(encode_base36(0), "0000000");
+}
+
+// --- EC-6: Branch names with special chars ---
+
+#[test]
+fn sanitize_branch_preserves_at_sign() {
+    assert_eq!(filename::sanitize_branch("user@feature"), "user@feature");
+}
+
+#[test]
+fn sanitize_branch_preserves_hash() {
+    assert_eq!(filename::sanitize_branch("fix#123"), "fix#123");
+}
+
+#[test]
+fn sanitize_branch_preserves_tilde() {
+    assert_eq!(filename::sanitize_branch("release~1"), "release~1");
+}
+
+#[test]
+fn sanitize_branch_replaces_multiple_slashes() {
+    assert_eq!(
+        filename::sanitize_branch("feature/sub/deep"),
+        "feature@sub@deep"
+    );
+}
+
+#[test]
+fn sanitize_branch_head_is_not_filtered() {
+    // sanitize_branch does NOT filter "HEAD" — that's detect_git_branch's job
+    assert_eq!(filename::sanitize_branch("HEAD"), "HEAD");
+}
+
+// --- EC-3 / EC-4: Git branch detection edge cases ---
+// (detect_git_branch is tested via recording module and e2e tests;
+//  here we verify the template layer handles None branch correctly)
+
+#[test]
+fn template_with_optional_branch_none_produces_clean_filename() {
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: None,
+    };
+    let result = filename::generate(&ctx, "{directory}{?branch}_{id}", &config).unwrap();
+    // Should be "my-project_XXXXXXX.cast" with no empty parens or dangling chars
+    assert!(result.starts_with("my-project_"));
+    assert!(result.ends_with(".cast"));
+    assert!(!result.contains("()"));
+}
+
+#[test]
+fn generate_with_new_default_template_and_branch() {
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "agnt-ses-rec",
+        branch: Some("fix/rename-file"),
+    };
+    let result = filename::generate(&ctx, "{directory}{?branch}_{id}", &config).unwrap();
+    assert!(result.starts_with("agnt-ses-rec(fix@rename-file)_"));
+    assert!(result.ends_with(".cast"));
+}
