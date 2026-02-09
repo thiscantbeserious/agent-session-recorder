@@ -253,7 +253,9 @@ impl ListApp {
                 self.shared.agent_filter_idx = 0;
             }
 
-            // Quit is handled by EventHandler
+            // Quit
+            KeyCode::Char('q') => self.app.quit(),
+
             _ => {}
         }
         Ok(())
