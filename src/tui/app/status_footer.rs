@@ -6,6 +6,7 @@
 use ratatui::{
     layout::{Alignment, Rect},
     style::Style,
+    text::{Line, Span},
     widgets::Paragraph,
     Frame,
 };
@@ -22,14 +23,15 @@ pub fn render_status_line(frame: &mut Frame, area: Rect, text: &str) {
     frame.render_widget(status, area);
 }
 
-/// Render a status line styled as an active input prompt.
-///
-/// Uses black text on accent background (highlight style) so that
-/// input modes like search and rename are visually distinct.
-pub fn render_input_line(frame: &mut Frame, area: Rect, text: &str) {
+/// Render a status line with a label in secondary style and the input
+/// value highlighted (black text on accent background).
+pub fn render_input_line(frame: &mut Frame, area: Rect, label: &str, value: &str) {
     let theme = current_theme();
-    let status = Paragraph::new(text.to_string()).style(theme.highlight_style());
-    frame.render_widget(status, area);
+    let line = Line::from(vec![
+        Span::styled(label, Style::default().fg(theme.text_secondary)),
+        Span::styled(value, theme.highlight_style()),
+    ]);
+    frame.render_widget(Paragraph::new(line), area);
 }
 
 /// Render a centered footer from a pre-formatted text string.

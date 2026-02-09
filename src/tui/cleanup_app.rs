@@ -465,30 +465,32 @@ impl TuiApp for CleanupApp {
             // Render file explorer with checkboxes (cleanup uses multi-select)
             render_explorer_list(frame, chunks[0], explorer, preview, true, false);
 
-            // Render status line — input modes use highlighted style and
-            // always take priority over status_message.
+            // Render status line — input modes highlight only the input
+            // value and always take priority over status_message.
             match mode {
                 Mode::Search => {
-                    let text = format!("Search: {}_", search_input);
-                    render_input_line(frame, chunks[1], &text);
+                    let value = format!("{}_", search_input);
+                    render_input_line(frame, chunks[1], "Search: ", &value);
                 }
                 Mode::GlobSelect => {
-                    let text = format!("Glob pattern: {}_", glob_input);
-                    render_input_line(frame, chunks[1], &text);
+                    let value = format!("{}_", glob_input);
+                    render_input_line(frame, chunks[1], "Glob pattern: ", &value);
                 }
                 Mode::AgentFilter => {
                     let agent = &available_agents[agent_filter_idx];
-                    let text = format!(
-                        "Filter by agent: {} (left/right to change, Enter to apply)",
-                        agent
+                    render_input_line(
+                        frame,
+                        chunks[1],
+                        "Filter by agent: ",
+                        &format!("{} (left/right to change, Enter to apply)", agent),
                     );
-                    render_input_line(frame, chunks[1], &text);
                 }
                 Mode::ConfirmDelete => {
                     render_input_line(
                         frame,
                         chunks[1],
-                        "Delete selected sessions? (y/n)",
+                        "Delete selected sessions? ",
+                        "(y/n)",
                     );
                 }
                 _ => {

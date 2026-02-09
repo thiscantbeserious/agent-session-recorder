@@ -1141,37 +1141,39 @@ impl TuiApp for ListApp {
             // Render file explorer (no checkboxes in list view - it's single-select)
             render_explorer_list(frame, chunks[0], explorer, preview, false, backup_exists);
 
-            // Render status line — input modes use highlighted style and
-            // always take priority over status_message.
+            // Render status line — input modes highlight only the input
+            // value and always take priority over status_message.
             match mode {
                 Mode::Search => {
-                    let text = format!("Search: {}_", search_input);
-                    render_input_line(frame, chunks[1], &text);
+                    let value = format!("{}_", search_input);
+                    render_input_line(frame, chunks[1], "Search: ", &value);
                 }
                 Mode::AgentFilter => {
                     let agent = &available_agents[agent_filter_idx];
-                    let text = format!(
-                        "Filter by agent: {} (←/→ to change, Enter to apply)",
-                        agent
+                    render_input_line(
+                        frame,
+                        chunks[1],
+                        "Filter by agent: ",
+                        &format!("{} (←/→ to change, Enter to apply)", agent),
                     );
-                    render_input_line(frame, chunks[1], &text);
                 }
                 Mode::RenameInput => {
-                    let text = if rename_selected_all {
-                        format!("Rename: [{}]", rename_input)
+                    let value = if rename_selected_all {
+                        format!("[{}]", rename_input)
                     } else {
-                        format!("Rename: {}_", rename_input)
+                        format!("{}_", rename_input)
                     };
-                    render_input_line(frame, chunks[1], &text);
+                    render_input_line(frame, chunks[1], "Rename: ", &value);
                 }
                 Mode::ConfirmDelete => {
-                    render_input_line(frame, chunks[1], "Delete this session? (y/n)");
+                    render_input_line(frame, chunks[1], "Delete this session? ", "(y/n)");
                 }
                 Mode::ConfirmUnlock => {
                     render_input_line(
                         frame,
                         chunks[1],
-                        "This session is being recorded. Force unlock? (y/n)",
+                        "This session is being recorded. Force unlock? ",
+                        "(y/n)",
                     );
                 }
                 _ => {
