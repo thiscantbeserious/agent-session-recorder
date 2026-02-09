@@ -1,8 +1,7 @@
 ---
-source: tests/unit/tui_test.rs
-assertion_line: 202
+source: tests/integration/snapshot_tui_test.rs
 expression: logo
 ---
 ╔═══════════════════════════════════════╗
-║  AGR  ────────────────────────■ DONE  ║
+║ ░▒▓ AGR ▓▒░ ━━━━━━━━━━━━━━━━━ ■ DONE  ║
 ╠═══════════════════════════════════════╣
