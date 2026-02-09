@@ -33,6 +33,7 @@ git log --oneline -5
 **Current focus:** None (phase complete)
 
 **Recently completed:**
+- Add rename action to ls file explorer: inline rename in TUI, event bus Esc/q fix, input mode highlighting, rename validation with reserved names (PR #127)
 - Fix recording rename race condition: lock file protocol, inode/header recovery, ProcessGuard, live file discovery, lock-aware TUI, signal_hook SIGINT handling (PR #126)
 - Modularize TUI apps into shared framework: TuiApp trait, SharedState, unified keybindings, thread pool preview cache, generic AsyncLruCache (PR #125)
 - Refactor analyze command: parallel LLM analysis with content extraction pipeline, multi-backend support, and aggressive noise reduction (PR #112)
@@ -52,6 +53,7 @@ Historical context for all state directories:
 
 | Directory | Description |
 |-----------|-------------|
+| feature-ls-rename-action | Inline rename in TUI, event bus Esc/q fix, input mode highlighting, rename validation with reserved names |
 | fix-recording-rename-race-condition | Lock file protocol, inode/header recovery, ProcessGuard, live file discovery, lock-aware TUI, signal_hook SIGINT |
 | refactor-tui-apps | TuiApp trait framework, SharedState, unified keybindings, thread pool preview cache, generic AsyncLruCache |
 | refactor-analyze-command | Parallel LLM analysis with content extraction, multi-backend support, noise reduction |

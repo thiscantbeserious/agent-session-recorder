@@ -1,7 +1,7 @@
 # ADR: Add Rename Action to `agr ls` TUI
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 
