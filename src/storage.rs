@@ -1,13 +1,53 @@
 //! Storage management for recorded sessions
 
 use anyhow::{Context, Result};
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Datelike, Local};
 use humansize::{format_size, BINARY};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
 use crate::config::Config;
+
+/// Format a timestamp as a smart time prefix:
+/// - Today:      `14:05` (H:MM)
+/// - Yesterday:  `23h`   (hours ago)
+/// - Same year:  `01.02` (DD.MM)
+/// - Older:      `1y5m`  (years and months ago)
+pub fn format_smart_time(modified: &DateTime<Local>) -> String {
+    let now = Local::now();
+    let duration = now.signed_duration_since(*modified);
+    let hours = duration.num_hours();
+
+    if duration.num_seconds() < 0 {
+        // Future timestamp — just show time
+        return modified.format("%H:%M").to_string();
+    }
+
+    if hours < 24 && now.date_naive() == modified.date_naive() {
+        // Today — show H:MM
+        modified.format("%H:%M").to_string()
+    } else if hours < 48 {
+        // Yesterday — show hours
+        format!("{}h", hours)
+    } else if modified.year() == now.year() {
+        // Same year — show DD.MM
+        modified.format("%d.%m").to_string()
+    } else {
+        // Older — show relative years and months
+        let mut years = now.year() - modified.year();
+        let mut months = now.month() as i32 - modified.month() as i32;
+        if months < 0 {
+            years -= 1;
+            months += 12;
+        }
+        if years > 0 {
+            format!("{}y{}m", years, months)
+        } else {
+            format!("{}m", months)
+        }
+    }
+}
 
 /// Information about a recorded session
 #[derive(Debug, Clone)]
@@ -199,8 +239,8 @@ impl StorageManager {
             }
         }
 
-        // Sort by modification time (oldest first)
-        sessions.sort_by(|a, b| a.modified.cmp(&b.modified));
+        // Sort by modification time, newest first
+        sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
 
         Ok(sessions)
     }

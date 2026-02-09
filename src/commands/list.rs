@@ -4,6 +4,7 @@ use std::io::IsTerminal;
 
 use anyhow::Result;
 
+use agr::storage::format_smart_time;
 use agr::theme::current_theme;
 use agr::tui::app::TuiApp;
 use agr::tui::widgets::FileItem;
@@ -65,14 +66,11 @@ fn handle_tui(
 
 /// Handle list command with text output (piped mode fallback).
 fn handle_text(
-    mut sessions: Vec<agr::storage::SessionInfo>,
+    sessions: Vec<agr::storage::SessionInfo>,
     agent: Option<&str>,
     storage: &StorageManager,
 ) -> Result<()> {
     let theme = current_theme();
-
-    // Reverse to show newest first
-    sessions.reverse();
 
     // Print summary header
     if let Some(agent_name) = &agent {
@@ -115,13 +113,11 @@ fn handle_text(
     // Print table header
     println!(
         "{}",
-        theme.primary_text("  #  |  Age  | DateTime         | Agent       | Size       | Filename")
+        theme.primary_text("  #  | When  | Agent       | Size       | Filename")
     );
     println!(
         "{}",
-        theme.primary_text(
-            "-----+-------+------------------+-------------+------------+---------------------------"
-        )
+        theme.primary_text("-----+-------+-------------+------------+---------------------------")
     );
 
     // Display sessions in formatted table
@@ -129,10 +125,9 @@ fn handle_text(
         println!(
             "{}",
             theme.primary_text(&format!(
-                "{:>3}  | {:>5} | {} | {:11} | {:>10} | {}",
+                "{:>3}  | {:>5} | {:11} | {:>10} | {}",
                 i + 1,
-                session.format_age(),
-                session.modified.format("%Y-%m-%d %H:%M"),
+                format_smart_time(&session.modified),
                 truncate_string(&session.agent, 11),
                 session.size_human(),
                 session.filename

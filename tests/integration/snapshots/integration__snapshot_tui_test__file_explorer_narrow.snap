@@ -1,13 +1,12 @@
 ---
 source: tests/integration/snapshot_tui_test.rs
-assertion_line: 470
 expression: output
 ---
 ┌ Sessions ──────────────────────────────────────┐
-│> [ ] 20240117-session4.cast  (gemini, 1.0 MB)  │
-│  [ ] 20240116-session2.cast  (codex, 2.0 MB)   │
-│  [ ] 20240115-session1.cast  (claude, 50.0 KB) │
-│  [ ] 20240114-session3.cast  (claude, 100.0 KB)│
+│> [ ]  2y1m: 20240117-session4.cast  (gemini, 1.│
+│  [ ]  2y1m: 20240116-session2.cast  (codex, 2.0│
+│  [ ]  2y1m: 20240115-session1.cast  (claude, 50│
+│  [ ]  2y1m: 20240114-session3.cast  (claude, 10│
 │                                                │
 │                                                │
 │                                                │
