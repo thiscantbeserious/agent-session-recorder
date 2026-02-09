@@ -656,8 +656,11 @@ impl ListApp {
                 self.mode = Mode::Normal;
             }
             KeyCode::Enter => {
-                self.rename_session()?;
-                self.mode = Mode::Normal;
+                let success = self.rename_session()?;
+                if success {
+                    self.mode = Mode::Normal;
+                }
+                // On error, stay in RenameInput so user can correct
             }
             KeyCode::Backspace => {
                 if self.rename_selected_all {
@@ -699,7 +702,10 @@ impl ListApp {
     }
 
     /// Rename the selected session file on disk.
-    fn rename_session(&mut self) -> Result<()> {
+    ///
+    /// Returns `true` on success (or no-op), `false` on error (so caller can
+    /// keep the user in rename mode for correction).
+    fn rename_session(&mut self) -> Result<bool> {
         if let Some(item) = self.shared.explorer.selected_item() {
             let path = std::path::Path::new(&item.path);
             let old_path_str = item.path.clone();
@@ -710,26 +716,26 @@ impl ListApp {
                     if new_path_str != old_path_str {
                         // Invalidate preview cache for old path
                         self.shared.preview_cache.invalidate(&old_path_str);
-                        // Update explorer with new path
+                        // Update explorer with new path and re-sort/re-filter
                         self.shared
                             .explorer
                             .update_item_path(&old_path_str, &new_path_str);
-                        // Re-apply sort and filter since the name changed
-                        self.shared.explorer.apply_sort();
-                        self.shared.explorer.apply_filter();
+                        self.shared.explorer.reindex_after_rename(&new_path_str);
                         let new_name = new_path
                             .file_name()
                             .and_then(|n| n.to_str())
                             .unwrap_or("unknown");
                         self.shared.status_message = Some(format!("Renamed to {}", new_name));
                     }
+                    return Ok(true);
                 }
                 Err(e) => {
                     self.shared.status_message = Some(e.to_string());
+                    return Ok(false);
                 }
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     /// Render the help modal overlay.

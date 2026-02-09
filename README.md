@@ -153,8 +153,9 @@ Use `agr list` or `agr ls` to open the interactive TUI for browsing recordings.
 | `d` | Delete recording |
 | `/` | Search by filename |
 | `f` | Filter by agent |
+| `Esc` | Clear filters |
 | `?` | Show help overlay |
-| `q` / `Esc` | Quit browser |
+| `q` | Quit browser |
 
 ## Post-Processing Recordings
 
