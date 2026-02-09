@@ -149,6 +149,7 @@ impl Recorder {
         // Spawn asciinema rec (spawn + poll so we can react to signals)
         let mut child = match Command::new("asciinema")
             .arg("rec")
+            .arg("--quiet")
             .arg(&filepath)
             .arg("--title")
             .arg(format!("{} session", agent))
