@@ -601,6 +601,14 @@ impl FileExplorer {
         self.sync_list_state();
     }
 
+    /// Re-sort and re-filter after an item rename, restoring selection to the given path.
+    pub(crate) fn reindex_after_rename(&mut self, new_path: &str) {
+        self.apply_filter();
+        self.apply_sort();
+        self.restore_selection_by_path(Some(new_path));
+        self.sync_list_state();
+    }
+
     /// Apply current sort to visible indices
     fn apply_sort(&mut self) {
         let items = &self.items;
@@ -764,6 +772,7 @@ impl FileExplorer {
                 self.items[idx].size = metadata.len();
             }
             self.items[idx].has_backup = has_backup(new_p);
+            self.items[idx].lock_info = lock::read_lock(new_p);
             true
         } else {
             false

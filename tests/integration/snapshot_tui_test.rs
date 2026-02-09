@@ -718,25 +718,25 @@ fn snapshot_context_menu_first_item_selected() {
 
 #[test]
 fn snapshot_context_menu_transform_selected() {
-    let output = render_context_menu_to_string(1, true);
+    let output = render_context_menu_to_string(3, true);
     insta::assert_snapshot!("context_menu_transform_selected", output);
 }
 
 #[test]
 fn snapshot_context_menu_restore_selected_with_backup() {
-    let output = render_context_menu_to_string(2, true);
+    let output = render_context_menu_to_string(5, true);
     insta::assert_snapshot!("context_menu_restore_with_backup", output);
 }
 
 #[test]
 fn snapshot_context_menu_restore_selected_no_backup() {
-    let output = render_context_menu_to_string(2, false);
+    let output = render_context_menu_to_string(5, false);
     insta::assert_snapshot!("context_menu_restore_no_backup", output);
 }
 
 #[test]
 fn snapshot_context_menu_delete_selected() {
-    let output = render_context_menu_to_string(5, true);
+    let output = render_context_menu_to_string(6, true);
     insta::assert_snapshot!("context_menu_delete_selected", output);
 }
 

@@ -53,11 +53,12 @@ impl EventHandler {
                         // Event available
                         match event::read() {
                             Ok(CrosstermEvent::Key(key)) => {
-                                // Check for quit keys
-                                if key.code == KeyCode::Char('q')
-                                    || key.code == KeyCode::Esc
-                                    || (key.code == KeyCode::Char('c')
-                                        && key.modifiers.contains(KeyModifiers::CONTROL))
+                                // Only Ctrl+C quits at the event-bus level.
+                                // q and Esc are forwarded as normal keys so
+                                // apps can handle them per-mode (e.g. cancel
+                                // rename, close dialog, or quit in Normal mode).
+                                if key.code == KeyCode::Char('c')
+                                    && key.modifiers.contains(KeyModifiers::CONTROL)
                                 {
                                     let _ = tx.send(Event::Quit);
                                     break;

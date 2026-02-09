@@ -9,11 +9,10 @@ expression: output
           │Actions                               │          
           │                                      │          
           │    Play (p)                          │          
-          │>   Copy to clipboard (c)             │          
-          │    Optimize (t)                      │          
-          │       Removes silence from recording │          
+          │    Copy to clipboard (c)             │          
+          │    Rename (r)                        │          
+          │>   Optimize (t)                      │          
           │    Analyze (a)                       │          
-          │    Restore from backup (r)           │          
+          │    Restore from backup               │          
           │    Delete (d)                        │          
-          │    Add marker (m)                    │          
           └──────────────────────────────────────┘

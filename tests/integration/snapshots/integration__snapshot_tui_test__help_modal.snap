@@ -3,7 +3,6 @@ source: tests/integration/snapshot_tui_test.rs
 expression: output
 ---
                                                                       
-                                                                      
      ┌ Help ────────────────────────────────────────────────────┐     
      │Keyboard Shortcuts                                        │     
      │                                                          │     
@@ -16,6 +15,7 @@ expression: output
      │  Enter       Context menu                                │     
      │  p           Play session                                │     
      │  c           Copy to clipboard                           │     
+     │  r           Rename session                              │     
      │  t           Optimize (removes silence)                  │     
      │  a           Analyze session                             │     
      │  d           Delete session                              │     
@@ -29,4 +29,5 @@ expression: output
      │  q           Quit                                        │     
      │                                                          │     
      │Press any key to close                                    │     
+     │                                                          │     
      └──────────────────────────────────────────────────────────┘

@@ -1,7 +1,7 @@
 //! List command TUI application
 //!
 //! Interactive file explorer for browsing and managing session recordings.
-//! Features: search, agent filter, play, delete, add marker.
+//! Features: search, agent filter, play, copy, rename, optimize, analyze, restore, delete.
 
 use std::path::Path;
 use std::time::Duration;
@@ -19,13 +19,14 @@ use ratatui::{
 use super::app::layout::build_explorer_layout;
 use super::app::list_view::render_explorer_list;
 use super::app::modals;
-use super::app::status_footer::{render_footer_text, render_status_line};
+use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
 use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
 use crate::asciicast::{apply_transforms, TransformResult};
 use crate::config::Config;
 use crate::files::backup::{backup_path_for, create_backup, has_backup, restore_from_backup};
+use crate::files::filename;
 use crate::files::lock;
 use crate::theme::current_theme;
 
@@ -49,6 +50,8 @@ pub enum Mode {
     OptimizeResult,
     /// Confirm unlock mode - asking user to confirm force-unlock
     ConfirmUnlock,
+    /// Rename input mode - typing new filename
+    RenameInput,
 }
 
 impl Mode {
@@ -59,7 +62,9 @@ impl Mode {
             Mode::AgentFilter => Some(SharedMode::AgentFilter),
             Mode::Help => Some(SharedMode::Help),
             Mode::ConfirmDelete => Some(SharedMode::ConfirmDelete),
-            Mode::ContextMenu | Mode::OptimizeResult | Mode::ConfirmUnlock => None,
+            Mode::ContextMenu | Mode::OptimizeResult | Mode::ConfirmUnlock | Mode::RenameInput => {
+                None
+            }
         }
     }
 
@@ -79,11 +84,11 @@ impl Mode {
 pub enum ContextMenuItem {
     Play,
     Copy,
+    Rename,
     Optimize,
     Analyze,
     Restore,
     Delete,
-    AddMarker,
 }
 
 impl ContextMenuItem {
@@ -91,11 +96,11 @@ impl ContextMenuItem {
     pub const ALL: [ContextMenuItem; 7] = [
         ContextMenuItem::Play,
         ContextMenuItem::Copy,
+        ContextMenuItem::Rename,
         ContextMenuItem::Optimize,
         ContextMenuItem::Analyze,
         ContextMenuItem::Restore,
         ContextMenuItem::Delete,
-        ContextMenuItem::AddMarker,
     ];
 
     /// Get the display label for this menu item
@@ -103,11 +108,11 @@ impl ContextMenuItem {
         match self {
             ContextMenuItem::Play => "Play",
             ContextMenuItem::Copy => "Copy to clipboard",
+            ContextMenuItem::Rename => "Rename",
             ContextMenuItem::Optimize => "Optimize",
             ContextMenuItem::Analyze => "Analyze",
             ContextMenuItem::Restore => "Restore from backup",
             ContextMenuItem::Delete => "Delete",
-            ContextMenuItem::AddMarker => "Add marker",
         }
     }
 
@@ -116,12 +121,17 @@ impl ContextMenuItem {
         match self {
             ContextMenuItem::Play => "p",
             ContextMenuItem::Copy => "c",
+            ContextMenuItem::Rename => "r",
             ContextMenuItem::Optimize => "t",
             ContextMenuItem::Analyze => "a",
-            ContextMenuItem::Restore => "r",
+            ContextMenuItem::Restore => "",
             ContextMenuItem::Delete => "d",
-            ContextMenuItem::AddMarker => "m",
         }
+    }
+
+    /// Whether this menu item has a keyboard shortcut
+    pub fn has_shortcut(&self) -> bool {
+        !self.shortcut().is_empty()
     }
 }
 
@@ -146,6 +156,10 @@ pub struct ListApp {
     context_menu_idx: usize,
     /// Optimize result for modal display
     optimize_result: Option<OptimizeResultState>,
+    /// Rename input buffer (filename stem without extension)
+    rename_input: String,
+    /// Whether the entire rename input is "selected" (first keystroke replaces all)
+    rename_selected_all: bool,
 }
 
 impl ListApp {
@@ -160,6 +174,8 @@ impl ListApp {
             mode: Mode::Normal,
             context_menu_idx: 0,
             optimize_result: None,
+            rename_input: String::new(),
+            rename_selected_all: false,
         })
     }
 
@@ -214,6 +230,13 @@ impl ListApp {
                 }
                 self.analyze_session()?;
             }
+            KeyCode::Char('r') => {
+                if self.is_selected_locked() {
+                    self.mode = Mode::ConfirmUnlock;
+                    return Ok(());
+                }
+                self.enter_rename_mode();
+            }
             KeyCode::Char('d') => {
                 if self.is_selected_locked() {
                     self.mode = Mode::ConfirmUnlock;
@@ -223,14 +246,6 @@ impl ListApp {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
-            KeyCode::Char('m') => {
-                if self.is_selected_locked() {
-                    self.mode = Mode::ConfirmUnlock;
-                    return Ok(());
-                }
-                self.add_marker()?;
-            }
-
             // Clear filters
             KeyCode::Esc => {
                 self.shared.explorer.clear_filters();
@@ -238,7 +253,9 @@ impl ListApp {
                 self.shared.agent_filter_idx = 0;
             }
 
-            // Quit is handled by EventHandler
+            // Quit
+            KeyCode::Char('q') => self.app.quit(),
+
             _ => {}
         }
         Ok(())
@@ -311,7 +328,7 @@ impl ListApp {
             KeyCode::Char('r') => {
                 self.context_menu_idx = ContextMenuItem::ALL
                     .iter()
-                    .position(|i| matches!(i, ContextMenuItem::Restore))
+                    .position(|i| matches!(i, ContextMenuItem::Rename))
                     .unwrap_or(0);
                 self.execute_context_menu_action()?;
             }
@@ -322,14 +339,6 @@ impl ListApp {
                     .unwrap_or(0);
                 self.execute_context_menu_action()?;
             }
-            KeyCode::Char('m') => {
-                self.context_menu_idx = ContextMenuItem::ALL
-                    .iter()
-                    .position(|i| matches!(i, ContextMenuItem::AddMarker))
-                    .unwrap_or(0);
-                self.execute_context_menu_action()?;
-            }
-
             // Close menu
             KeyCode::Esc => {
                 self.mode = Mode::Normal;
@@ -403,6 +412,7 @@ impl ListApp {
         match action {
             ContextMenuItem::Play => self.play_session()?,
             ContextMenuItem::Copy => self.copy_to_clipboard()?,
+            ContextMenuItem::Rename => self.enter_rename_mode(),
             ContextMenuItem::Optimize => self.optimize_session()?,
             ContextMenuItem::Analyze => self.analyze_session()?,
             ContextMenuItem::Restore => self.restore_session()?,
@@ -411,7 +421,6 @@ impl ListApp {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
-            ContextMenuItem::AddMarker => self.add_marker()?,
         }
         Ok(())
     }
@@ -627,10 +636,108 @@ impl ListApp {
         Ok(())
     }
 
-    /// Add a marker to the selected session (placeholder).
-    fn add_marker(&mut self) -> Result<()> {
-        self.shared.status_message = Some("Marker feature coming soon!".to_string());
+    /// Enter rename input mode with current filename stem pre-filled.
+    fn enter_rename_mode(&mut self) {
+        if let Some(item) = self.shared.explorer.selected_item() {
+            let path = std::path::Path::new(&item.path);
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            self.rename_input = stem;
+            self.rename_selected_all = true;
+            self.mode = Mode::RenameInput;
+        }
+    }
+
+    /// Handle keys in rename input mode.
+    fn handle_rename_input_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Esc => {
+                self.mode = Mode::Normal;
+            }
+            KeyCode::Enter => {
+                let success = self.rename_session()?;
+                if success {
+                    self.mode = Mode::Normal;
+                }
+                // On error, stay in RenameInput so user can correct
+            }
+            KeyCode::Backspace => {
+                if self.rename_selected_all {
+                    self.rename_input.clear();
+                    self.rename_selected_all = false;
+                } else {
+                    self.rename_input.pop();
+                }
+            }
+            KeyCode::Char(c) => {
+                if !filename::is_valid_filename_char(c) {
+                    return Ok(());
+                }
+                // Compute max stem length: MAX_FILENAME_LENGTH minus extension length
+                let ext_len = self
+                    .shared
+                    .explorer
+                    .selected_item()
+                    .map(|item| {
+                        std::path::Path::new(&item.path)
+                            .extension()
+                            .map(|e| e.len() + 1) // +1 for the dot
+                            .unwrap_or(0)
+                    })
+                    .unwrap_or(0);
+                let max_stem_len = filename::MAX_FILENAME_LENGTH.saturating_sub(ext_len);
+
+                if self.rename_selected_all {
+                    self.rename_input.clear();
+                    self.rename_input.push(c);
+                    self.rename_selected_all = false;
+                } else if self.rename_input.len() < max_stem_len {
+                    self.rename_input.push(c);
+                }
+            }
+            _ => {}
+        }
         Ok(())
+    }
+
+    /// Rename the selected session file on disk.
+    ///
+    /// Returns `true` on success (or no-op), `false` on error (so caller can
+    /// keep the user in rename mode for correction).
+    fn rename_session(&mut self) -> Result<bool> {
+        if let Some(item) = self.shared.explorer.selected_item() {
+            let path = std::path::Path::new(&item.path);
+            let old_path_str = item.path.clone();
+
+            match filename::rename_file(path, &self.rename_input) {
+                Ok(new_path) => {
+                    let new_path_str = new_path.to_string_lossy().to_string();
+                    if new_path_str != old_path_str {
+                        // Invalidate preview cache for old path
+                        self.shared.preview_cache.invalidate(&old_path_str);
+                        // Update explorer with new path and re-sort/re-filter
+                        self.shared
+                            .explorer
+                            .update_item_path(&old_path_str, &new_path_str);
+                        self.shared.explorer.reindex_after_rename(&new_path_str);
+                        let new_name = new_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown");
+                        self.shared.status_message = Some(format!("Renamed to {}", new_name));
+                    }
+                    return Ok(true);
+                }
+                Err(e) => {
+                    self.shared.status_message = Some(e.to_string());
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
     }
 
     /// Render the help modal overlay.
@@ -640,7 +747,7 @@ impl ListApp {
 
         // Center the modal
         let modal_width = 60.min(area.width.saturating_sub(4));
-        let modal_height = 28.min(area.height.saturating_sub(4)); // Updated: added a for analyze
+        let modal_height = 31.min(area.height.saturating_sub(2));
         let x = (area.width - modal_width) / 2;
         let y = (area.height - modal_height) / 2;
         let modal_area = Rect::new(x, y, modal_width, modal_height);
@@ -690,6 +797,10 @@ impl ListApp {
             Line::from(vec![
                 Span::styled("  c", Style::default().fg(theme.accent)),
                 Span::raw("           Copy to clipboard"),
+            ]),
+            Line::from(vec![
+                Span::styled("  r", Style::default().fg(theme.accent)),
+                Span::raw("           Rename session"),
             ]),
             Line::from(vec![
                 Span::styled("  t", Style::default().fg(theme.accent)),
@@ -763,7 +874,7 @@ impl ListApp {
 
         // Center the modal
         let modal_width = 40.min(area.width.saturating_sub(4));
-        let modal_height = (ContextMenuItem::ALL.len() + 5) as u16; // items + title + padding + footer + optimize hint
+        let modal_height = (ContextMenuItem::ALL.len() + 4) as u16; // items + title + padding + footer
         let modal_height = modal_height.min(area.height.saturating_sub(4));
         let x = (area.width - modal_width) / 2;
         let y = (area.height - modal_height) / 2;
@@ -790,9 +901,15 @@ impl ListApp {
 
             // Build the label with shortcut hint
             let label = if is_restore && !backup_exists {
-                format!("  {} ({}) - no backup", item.label(), item.shortcut())
-            } else {
+                if item.has_shortcut() {
+                    format!("  {} ({}) - no backup", item.label(), item.shortcut())
+                } else {
+                    format!("  {} - no backup", item.label())
+                }
+            } else if item.has_shortcut() {
                 format!("  {} ({})", item.label(), item.shortcut())
+            } else {
+                format!("  {}", item.label())
             };
 
             let style = if is_selected {
@@ -809,14 +926,6 @@ impl ListApp {
                 format!("{}{}", prefix, label),
                 style,
             )));
-
-            // Add hint for Optimize
-            if matches!(item, ContextMenuItem::Optimize) {
-                lines.push(Line::from(Span::styled(
-                    "       Removes silence from recording",
-                    Style::default().fg(theme.text_secondary),
-                )));
-            }
         }
 
         lines.push(Line::from(""));
@@ -982,6 +1091,7 @@ impl TuiApp for ListApp {
             Mode::ContextMenu => self.handle_context_menu_key(key)?,
             Mode::OptimizeResult => self.handle_optimize_result_key(key)?,
             Mode::ConfirmUnlock => self.handle_confirm_unlock_key(key)?,
+            Mode::RenameInput => self.handle_rename_input_key(key)?,
             _ => {}
         }
         Ok(())
@@ -1007,6 +1117,8 @@ impl TuiApp for ListApp {
         let available_agents = &self.shared.available_agents;
         let context_menu_idx = self.context_menu_idx;
         let optimize_result = self.optimize_result.clone();
+        let rename_input = &self.rename_input;
+        let rename_selected_all = self.rename_selected_all;
 
         // Get preview for current selection from cache
         let current_path = explorer.selected_item().map(|i| i.path.clone());
@@ -1029,41 +1141,66 @@ impl TuiApp for ListApp {
             // Render file explorer (no checkboxes in list view - it's single-select)
             render_explorer_list(frame, chunks[0], explorer, preview, false, backup_exists);
 
-            // Render status line
-            let status_text = if let Some(msg) = &status {
-                msg.clone()
-            } else {
-                match mode {
-                    Mode::Search => format!("Search: {}_", search_input),
-                    Mode::AgentFilter => {
-                        let agent = &available_agents[agent_filter_idx];
-                        format!("Filter by agent: {} (←/→ to change, Enter to apply)", agent)
-                    }
-                    Mode::ConfirmDelete => "Delete this session? (y/n)".to_string(),
-                    Mode::ConfirmUnlock => {
-                        "This session is being recorded. Force unlock? (y/n)".to_string()
-                    }
-                    Mode::Help => String::new(),
-                    Mode::ContextMenu => String::new(),
-                    Mode::OptimizeResult => String::new(),
-                    Mode::Normal => {
-                        // Show current filters if any
-                        let mut parts = vec![];
-                        if let Some(search) = explorer.search_filter() {
-                            parts.push(format!("search: \"{}\"", search));
-                        }
-                        if let Some(agent) = explorer.agent_filter() {
-                            parts.push(format!("agent: {}", agent));
-                        }
-                        if parts.is_empty() {
-                            format!("{} sessions", explorer.len())
-                        } else {
-                            format!("{} sessions ({})", explorer.len(), parts.join(", "))
-                        }
-                    }
+            // Render status line — input modes highlight only the input
+            // value and always take priority over status_message.
+            match mode {
+                Mode::Search => {
+                    let value = format!("{}_", search_input);
+                    render_input_line(frame, chunks[1], "Search: ", &value);
                 }
-            };
-            render_status_line(frame, chunks[1], &status_text);
+                Mode::AgentFilter => {
+                    let agent = &available_agents[agent_filter_idx];
+                    render_input_line(
+                        frame,
+                        chunks[1],
+                        "Filter by agent: ",
+                        &format!("{} (←/→ to change, Enter to apply)", agent),
+                    );
+                }
+                Mode::RenameInput => {
+                    let value = if rename_selected_all {
+                        format!("[{}]", rename_input)
+                    } else {
+                        format!("{}_", rename_input)
+                    };
+                    render_input_line(frame, chunks[1], "Rename: ", &value);
+                }
+                Mode::ConfirmDelete => {
+                    render_input_line(frame, chunks[1], "Delete this session? ", "(y/n)");
+                }
+                Mode::ConfirmUnlock => {
+                    render_input_line(
+                        frame,
+                        chunks[1],
+                        "This session is being recorded. Force unlock? ",
+                        "(y/n)",
+                    );
+                }
+                _ => {
+                    let text = if let Some(msg) = &status {
+                        msg.clone()
+                    } else {
+                        match mode {
+                            Mode::Normal => {
+                                let mut parts = vec![];
+                                if let Some(search) = explorer.search_filter() {
+                                    parts.push(format!("search: \"{}\"", search));
+                                }
+                                if let Some(agent) = explorer.agent_filter() {
+                                    parts.push(format!("agent: {}", agent));
+                                }
+                                if parts.is_empty() {
+                                    format!("{} sessions", explorer.len())
+                                } else {
+                                    format!("{} sessions ({})", explorer.len(), parts.join(", "))
+                                }
+                            }
+                            _ => String::new(),
+                        }
+                    };
+                    render_status_line(frame, chunks[1], &text);
+                }
+            }
 
             // Render footer with keybindings
             let footer_text = match mode {
@@ -1073,9 +1210,10 @@ impl TuiApp for ListApp {
                 Mode::ConfirmUnlock => "y: force unlock | n/Esc: cancel",
                 Mode::Help => "Press any key to close help",
                 Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
+                Mode::RenameInput => "Enter: confirm | Esc: cancel | Backspace: delete char",
                 Mode::OptimizeResult => "Enter/Esc: dismiss",
                 Mode::Normal => {
-                    "↑↓: navigate | Enter: menu | p: play | c: copy | t: optimize | a: analyze | d: delete | ?: help | q: quit"
+                    "↑↓: navigate | Enter: menu | p: play | c: copy | r: rename | t: optimize | a: analyze | d: delete | ?: help | q: quit"
                 }
             };
             render_footer_text(frame, chunks[2], footer_text);
@@ -1180,8 +1318,13 @@ mod tests {
 
     #[test]
     fn context_menu_items_have_shortcuts() {
+        // All items except Restore have shortcuts
         for item in ContextMenuItem::ALL {
-            assert!(!item.shortcut().is_empty());
+            if matches!(item, ContextMenuItem::Restore) {
+                assert!(!item.has_shortcut());
+            } else {
+                assert!(item.has_shortcut());
+            }
         }
     }
 
@@ -1193,14 +1336,14 @@ mod tests {
 
     #[test]
     fn context_menu_item_order() {
-        // Verify expected order: Play, Copy, Optimize, Analyze, Restore, Delete, AddMarker
+        // Verify expected order: Play, Copy, Rename, Optimize, Analyze, Restore, Delete
         assert_eq!(ContextMenuItem::ALL[0], ContextMenuItem::Play);
         assert_eq!(ContextMenuItem::ALL[1], ContextMenuItem::Copy);
-        assert_eq!(ContextMenuItem::ALL[2], ContextMenuItem::Optimize);
-        assert_eq!(ContextMenuItem::ALL[3], ContextMenuItem::Analyze);
-        assert_eq!(ContextMenuItem::ALL[4], ContextMenuItem::Restore);
-        assert_eq!(ContextMenuItem::ALL[5], ContextMenuItem::Delete);
-        assert_eq!(ContextMenuItem::ALL[6], ContextMenuItem::AddMarker);
+        assert_eq!(ContextMenuItem::ALL[2], ContextMenuItem::Rename);
+        assert_eq!(ContextMenuItem::ALL[3], ContextMenuItem::Optimize);
+        assert_eq!(ContextMenuItem::ALL[4], ContextMenuItem::Analyze);
+        assert_eq!(ContextMenuItem::ALL[5], ContextMenuItem::Restore);
+        assert_eq!(ContextMenuItem::ALL[6], ContextMenuItem::Delete);
     }
 
     #[test]
@@ -1234,5 +1377,35 @@ mod tests {
     fn optimize_result_mode_exists() {
         assert_eq!(Mode::OptimizeResult, Mode::OptimizeResult);
         assert_ne!(Mode::OptimizeResult, Mode::Normal);
+    }
+
+    #[test]
+    fn rename_input_mode_exists() {
+        assert_eq!(Mode::RenameInput, Mode::RenameInput);
+        assert_ne!(Mode::RenameInput, Mode::Normal);
+    }
+
+    #[test]
+    fn rename_menu_item_label_and_shortcut() {
+        assert_eq!(ContextMenuItem::Rename.label(), "Rename");
+        assert_eq!(ContextMenuItem::Rename.shortcut(), "r");
+        assert!(ContextMenuItem::Rename.has_shortcut());
+    }
+
+    #[test]
+    fn is_valid_filename_char_rejects_invalid() {
+        for &c in filename::INVALID_CHARS {
+            assert!(!filename::is_valid_filename_char(c));
+        }
+    }
+
+    #[test]
+    fn is_valid_filename_char_accepts_valid() {
+        assert!(filename::is_valid_filename_char('a'));
+        assert!(filename::is_valid_filename_char('Z'));
+        assert!(filename::is_valid_filename_char('0'));
+        assert!(filename::is_valid_filename_char('-'));
+        assert!(filename::is_valid_filename_char('_'));
+        assert!(filename::is_valid_filename_char('.'));
     }
 }
