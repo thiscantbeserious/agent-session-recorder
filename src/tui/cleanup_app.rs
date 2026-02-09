@@ -18,7 +18,7 @@ use ratatui::{
 use super::app::layout::build_explorer_layout;
 use super::app::list_view::render_explorer_list;
 use super::app::modals;
-use super::app::status_footer::{render_footer_text, render_status_line};
+use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
 use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
@@ -465,53 +465,70 @@ impl TuiApp for CleanupApp {
             // Render file explorer with checkboxes (cleanup uses multi-select)
             render_explorer_list(frame, chunks[0], explorer, preview, true, false);
 
-            // Render status line
-            let status_text = if let Some(msg) = &status {
-                msg.clone()
-            } else {
-                match mode {
-                    Mode::Search => format!("Search: {}_", search_input),
-                    Mode::GlobSelect => format!("Glob pattern: {}_", glob_input),
-                    Mode::AgentFilter => {
-                        let agent = &available_agents[agent_filter_idx];
-                        format!(
-                            "Filter by agent: {} (left/right to change, Enter to apply)",
-                            agent
-                        )
-                    }
-                    Mode::ConfirmDelete => String::new(), // Modal shows this
-                    Mode::Help => String::new(),
-                    Mode::Normal => {
-                        // Show selection info
-                        if selected_count > 0 {
-                            format!(
-                                "{} selected ({}) | {} total sessions",
-                                selected_count,
-                                format_size(selected_size),
-                                explorer.len()
-                            )
-                        } else {
-                            let mut parts = vec![];
-                            if let Some(search) = explorer.search_filter() {
-                                parts.push(format!("search: \"{}\"", search));
-                            }
-                            if let Some(agent) = explorer.agent_filter() {
-                                parts.push(format!("agent: {}", agent));
-                            }
-                            if parts.is_empty() {
-                                format!("{} sessions | Space to select", explorer.len())
-                            } else {
-                                format!(
-                                    "{} sessions ({}) | Space to select",
-                                    explorer.len(),
-                                    parts.join(", ")
-                                )
-                            }
-                        }
-                    }
+            // Render status line — input modes use highlighted style and
+            // always take priority over status_message.
+            match mode {
+                Mode::Search => {
+                    let text = format!("Search: {}_", search_input);
+                    render_input_line(frame, chunks[1], &text);
                 }
-            };
-            render_status_line(frame, chunks[1], &status_text);
+                Mode::GlobSelect => {
+                    let text = format!("Glob pattern: {}_", glob_input);
+                    render_input_line(frame, chunks[1], &text);
+                }
+                Mode::AgentFilter => {
+                    let agent = &available_agents[agent_filter_idx];
+                    let text = format!(
+                        "Filter by agent: {} (left/right to change, Enter to apply)",
+                        agent
+                    );
+                    render_input_line(frame, chunks[1], &text);
+                }
+                Mode::ConfirmDelete => {
+                    render_input_line(
+                        frame,
+                        chunks[1],
+                        "Delete selected sessions? (y/n)",
+                    );
+                }
+                _ => {
+                    let text = if let Some(msg) = &status {
+                        msg.clone()
+                    } else {
+                        match mode {
+                            Mode::Normal => {
+                                if selected_count > 0 {
+                                    format!(
+                                        "{} selected ({}) | {} total sessions",
+                                        selected_count,
+                                        format_size(selected_size),
+                                        explorer.len()
+                                    )
+                                } else {
+                                    let mut parts = vec![];
+                                    if let Some(search) = explorer.search_filter() {
+                                        parts.push(format!("search: \"{}\"", search));
+                                    }
+                                    if let Some(agent) = explorer.agent_filter() {
+                                        parts.push(format!("agent: {}", agent));
+                                    }
+                                    if parts.is_empty() {
+                                        format!("{} sessions | Space to select", explorer.len())
+                                    } else {
+                                        format!(
+                                            "{} sessions ({}) | Space to select",
+                                            explorer.len(),
+                                            parts.join(", ")
+                                        )
+                                    }
+                                }
+                            }
+                            _ => String::new(),
+                        }
+                    };
+                    render_status_line(frame, chunks[1], &text);
+                }
+            }
 
             // Render footer with keybindings
             let footer_text = match mode {

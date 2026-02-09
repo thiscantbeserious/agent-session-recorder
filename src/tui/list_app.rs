@@ -19,7 +19,7 @@ use ratatui::{
 use super::app::layout::build_explorer_layout;
 use super::app::list_view::render_explorer_list;
 use super::app::modals;
-use super::app::status_footer::{render_footer_text, render_status_line};
+use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
 use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
@@ -1141,48 +1141,64 @@ impl TuiApp for ListApp {
             // Render file explorer (no checkboxes in list view - it's single-select)
             render_explorer_list(frame, chunks[0], explorer, preview, false, backup_exists);
 
-            // Render status line
-            let status_text = if let Some(msg) = &status {
-                msg.clone()
-            } else {
-                match mode {
-                    Mode::Search => format!("Search: {}_", search_input),
-                    Mode::AgentFilter => {
-                        let agent = &available_agents[agent_filter_idx];
-                        format!("Filter by agent: {} (←/→ to change, Enter to apply)", agent)
-                    }
-                    Mode::ConfirmDelete => "Delete this session? (y/n)".to_string(),
-                    Mode::ConfirmUnlock => {
-                        "This session is being recorded. Force unlock? (y/n)".to_string()
-                    }
-                    Mode::RenameInput => {
-                        if rename_selected_all {
-                            format!("Rename: [{}]", rename_input)
-                        } else {
-                            format!("Rename: {}_", rename_input)
-                        }
-                    }
-                    Mode::Help => String::new(),
-                    Mode::ContextMenu => String::new(),
-                    Mode::OptimizeResult => String::new(),
-                    Mode::Normal => {
-                        // Show current filters if any
-                        let mut parts = vec![];
-                        if let Some(search) = explorer.search_filter() {
-                            parts.push(format!("search: \"{}\"", search));
-                        }
-                        if let Some(agent) = explorer.agent_filter() {
-                            parts.push(format!("agent: {}", agent));
-                        }
-                        if parts.is_empty() {
-                            format!("{} sessions", explorer.len())
-                        } else {
-                            format!("{} sessions ({})", explorer.len(), parts.join(", "))
-                        }
-                    }
+            // Render status line — input modes use highlighted style and
+            // always take priority over status_message.
+            match mode {
+                Mode::Search => {
+                    let text = format!("Search: {}_", search_input);
+                    render_input_line(frame, chunks[1], &text);
                 }
-            };
-            render_status_line(frame, chunks[1], &status_text);
+                Mode::AgentFilter => {
+                    let agent = &available_agents[agent_filter_idx];
+                    let text = format!(
+                        "Filter by agent: {} (←/→ to change, Enter to apply)",
+                        agent
+                    );
+                    render_input_line(frame, chunks[1], &text);
+                }
+                Mode::RenameInput => {
+                    let text = if rename_selected_all {
+                        format!("Rename: [{}]", rename_input)
+                    } else {
+                        format!("Rename: {}_", rename_input)
+                    };
+                    render_input_line(frame, chunks[1], &text);
+                }
+                Mode::ConfirmDelete => {
+                    render_input_line(frame, chunks[1], "Delete this session? (y/n)");
+                }
+                Mode::ConfirmUnlock => {
+                    render_input_line(
+                        frame,
+                        chunks[1],
+                        "This session is being recorded. Force unlock? (y/n)",
+                    );
+                }
+                _ => {
+                    let text = if let Some(msg) = &status {
+                        msg.clone()
+                    } else {
+                        match mode {
+                            Mode::Normal => {
+                                let mut parts = vec![];
+                                if let Some(search) = explorer.search_filter() {
+                                    parts.push(format!("search: \"{}\"", search));
+                                }
+                                if let Some(agent) = explorer.agent_filter() {
+                                    parts.push(format!("agent: {}", agent));
+                                }
+                                if parts.is_empty() {
+                                    format!("{} sessions", explorer.len())
+                                } else {
+                                    format!("{} sessions ({})", explorer.len(), parts.join(", "))
+                                }
+                            }
+                            _ => String::new(),
+                        }
+                    };
+                    render_status_line(frame, chunks[1], &text);
+                }
+            }
 
             // Render footer with keybindings
             let footer_text = match mode {

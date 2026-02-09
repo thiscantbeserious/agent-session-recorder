@@ -22,6 +22,16 @@ pub fn render_status_line(frame: &mut Frame, area: Rect, text: &str) {
     frame.render_widget(status, area);
 }
 
+/// Render a status line styled as an active input prompt.
+///
+/// Uses black text on accent background (highlight style) so that
+/// input modes like search and rename are visually distinct.
+pub fn render_input_line(frame: &mut Frame, area: Rect, text: &str) {
+    let theme = current_theme();
+    let status = Paragraph::new(text.to_string()).style(theme.highlight_style());
+    frame.render_widget(status, area);
+}
+
 /// Render a centered footer from a pre-formatted text string.
 ///
 /// Displays the text centered in the secondary text color of the current
