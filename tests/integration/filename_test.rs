@@ -2230,6 +2230,10 @@ fn rename_file_reserved_name_errors() {
 
     let result = filename::rename_file(&file, "nul");
     assert!(matches!(result, Err(RenameError::ReservedName)));
+
+    // Dotted stems like "CON.txt" are also reserved on Windows
+    let result = filename::rename_file(&file, "CON.txt");
+    assert!(matches!(result, Err(RenameError::ReservedName)));
 }
 
 #[test]

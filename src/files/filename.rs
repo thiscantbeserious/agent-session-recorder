@@ -511,8 +511,10 @@ pub fn rename_file(
         return Err(RenameError::InvalidChars);
     }
 
-    // Validate: not a Windows reserved name
-    let upper = new_stem.to_uppercase();
+    // Validate: not a Windows reserved name (check base before first dot,
+    // since Windows treats e.g. "CON.txt" the same as "CON")
+    let base_name = new_stem.split('.').next().unwrap_or(new_stem);
+    let upper = base_name.to_uppercase();
     if WINDOWS_RESERVED.iter().any(|r| upper == *r) {
         return Err(RenameError::ReservedName);
     }
