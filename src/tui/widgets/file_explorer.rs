@@ -917,7 +917,7 @@ impl Widget for FileExplorerWidget<'_> {
 
         // Build list items (collect data first to avoid borrow issues)
         // Note: has_backup and lock_info are cached in FileItem
-        let item_data: Vec<(String, String, String, bool, bool, bool)> = self
+        let item_data: Vec<(String, String, String, String, bool, bool, bool)> = self
             .explorer
             .visible_items()
             .map(|(_, item, is_checked)| {
@@ -925,6 +925,7 @@ impl Widget for FileExplorerWidget<'_> {
                     item.name.clone(),
                     item.agent.clone(),
                     format_size(item.size),
+                    crate::storage::format_smart_time(&item.modified),
                     is_checked,
                     item.has_backup,
                     item.lock_info.is_some(),
@@ -935,38 +936,46 @@ impl Widget for FileExplorerWidget<'_> {
         let show_checkboxes = self.show_checkboxes;
         let items: Vec<ListItem> = item_data
             .iter()
-            .map(|(name, agent, size_str, is_checked, has_bak, is_locked)| {
-                let mut spans = vec![];
-                if show_checkboxes {
-                    let checkbox = if *is_checked { "[x] " } else { "[ ] " };
-                    spans.push(Span::styled(checkbox, theme.text_secondary_style()));
-                }
+            .map(
+                |(name, agent, size_str, time_str, is_checked, has_bak, is_locked)| {
+                    let mut spans = vec![];
+                    if show_checkboxes {
+                        let checkbox = if *is_checked { "[x] " } else { "[ ] " };
+                        spans.push(Span::styled(checkbox, theme.text_secondary_style()));
+                    }
 
-                // Add [opt] indicator prefix if backup exists
-                if *has_bak {
-                    spans.push(Span::styled("[opt] ", theme.accent_style()));
-                }
+                    // Smart time prefix
+                    spans.push(Span::styled(
+                        format!("{:>8}: ", time_str),
+                        theme.text_secondary_style(),
+                    ));
 
-                // Use greyed style for locked (actively recording) files
-                let name_style = if *is_locked {
-                    theme.text_secondary_style()
-                } else {
-                    theme.text_style()
-                };
-                spans.push(Span::styled(name.as_str(), name_style));
+                    // Add [opt] indicator prefix if backup exists
+                    if *has_bak {
+                        spans.push(Span::styled("[opt] ", theme.accent_style()));
+                    }
 
-                // Add recording indicator for locked files
-                if *is_locked {
-                    spans.push(Span::styled(" \u{1F4F9}", theme.text_secondary_style()));
-                }
+                    // Use greyed style for locked (actively recording) files
+                    let name_style = if *is_locked {
+                        theme.text_secondary_style()
+                    } else {
+                        theme.text_style()
+                    };
+                    spans.push(Span::styled(name.as_str(), name_style));
 
-                spans.push(Span::raw("  "));
-                spans.push(Span::styled(
-                    format!("({}, {})", agent, size_str),
-                    theme.text_secondary_style(),
-                ));
-                ListItem::new(Line::from(spans))
-            })
+                    // Add recording indicator for locked files
+                    if *is_locked {
+                        spans.push(Span::styled(" \u{1F4F9}", theme.text_secondary_style()));
+                    }
+
+                    spans.push(Span::raw("  "));
+                    spans.push(Span::styled(
+                        format!("({}, {})", agent, size_str),
+                        theme.text_secondary_style(),
+                    ));
+                    ListItem::new(Line::from(spans))
+                },
+            )
             .collect();
 
         // Get preview data before mutable borrow
