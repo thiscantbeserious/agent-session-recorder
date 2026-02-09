@@ -2,7 +2,7 @@
 source: src/config/migrate/mod.rs
 expression: result.content
 ---
-config_version = 1
+config_version = 2
 
 [shell]
 auto_wrap = true
@@ -13,8 +13,8 @@ size_threshold_gb = 5.0
 age_threshold_days = 30
 
 [recording]
+filename_template = "{directory}{?branch}_{id}"
 auto_analyze = false
-filename_template = "{directory}_{date}_{time}"
 directory_max_length = 14
 
 [analysis]

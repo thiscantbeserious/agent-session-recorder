@@ -137,6 +137,11 @@ echo
 echo "Setting up shell integration..."
 "$INSTALL_DIR/agr" shell install
 
+# Run config migration (adds new fields, shows preview for confirmation)
+echo
+echo "Running config migration..."
+"$INSTALL_DIR/agr" config migrate
+
 # Verify installation
 echo
 echo "=== Installation Complete ==="

@@ -2,7 +2,7 @@
 //!
 //! These tests are written BEFORE implementation (TDD approach).
 
-use agr::files::filename::{self, Config, FilenameError, Template, TemplateError};
+use agr::files::filename::{self, Config, FilenameError, RenderContext, Template, TemplateError};
 
 // ============================================================================
 // Space Replacement Tests
@@ -582,7 +582,11 @@ fn template_parse_only_literal_underscore() {
 fn template_render_literal_only() {
     let template = Template::parse("my-recording").unwrap();
     let config = Config::default();
-    let result = template.render("test-dir", &config);
+    let ctx = RenderContext {
+        directory: "test-dir",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
     assert_eq!(result, "my-recording");
 }
 
@@ -590,7 +594,11 @@ fn template_render_literal_only() {
 fn template_render_directory_tag() {
     let template = Template::parse("{directory}").unwrap();
     let config = Config::default();
-    let result = template.render("my-project", &config);
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
     assert_eq!(result, "my-project");
 }
 
@@ -599,7 +607,11 @@ fn template_render_directory_sanitized() {
     let template = Template::parse("{directory}").unwrap();
     let config = Config::default();
     // Directory with spaces should be sanitized
-    let result = template.render("My Project", &config);
+    let ctx = RenderContext {
+        directory: "My Project",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
     assert_eq!(result, "My-Project");
 }
 
@@ -614,7 +626,11 @@ fn template_render_directory_truncated() {
     // Proportional truncation: 4 words, 3 separators = 3 chars
     // Available: 10-3 = 7 chars, 7/4 = 1 char per word
     // Result: "v-l-d-n" = 7 chars
-    let result = template.render("very-long-directory-name", &config);
+    let ctx = RenderContext {
+        directory: "very-long-directory-name",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
     assert_eq!(result.len(), 7);
     assert_eq!(result, "v-l-d-n");
 }
@@ -623,7 +639,11 @@ fn template_render_directory_truncated() {
 fn template_render_date_default_format() {
     let template = Template::parse("{date}").unwrap();
     let config = Config::default();
-    let result = template.render("dir", &config);
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
     // Default format is %y%m%d (6 digits)
     assert_eq!(result.len(), 6);
     assert!(result.chars().all(|c| c.is_ascii_digit()));
@@ -633,7 +653,11 @@ fn template_render_date_default_format() {
 fn template_render_time_default_format() {
     let template = Template::parse("{time}").unwrap();
     let config = Config::default();
-    let result = template.render("dir", &config);
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
     // Default format is %H%M%S (6 digits)
     assert_eq!(result.len(), 6);
     assert!(result.chars().all(|c| c.is_ascii_digit()));
@@ -643,7 +667,11 @@ fn template_render_time_default_format() {
 fn template_render_date_custom_format() {
     let template = Template::parse("{date:%Y}").unwrap();
     let config = Config::default();
-    let result = template.render("dir", &config);
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
     // Should be 4-digit year
     assert_eq!(result.len(), 4);
     assert!(result.starts_with("20")); // 21st century
@@ -653,7 +681,11 @@ fn template_render_date_custom_format() {
 fn template_render_full_default_template() {
     let template = Template::default();
     let config = Config::default();
-    let result = template.render("my-project", &config);
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
     // Should contain directory, underscore separators, date, time
     assert!(result.contains("my-project"));
     assert!(result.contains('_'));
@@ -663,7 +695,11 @@ fn template_render_full_default_template() {
 fn template_render_preserves_literal_separators() {
     let template = Template::parse("{directory}--{date}").unwrap();
     let config = Config::default();
-    let result = template.render("test", &config);
+    let ctx = RenderContext {
+        directory: "test",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
     assert!(result.contains("--"));
 }
 
@@ -674,33 +710,45 @@ fn template_render_preserves_literal_separators() {
 #[test]
 fn generate_returns_filename_with_cast_extension() {
     let config = Config::default();
-    let result = filename::generate("my-project", "{directory}", &config).unwrap();
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: None,
+    };
+    let result = filename::generate(&ctx, "{directory}", &config).unwrap();
     assert!(result.ends_with(".cast"));
 }
 
 #[test]
 fn generate_uses_template() {
     let config = Config::default();
-    let result = filename::generate("test-dir", "{directory}", &config).unwrap();
+    let ctx = RenderContext {
+        directory: "test-dir",
+        branch: None,
+    };
+    let result = filename::generate(&ctx, "{directory}", &config).unwrap();
     assert_eq!(result, "test-dir.cast");
 }
 
 #[test]
 fn generate_sanitizes_directory() {
     let config = Config::default();
-    let result = filename::generate("My Project", "{directory}", &config).unwrap();
+    let ctx = RenderContext {
+        directory: "My Project",
+        branch: None,
+    };
+    let result = filename::generate(&ctx, "{directory}", &config).unwrap();
     assert_eq!(result, "My-Project.cast");
 }
 
 #[test]
 fn generate_with_default_template() {
     let config = Config::default();
-    let result = filename::generate(
-        "my-project",
-        "{directory}_{date:%y%m%d}_{time:%H%M}",
-        &config,
-    )
-    .unwrap();
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: None,
+    };
+    let result =
+        filename::generate(&ctx, "{directory}_{date:%y%m%d}_{time:%H%M}", &config).unwrap();
     assert!(result.starts_with("my-project_"));
     assert!(result.ends_with(".cast"));
 }
@@ -710,17 +758,23 @@ fn generate_validates_final_length() {
     let config = Config {
         directory_max_length: 300, // Allow long directory
     };
-    // Create a template that would produce a very long filename
     let long_dir = "a".repeat(260);
-    let result = filename::generate(&long_dir, "{directory}", &config);
-    // Should fail because final filename > 255 chars
+    let ctx = RenderContext {
+        directory: &long_dir,
+        branch: None,
+    };
+    let result = filename::generate(&ctx, "{directory}", &config);
     assert!(result.is_err());
 }
 
 #[test]
 fn generate_with_invalid_template_returns_error() {
     let config = Config::default();
-    let result = filename::generate("dir", "{unknown}", &config);
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: None,
+    };
+    let result = filename::generate(&ctx, "{unknown}", &config);
     assert!(result.is_err());
 }
 
@@ -2279,4 +2333,474 @@ fn rename_file_whitespace_only_name_errors() {
 
     let result = filename::rename_file(&file, " ");
     assert!(matches!(result, Err(RenameError::EmptyName)));
+}
+
+// ============================================================================
+// Branch Tag Tests (Stage 3)
+// ============================================================================
+
+use agr::files::filename::Segment;
+
+#[test]
+fn branch_tag_parses_without_error() {
+    let template = Template::parse("{branch}").unwrap();
+    assert_eq!(template.segments().len(), 1);
+    assert_eq!(template.segments()[0], Segment::Branch);
+}
+
+#[test]
+fn branch_tag_renders_branch_name() {
+    let template = Template::parse("{branch}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: Some("main"),
+    };
+    let result = template.render(&ctx, &config);
+    assert_eq!(result, "main");
+}
+
+#[test]
+fn branch_tag_sanitizes_slashes() {
+    let template = Template::parse("{branch}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: Some("feature/foo"),
+    };
+    let result = template.render(&ctx, &config);
+    // Slash is replaced with --
+    assert_eq!(result, "feature--foo");
+}
+
+#[test]
+fn sanitize_branch_handles_special_chars() {
+    // @ is preserved (valid filesystem char)
+    assert_eq!(filename::sanitize_branch("user@feature"), "user@feature");
+    // # is preserved (valid on macOS/Linux/NTFS)
+    assert_eq!(filename::sanitize_branch("fix#123"), "fix#123");
+    // ~ is preserved (valid on macOS/Linux/NTFS)
+    assert_eq!(filename::sanitize_branch("release~1"), "release~1");
+}
+
+#[test]
+fn sanitize_branch_no_truncation() {
+    let long_branch = "a".repeat(200);
+    assert_eq!(filename::sanitize_branch(&long_branch).len(), 200);
+}
+
+#[test]
+fn branch_tag_none_renders_empty() {
+    let template = Template::parse("{branch}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
+    assert_eq!(result, "");
+}
+
+#[test]
+fn branch_tag_with_format_returns_error() {
+    let result = Template::parse("{branch:format}");
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        TemplateError::InvalidFormat(_)
+    ));
+}
+
+#[test]
+fn branch_tag_combined_with_directory() {
+    let template = Template::parse("{directory}_{branch}").unwrap();
+    let config = Config::default();
+
+    // With branch present
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: Some("main"),
+    };
+    let result = template.render(&ctx, &config);
+    assert_eq!(result, "my-project_main");
+
+    // With branch absent
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
+    assert_eq!(result, "my-project_");
+}
+
+#[test]
+fn sanitize_branch_multiple_slashes() {
+    // Multiple slashes all become --
+    assert_eq!(
+        filename::sanitize_branch("feature/sub/deep"),
+        "feature--sub--deep"
+    );
+}
+
+// ============================================================================
+// {id} Tag Tests (Stage 4)
+// ============================================================================
+
+use agr::files::template::encode_base36;
+
+#[test]
+fn id_tag_parses_without_error() {
+    let template = Template::parse("{id}").unwrap();
+    assert_eq!(template.segments().len(), 1);
+    assert_eq!(template.segments()[0], Segment::Id);
+}
+
+#[test]
+fn id_tag_with_format_returns_error() {
+    let result = Template::parse("{id:format}");
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        TemplateError::InvalidFormat(_)
+    ));
+}
+
+#[test]
+fn encode_base36_zero_pads_to_7_chars() {
+    let result = encode_base36(0);
+    assert_eq!(result.len(), 7);
+    assert_eq!(result, "0000000");
+}
+
+#[test]
+fn encode_base36_known_value() {
+    // 1_700_000_000 in base36
+    // Manual calculation: 1700000000 / 36^6 = 1700000000 / 2176782336 = 0 remainder 1700000000
+    // So it fits in 7 chars padded.
+    let result = encode_base36(1_700_000_000);
+    assert_eq!(result.len(), 7);
+    // Verify round-trip: decode and check
+    assert!(!result.is_empty());
+    // Should only contain 0-9 and a-z
+    assert!(result
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+}
+
+#[test]
+fn encode_base36_sortability() {
+    let a = encode_base36(1000);
+    let b = encode_base36(1001);
+    assert!(a < b, "Expected {} < {}", a, b);
+}
+
+#[test]
+fn id_tag_renders_7_chars() {
+    let template = Template::parse("{directory}_{id}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "test",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
+    // "test_" (5 chars) + 7 base36 chars = 12
+    assert!(result.starts_with("test_"));
+    let id_part = &result[5..];
+    assert_eq!(id_part.len(), 7);
+    assert!(id_part
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+}
+
+// ============================================================================
+// {?branch} Optional Branch Tests (Stage 5)
+// ============================================================================
+
+#[test]
+fn optional_branch_parses_as_segment() {
+    let template = Template::parse("{?branch}").unwrap();
+    assert_eq!(template.segments().len(), 1);
+    assert_eq!(template.segments()[0], Segment::OptionalBranch);
+}
+
+#[test]
+fn optional_branch_renders_with_parentheses() {
+    let template = Template::parse("{?branch}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: Some("main"),
+    };
+    let result = template.render(&ctx, &config);
+    assert_eq!(result, "(main)");
+}
+
+#[test]
+fn optional_branch_sanitizes_slashes() {
+    let template = Template::parse("{?branch}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: Some("feature/foo"),
+    };
+    let result = template.render(&ctx, &config);
+    // Slash is replaced with --, wrapped in parens
+    assert_eq!(result, "(feature--foo)");
+}
+
+#[test]
+fn optional_branch_absent_renders_empty() {
+    let template = Template::parse("{?branch}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "dir",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
+    assert_eq!(result, "");
+}
+
+#[test]
+fn optional_branch_in_full_template_with_branch() {
+    let template = Template::parse("{directory}{?branch}_{id}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: Some("main"),
+    };
+    let result = template.render(&ctx, &config);
+    // "my-project" + "(main)" + "_" + 7-char-id
+    assert!(result.starts_with("my-project(main)_"));
+    let id_part = &result["my-project(main)_".len()..];
+    assert_eq!(id_part.len(), 7);
+}
+
+#[test]
+fn optional_branch_in_full_template_without_branch() {
+    let template = Template::parse("{directory}{?branch}_{id}").unwrap();
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: None,
+    };
+    let result = template.render(&ctx, &config);
+    // "my-project" + "" + "_" + 7-char-id => no dangling separators
+    assert!(result.starts_with("my-project_"));
+    let id_part = &result["my-project_".len()..];
+    assert_eq!(id_part.len(), 7);
+}
+
+#[test]
+fn optional_unknown_tag_returns_error() {
+    let result = Template::parse("{?unknown}");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
+}
+
+#[test]
+fn optional_empty_tag_returns_error() {
+    let result = Template::parse("{?}");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
+}
+
+#[test]
+fn optional_date_returns_error() {
+    let result = Template::parse("{?date}");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
+}
+
+#[test]
+fn optional_directory_returns_error() {
+    let result = Template::parse("{?directory}");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
+}
+
+#[test]
+fn optional_id_returns_error() {
+    let result = Template::parse("{?id}");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), TemplateError::UnknownTag(_)));
+}
+
+#[test]
+fn optional_branch_with_format_returns_invalid_format() {
+    // {?branch:fmt} should return InvalidFormat, not UnknownTag
+    let result = Template::parse("{?branch:fmt}");
+    assert!(result.is_err());
+    assert!(matches!(
+        result.unwrap_err(),
+        TemplateError::InvalidFormat(_)
+    ));
+}
+
+// ============================================================================
+// Edge Case Tests (Stage 8)
+// ============================================================================
+
+// --- EC-2: Same-second collision ---
+
+#[test]
+fn collision_returns_original_when_no_conflict() {
+    let dir = tempfile::tempdir().unwrap();
+    let result = filename::resolve_collision(dir.path(), "test.cast");
+    assert_eq!(result, Some("test.cast".to_string()));
+}
+
+#[test]
+fn collision_appends_suffix_a_on_first_conflict() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("test.cast"), "").unwrap();
+
+    let result = filename::resolve_collision(dir.path(), "test.cast");
+    assert_eq!(result, Some("testa.cast".to_string()));
+}
+
+#[test]
+fn collision_increments_suffix_correctly() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("test.cast"), "").unwrap();
+    std::fs::write(dir.path().join("testa.cast"), "").unwrap();
+    std::fs::write(dir.path().join("testb.cast"), "").unwrap();
+
+    let result = filename::resolve_collision(dir.path(), "test.cast");
+    assert_eq!(result, Some("testc.cast".to_string()));
+}
+
+#[test]
+fn collision_returns_none_when_all_suffixes_taken() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("test.cast"), "").unwrap();
+    for c in b'a'..=b'z' {
+        let name = format!("test{}.cast", c as char);
+        std::fs::write(dir.path().join(name), "").unwrap();
+    }
+
+    let result = filename::resolve_collision(dir.path(), "test.cast");
+    assert_eq!(result, None);
+}
+
+// --- EC-5: Base36 zero-padding sortability ---
+
+#[test]
+fn base36_padding_ensures_sortability_across_rollover() {
+    // Last 6-char value (unpadded) = 36^6 - 1
+    let last_six = 36u64.pow(6) - 1;
+    // First 7-char value (unpadded) = 36^6
+    let first_seven = 36u64.pow(6);
+
+    let a = encode_base36(last_six);
+    let b = encode_base36(first_seven);
+
+    // Both should be 7 chars when zero-padded
+    assert_eq!(a.len(), 7);
+    assert_eq!(b.len(), 7);
+    assert!(a < b, "Expected {} < {}", a, b);
+}
+
+#[test]
+fn base36_zero_returns_seven_zeros() {
+    assert_eq!(encode_base36(0), "0000000");
+}
+
+#[test]
+fn base36_max_representable_value() {
+    // 36^7 - 1 is the maximum value that fits in 7 base36 digits
+    let max_val = 36u64.pow(7) - 1;
+    let result = encode_base36(max_val);
+    assert_eq!(result.len(), 7);
+    assert_eq!(result, "zzzzzzz");
+}
+
+#[test]
+#[should_panic(expected = "encode_base36: value")]
+fn base36_overflow_panics_in_debug() {
+    // 36^7 overflows the 7-digit output. In debug builds the debug_assert
+    // fires, preventing silent truncation. In release builds (where
+    // debug_assert is compiled out) the leading digit is silently lost.
+    let overflow_val = 36u64.pow(7);
+    let _ = encode_base36(overflow_val);
+}
+
+// --- EC-6: Branch names with special chars ---
+
+#[test]
+fn sanitize_branch_preserves_at_sign() {
+    // @ is valid on all major filesystems
+    assert_eq!(filename::sanitize_branch("user@feature"), "user@feature");
+}
+
+#[test]
+fn sanitize_branch_preserves_hash() {
+    // # is valid on macOS/Linux/NTFS
+    assert_eq!(filename::sanitize_branch("fix#123"), "fix#123");
+}
+
+#[test]
+fn sanitize_branch_preserves_tilde() {
+    // ~ is valid on macOS/Linux/NTFS
+    assert_eq!(filename::sanitize_branch("release~1"), "release~1");
+}
+
+#[test]
+fn sanitize_branch_replaces_multiple_slashes_with_double_dash() {
+    assert_eq!(
+        filename::sanitize_branch("feature/sub/deep"),
+        "feature--sub--deep"
+    );
+}
+
+#[test]
+fn sanitize_branch_head_is_not_filtered() {
+    // sanitize_branch does NOT filter "HEAD" — that's detect_git_branch's job
+    assert_eq!(filename::sanitize_branch("HEAD"), "HEAD");
+}
+
+#[test]
+fn sanitize_branch_removes_invalid_filesystem_chars() {
+    // Backslash, colon, asterisk etc. are removed
+    assert_eq!(filename::sanitize_branch("feat\\fix"), "featfix");
+    assert_eq!(filename::sanitize_branch("feat:fix"), "featfix");
+    assert_eq!(filename::sanitize_branch("feat*fix"), "featfix");
+    assert_eq!(filename::sanitize_branch("feat?fix"), "featfix");
+}
+
+#[test]
+fn sanitize_branch_removes_control_chars() {
+    assert_eq!(filename::sanitize_branch("feat\0fix"), "featfix");
+    assert_eq!(filename::sanitize_branch("feat\nfix"), "featfix");
+    assert_eq!(filename::sanitize_branch("feat\x1bfix"), "featfix");
+}
+
+// --- EC-3 / EC-4: Git branch detection edge cases ---
+// (detect_git_branch is tested via recording module and e2e tests;
+//  here we verify the template layer handles None branch correctly)
+
+#[test]
+fn template_with_optional_branch_none_produces_clean_filename() {
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "my-project",
+        branch: None,
+    };
+    let result = filename::generate(&ctx, "{directory}{?branch}_{id}", &config).unwrap();
+    // Should be "my-project_XXXXXXX.cast" with no empty parens or dangling chars
+    assert!(result.starts_with("my-project_"));
+    assert!(result.ends_with(".cast"));
+    assert!(!result.contains("()"));
+}
+
+#[test]
+fn generate_with_new_default_template_and_branch() {
+    let config = Config::default();
+    let ctx = RenderContext {
+        directory: "agnt-ses-rec",
+        branch: Some("fix/rename-file"),
+    };
+    let result = filename::generate(&ctx, "{directory}{?branch}_{id}", &config).unwrap();
+    // Slash is replaced with --
+    assert!(result.starts_with("agnt-ses-rec(fix--rename-file)_"));
+    assert!(result.ends_with(".cast"));
 }

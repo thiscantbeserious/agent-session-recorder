@@ -14,7 +14,7 @@ use super::Config;
 
 /// The latest config schema version.
 /// Bump this and add a migration file when the schema changes.
-pub const CURRENT_VERSION: u32 = 1;
+pub const CURRENT_VERSION: u32 = 2;
 
 /// Result of a config migration operation
 #[derive(Debug, Clone, Default)]
@@ -354,7 +354,11 @@ directory_max_length = 15
 agent = "claude"
 "#;
         let result = migrate_config(input).unwrap();
-        assert!(result.removed_fields.is_empty());
+        // v2 migration overwrites filename_template, so removed_fields contains that entry
+        assert!(!result
+            .removed_fields
+            .iter()
+            .any(|f| f == "recording.analysis_agent"));
     }
 
     // -----------------------------------------------------------------------
@@ -365,11 +369,12 @@ agent = "claude"
     fn empty_input_returns_full_default_config() {
         let result = migrate_config("").unwrap();
 
-        assert_eq!(result.sections_added.len(), 5);
+        // v2 migration creates [recording] with filename_template,
+        // so recording is no longer in sections_added (only 4 sections added by default-fill)
+        assert_eq!(result.sections_added.len(), 4);
         assert!(result.sections_added.contains(&"storage".to_string()));
         assert!(result.sections_added.contains(&"agents".to_string()));
         assert!(result.sections_added.contains(&"shell".to_string()));
-        assert!(result.sections_added.contains(&"recording".to_string()));
         assert!(result.sections_added.contains(&"analysis".to_string()));
 
         let parsed: Config = toml::from_str(&result.content).unwrap();
@@ -387,10 +392,10 @@ directory = "~/my-recordings"
 
         let result = migrate_config(input).unwrap();
 
-        assert_eq!(result.sections_added.len(), 4);
+        // v2 migration creates [recording] with filename_template, so only 3 sections added
+        assert_eq!(result.sections_added.len(), 3);
         assert!(result.sections_added.contains(&"agents".to_string()));
         assert!(result.sections_added.contains(&"shell".to_string()));
-        assert!(result.sections_added.contains(&"recording".to_string()));
         assert!(result.sections_added.contains(&"analysis".to_string()));
         assert!(!result.sections_added.contains(&"storage".to_string()));
 
@@ -428,9 +433,7 @@ auto_analyze = true
         assert_eq!(result.sections_added.len(), 1);
         assert!(result.sections_added.contains(&"analysis".to_string()));
 
-        assert!(result
-            .added_fields
-            .contains(&"recording.filename_template".to_string()));
+        // v2 migration sets filename_template, so it's not in added_fields
         assert!(result
             .added_fields
             .contains(&"recording.directory_max_length".to_string()));
@@ -443,6 +446,10 @@ auto_analyze = true
         assert_eq!(parsed.agents.enabled, vec!["claude"]);
         assert!(!parsed.shell.auto_wrap);
         assert!(parsed.recording.auto_analyze);
+        assert_eq!(
+            parsed.recording.filename_template,
+            "{directory}{?branch}_{id}"
+        );
     }
 
     #[test]
@@ -617,11 +624,12 @@ default_agent = "claude"
     #[test]
     fn whitespace_only_input_treated_as_empty() {
         let result = migrate_config("   \n\n   ").unwrap();
-        assert_eq!(result.sections_added.len(), 5);
+        // v2 migration creates [recording], so only 4 sections added
+        assert_eq!(result.sections_added.len(), 4);
     }
 
     #[test]
-    fn full_v0_to_v1_roundtrip() {
+    fn full_v0_to_latest_roundtrip() {
         let input = r#"
 [storage]
 directory = "~/recordings"
@@ -671,7 +679,11 @@ extra_args = ["--model", "gpt-5.2-codex"]
         );
         assert_eq!(parsed.analysis.timeout, Some(180));
         assert!(parsed.recording.auto_analyze);
-        assert_eq!(parsed.recording.filename_template, "{date}");
+        // v2 migration unconditionally overwrites filename_template
+        assert_eq!(
+            parsed.recording.filename_template,
+            "{directory}{?branch}_{id}"
+        );
 
         assert!(result
             .content
