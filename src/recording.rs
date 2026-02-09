@@ -39,26 +39,28 @@ impl Recorder {
 
     /// Generate a filename using the configured template.
     ///
-    /// Uses the `filename_template` from config with tags like `{directory}`, `{date}`, `{time}`.
+    /// Uses the `filename_template` from config with tags like `{directory}`,
+    /// `{date}`, `{time}`, `{branch}`, `{id}`.
     /// Falls back to a timestamp-based name if template generation fails.
     pub fn generate_filename(&self) -> String {
-        // Get current working directory name
         let dir_name = env::current_dir()
             .ok()
             .and_then(|p| p.file_name().map(|s| s.to_string_lossy().to_string()))
             .unwrap_or_else(|| "recording".to_string());
 
-        // Build filename config from recording config (enforces minimum of 1)
+        let branch = detect_git_branch();
         let filename_config = filename::Config::new(self.config.recording.directory_max_length);
+        let ctx = filename::RenderContext {
+            directory: &dir_name,
+            branch: branch.as_deref(),
+        };
 
-        // Generate using template, fallback to simple timestamp on error
         filename::generate(
-            &dir_name,
+            &ctx,
             &self.config.recording.filename_template,
             &filename_config,
         )
         .unwrap_or_else(|_| {
-            // Fallback: use directory + timestamp
             let sanitized_dir = filename::sanitize_directory(&dir_name, &filename_config);
             let now = chrono::Local::now();
             format!("{}_{}.cast", sanitized_dir, now.format("%y%m%d_%H%M%S"))
@@ -407,4 +409,28 @@ impl Recorder {
             }
         }
     }
+}
+
+/// Detects the current git branch name, returning None if not in a git repo.
+///
+/// Returns None if: git is not installed, not inside a git repo, or HEAD is detached.
+pub fn detect_git_branch() -> Option<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    if branch.is_empty() || branch == "HEAD" {
+        return None;
+    }
+
+    Some(branch)
 }

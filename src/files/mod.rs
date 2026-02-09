@@ -4,3 +4,4 @@ pub mod backup;
 pub mod filename;
 pub mod lock;
 pub mod resolve;
+pub mod template;
