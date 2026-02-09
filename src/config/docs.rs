@@ -69,8 +69,8 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
             },
             FieldDoc {
                 name: "filename_template",
-                description: "Filename template using {directory}, {date}, {time} tags",
-                default_display: "{directory}_{date}_{time}",
+                description: "Filename template using {directory}, {?branch}, {id}, {branch}, {date}, {time} tags",
+                default_display: "{directory}{?branch}_{id}",
             },
             FieldDoc {
                 name: "directory_max_length",
@@ -362,6 +362,11 @@ pub fn generate_config_markdown() -> String {
     md.push_str("| Tag | Description | Example Output |\n");
     md.push_str("|-----|-------------|----------------|\n");
     md.push_str("| `{directory}` | Current working directory name | `my-project` |\n");
+    md.push_str(
+        "| `{?branch}` | Optional git branch (wrapped in parens) | `(feature--login)` or empty |\n",
+    );
+    md.push_str("| `{branch}` | Git branch name (sanitized) | `feature--login` |\n");
+    md.push_str("| `{id}` | Base36 epoch timestamp (7 chars, sortable) | `0ta73n2` |\n");
     md.push_str("| `{date}` | Date in YYMMDD format | `260129` |\n");
     md.push_str(
         "| `{date:FORMAT}` | Date with custom strftime | `{date:%Y-%m-%d}` → `2026-01-29` |\n",
@@ -373,12 +378,14 @@ pub fn generate_config_markdown() -> String {
     md.push_str("### Example Templates\n\n");
     md.push_str("```toml\n");
     md.push_str("[recording]\n");
-    md.push_str("# Default: project_260129_1430.cast\n");
-    md.push_str("filename_template = \"{directory}_{date}_{time}\"\n\n");
+    md.push_str("# Default: project(feature--login)_0ta73n2.cast\n");
+    md.push_str("filename_template = \"{directory}{?branch}_{id}\"\n\n");
+    md.push_str("# Branch + date: project_main_260129.cast\n");
+    md.push_str("filename_template = \"{directory}_{branch}_{date}\"\n\n");
     md.push_str("# ISO date: project_2026-01-29.cast\n");
     md.push_str("filename_template = \"{directory}_{date:%Y-%m-%d}\"\n\n");
-    md.push_str("# Simple timestamp: 260129-143022.cast\n");
-    md.push_str("filename_template = \"{date:%y%m%d}-{time:%H%M%S}\"\n");
+    md.push_str("# Simple ID only: 0ta73n2.cast\n");
+    md.push_str("filename_template = \"{id}\"\n");
     md.push_str("```\n\n");
 
     md.push_str("### Sanitization\n\n");

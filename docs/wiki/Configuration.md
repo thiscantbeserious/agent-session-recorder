@@ -39,7 +39,7 @@ Recording behavior settings
 | Option | Default | Description |
 |--------|---------|-------------|
 | `auto_analyze` | `false` | Automatically run AI analysis after recording ends |
-| `filename_template` | `{directory}_{date}_{time}` | Filename template using {directory}, {date}, {time} tags |
+| `filename_template` | `{directory}{?branch}_{id}` | Filename template using {directory}, {?branch}, {id}, {branch}, {date}, {time} tags |
 | `directory_max_length` | `14` | Maximum characters for directory component in filename |
 
 ### [analysis]
@@ -84,6 +84,9 @@ Customize how recording filenames are generated using template tags.
 | Tag | Description | Example Output |
 |-----|-------------|----------------|
 | `{directory}` | Current working directory name | `my-project` |
+| `{?branch}` | Optional git branch (wrapped in parens) | `(feature--login)` or empty |
+| `{branch}` | Git branch name (sanitized) | `feature--login` |
+| `{id}` | Base36 epoch timestamp (7 chars, sortable) | `0ta73n2` |
 | `{date}` | Date in YYMMDD format | `260129` |
 | `{date:FORMAT}` | Date with custom strftime | `{date:%Y-%m-%d}` → `2026-01-29` |
 | `{time}` | Time in HHMM format | `1430` |
@@ -93,14 +96,17 @@ Customize how recording filenames are generated using template tags.
 
 ```toml
 [recording]
-# Default: project_260129_1430.cast
-filename_template = "{directory}_{date}_{time}"
+# Default: project(feature--login)_0ta73n2.cast
+filename_template = "{directory}{?branch}_{id}"
+
+# Branch + date: project_main_260129.cast
+filename_template = "{directory}_{branch}_{date}"
 
 # ISO date: project_2026-01-29.cast
 filename_template = "{directory}_{date:%Y-%m-%d}"
 
-# Simple timestamp: 260129-143022.cast
-filename_template = "{date:%y%m%d}-{time:%H%M%S}"
+# Simple ID only: 0ta73n2.cast
+filename_template = "{id}"
 ```
 
 ### Sanitization
