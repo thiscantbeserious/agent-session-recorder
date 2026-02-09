@@ -3,7 +3,6 @@ source: tests/integration/snapshot_tui_test.rs
 expression: output
 ---
                                                                       
-                                                                      
      ┌ Help ────────────────────────────────────────────────────┐     
      │Keyboard Shortcuts                                        │     
      │                                                          │     
@@ -28,5 +27,7 @@ expression: output
      │                                                          │     
      │  ?           This help                                   │     
      │  q           Quit                                        │     
+     │                                                          │     
+     │Press any key to close                                    │     
      │                                                          │     
      └──────────────────────────────────────────────────────────┘

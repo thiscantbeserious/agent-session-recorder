@@ -747,7 +747,7 @@ impl ListApp {
 
         // Center the modal
         let modal_width = 60.min(area.width.saturating_sub(4));
-        let modal_height = 29.min(area.height.saturating_sub(4));
+        let modal_height = 31.min(area.height.saturating_sub(2));
         let x = (area.width - modal_width) / 2;
         let y = (area.height - modal_height) / 2;
         let modal_area = Rect::new(x, y, modal_width, modal_height);

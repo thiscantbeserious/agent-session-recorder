@@ -49,7 +49,7 @@ pub const MAX_FILENAME_LENGTH: usize = 255;
 
 /// Check whether a character is valid for use in filenames.
 pub fn is_valid_filename_char(c: char) -> bool {
-    !INVALID_CHARS.contains(&c)
+    !INVALID_CHARS.contains(&c) && !c.is_control()
 }
 
 /// Sanitizes a string for use in filenames.
@@ -501,8 +501,8 @@ pub fn rename_file(
 ) -> Result<std::path::PathBuf, RenameError> {
     use crate::files::backup::backup_path_for;
 
-    // Validate: not empty
-    if new_stem.is_empty() {
+    // Validate: not empty or whitespace-only
+    if new_stem.trim().is_empty() {
         return Err(RenameError::EmptyName);
     }
 

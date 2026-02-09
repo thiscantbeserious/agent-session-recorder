@@ -2253,3 +2253,26 @@ fn is_valid_filename_char_accepts_normal_chars() {
     assert!(filename::is_valid_filename_char('.'));
     assert!(filename::is_valid_filename_char(' '));
 }
+
+#[test]
+fn is_valid_filename_char_rejects_control_chars() {
+    assert!(!filename::is_valid_filename_char('\0'));
+    assert!(!filename::is_valid_filename_char('\n'));
+    assert!(!filename::is_valid_filename_char('\t'));
+    assert!(!filename::is_valid_filename_char('\r'));
+    assert!(!filename::is_valid_filename_char('\x1b')); // ESC
+    assert!(!filename::is_valid_filename_char('\x7f')); // DEL
+}
+
+#[test]
+fn rename_file_whitespace_only_name_errors() {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("old.cast");
+    std::fs::write(&file, "test").unwrap();
+
+    let result = filename::rename_file(&file, "   ");
+    assert!(matches!(result, Err(RenameError::EmptyName)));
+
+    let result = filename::rename_file(&file, " ");
+    assert!(matches!(result, Err(RenameError::EmptyName)));
+}
