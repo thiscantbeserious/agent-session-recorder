@@ -113,13 +113,11 @@ fn handle_text(
     // Print table header
     println!(
         "{}",
-        theme.primary_text("  #  |     When | Agent       | Size       | Filename")
+        theme.primary_text("  #  | When  | Agent       | Size       | Filename")
     );
     println!(
         "{}",
-        theme.primary_text(
-            "-----+----------+-------------+------------+---------------------------"
-        )
+        theme.primary_text("-----+-------+-------------+------------+---------------------------")
     );
 
     // Display sessions in formatted table
@@ -127,7 +125,7 @@ fn handle_text(
         println!(
             "{}",
             theme.primary_text(&format!(
-                "{:>3}  | {:>8} | {:11} | {:>10} | {}",
+                "{:>3}  | {:>5} | {:11} | {:>10} | {}",
                 i + 1,
                 format_smart_time(&session.modified),
                 truncate_string(&session.agent, 11),

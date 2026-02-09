@@ -946,7 +946,7 @@ impl Widget for FileExplorerWidget<'_> {
 
                     // Smart time prefix
                     spans.push(Span::styled(
-                        format!("{:>8}: ", time_str),
+                        format!("{:>5}: ", time_str),
                         theme.text_secondary_style(),
                     ));
 

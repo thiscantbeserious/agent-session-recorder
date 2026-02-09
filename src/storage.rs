@@ -10,10 +10,10 @@ use std::path::PathBuf;
 use crate::config::Config;
 
 /// Format a timestamp as a smart time prefix:
-/// - Today:      `14:05:30` (H:M:S)
-/// - Yesterday:  `23h`      (hours ago)
-/// - Same year:  `01.02`    (DD.MM)
-/// - Older:      `1y5m`     (years and months ago)
+/// - Today:      `14:05` (H:MM)
+/// - Yesterday:  `23h`   (hours ago)
+/// - Same year:  `01.02` (DD.MM)
+/// - Older:      `1y5m`  (years and months ago)
 pub fn format_smart_time(modified: &DateTime<Local>) -> String {
     let now = Local::now();
     let duration = now.signed_duration_since(*modified);
@@ -21,12 +21,12 @@ pub fn format_smart_time(modified: &DateTime<Local>) -> String {
 
     if duration.num_seconds() < 0 {
         // Future timestamp — just show time
-        return modified.format("%-H:%M:%S").to_string();
+        return modified.format("%H:%M").to_string();
     }
 
     if hours < 24 && now.date_naive() == modified.date_naive() {
-        // Today — show H:M:S
-        modified.format("%-H:%M:%S").to_string()
+        // Today — show H:MM
+        modified.format("%H:%M").to_string()
     } else if hours < 48 {
         // Yesterday — show hours
         format!("{}h", hours)

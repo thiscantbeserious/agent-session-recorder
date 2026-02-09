@@ -3,10 +3,10 @@ source: tests/integration/snapshot_tui_test.rs
 expression: output
 ---
 ┌ Sessions ────────────────────────────────────────────────┐┌ Preview ─────────────────────────────┐
-│> [ ]     2y1m: 20240117-session4.cast  (gemini, 1.0 MB)  ││Name: 20240117-session4.cast          │
-│  [ ]     2y1m: 20240116-session2.cast  (codex, 2.0 MB)   ││Agent: gemini                         │
-│  [ ]     2y1m: 20240115-session1.cast  (claude, 50.0 KB) ││Size: 1.0 MB                          │
-│  [ ]     2y1m: 20240114-session3.cast  (claude, 100.0 KB)││Duration: 2m 5s                       │
+│> [ ]  2y1m: 20240117-session4.cast  (gemini, 1.0 MB)     ││Name: 20240117-session4.cast          │
+│  [ ]  2y1m: 20240116-session2.cast  (codex, 2.0 MB)      ││Agent: gemini                         │
+│  [ ]  2y1m: 20240115-session1.cast  (claude, 50.0 KB)    ││Size: 1.0 MB                          │
+│  [ ]  2y1m: 20240114-session3.cast  (claude, 100.0 KB)   ││Duration: 2m 5s                       │
 │                                                          ││Markers: 3                            │
 │                                                          ││Modified: 2024-01-17 16:00            │
 │                                                          ││                                      │

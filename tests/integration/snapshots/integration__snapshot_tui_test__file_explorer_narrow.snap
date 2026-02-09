@@ -3,10 +3,10 @@ source: tests/integration/snapshot_tui_test.rs
 expression: output
 ---
 ┌ Sessions ──────────────────────────────────────┐
-│> [ ]     2y1m: 20240117-session4.cast  (gemini,│
-│  [ ]     2y1m: 20240116-session2.cast  (codex, │
-│  [ ]     2y1m: 20240115-session1.cast  (claude,│
-│  [ ]     2y1m: 20240114-session3.cast  (claude,│
+│> [ ]  2y1m: 20240117-session4.cast  (gemini, 1.│
+│  [ ]  2y1m: 20240116-session2.cast  (codex, 2.0│
+│  [ ]  2y1m: 20240115-session1.cast  (claude, 50│
+│  [ ]  2y1m: 20240114-session3.cast  (claude, 10│
 │                                                │
 │                                                │
 │                                                │
