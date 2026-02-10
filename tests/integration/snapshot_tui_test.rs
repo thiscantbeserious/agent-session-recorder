@@ -975,3 +975,98 @@ fn snapshot_confirm_unlock_modal() {
     }
     insta::assert_snapshot!("confirm_unlock_modal", output);
 }
+
+// ============================================================================
+// Status Bar Dialog State Snapshots
+// ============================================================================
+
+use agr::tui::app::status_footer::{render_input_line, render_status_line};
+
+/// Render a status bar using render_input_line and return as string.
+fn render_input_line_to_string(label: &str, value: &str, width: u16) -> String {
+    let height = 1u16;
+    let area = Rect::new(0, 0, width, height);
+
+    let backend = ratatui::backend::TestBackend::new(width, height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| {
+            render_input_line(frame, area, label, value);
+        })
+        .unwrap();
+
+    let backend = terminal.backend();
+    let mut output = String::new();
+    for x in 0..width {
+        let cell = backend.buffer()[(x, 0)].symbol();
+        output.push_str(cell);
+    }
+    output
+}
+
+/// Render a status bar using render_status_line and return as string.
+fn render_status_line_to_string(text: &str, width: u16) -> String {
+    let height = 1u16;
+    let area = Rect::new(0, 0, width, height);
+
+    let backend = ratatui::backend::TestBackend::new(width, height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| {
+            render_status_line(frame, area, text);
+        })
+        .unwrap();
+
+    let backend = terminal.backend();
+    let mut output = String::new();
+    for x in 0..width {
+        let cell = backend.buffer()[(x, 0)].symbol();
+        output.push_str(cell);
+    }
+    output
+}
+
+#[test]
+fn snapshot_status_bar_confirm_delete() {
+    let output = render_input_line_to_string("🗑  Delete? ", "(y/n) — 20250115-session.cast", 60);
+    insta::assert_snapshot!("status_bar_confirm_delete", output);
+}
+
+#[test]
+fn snapshot_status_bar_confirm_delete_final() {
+    let output =
+        render_input_line_to_string("🗑  Are you sure? ", "(y/n) — 20250115-session.cast", 60);
+    insta::assert_snapshot!("status_bar_confirm_delete_final", output);
+}
+
+#[test]
+fn snapshot_status_bar_confirm_unlock() {
+    let output =
+        render_input_line_to_string("🔓 Force unlock? ", "(y/n) — 20250115-session.cast", 60);
+    insta::assert_snapshot!("status_bar_confirm_unlock", output);
+}
+
+#[test]
+fn snapshot_status_bar_confirm_unlock_final() {
+    let output =
+        render_input_line_to_string("🔓 Are you sure? ", "(y/n) — 20250115-session.cast", 60);
+    insta::assert_snapshot!("status_bar_confirm_unlock_final", output);
+}
+
+#[test]
+fn snapshot_status_bar_context_menu() {
+    let output = render_status_line_to_string("20250115-session.cast", 60);
+    insta::assert_snapshot!("status_bar_context_menu", output);
+}
+
+#[test]
+fn snapshot_status_bar_confirm_delete_long_name() {
+    let output = render_input_line_to_string(
+        "🗑  Delete? ",
+        "(y/n) — 20250115-very-long-session-name-that-might-overflow.cast",
+        80,
+    );
+    insta::assert_snapshot!("status_bar_confirm_delete_long_name", output);
+}

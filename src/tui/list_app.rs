@@ -1336,13 +1336,13 @@ impl TuiApp for ListApp {
                     render_input_line(frame, chunks[1], "Rename: ", &value);
                 }
                 Mode::ConfirmDelete => {
-                    render_input_line(frame, chunks[1], "🗑️  Delete? ", &format!("(y/n) — {}", selected_name));
+                    render_input_line(frame, chunks[1], "🗑  Delete? ", &format!("(y/n) — {}", selected_name));
                 }
                 Mode::ConfirmUnlock => {
                     render_input_line(frame, chunks[1], "🔓 Force unlock? ", &format!("(y/n) — {}", selected_name));
                 }
                 Mode::ConfirmDeleteFinal => {
-                    render_input_line(frame, chunks[1], "🗑️  Are you sure? ", &format!("(y/n) — {}", selected_name));
+                    render_input_line(frame, chunks[1], "🗑  Are you sure? ", &format!("(y/n) — {}", selected_name));
                 }
                 Mode::ConfirmUnlockFinal => {
                     render_input_line(frame, chunks[1], "🔓 Are you sure? ", &format!("(y/n) — {}", selected_name));

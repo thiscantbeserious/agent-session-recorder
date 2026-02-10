@@ -135,7 +135,7 @@ pub fn render_confirm_delete_modal(
         Line::from(""),
         Line::from(vec![
             Span::styled("y", Style::default().fg(theme.error)),
-            Span::styled(": Yes 🗑️   |  ", body_style),
+            Span::styled(": Yes 🗑   |  ", body_style),
             Span::styled("n", Style::default().fg(theme.accent)),
             Span::raw(": No ❌"),
         ]),
