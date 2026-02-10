@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -41,6 +41,8 @@ pub enum Mode {
     Help,
     /// Confirm delete mode
     ConfirmDelete,
+    /// Second confirmation for delete - "Are you sure?"
+    ConfirmDeleteFinal,
 }
 
 impl Mode {
@@ -51,7 +53,7 @@ impl Mode {
             Mode::AgentFilter => Some(SharedMode::AgentFilter),
             Mode::Help => Some(SharedMode::Help),
             Mode::ConfirmDelete => Some(SharedMode::ConfirmDelete),
-            Mode::GlobSelect => None, // app-specific
+            Mode::GlobSelect | Mode::ConfirmDeleteFinal => None,
         }
     }
 
@@ -107,8 +109,15 @@ impl CleanupApp {
     /// handles app-specific keys: Space, a, g, Enter, Esc, q.
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            // Selection
+            // Selection (skip locked items)
             KeyCode::Char(' ') => {
+                if let Some(item) = self.shared.explorer.selected_item() {
+                    if item.lock_info.is_some() {
+                        self.shared.status_message =
+                            Some("Session is locked (being recorded)".to_string());
+                        return Ok(());
+                    }
+                }
                 self.shared.explorer.toggle_select();
             }
             KeyCode::Char('a') => {
@@ -189,12 +198,18 @@ impl CleanupApp {
         };
 
         // Collect matching items that aren't already selected
-        let items_to_select: Vec<(usize, String, String, bool)> = self
+        let items_to_select: Vec<(usize, String, String, bool, bool)> = self
             .shared
             .explorer
             .visible_items()
             .map(|(vis_idx, item, is_selected)| {
-                (vis_idx, item.agent.clone(), item.name.clone(), is_selected)
+                (
+                    vis_idx,
+                    item.agent.clone(),
+                    item.name.clone(),
+                    is_selected,
+                    item.lock_info.is_some(),
+                )
             })
             .collect();
 
@@ -202,8 +217,11 @@ impl CleanupApp {
         let original_selected = self.shared.explorer.selected();
         let mut actual_count = 0;
 
-        // Select matching items
-        for (vis_idx, agent, name, is_selected) in items_to_select {
+        // Select matching items (skip locked sessions)
+        for (vis_idx, agent, name, is_selected, is_locked) in items_to_select {
+            if is_locked {
+                continue;
+            }
             let matches = if let Some(agent_pat) = agent_filter {
                 glob_match(&agent, agent_pat) && glob_match(&name, file_pattern)
             } else {
@@ -229,8 +247,22 @@ impl CleanupApp {
         actual_count
     }
 
-    /// Handle keys in confirm delete mode.
+    /// Handle keys in confirm delete mode (first confirmation).
     fn handle_confirm_delete_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.mode = Mode::ConfirmDeleteFinal;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.mode = Mode::Normal;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys in final delete confirmation ("Are you sure?").
+    fn handle_confirm_delete_final_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
                 self.delete_selected()?;
@@ -403,6 +435,67 @@ impl TuiApp for CleanupApp {
         &mut self.shared
     }
 
+    fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        match self.mode {
+            Mode::Normal => {
+                let (_, height) = self.app.size()?;
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => self.shared.explorer.up(),
+                    MouseEventKind::ScrollDown => self.shared.explorer.down(),
+                    MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                        let explorer_height = height.saturating_sub(2);
+                        let click_row = mouse.row;
+                        if click_row >= 1 && click_row < explorer_height.saturating_sub(1) {
+                            let item_offset = (click_row - 1) as usize;
+                            let scroll_offset = self.shared.explorer.scroll_offset();
+                            let visible_idx = scroll_offset + item_offset;
+                            if self.shared.explorer.select_index(visible_idx) {
+                                // Block selection of locked items
+                                if let Some(item) = self.shared.explorer.selected_item() {
+                                    if item.lock_info.is_some() {
+                                        self.shared.status_message =
+                                            Some("Session is locked (being recorded)".to_string());
+                                        return Ok(());
+                                    }
+                                }
+                                self.shared.explorer.toggle_select();
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Mode::ConfirmDelete => {
+                let (width, height) = self.app.size()?;
+                match modals::handle_confirm_click(&mouse, width, height, 50, 8, 6) {
+                    modals::ConfirmClick::Yes => {
+                        self.mode = Mode::ConfirmDeleteFinal;
+                    }
+                    modals::ConfirmClick::No => self.mode = Mode::Normal,
+                    modals::ConfirmClick::Ignored => {}
+                }
+            }
+            Mode::ConfirmDeleteFinal => {
+                let (width, height) = self.app.size()?;
+                match modals::handle_confirm_click(&mouse, width, height, 50, 8, 6) {
+                    modals::ConfirmClick::Yes => {
+                        self.delete_selected()?;
+                        self.mode = Mode::Normal;
+                    }
+                    modals::ConfirmClick::No => self.mode = Mode::Normal,
+                    modals::ConfirmClick::Ignored => {}
+                }
+            }
+            // Other modal modes: click outside dismisses
+            _ => {
+                if let MouseEventKind::Down(crossterm::event::MouseButton::Left) = mouse.kind {
+                    self.mode = Mode::Normal;
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
         // Try shared key handling first (navigation, search, agent filter, help)
         if let Some(shared_mode) = self.mode.to_shared() {
@@ -421,6 +514,7 @@ impl TuiApp for CleanupApp {
             Mode::Normal => self.handle_normal_key(key)?,
             Mode::GlobSelect => self.handle_glob_key(key)?,
             Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
+            Mode::ConfirmDeleteFinal => self.handle_confirm_delete_final_key(key)?,
             _ => {}
         }
         Ok(())
@@ -493,6 +587,9 @@ impl TuiApp for CleanupApp {
                         "(y/n)",
                     );
                 }
+                Mode::ConfirmDeleteFinal => {
+                    render_input_line(frame, chunks[1], "Are you sure? ", "(y/n)");
+                }
                 _ => {
                     let text = if let Some(msg) = &status {
                         msg.clone()
@@ -537,7 +634,8 @@ impl TuiApp for CleanupApp {
                 Mode::Search => "Esc: cancel | Enter: apply | Backspace: delete",
                 Mode::GlobSelect => "Esc: cancel | Enter: select matching | Backspace: delete",
                 Mode::AgentFilter => "left/right: change | Enter: apply | Esc: cancel",
-                Mode::ConfirmDelete => "y: confirm | n/Esc: cancel",
+                Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
+                Mode::ConfirmDeleteFinal => "y: confirm | n/Esc: cancel",
                 Mode::Help => "Press any key to close",
                 Mode::Normal => {
                     if selected_count > 0 {
@@ -558,6 +656,16 @@ impl TuiApp for CleanupApp {
                         area,
                         selected_count,
                         selected_size,
+                        false,
+                    );
+                }
+                Mode::ConfirmDeleteFinal => {
+                    modals::render_confirm_delete_modal(
+                        frame,
+                        area,
+                        selected_count,
+                        selected_size,
+                        true,
                     );
                 }
                 _ => {}

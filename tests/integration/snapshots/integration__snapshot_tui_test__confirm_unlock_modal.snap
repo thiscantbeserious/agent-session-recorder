@@ -10,5 +10,5 @@ expression: output
   │           This session is being recorded.           │   
   │       Lock: PID 12345 since 2025-01-15T10:30        │   
   │                                                     │   
-  │            y: Force unlock  |  n: Cancel            │   
+  │               y: Yes 🔓   |  n: No ❌                 │   
   └─────────────────────────────────────────────────────┘

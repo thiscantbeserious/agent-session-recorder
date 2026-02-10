@@ -20,7 +20,7 @@ use std::time::Duration;
 use anyhow::Result;
 use crossterm::{
     cursor::MoveTo,
-    event::{DisableMouseCapture, EnableMouseCapture, KeyEvent},
+    event::{DisableMouseCapture, EnableMouseCapture, KeyEvent, MouseEvent},
     execute,
     style::ResetColor,
     terminal::{
@@ -224,6 +224,10 @@ pub trait TuiApp {
     /// Handle a key event. Called from the default `run()` event loop.
     fn handle_key(&mut self, key: KeyEvent) -> Result<()>;
 
+    /// Handle a mouse event. Default implementation provides scroll and click-to-select.
+    /// Override in apps that need checkbox toggle on click (e.g. cleanup).
+    fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()>;
+
     /// Draw the current UI state. Called from the default `run()` event loop.
     fn draw(&mut self) -> Result<()>;
 
@@ -237,6 +241,7 @@ pub trait TuiApp {
 
             match self.app().next_event()? {
                 Event::Key(key) => self.handle_key(key)?,
+                Event::Mouse(mouse) => self.handle_mouse(mouse)?,
                 Event::Resize(_, _) => {}
                 Event::Tick => {
                     self.shared_state().maybe_refresh_tick();

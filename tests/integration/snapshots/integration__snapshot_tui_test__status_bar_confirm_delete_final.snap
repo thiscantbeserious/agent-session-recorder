@@ -1,0 +1,5 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+expression: output
+---
+🗑  Are you sure? (y/n) — 20250115-session.cast

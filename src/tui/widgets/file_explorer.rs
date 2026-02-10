@@ -460,6 +460,11 @@ impl FileExplorer {
             .unwrap_or(false)
     }
 
+    /// Get the current scroll offset of the list.
+    pub fn scroll_offset(&self) -> usize {
+        self.list_state.offset()
+    }
+
     /// Set the page size for page navigation
     pub fn set_page_size(&mut self, size: usize) {
         self.page_size = size.max(1);
@@ -538,6 +543,18 @@ impl FileExplorer {
         }
     }
 
+    /// Select a specific visible index (for mouse click).
+    /// Returns true if the index was valid and selection changed.
+    pub fn select_index(&mut self, visible_idx: usize) -> bool {
+        if visible_idx < self.visible_indices.len() {
+            self.selected = visible_idx;
+            self.sync_list_state();
+            true
+        } else {
+            false
+        }
+    }
+
     // === Multi-select ===
 
     /// Toggle selection of the current item
@@ -551,10 +568,12 @@ impl FileExplorer {
         }
     }
 
-    /// Select all visible items
+    /// Select all visible items (skips locked items)
     pub fn select_all(&mut self) {
         for &idx in &self.visible_indices {
-            self.multi_selected.insert(idx);
+            if self.items[idx].lock_info.is_none() {
+                self.multi_selected.insert(idx);
+            }
         }
     }
 
@@ -565,7 +584,12 @@ impl FileExplorer {
 
     /// Toggle between select all and select none
     pub fn toggle_all(&mut self) {
-        if self.multi_selected.len() == self.visible_indices.len() {
+        let unlocked_count = self
+            .visible_indices
+            .iter()
+            .filter(|&&idx| self.items[idx].lock_info.is_none())
+            .count();
+        if self.multi_selected.len() >= unlocked_count {
             self.select_none();
         } else {
             self.select_all();
@@ -798,6 +822,13 @@ impl FileExplorer {
     pub fn merge_items(&mut self, fresh_items: Vec<FileItem>) {
         let selected_path = self.selected_item().map(|i| i.path.clone());
 
+        // Save multi-selected paths so we can restore after reindex
+        let selected_paths: HashSet<String> = self
+            .multi_selected
+            .iter()
+            .filter_map(|&idx| self.items.get(idx).map(|i| i.path.clone()))
+            .collect();
+
         let fresh_paths: HashSet<String> = fresh_items.iter().map(|i| i.path.clone()).collect();
         let existing_paths: HashSet<String> = self.items.iter().map(|i| i.path.clone()).collect();
 
@@ -811,12 +842,17 @@ impl FileExplorer {
             }
         }
 
-        // Clear multi-select (indices are invalidated)
-        self.multi_selected.clear();
-
         // Rebuild filters + sort
         self.apply_filter();
         self.apply_sort();
+
+        // Restore multi-select by path
+        self.multi_selected.clear();
+        for (idx, item) in self.items.iter().enumerate() {
+            if selected_paths.contains(&item.path) {
+                self.multi_selected.insert(idx);
+            }
+        }
 
         // Restore selection by path
         self.restore_selection_by_path(selected_path.as_deref());
@@ -865,6 +901,8 @@ pub struct FileExplorerWidget<'a> {
     session_preview: Option<&'a SessionPreview>,
     /// Whether a backup exists for the selected file
     has_backup: bool,
+    /// When set, shows inline rename input on the selected item: (text, cursor_pos, selected_all)
+    rename_state: Option<(&'a str, usize, bool)>,
 }
 
 impl<'a> FileExplorerWidget<'a> {
@@ -876,6 +914,7 @@ impl<'a> FileExplorerWidget<'a> {
             show_checkboxes: true,
             session_preview: None,
             has_backup: false,
+            rename_state: None,
         }
     }
 
@@ -900,6 +939,12 @@ impl<'a> FileExplorerWidget<'a> {
     /// Set whether a backup exists for the selected file
     pub fn has_backup(mut self, has_backup: bool) -> Self {
         self.has_backup = has_backup;
+        self
+    }
+
+    /// Set inline rename state: (text, cursor_pos, selected_all)
+    pub fn rename_state(mut self, state: Option<(&'a str, usize, bool)>) -> Self {
+        self.rename_state = state;
         self
     }
 }
@@ -934,10 +979,13 @@ impl Widget for FileExplorerWidget<'_> {
             .collect();
 
         let show_checkboxes = self.show_checkboxes;
+        let selected_idx = self.explorer.selected();
+        let rename_state = self.rename_state;
         let items: Vec<ListItem> = item_data
             .iter()
+            .enumerate()
             .map(
-                |(name, agent, size_str, time_str, is_checked, has_bak, is_locked)| {
+                |(idx, (name, agent, size_str, time_str, is_checked, has_bak, is_locked))| {
                     let mut spans = vec![];
                     if show_checkboxes {
                         let checkbox = if *is_checked { "[x] " } else { "[ ] " };
@@ -953,6 +1001,54 @@ impl Widget for FileExplorerWidget<'_> {
                     // Add [opt] indicator prefix if backup exists
                     if *has_bak {
                         spans.push(Span::styled("[opt] ", theme.accent_style()));
+                    }
+
+                    // Show inline rename input on the selected item
+                    if idx == selected_idx {
+                        if let Some((input, cursor, selected_all)) = rename_state {
+                            let cursor_style =
+                                theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
+
+                            if selected_all {
+                                // Show entire text as "selected" with cursor style
+                                spans.push(Span::styled(input, cursor_style));
+                                spans.push(Span::styled(".cast", theme.text_secondary_style()));
+                            } else {
+                                // Text before cursor
+                                let before = &input[..cursor];
+                                if !before.is_empty() {
+                                    spans.push(Span::styled(before, theme.text_style()));
+                                }
+                                if cursor < input.len() {
+                                    // Find the end of the char at cursor
+                                    let char_len = input[cursor..]
+                                        .chars()
+                                        .next()
+                                        .map(|c| c.len_utf8())
+                                        .unwrap_or(1);
+                                    // Block cursor on character under cursor
+                                    spans.push(Span::styled(
+                                        &input[cursor..cursor + char_len],
+                                        cursor_style,
+                                    ));
+                                    let after = &input[cursor + char_len..];
+                                    if !after.is_empty() {
+                                        spans.push(Span::styled(after, theme.text_style()));
+                                    }
+                                    spans.push(Span::styled(".cast", theme.text_secondary_style()));
+                                } else {
+                                    // Cursor at end: style the "." of ".cast" as cursor
+                                    spans.push(Span::styled(".", cursor_style));
+                                    spans.push(Span::styled("cast", theme.text_secondary_style()));
+                                }
+                            }
+                            spans.push(Span::raw("  "));
+                            spans.push(Span::styled(
+                                format!("({}, {})", agent, size_str),
+                                theme.text_secondary_style(),
+                            ));
+                            return ListItem::new(Line::from(spans));
+                        }
                     }
 
                     // Use greyed style for locked (actively recording) files

@@ -46,7 +46,7 @@ mod result_tests {
     fn copy_result_message_formats_file_copy_correctly() {
         let result = CopyResult::file_copied(CopyMethod::OsaScript);
         let msg = result.message("my-recording");
-        assert_eq!(msg, "Copied my-recording.cast to clipboard");
+        assert_eq!(msg, "🎬 Copied my-recording.cast to clipboard");
     }
 
     #[test]
@@ -55,7 +55,7 @@ mod result_tests {
         let msg = result.message("my-recording");
         assert_eq!(
             msg,
-            "Copied my-recording.cast content to clipboard (file copy not supported on this platform)"
+            "🎬 Copied my-recording.cast content to clipboard (file copy not supported on this platform)"
         );
     }
 
