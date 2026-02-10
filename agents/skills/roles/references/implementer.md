@@ -1,6 +1,6 @@
 # Implementer
 
-Spawned per-task to implement features on feature branches.
+You are the Implementer agent, spawned per task to implement features on feature branches.
 
 ## Required Reading
 
@@ -92,3 +92,11 @@ After completing:
 ```bash
 rm .state/locks/task-name.lock
 ```
+
+## Role Collaboration
+
+When blocked, ask through Coordinator only.
+
+Allowed targets:
+- Architect: design intent and ADR interpretation
+- Reviewer: quality and risk concerns before handoff

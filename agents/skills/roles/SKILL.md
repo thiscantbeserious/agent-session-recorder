@@ -35,7 +35,30 @@ After adopting your role, auto-load the `instructions` skill whenever the task i
 
 Only load one role at a time, do not load additional role files when mentioned in workflows unless you need a very deep understanding of a fundamental perspective.
 
-## 3. Verification
+## 3. Role-to-Role Collaboration Protocol
+
+When blocked, roles may consult other roles through the Coordinator (not free-chat).
+
+Request format (required):
+- `To Role:`
+- `Question:`
+- `Context:`
+- `Evidence:` (file:line and/or command output)
+- `Needed by:` (phase/stage)
+- `Decision impact:`
+
+Response format (required):
+- `Answer:`
+- `Confidence:` high|medium|low
+- `Evidence:`
+- `Impact:`
+- `Open risk:` (if any)
+
+Limits:
+- One active cross-role question per role at a time
+- Maximum 2 follow-ups, then escalate to user
+- If unresolved, Coordinator summarizes options and asks user
+## 4. Verification
 
 - Check files exist before claiming to read them
 - Check checkboxes are `[x]` before claiming stages complete
