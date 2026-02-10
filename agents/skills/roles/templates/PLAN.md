@@ -14,11 +14,13 @@ Implementation challenges to solve (architect identifies, implementer resolves):
 ### Stage 1: <name>
 
 Goal: <what this stage achieves>
+Owner: <implementer-id or agent name>
 
 - [ ] Task
 - [ ] Task
 
 Files: `path/to/file.rs`
+Depends on: none
 
 Considerations:
 - Edge case: ...
@@ -27,10 +29,12 @@ Considerations:
 ### Stage 2: <name>
 
 Goal: <what this stage achieves>
+Owner: <implementer-id or agent name>
 
 - [ ] Task
 
 Files: `path/to/file.rs`
+Depends on: Stage 1
 
 Considerations:
 - ...

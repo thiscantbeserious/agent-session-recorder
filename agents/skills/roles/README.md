@@ -13,7 +13,7 @@ User Request
      │
      ▼
 ┌─────────────┐
-│ Orchestrator│  Coordinates, never implements
+│ Coordinator │  Coordinates, never implements
 └──────┬──────┘
        │
        ▼
@@ -97,7 +97,7 @@ Modified by: Implementer (progress), Architect (scope changes via ADR loop)
 
 ## Roles
 
-### Orchestrator
+### Coordinator
 - Coordinates the SDLC flow
 - Never writes code
 - Spawns other roles with fresh context
