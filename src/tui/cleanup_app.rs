@@ -428,7 +428,7 @@ impl TuiApp for CleanupApp {
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
         match self.mode {
-            Mode::Normal | Mode::Search | Mode::AgentFilter | Mode::GlobSelect => {
+            Mode::Normal => {
                 let (_, height) = self.app.size()?;
                 match mouse.kind {
                     MouseEventKind::ScrollUp => self.shared.explorer.up(),

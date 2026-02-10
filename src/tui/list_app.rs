@@ -406,16 +406,21 @@ impl ListApp {
         Ok(())
     }
 
+    /// Remove the lock on the currently selected session.
+    fn remove_selected_lock(&mut self) {
+        if let Some(item) = self.shared.explorer.selected_item() {
+            let path = std::path::Path::new(&item.path);
+            lock::remove_lock(path);
+            self.shared.explorer.refresh_visible_locks();
+            self.shared.status_message = Some("Lock removed".to_string());
+        }
+    }
+
     /// Handle keys in final unlock confirmation ("Are you sure?").
     fn handle_confirm_unlock_final_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
-                if let Some(item) = self.shared.explorer.selected_item() {
-                    let path = std::path::Path::new(&item.path);
-                    lock::remove_lock(path);
-                    self.shared.explorer.refresh_visible_locks();
-                    self.shared.status_message = Some("Lock removed".to_string());
-                }
+                self.remove_selected_lock();
                 self.mode = Mode::Normal;
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
@@ -1261,11 +1266,8 @@ impl TuiApp for ListApp {
                     modals::ConfirmClick::Yes => {
                         if self.mode == Mode::ConfirmDeleteFinal {
                             self.delete_session()?;
-                        } else if let Some(item) = self.shared.explorer.selected_item() {
-                            let path = std::path::Path::new(&item.path);
-                            lock::remove_lock(path);
-                            self.shared.explorer.refresh_visible_locks();
-                            self.shared.status_message = Some("Lock removed".to_string());
+                        } else {
+                            self.remove_selected_lock();
                         }
                         self.mode = Mode::Normal;
                     }
