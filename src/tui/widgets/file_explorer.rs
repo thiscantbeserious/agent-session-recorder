@@ -568,10 +568,12 @@ impl FileExplorer {
         }
     }
 
-    /// Select all visible items
+    /// Select all visible items (skips locked items)
     pub fn select_all(&mut self) {
         for &idx in &self.visible_indices {
-            self.multi_selected.insert(idx);
+            if self.items[idx].lock_info.is_none() {
+                self.multi_selected.insert(idx);
+            }
         }
     }
 
@@ -582,7 +584,12 @@ impl FileExplorer {
 
     /// Toggle between select all and select none
     pub fn toggle_all(&mut self) {
-        if self.multi_selected.len() == self.visible_indices.len() {
+        let unlocked_count = self
+            .visible_indices
+            .iter()
+            .filter(|&&idx| self.items[idx].lock_info.is_none())
+            .count();
+        if self.multi_selected.len() >= unlocked_count {
             self.select_none();
         } else {
             self.select_all();
@@ -815,6 +822,13 @@ impl FileExplorer {
     pub fn merge_items(&mut self, fresh_items: Vec<FileItem>) {
         let selected_path = self.selected_item().map(|i| i.path.clone());
 
+        // Save multi-selected paths so we can restore after reindex
+        let selected_paths: HashSet<String> = self
+            .multi_selected
+            .iter()
+            .filter_map(|&idx| self.items.get(idx).map(|i| i.path.clone()))
+            .collect();
+
         let fresh_paths: HashSet<String> = fresh_items.iter().map(|i| i.path.clone()).collect();
         let existing_paths: HashSet<String> = self.items.iter().map(|i| i.path.clone()).collect();
 
@@ -828,12 +842,17 @@ impl FileExplorer {
             }
         }
 
-        // Clear multi-select (indices are invalidated)
-        self.multi_selected.clear();
-
         // Rebuild filters + sort
         self.apply_filter();
         self.apply_sort();
+
+        // Restore multi-select by path
+        self.multi_selected.clear();
+        for (idx, item) in self.items.iter().enumerate() {
+            if selected_paths.contains(&item.path) {
+                self.multi_selected.insert(idx);
+            }
+        }
 
         // Restore selection by path
         self.restore_selection_by_path(selected_path.as_deref());
@@ -957,8 +976,12 @@ impl Widget for FileExplorerWidget<'_> {
                 |(name, agent, size_str, time_str, is_checked, has_bak, is_locked)| {
                     let mut spans = vec![];
                     if show_checkboxes {
-                        let checkbox = if *is_checked { "[x] " } else { "[ ] " };
-                        spans.push(Span::styled(checkbox, theme.text_secondary_style()));
+                        if *is_locked {
+                            spans.push(Span::raw("    "));
+                        } else {
+                            let checkbox = if *is_checked { "[x] " } else { "[ ] " };
+                            spans.push(Span::styled(checkbox, theme.text_secondary_style()));
+                        }
                     }
 
                     // Smart time prefix

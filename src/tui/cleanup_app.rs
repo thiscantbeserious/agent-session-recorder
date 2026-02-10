@@ -19,9 +19,7 @@ use super::app::layout::build_explorer_layout;
 use super::app::list_view::render_explorer_list;
 use super::app::modals;
 use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
-use super::app::{
-    handle_mouse_default, handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp,
-};
+use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
 use crate::config::Config;
@@ -109,8 +107,15 @@ impl CleanupApp {
     /// handles app-specific keys: Space, a, g, Enter, Esc, q.
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            // Selection
+            // Selection (skip locked items)
             KeyCode::Char(' ') => {
+                if let Some(item) = self.shared.explorer.selected_item() {
+                    if item.lock_info.is_some() {
+                        self.shared.status_message =
+                            Some("Session is locked (being recorded)".to_string());
+                        return Ok(());
+                    }
+                }
                 self.shared.explorer.toggle_select();
             }
             KeyCode::Char('a') => {
@@ -409,7 +414,31 @@ impl TuiApp for CleanupApp {
         match self.mode {
             Mode::Normal | Mode::Search | Mode::AgentFilter | Mode::GlobSelect => {
                 let (_, height) = self.app.size()?;
-                handle_mouse_default(&mut self.shared, height, mouse, true);
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => self.shared.explorer.up(),
+                    MouseEventKind::ScrollDown => self.shared.explorer.down(),
+                    MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                        let explorer_height = height.saturating_sub(2);
+                        let click_row = mouse.row;
+                        if click_row >= 1 && click_row < explorer_height.saturating_sub(1) {
+                            let item_offset = (click_row - 1) as usize;
+                            let scroll_offset = self.shared.explorer.scroll_offset();
+                            let visible_idx = scroll_offset + item_offset;
+                            if self.shared.explorer.select_index(visible_idx) {
+                                // Block selection of locked items
+                                if let Some(item) = self.shared.explorer.selected_item() {
+                                    if item.lock_info.is_some() {
+                                        self.shared.status_message =
+                                            Some("Session is locked (being recorded)".to_string());
+                                        return Ok(());
+                                    }
+                                }
+                                self.shared.explorer.toggle_select();
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
             Mode::ConfirmDelete => {
                 let (width, height) = self.app.size()?;
