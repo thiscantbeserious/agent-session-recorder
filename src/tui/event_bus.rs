@@ -3,7 +3,9 @@
 //! Handles keyboard input, resize events, and other terminal events.
 
 use anyhow::Result;
-use crossterm::event::{self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{
+    self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers, MouseEvent,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::thread;
@@ -16,6 +18,8 @@ pub enum Event {
     Resize(u16, u16),
     /// Key was pressed
     Key(KeyEvent),
+    /// Mouse event (click, scroll, etc.)
+    Mouse(MouseEvent),
     /// Tick event for periodic updates
     Tick,
     /// Quit event
@@ -69,6 +73,11 @@ impl EventHandler {
                             }
                             Ok(CrosstermEvent::Resize(width, height)) => {
                                 if tx.send(Event::Resize(width, height)).is_err() {
+                                    break;
+                                }
+                            }
+                            Ok(CrosstermEvent::Mouse(mouse)) => {
+                                if tx.send(Event::Mouse(mouse)).is_err() {
                                     break;
                                 }
                             }

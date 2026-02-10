@@ -460,6 +460,11 @@ impl FileExplorer {
             .unwrap_or(false)
     }
 
+    /// Get the current scroll offset of the list.
+    pub fn scroll_offset(&self) -> usize {
+        self.list_state.offset()
+    }
+
     /// Set the page size for page navigation
     pub fn set_page_size(&mut self, size: usize) {
         self.page_size = size.max(1);
@@ -535,6 +540,18 @@ impl FileExplorer {
         if !self.visible_indices.is_empty() {
             self.selected = self.visible_indices.len() - 1;
             self.sync_list_state();
+        }
+    }
+
+    /// Select a specific visible index (for mouse click).
+    /// Returns true if the index was valid and selection changed.
+    pub fn select_index(&mut self, visible_idx: usize) -> bool {
+        if visible_idx < self.visible_indices.len() {
+            self.selected = visible_idx;
+            self.sync_list_state();
+            true
+        } else {
+            false
         }
     }
 

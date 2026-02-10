@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, MouseEvent};
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Modifier, Style},
@@ -20,7 +20,9 @@ use super::app::layout::build_explorer_layout;
 use super::app::list_view::render_explorer_list;
 use super::app::modals;
 use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
-use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
+use super::app::{
+    handle_mouse_default, handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp,
+};
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
 use crate::asciicast::{apply_transforms, TransformResult};
@@ -1069,6 +1071,12 @@ impl TuiApp for ListApp {
 
     fn shared_state(&mut self) -> &mut SharedState {
         &mut self.shared
+    }
+
+    fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        let (_, height) = self.app.size()?;
+        handle_mouse_default(&mut self.shared, height, mouse, false);
+        Ok(())
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<()> {

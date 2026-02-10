@@ -20,7 +20,7 @@ use std::time::Duration;
 use anyhow::Result;
 use crossterm::{
     cursor::MoveTo,
-    event::{DisableMouseCapture, EnableMouseCapture, KeyEvent},
+    event::{DisableMouseCapture, EnableMouseCapture, KeyEvent, MouseEvent, MouseEventKind},
     execute,
     style::ResetColor,
     terminal::{
@@ -224,6 +224,10 @@ pub trait TuiApp {
     /// Handle a key event. Called from the default `run()` event loop.
     fn handle_key(&mut self, key: KeyEvent) -> Result<()>;
 
+    /// Handle a mouse event. Default implementation provides scroll and click-to-select.
+    /// Override in apps that need checkbox toggle on click (e.g. cleanup).
+    fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()>;
+
     /// Draw the current UI state. Called from the default `run()` event loop.
     fn draw(&mut self) -> Result<()>;
 
@@ -237,6 +241,7 @@ pub trait TuiApp {
 
             match self.app().next_event()? {
                 Event::Key(key) => self.handle_key(key)?,
+                Event::Mouse(mouse) => self.handle_mouse(mouse)?,
                 Event::Resize(_, _) => {}
                 Event::Tick => {
                     self.shared_state().maybe_refresh_tick();
@@ -249,6 +254,43 @@ pub trait TuiApp {
             }
         }
         Ok(())
+    }
+}
+
+/// Default mouse handler for TUI explorer apps.
+///
+/// Handles scroll wheel (up/down) and left-click to select items.
+/// When `toggle_on_click` is true, clicking also toggles the checkbox (for cleanup).
+pub fn handle_mouse_default(
+    shared: &mut SharedState,
+    terminal_height: u16,
+    mouse: MouseEvent,
+    toggle_on_click: bool,
+) {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => {
+            shared.explorer.up();
+        }
+        MouseEventKind::ScrollDown => {
+            shared.explorer.down();
+        }
+        MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+            // Map click row to list item index
+            // Layout: row 0 = border, rows 1..n = items inside the list block
+            // Explorer area is full height minus 2 footer rows
+            let explorer_height = terminal_height.saturating_sub(2);
+            // List block has 1-row border top, so items start at row 1
+            let click_row = mouse.row;
+            if click_row >= 1 && click_row < explorer_height.saturating_sub(1) {
+                let item_offset = (click_row - 1) as usize;
+                let scroll_offset = shared.explorer.scroll_offset();
+                let visible_idx = scroll_offset + item_offset;
+                if shared.explorer.select_index(visible_idx) && toggle_on_click {
+                    shared.explorer.toggle_select();
+                }
+            }
+        }
+        _ => {}
     }
 }
 
