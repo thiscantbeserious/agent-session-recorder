@@ -198,12 +198,18 @@ impl CleanupApp {
         };
 
         // Collect matching items that aren't already selected
-        let items_to_select: Vec<(usize, String, String, bool)> = self
+        let items_to_select: Vec<(usize, String, String, bool, bool)> = self
             .shared
             .explorer
             .visible_items()
             .map(|(vis_idx, item, is_selected)| {
-                (vis_idx, item.agent.clone(), item.name.clone(), is_selected)
+                (
+                    vis_idx,
+                    item.agent.clone(),
+                    item.name.clone(),
+                    is_selected,
+                    item.lock_info.is_some(),
+                )
             })
             .collect();
 
@@ -211,8 +217,11 @@ impl CleanupApp {
         let original_selected = self.shared.explorer.selected();
         let mut actual_count = 0;
 
-        // Select matching items
-        for (vis_idx, agent, name, is_selected) in items_to_select {
+        // Select matching items (skip locked sessions)
+        for (vis_idx, agent, name, is_selected, is_locked) in items_to_select {
+            if is_locked {
+                continue;
+            }
             let matches = if let Some(agent_pat) = agent_filter {
                 glob_match(&agent, agent_pat) && glob_match(&name, file_pattern)
             } else {
