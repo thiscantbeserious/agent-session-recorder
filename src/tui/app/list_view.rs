@@ -21,9 +21,31 @@ pub fn render_explorer_list(
     show_checkboxes: bool,
     has_backup: bool,
 ) {
+    render_explorer_list_with_rename(
+        frame,
+        area,
+        explorer,
+        preview,
+        show_checkboxes,
+        has_backup,
+        None,
+    );
+}
+
+/// Render the file explorer list widget with optional inline rename input.
+pub fn render_explorer_list_with_rename(
+    frame: &mut Frame,
+    area: Rect,
+    explorer: &mut FileExplorer,
+    preview: Option<&SessionPreview>,
+    show_checkboxes: bool,
+    has_backup: bool,
+    rename_state: Option<(&str, usize, bool)>,
+) {
     let widget = FileExplorerWidget::new(explorer)
         .show_checkboxes(show_checkboxes)
         .session_preview(preview)
-        .has_backup(has_backup);
+        .has_backup(has_backup)
+        .rename_state(rename_state);
     frame.render_widget(widget, area);
 }

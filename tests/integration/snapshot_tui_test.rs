@@ -1070,3 +1070,9 @@ fn snapshot_status_bar_confirm_delete_long_name() {
     );
     insta::assert_snapshot!("status_bar_confirm_delete_long_name", output);
 }
+
+#[test]
+fn snapshot_status_bar_copied() {
+    let output = render_status_line_to_string("🎬 Copied 20250115-session.cast to clipboard", 60);
+    insta::assert_snapshot!("status_bar_copied", output);
+}

@@ -901,6 +901,8 @@ pub struct FileExplorerWidget<'a> {
     session_preview: Option<&'a SessionPreview>,
     /// Whether a backup exists for the selected file
     has_backup: bool,
+    /// When set, shows inline rename input on the selected item: (text, cursor_pos, selected_all)
+    rename_state: Option<(&'a str, usize, bool)>,
 }
 
 impl<'a> FileExplorerWidget<'a> {
@@ -912,6 +914,7 @@ impl<'a> FileExplorerWidget<'a> {
             show_checkboxes: true,
             session_preview: None,
             has_backup: false,
+            rename_state: None,
         }
     }
 
@@ -936,6 +939,12 @@ impl<'a> FileExplorerWidget<'a> {
     /// Set whether a backup exists for the selected file
     pub fn has_backup(mut self, has_backup: bool) -> Self {
         self.has_backup = has_backup;
+        self
+    }
+
+    /// Set inline rename state: (text, cursor_pos, selected_all)
+    pub fn rename_state(mut self, state: Option<(&'a str, usize, bool)>) -> Self {
+        self.rename_state = state;
         self
     }
 }
@@ -970,10 +979,13 @@ impl Widget for FileExplorerWidget<'_> {
             .collect();
 
         let show_checkboxes = self.show_checkboxes;
+        let selected_idx = self.explorer.selected();
+        let rename_state = self.rename_state;
         let items: Vec<ListItem> = item_data
             .iter()
+            .enumerate()
             .map(
-                |(name, agent, size_str, time_str, is_checked, has_bak, is_locked)| {
+                |(idx, (name, agent, size_str, time_str, is_checked, has_bak, is_locked))| {
                     let mut spans = vec![];
                     if show_checkboxes {
                         let checkbox = if *is_checked { "[x] " } else { "[ ] " };
@@ -989,6 +1001,49 @@ impl Widget for FileExplorerWidget<'_> {
                     // Add [opt] indicator prefix if backup exists
                     if *has_bak {
                         spans.push(Span::styled("[opt] ", theme.accent_style()));
+                    }
+
+                    // Show inline rename input on the selected item
+                    if idx == selected_idx {
+                        if let Some((input, cursor, selected_all)) = rename_state {
+                            let cursor_style = Style::default()
+                                .bg(theme.success)
+                                .fg(ratatui::style::Color::Black)
+                                .add_modifier(Modifier::SLOW_BLINK);
+
+                            if selected_all {
+                                // Show entire text as "selected" with cursor style
+                                spans.push(Span::styled(input, cursor_style));
+                            } else {
+                                // Text before cursor
+                                let before = &input[..cursor];
+                                if !before.is_empty() {
+                                    spans.push(Span::styled(before, theme.text_style()));
+                                }
+                                if cursor < input.len() {
+                                    // Block cursor on character under cursor
+                                    spans.push(Span::styled(
+                                        &input[cursor..cursor + 1],
+                                        cursor_style,
+                                    ));
+                                    let after = &input[cursor + 1..];
+                                    if !after.is_empty() {
+                                        spans.push(Span::styled(after, theme.text_style()));
+                                    }
+                                    spans.push(Span::styled(".cast", theme.text_secondary_style()));
+                                } else {
+                                    // Cursor at end: style the "." of ".cast" as cursor
+                                    spans.push(Span::styled(".", cursor_style));
+                                    spans.push(Span::styled("cast", theme.text_secondary_style()));
+                                }
+                            }
+                            spans.push(Span::raw("  "));
+                            spans.push(Span::styled(
+                                format!("({}, {})", agent, size_str),
+                                theme.text_secondary_style(),
+                            ));
+                            return ListItem::new(Line::from(spans));
+                        }
                     }
 
                     // Use greyed style for locked (actively recording) files

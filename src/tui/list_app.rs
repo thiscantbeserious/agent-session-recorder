@@ -17,7 +17,7 @@ use ratatui::{
 };
 
 use super::app::layout::build_explorer_layout;
-use super::app::list_view::render_explorer_list;
+use super::app::list_view::{render_explorer_list, render_explorer_list_with_rename};
 use super::app::modals;
 use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
 use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
@@ -165,6 +165,8 @@ pub struct ListApp {
     optimize_result: Option<OptimizeResultState>,
     /// Rename input buffer (filename stem without extension)
     rename_input: String,
+    /// Cursor position within rename_input (byte offset)
+    rename_cursor: usize,
     /// Whether the entire rename input is "selected" (first keystroke replaces all)
     rename_selected_all: bool,
 }
@@ -182,6 +184,7 @@ impl ListApp {
             context_menu_idx: 0,
             optimize_result: None,
             rename_input: String::new(),
+            rename_cursor: 0,
             rename_selected_all: false,
         })
     }
@@ -678,6 +681,7 @@ impl ListApp {
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_string();
+            self.rename_cursor = stem.len();
             self.rename_input = stem;
             self.rename_selected_all = true;
             self.mode = Mode::RenameInput;
@@ -700,10 +704,41 @@ impl ListApp {
             KeyCode::Backspace => {
                 if self.rename_selected_all {
                     self.rename_input.clear();
+                    self.rename_cursor = 0;
                     self.rename_selected_all = false;
-                } else {
-                    self.rename_input.pop();
+                } else if self.rename_cursor > 0 {
+                    self.rename_input.remove(self.rename_cursor - 1);
+                    self.rename_cursor -= 1;
                 }
+            }
+            KeyCode::Delete => {
+                if self.rename_selected_all {
+                    self.rename_input.clear();
+                    self.rename_cursor = 0;
+                    self.rename_selected_all = false;
+                } else if self.rename_cursor < self.rename_input.len() {
+                    self.rename_input.remove(self.rename_cursor);
+                }
+            }
+            KeyCode::Left => {
+                self.rename_selected_all = false;
+                if self.rename_cursor > 0 {
+                    self.rename_cursor -= 1;
+                }
+            }
+            KeyCode::Right => {
+                self.rename_selected_all = false;
+                if self.rename_cursor < self.rename_input.len() {
+                    self.rename_cursor += 1;
+                }
+            }
+            KeyCode::Home => {
+                self.rename_selected_all = false;
+                self.rename_cursor = 0;
+            }
+            KeyCode::End => {
+                self.rename_selected_all = false;
+                self.rename_cursor = self.rename_input.len();
             }
             KeyCode::Char(c) => {
                 if !filename::is_valid_filename_char(c) {
@@ -726,9 +761,11 @@ impl ListApp {
                 if self.rename_selected_all {
                     self.rename_input.clear();
                     self.rename_input.push(c);
+                    self.rename_cursor = 1;
                     self.rename_selected_all = false;
                 } else if self.rename_input.len() < max_stem_len {
-                    self.rename_input.push(c);
+                    self.rename_input.insert(self.rename_cursor, c);
+                    self.rename_cursor += 1;
                 }
             }
             _ => {}
@@ -1282,6 +1319,7 @@ impl TuiApp for ListApp {
         let context_menu_idx = self.context_menu_idx;
         let optimize_result = self.optimize_result.clone();
         let rename_input = &self.rename_input;
+        let rename_cursor = self.rename_cursor;
         let rename_selected_all = self.rename_selected_all;
 
         // Get preview for current selection from cache
@@ -1309,7 +1347,11 @@ impl TuiApp for ListApp {
             let chunks = build_explorer_layout(area);
 
             // Render file explorer (no checkboxes in list view - it's single-select)
-            render_explorer_list(frame, chunks[0], explorer, preview, false, backup_exists);
+            if mode == Mode::RenameInput {
+                render_explorer_list_with_rename(frame, chunks[0], explorer, preview, false, backup_exists, Some((rename_input, rename_cursor, rename_selected_all)));
+            } else {
+                render_explorer_list(frame, chunks[0], explorer, preview, false, backup_exists);
+            }
 
             // Render status line — input modes highlight only the input
             // value and always take priority over status_message.
@@ -1328,12 +1370,28 @@ impl TuiApp for ListApp {
                     );
                 }
                 Mode::RenameInput => {
-                    let value = if rename_selected_all {
-                        format!("[{}]", rename_input)
+                    let theme = current_theme();
+                    let hl = theme.highlight_style();
+                    let blink = hl.add_modifier(Modifier::SLOW_BLINK);
+                    let mut spans = vec![
+                        Span::styled("Rename: ", Style::default().fg(theme.text_secondary)),
+                    ];
+                    if rename_selected_all {
+                        spans.push(Span::styled("[", hl));
+                        spans.push(Span::styled(rename_input.as_str(), hl));
+                        spans.push(Span::styled("]", hl));
                     } else {
-                        format!("{}_", rename_input)
-                    };
-                    render_input_line(frame, chunks[1], "Rename: ", &value);
+                        let before = &rename_input[..rename_cursor];
+                        let after = &rename_input[rename_cursor..];
+                        if !before.is_empty() {
+                            spans.push(Span::styled(before, hl));
+                        }
+                        spans.push(Span::styled("|", blink));
+                        if !after.is_empty() {
+                            spans.push(Span::styled(after, hl));
+                        }
+                    }
+                    frame.render_widget(Paragraph::new(Line::from(spans)), chunks[1]);
                 }
                 Mode::ConfirmDelete => {
                     render_input_line(frame, chunks[1], "🗑  Delete? ", &format!("(y/n) — {}", selected_name));

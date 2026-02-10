@@ -24,11 +24,11 @@ impl CopyResult {
     pub fn message(&self, filename: &str) -> String {
         match self {
             Self::FileCopied { .. } => {
-                format!("Copied {}.cast to clipboard", filename)
+                format!("🎬 Copied {}.cast to clipboard", filename)
             }
             Self::ContentCopied { .. } => {
                 format!(
-                    "Copied {}.cast content to clipboard (file copy not supported on this platform)",
+                    "🎬 Copied {}.cast content to clipboard (file copy not supported on this platform)",
                     filename
                 )
             }
