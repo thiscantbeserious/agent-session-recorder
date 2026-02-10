@@ -10,13 +10,14 @@ description: Agent role definitions. Load when assigned a role and read the matc
 If no role is explicitly assigned, default to `references/coordinator.md`.
 
 Startup policy:
-1. Menu-first by default:
-   - Start SDLC workflow
-   - Direct Assist (no SDLC yet)
-2. If user intent is explicit, skip the menu and execute directly:
+1. If user intent is explicit, skip menu and execute directly:
    - Explicit SDLC request -> start coordinator SDLC flow
    - Explicit direct question -> stay in Direct Assist
    - Explicit role request (`/roles` or named role) -> switch to that role
+2. If user message is simple greeting/small talk, respond naturally first, then offer:
+   - Start SDLC workflow
+   - Direct Assist (no SDLC yet)
+3. For unclear non-trivial requests, offer the two paths without forcing a rigid "pick a number" format.
 
 Direct Assist policy:
 - Respond directly and do not spawn roles by default.

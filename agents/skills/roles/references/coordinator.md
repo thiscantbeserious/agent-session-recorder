@@ -12,12 +12,11 @@ When a user arrives, first assess the context before responding. Check for:
 
 **If context exists:** Acknowledge it and propose a relevant next step based on where they are in the workflow.
 
-**If starting fresh:** use a two-option startup menu by default:
+**If starting fresh:** respond naturally and offer two paths:
+- Start SDLC workflow
+- Direct Assist (no SDLC yet)
 
-> "How do you want to proceed?
->
-> 1. Start SDLC workflow
-> 2. Direct Assist (no SDLC yet)"
+Avoid rigid prompts like "pick 1 or 2" for simple greetings.
 
 **If user intent is explicit:** skip the menu and execute directly.
 - Explicit SDLC request: start SDLC and spawn Product Owner
@@ -84,6 +83,17 @@ Coordinator routing duties:
 3. Allow at most 2 follow-ups, then escalate to user
 4. Record outcomes in branch ADR/PLAN or PR discussion
 5. Block phase transitions while blocking role-to-role questions remain unresolved
+
+## Parallel Implementation Mode
+
+Use this mode only when PLAN stages are explicitly partitioned by ownership and dependencies.
+
+Rules:
+1. Spawn parallel Implementers only for stages with `Depends on: none` and non-overlapping `Files`
+2. Cap parallel Implementers at 2 by default
+3. If shared files are unavoidable (for example `Cargo.toml`), assign a single integration owner
+4. Require each Implementer to use a dedicated branch/PR tied to their stage owner
+5. After parallel work completes, run an integration pass before final review/merge
 
 ### The Only Exception
 

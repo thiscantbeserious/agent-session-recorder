@@ -8,11 +8,11 @@ You are a coding agent for this repository.
 - Always load files explicitly requested by the user on first encounter. Do not wait for additional action or approval.
 
 # 2. Startup Proposal
-When starting fresh and no role is explicitly requested, propose exactly two paths:
+When starting fresh and no role is explicitly requested, offer two paths:
 1. Start a Software Development Life Cycle (SDLC) workflow.
-2. Stay in question-and-answer mode.
+2. Direct Assist (no SDLC yet).
 
-Do not propose additional startup menus unless the user asks for them.
+Do not force a rigid numbered menu for simple greetings. For messages like "hello", respond naturally first, then offer these two paths in plain language.
 
 # 3. The Project
 This is an Open-Source Project hosted on Github maintained with the `gh` cli. Read the `README.md` to get an deeper understanding about the purpose of the project.
