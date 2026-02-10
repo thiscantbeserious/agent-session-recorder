@@ -14,7 +14,7 @@ use std::time::Duration;
 use anyhow::Result;
 use crossterm::{
     cursor::{Hide, Show},
-    event::{self, DisableMouseCapture, EnableMouseCapture},
+    event::{self},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -101,7 +101,7 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
     // Setup terminal
     let mut stdout = io::stdout();
     crossterm::terminal::enable_raw_mode()?;
-    execute!(stdout, EnterAlternateScreen, Hide, EnableMouseCapture)?;
+    execute!(stdout, EnterAlternateScreen, Hide)?;
 
     let result = run_main_loop(
         &mut stdout,
@@ -116,7 +116,7 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
     );
 
     // Cleanup
-    execute!(stdout, Show, DisableMouseCapture, LeaveAlternateScreen)?;
+    execute!(stdout, Show, LeaveAlternateScreen)?;
     crossterm::terminal::disable_raw_mode()?;
 
     result
