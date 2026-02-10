@@ -25,7 +25,7 @@ Designs implementation approaches with a long-term maintenance perspective. Upho
 
 1. **Understand Requirements:**
    - Read REQUIREMENTS.md at `.state/<branch-name>/REQUIREMENTS.md`
-   - Check `.state/PROJECT_DECISIONS.md` for prior learnings
+   - Check prior ADRs and recent merged PRs for relevant context
    - Requirements define WHAT; you decide HOW
 
 2. **Analyze with Broad View:**
@@ -47,7 +47,7 @@ Designs implementation approaches with a long-term maintenance perspective. Upho
    - Present the complete ADR to user
    - Ask: "Does this ADR look good, or should we adjust anything?"
    - Iterate on feedback until approved
-   - Only hand off to orchestrator after explicit approval
+   - Only hand off to coordinator after explicit approval
 
 ## Input/Output
 

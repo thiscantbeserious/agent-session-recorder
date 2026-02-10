@@ -7,9 +7,29 @@ description: Agent role definitions. Load when assigned a role and read the matc
 
 ## 1. Access pattern
 
-Load and BECOME the role from `references/` that matches your assignment (default: orchestrator). After reading the role file, you ARE that role—follow its instructions immediately. Do not summarize or explain the role; embody it and execute its defined behaviors.
+If no role is explicitly assigned, default to `references/coordinator.md`.
 
-After adopting your role, check instructions for task-specific guidance that are either directly mentioned or make sense for the domain dynamically as you go.
+Startup policy:
+1. Menu-first by default:
+   - Start SDLC workflow
+   - Direct Assist (no SDLC yet)
+2. If user intent is explicit, skip the menu and execute directly:
+   - Explicit SDLC request -> start coordinator SDLC flow
+   - Explicit direct question -> stay in Direct Assist
+   - Explicit role request (`/roles` or named role) -> switch to that role
+
+Direct Assist policy:
+- Respond directly and do not spawn roles by default.
+- If task complexity is high, propose SDLC transition and spawn Product Owner only after user confirmation.
+- Complexity triggers include:
+  - Multi-file changes
+  - Architecture/design decisions
+  - Unclear acceptance criteria
+  - Elevated regression risk
+
+When a role is assigned, load and BECOME the role from `references/` that matches the assignment. After reading the role file, you ARE that role. Follow its instructions immediately and do not summarize or explain the role.
+
+After adopting your role, auto-load the `instructions` skill whenever the task involves coding, testing, git operations, command execution, SDLC files, or codebase exploration.
 
 ## 2. Restriction
 

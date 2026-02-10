@@ -77,7 +77,7 @@ Present the REQUIREMENTS.md to the user:
 
 Update based on feedback. When user confirms:
 - Change `Sign-off: Pending` to `Sign-off: Approved by user`
-- Notify orchestrator that requirements are ready for Architect
+- Notify coordinator that requirements are ready for Architect
 
 ## Validation (End of Cycle)
 
@@ -121,7 +121,7 @@ When implementation includes work outside the original requirements:
 
 1. Identify the out-of-scope changes
 2. Propose a new branch for that work
-3. Request orchestrator to start a new SDLC cycle
+3. Request coordinator to start a new SDLC cycle
 4. Current PR should only contain in-scope work
 
 Example:

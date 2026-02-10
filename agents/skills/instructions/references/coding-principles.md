@@ -77,7 +77,7 @@ fn process_recording(path: &Path) -> Result<Recording> {
     // add markers (10 lines)
 }
 
-// After: orchestrator + focused helpers
+// After: coordinator + focused helpers
 fn process_recording(path: &Path) -> Result<Recording> {
     let content = validate_and_read(path)?;
     let header = parse_header(&content)?;

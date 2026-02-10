@@ -29,14 +29,12 @@ Handles PR lifecycle, merging, and release management.
    - If scope expanded during cycle, document it
 
 4. Pre-merge updates (while still on feature branch):
-   - [ ] Update `.state/INDEX.md` "Recently completed" section
    - [ ] Update `.state/<branch-name>/ADR.md` Status to "Accepted"
    - [ ] Commit and push these updates to the PR
 
 5. Pre-merge checklist:
    - [ ] PR description reflects final state
    - [ ] All commits accounted for
-   - [ ] INDEX.md updated with this work
    - [ ] Reviewer approved
    - [ ] Product Owner approved
    - If anything unclear → stop and ask user for manual verification
@@ -52,8 +50,8 @@ Handles PR lifecycle, merging, and release management.
 
 7. If CI jobs fail:
    - Read the failing job logs to understand the failures
-   - Report the failures back to the Orchestrator
-   - The Orchestrator will spawn an Implementer to fix the findings
+   - Report the failures back to the Coordinator
+   - The Coordinator will spawn an Implementer to fix the findings
    - After fixes are pushed, re-check CI (the label persists, jobs re-run automatically)
    - Repeat until all required checks pass
 

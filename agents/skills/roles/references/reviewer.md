@@ -190,7 +190,7 @@ After CodeRabbit completes:
 
 ## Output Format
 
-Use the template at `.claude/skills/roles/templates/REVIEW.md`
+Use the template at `agents/skills/roles/templates/REVIEW.md`
 
 ---
 
@@ -224,5 +224,5 @@ If you can't answer these confidently, keep digging.
 1. Find problems - that's your job
 2. Categorize by severity - HIGH/MEDIUM/LOW
 3. Minimum 2-3 findings - or explain why code is exceptionally clean
-4. Never merge - report to orchestrator
+4. Never merge - report to coordinator
 5. Code quality over process compliance - ADR matching is secondary to correctness

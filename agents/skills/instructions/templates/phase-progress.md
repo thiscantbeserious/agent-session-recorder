@@ -14,7 +14,7 @@
 - [ ] All tests pass (`cargo test`)
 - [ ] E2E tests pass (`./tests/e2e_test.sh`)
 - [ ] PR reviewed and merged
-- [ ] State files updated
+- [ ] Branch state docs and PR metadata updated
 
 ## Notes
 [Any relevant notes for this phase]

@@ -19,8 +19,8 @@
 cargo test && ./tests/e2e_test.sh
 
 # Check state
-cat .state/INDEX.md
 gh pr list
+gh pr list --state merged -L 10
 ```
 
 ## Git Workflow
@@ -51,7 +51,7 @@ gh pr create --title "feat(scope): description"
 - [ ] E2E tests pass (`./tests/e2e_test.sh`)
 - [ ] PR reviewed (CodeRabbit + verification)
 - [ ] PR merged
-- [ ] `.state/INDEX.md` updated
+- [ ] PR metadata reflects final state
 
 ## Notes
 

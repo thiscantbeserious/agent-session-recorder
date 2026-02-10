@@ -4,16 +4,13 @@
 
 ```
 .state/                      # Active state (minimal)
-├── INDEX.md                 # Entry point - where to find things
-├── decisions.md             # Technical decisions log
+├── <branch>/                # Per-branch SDLC files (REQUIREMENTS/ADR/PLAN)
 └── locks/                   # Task claiming mechanism
     └── .gitkeep
 
 agents/skills/architecture/templates/  # Templates for state files
-├── INDEX.md
 ├── current-phase.md
 ├── phase-progress.md
-└── decisions.md
 
 .archive/                    # Historical archives
 └── state/                   # Archived state snapshots
@@ -24,12 +21,11 @@ agents/skills/architecture/templates/  # Templates for state files
 
 ```bash
 # 1. Check current state
-cat .state/INDEX.md
 gh pr list                       # Open PRs
 gh pr list --state merged -L 10  # Recent completed work
 
-# 2. Check decisions
-cat .state/decisions.md
+# 2. Check recent context
+gh pr list --state merged -L 10
 ```
 
 ## Task Locking (for parallel subagents)
@@ -70,45 +66,35 @@ git branch -a | grep feature/
 When starting new work:
 
 ```bash
-# Copy template as needed
-cp agents/skills/architecture/templates/decisions.md .state/decisions.md
+# No global decisions file. Use branch ADRs in .state/<branch>/ instead.
 ```
 
 ## State Maintenance
 
 ### During Active Work
 
-Keep `.state/INDEX.md` current as you work. Update state at these milestones:
-- **Starting a task** - Update "Current focus"
-- **Hitting a blocker** - Update "Blocked on"
-- **Completing a subtask** - Note progress
-- **Making a key decision** - Log in `decisions.md`
-- **Creating a PR** - Update with PR number
-
-This helps agents joining mid-session understand context and prevents lost progress if a session ends unexpectedly.
+Use PR metadata as the live state source:
+- PR title/body for current focus and scope
+- PR comments/checks for blockers and review state
+- Per-branch `.state/<branch>/ADR.md` and `.state/<branch>/PLAN.md` for design/execution state
+- Merged PR history for completed work
 
 ### After Completing a Phase
 
 **CRITICAL:** After merging PRs and completing a phase, the coordinator MUST:
 
-1. **Update `.state/INDEX.md`:**
-   - Mark current focus as complete
-   - Update "Recently completed" section
-   - Clear any stale "Blocked on" entries
-
-2. **Clean up state files:**
+1. **Clean up state files:**
    - Remove old lock files from `.state/locks/`
-   - Update `.state/decisions.md` with learnings from the phase
    - Remove stale references to removed features
 
-3. **Archive old state** if needed:
+2. **Archive old state** if needed:
    ```bash
    TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
    mkdir -p .archive/state/$TIMESTAMP
    mv .state/old-file.md .archive/state/$TIMESTAMP/
    ```
 
-4. **Commit state updates:**
+3. **Commit state updates:**
    ```bash
    git add .state/
    git commit -m "chore(state): update after phase completion"
@@ -117,8 +103,6 @@ This helps agents joining mid-session understand context and prevents lost progr
 
 ### State Hygiene Checklist (End of Phase)
 
-- [ ] `.state/INDEX.md` shows phase complete
-- [ ] `.state/decisions.md` updated with new learnings
 - [ ] Old lock files removed from `.state/locks/`
 - [ ] No stale references to removed features
 - [ ] State changes committed and pushed
