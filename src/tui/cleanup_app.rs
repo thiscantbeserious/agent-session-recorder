@@ -41,6 +41,8 @@ pub enum Mode {
     Help,
     /// Confirm delete mode
     ConfirmDelete,
+    /// Second confirmation for delete - "Are you sure?"
+    ConfirmDeleteFinal,
 }
 
 impl Mode {
@@ -51,7 +53,7 @@ impl Mode {
             Mode::AgentFilter => Some(SharedMode::AgentFilter),
             Mode::Help => Some(SharedMode::Help),
             Mode::ConfirmDelete => Some(SharedMode::ConfirmDelete),
-            Mode::GlobSelect => None, // app-specific
+            Mode::GlobSelect | Mode::ConfirmDeleteFinal => None,
         }
     }
 
@@ -236,8 +238,22 @@ impl CleanupApp {
         actual_count
     }
 
-    /// Handle keys in confirm delete mode.
+    /// Handle keys in confirm delete mode (first confirmation).
     fn handle_confirm_delete_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.mode = Mode::ConfirmDeleteFinal;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.mode = Mode::Normal;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys in final delete confirmation ("Are you sure?").
+    fn handle_confirm_delete_final_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
                 self.delete_selected()?;
@@ -444,6 +460,16 @@ impl TuiApp for CleanupApp {
                 let (width, height) = self.app.size()?;
                 match modals::handle_confirm_click(&mouse, width, height, 50, 8, 6) {
                     modals::ConfirmClick::Yes => {
+                        self.mode = Mode::ConfirmDeleteFinal;
+                    }
+                    modals::ConfirmClick::No => self.mode = Mode::Normal,
+                    modals::ConfirmClick::Ignored => {}
+                }
+            }
+            Mode::ConfirmDeleteFinal => {
+                let (width, height) = self.app.size()?;
+                match modals::handle_confirm_click(&mouse, width, height, 50, 8, 6) {
+                    modals::ConfirmClick::Yes => {
                         self.delete_selected()?;
                         self.mode = Mode::Normal;
                     }
@@ -479,6 +505,7 @@ impl TuiApp for CleanupApp {
             Mode::Normal => self.handle_normal_key(key)?,
             Mode::GlobSelect => self.handle_glob_key(key)?,
             Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
+            Mode::ConfirmDeleteFinal => self.handle_confirm_delete_final_key(key)?,
             _ => {}
         }
         Ok(())
@@ -551,6 +578,9 @@ impl TuiApp for CleanupApp {
                         "(y/n)",
                     );
                 }
+                Mode::ConfirmDeleteFinal => {
+                    render_input_line(frame, chunks[1], "Are you sure? ", "(y/n)");
+                }
                 _ => {
                     let text = if let Some(msg) = &status {
                         msg.clone()
@@ -595,7 +625,8 @@ impl TuiApp for CleanupApp {
                 Mode::Search => "Esc: cancel | Enter: apply | Backspace: delete",
                 Mode::GlobSelect => "Esc: cancel | Enter: select matching | Backspace: delete",
                 Mode::AgentFilter => "left/right: change | Enter: apply | Esc: cancel",
-                Mode::ConfirmDelete => "y: confirm | n/Esc: cancel",
+                Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
+                Mode::ConfirmDeleteFinal => "y: confirm | n/Esc: cancel",
                 Mode::Help => "Press any key to close",
                 Mode::Normal => {
                     if selected_count > 0 {
@@ -617,6 +648,15 @@ impl TuiApp for CleanupApp {
                         selected_count,
                         selected_size,
                         false,
+                    );
+                }
+                Mode::ConfirmDeleteFinal => {
+                    modals::render_confirm_delete_modal(
+                        frame,
+                        area,
+                        selected_count,
+                        selected_size,
+                        true,
                     );
                 }
                 _ => {}
