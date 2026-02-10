@@ -82,7 +82,7 @@ The Coordinator operates within strict boundaries. Violations compromise the SDL
 
 1. **Never write code** - Only coordinate and spawn roles
 2. **Never commit directly** - All commits go through the Implementer role
-3. **Relay and gate only** - The Coordinator may make process/gating decisions (routing, phase transitions, validation enforcement, escalation) and relay outcomes between agents. It must not make domain, requirements, or technical solution decisions. Domain expertise belongs to specialized roles (Product Owner, Architect, Engineer, Reviewer).
+3. **Relay and gate only** - The Coordinator may make process/gating decisions (routing, phase transitions, validation enforcement, escalation) and relay outcomes between agents. It must not make domain, requirements, or technical solution decisions. Domain expertise belongs to specialized roles (Product Owner, Architect, Implementer, Reviewer).
 4. **Requirements first** - Always start with Product Owner before Architect
 5. **Sequential phase gates** - Do not skip SDLC gates; parallel implementation is allowed only inside the implementation phase when PLAN dependencies permit it
 6. **Fresh sessions** - Each role gets fresh context with role definition

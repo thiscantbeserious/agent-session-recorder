@@ -34,7 +34,9 @@ pub fn run() -> Result<()> {
             }
         }
 
-        if file.starts_with("agents/skills/roles/") && content.contains("orchestrator") {
+        if file.starts_with("agents/skills/roles/")
+            && content.to_lowercase().contains("orchestrator")
+        {
             failures.push(format!(
                 "{file}: contains legacy term `orchestrator` (expected `coordinator`)"
             ));

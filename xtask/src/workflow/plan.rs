@@ -196,12 +196,23 @@ fn normalize_file_path(path: &str) -> Option<String> {
         return None;
     }
 
-    let normalized = cleaned
-        .split('/')
-        .map(str::trim)
-        .filter(|part| !part.is_empty() && *part != ".")
-        .collect::<Vec<_>>()
-        .join("/");
+    let mut stack: Vec<&str> = Vec::new();
+    for part in cleaned.split('/').map(str::trim) {
+        if part.is_empty() || part == "." {
+            continue;
+        }
+        if part == ".." {
+            if !stack.is_empty() && stack.last() != Some(&"..") {
+                stack.pop();
+            } else {
+                stack.push(part);
+            }
+            continue;
+        }
+        stack.push(part);
+    }
+
+    let normalized = stack.join("/");
 
     if normalized.is_empty() {
         return None;
@@ -545,6 +556,30 @@ Depends on: none
                 .iter()
                 .any(|f| f.contains("share files: src/lib.rs")),
             "Expected normalized overlap failure, got: {failures:?}"
+        );
+    }
+
+    #[test]
+    fn overlap_detection_handles_parent_segments() {
+        let content = r#"
+### Stage A: First
+Owner: alpha
+Files: `src/../shared.rs`
+Depends on: none
+
+### Stage B: Second
+Owner: beta
+Files: `shared.rs`
+Depends on: none
+"#;
+
+        let stages = parse_stages(content);
+        let failures = collect_validation_failures(&stages);
+        assert!(
+            failures
+                .iter()
+                .any(|f| f.contains("share files: shared.rs")),
+            "Expected overlap failure for parent-segment alias, got: {failures:?}"
         );
     }
 
