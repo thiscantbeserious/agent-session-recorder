@@ -1014,6 +1014,7 @@ impl Widget for FileExplorerWidget<'_> {
                             if selected_all {
                                 // Show entire text as "selected" with cursor style
                                 spans.push(Span::styled(input, cursor_style));
+                                spans.push(Span::styled(".cast", theme.text_secondary_style()));
                             } else {
                                 // Text before cursor
                                 let before = &input[..cursor];

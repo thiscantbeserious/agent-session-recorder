@@ -1377,9 +1377,9 @@ impl TuiApp for ListApp {
                         Span::styled("Rename: ", Style::default().fg(theme.text_secondary)),
                     ];
                     if rename_selected_all {
-                        spans.push(Span::styled("[", hl));
-                        spans.push(Span::styled(rename_input.as_str(), hl));
-                        spans.push(Span::styled("]", hl));
+                        spans.push(Span::styled("[", blink));
+                        spans.push(Span::styled(rename_input.as_str(), blink));
+                        spans.push(Span::styled("]", blink));
                     } else {
                         let before = &rename_input[..rename_cursor];
                         let after = &rename_input[rename_cursor..];
