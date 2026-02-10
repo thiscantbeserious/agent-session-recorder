@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, MouseEvent};
+use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use ratatui::{
     layout::{Alignment, Rect},
     style::{Modifier, Style},
@@ -20,9 +20,7 @@ use super::app::layout::build_explorer_layout;
 use super::app::list_view::render_explorer_list;
 use super::app::modals;
 use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
-use super::app::{
-    handle_mouse_default, handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp,
-};
+use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
 use crate::asciicast::{apply_transforms, TransformResult};
@@ -46,12 +44,16 @@ pub enum Mode {
     Help,
     /// Confirm delete mode
     ConfirmDelete,
+    /// Second confirmation for delete - "Are you sure?"
+    ConfirmDeleteFinal,
     /// Context menu mode - showing actions for selected file
     ContextMenu,
     /// Optimize result mode - showing optimization results or error
     OptimizeResult,
     /// Confirm unlock mode - asking user to confirm force-unlock
     ConfirmUnlock,
+    /// Second confirmation for unlock - "Are you sure?"
+    ConfirmUnlockFinal,
     /// Rename input mode - typing new filename
     RenameInput,
 }
@@ -64,9 +66,12 @@ impl Mode {
             Mode::AgentFilter => Some(SharedMode::AgentFilter),
             Mode::Help => Some(SharedMode::Help),
             Mode::ConfirmDelete => Some(SharedMode::ConfirmDelete),
-            Mode::ContextMenu | Mode::OptimizeResult | Mode::ConfirmUnlock | Mode::RenameInput => {
-                None
-            }
+            Mode::ContextMenu
+            | Mode::OptimizeResult
+            | Mode::ConfirmUnlock
+            | Mode::ConfirmUnlockFinal
+            | Mode::ConfirmDeleteFinal
+            | Mode::RenameInput => None,
         }
     }
 
@@ -263,8 +268,22 @@ impl ListApp {
         Ok(())
     }
 
-    /// Handle keys in confirm delete mode.
+    /// Handle keys in confirm delete mode (first confirmation).
     fn handle_confirm_delete_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.mode = Mode::ConfirmDeleteFinal;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.mode = Mode::Normal;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys in final delete confirmation ("Are you sure?").
+    fn handle_confirm_delete_final_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
                 self.delete_session()?;
@@ -370,15 +389,27 @@ impl ListApp {
             .is_some()
     }
 
-    /// Handle keys in confirm unlock mode.
+    /// Handle keys in confirm unlock mode (first confirmation).
     fn handle_confirm_unlock_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') => {
-                // Force-unlock: remove the lock file and proceed
+                self.mode = Mode::ConfirmUnlockFinal;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                self.mode = Mode::Normal;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle keys in final unlock confirmation ("Are you sure?").
+    fn handle_confirm_unlock_final_key(&mut self, key: KeyEvent) -> Result<()> {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
                 if let Some(item) = self.shared.explorer.selected_item() {
                     let path = std::path::Path::new(&item.path);
                     lock::remove_lock(path);
-                    // Refresh the lock state for this item
                     self.shared.explorer.refresh_visible_locks();
                     self.shared.status_message = Some("Lock removed".to_string());
                 }
@@ -1074,8 +1105,131 @@ impl TuiApp for ListApp {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
-        let (_, height) = self.app.size()?;
-        handle_mouse_default(&mut self.shared, height, mouse, false);
+        let (width, height) = self.app.size()?;
+
+        match self.mode {
+            Mode::Normal => {
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        self.shared.explorer.up();
+                    }
+                    MouseEventKind::ScrollDown => {
+                        self.shared.explorer.down();
+                    }
+                    MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                        // Click selects the item and opens the context menu
+                        let explorer_height = height.saturating_sub(2);
+                        let click_row = mouse.row;
+                        if click_row >= 1 && click_row < explorer_height.saturating_sub(1) {
+                            let item_offset = (click_row - 1) as usize;
+                            let scroll_offset = self.shared.explorer.scroll_offset();
+                            let visible_idx = scroll_offset + item_offset;
+                            if self.shared.explorer.select_index(visible_idx) {
+                                if self.is_selected_locked() {
+                                    self.mode = Mode::ConfirmUnlock;
+                                } else {
+                                    self.context_menu_idx = 0;
+                                    self.mode = Mode::ContextMenu;
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Mode::ContextMenu => {
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        if self.context_menu_idx > 0 {
+                            self.context_menu_idx -= 1;
+                        } else {
+                            self.context_menu_idx = ContextMenuItem::ALL.len() - 1;
+                        }
+                    }
+                    MouseEventKind::ScrollDown => {
+                        self.context_menu_idx =
+                            (self.context_menu_idx + 1) % ContextMenuItem::ALL.len();
+                    }
+                    MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                        // Map click to menu item. Modal is centered:
+                        // modal_height = items + 4 (border + title + blank + footer)
+                        // Items start at row y+3 (border=1, title=1, blank=1)
+                        let modal_width = 40.min(width.saturating_sub(4));
+                        let modal_height =
+                            (ContextMenuItem::ALL.len() as u16 + 4).min(height.saturating_sub(4));
+                        let modal_x = (width - modal_width) / 2;
+                        let modal_y = (height - modal_height) / 2;
+                        let items_start_y = modal_y + 3; // border + title + blank
+
+                        let cx = mouse.column;
+                        let cy = mouse.row;
+
+                        if cx >= modal_x
+                            && cx < modal_x + modal_width
+                            && cy >= items_start_y
+                            && cy < items_start_y + ContextMenuItem::ALL.len() as u16
+                        {
+                            let idx = (cy - items_start_y) as usize;
+                            self.context_menu_idx = idx;
+                            self.execute_context_menu_action()?;
+                        } else {
+                            // Click outside modal closes it
+                            self.mode = Mode::Normal;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Mode::ConfirmDelete | Mode::ConfirmUnlock => {
+                let modal_w = if self.mode == Mode::ConfirmDelete {
+                    50
+                } else {
+                    55
+                };
+                // 8-tall modal: button row at offset 6 (border + 5 content lines)
+                match modals::handle_confirm_click(&mouse, width, height, modal_w, 8, 6) {
+                    modals::ConfirmClick::Yes => {
+                        self.mode = if self.mode == Mode::ConfirmDelete {
+                            Mode::ConfirmDeleteFinal
+                        } else {
+                            Mode::ConfirmUnlockFinal
+                        };
+                    }
+                    modals::ConfirmClick::No => self.mode = Mode::Normal,
+                    modals::ConfirmClick::Ignored => {}
+                }
+            }
+            Mode::ConfirmDeleteFinal | Mode::ConfirmUnlockFinal => {
+                let modal_w = if self.mode == Mode::ConfirmDeleteFinal {
+                    50
+                } else {
+                    55
+                };
+                match modals::handle_confirm_click(&mouse, width, height, modal_w, 8, 6) {
+                    modals::ConfirmClick::Yes => {
+                        if self.mode == Mode::ConfirmDeleteFinal {
+                            self.delete_session()?;
+                        } else if let Some(item) = self.shared.explorer.selected_item() {
+                            let path = std::path::Path::new(&item.path);
+                            lock::remove_lock(path);
+                            self.shared.explorer.refresh_visible_locks();
+                            self.shared.status_message = Some("Lock removed".to_string());
+                        }
+                        self.mode = Mode::Normal;
+                    }
+                    modals::ConfirmClick::No => self.mode = Mode::Normal,
+                    modals::ConfirmClick::Ignored => {}
+                }
+            }
+            // Other modal modes: click outside dismisses
+            _ => {
+                if let MouseEventKind::Down(crossterm::event::MouseButton::Left) = mouse.kind {
+                    self.mode = Mode::Normal;
+                    self.optimize_result = None;
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -1096,9 +1250,11 @@ impl TuiApp for ListApp {
         match self.mode {
             Mode::Normal => self.handle_normal_key(key)?,
             Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
+            Mode::ConfirmDeleteFinal => self.handle_confirm_delete_final_key(key)?,
             Mode::ContextMenu => self.handle_context_menu_key(key)?,
             Mode::OptimizeResult => self.handle_optimize_result_key(key)?,
             Mode::ConfirmUnlock => self.handle_confirm_unlock_key(key)?,
+            Mode::ConfirmUnlockFinal => self.handle_confirm_unlock_final_key(key)?,
             Mode::RenameInput => self.handle_rename_input_key(key)?,
             _ => {}
         }
@@ -1184,6 +1340,9 @@ impl TuiApp for ListApp {
                         "(y/n)",
                     );
                 }
+                Mode::ConfirmDeleteFinal | Mode::ConfirmUnlockFinal => {
+                    render_input_line(frame, chunks[1], "Are you sure? ", "(y/n)");
+                }
                 _ => {
                     let text = if let Some(msg) = &status {
                         msg.clone()
@@ -1215,7 +1374,9 @@ impl TuiApp for ListApp {
                 Mode::Search => "Esc: cancel | Enter: apply search | Backspace: delete char",
                 Mode::AgentFilter => "←/→: change agent | Enter: apply | Esc: cancel",
                 Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
+                Mode::ConfirmDeleteFinal => "y: confirm | n/Esc: cancel",
                 Mode::ConfirmUnlock => "y: force unlock | n/Esc: cancel",
+                Mode::ConfirmUnlockFinal => "y: confirm | n/Esc: cancel",
                 Mode::Help => "Press any key to close help",
                 Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
                 Mode::RenameInput => "Enter: confirm | Esc: cancel | Backspace: delete char",
@@ -1231,7 +1392,12 @@ impl TuiApp for ListApp {
                 Mode::Help => Self::render_help_modal(frame, area),
                 Mode::ConfirmDelete => {
                     if let Some(item) = explorer.selected_item() {
-                        modals::render_confirm_delete_modal(frame, area, 1, item.size);
+                        modals::render_confirm_delete_modal(frame, area, 1, item.size, false);
+                    }
+                }
+                Mode::ConfirmDeleteFinal => {
+                    if let Some(item) = explorer.selected_item() {
+                        modals::render_confirm_delete_modal(frame, area, 1, item.size, true);
                     }
                 }
                 Mode::ContextMenu => {
@@ -1242,14 +1408,15 @@ impl TuiApp for ListApp {
                         Self::render_optimize_result_modal(frame, area, result_state);
                     }
                 }
-                Mode::ConfirmUnlock => {
+                Mode::ConfirmUnlock | Mode::ConfirmUnlockFinal => {
                     if let Some(item) = explorer.selected_item() {
                         let lock_msg = if let Some(ref info) = item.lock_info {
                             format!("PID {} since {}", info.pid, &info.started[..19])
                         } else {
                             "Unknown lock".to_string()
                         };
-                        modals::render_confirm_unlock_modal(frame, area, &lock_msg);
+                        let final_confirm = mode == Mode::ConfirmUnlockFinal;
+                        modals::render_confirm_unlock_modal(frame, area, &lock_msg, final_confirm);
                     }
                 }
                 _ => {}

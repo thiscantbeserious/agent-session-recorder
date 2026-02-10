@@ -959,6 +959,7 @@ fn snapshot_confirm_unlock_modal() {
                 frame,
                 area,
                 "PID 12345 since 2025-01-15T10:30",
+                false,
             );
         })
         .unwrap();

@@ -6,7 +6,7 @@
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -406,8 +406,29 @@ impl TuiApp for CleanupApp {
     }
 
     fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
-        let (_, height) = self.app.size()?;
-        handle_mouse_default(&mut self.shared, height, mouse, true);
+        match self.mode {
+            Mode::Normal | Mode::Search | Mode::AgentFilter | Mode::GlobSelect => {
+                let (_, height) = self.app.size()?;
+                handle_mouse_default(&mut self.shared, height, mouse, true);
+            }
+            Mode::ConfirmDelete => {
+                let (width, height) = self.app.size()?;
+                match modals::handle_confirm_click(&mouse, width, height, 50, 8, 6) {
+                    modals::ConfirmClick::Yes => {
+                        self.delete_selected()?;
+                        self.mode = Mode::Normal;
+                    }
+                    modals::ConfirmClick::No => self.mode = Mode::Normal,
+                    modals::ConfirmClick::Ignored => {}
+                }
+            }
+            // Other modal modes: click outside dismisses
+            _ => {
+                if let MouseEventKind::Down(crossterm::event::MouseButton::Left) = mouse.kind {
+                    self.mode = Mode::Normal;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -566,6 +587,7 @@ impl TuiApp for CleanupApp {
                         area,
                         selected_count,
                         selected_size,
+                        false,
                     );
                 }
                 _ => {}

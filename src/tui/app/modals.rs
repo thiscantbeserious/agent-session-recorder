@@ -11,7 +11,64 @@ use ratatui::{
     Frame,
 };
 
+use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+
 use crate::theme::current_theme;
+
+/// Result of clicking inside a confirm modal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfirmClick {
+    /// User clicked the "y" (left) button
+    Yes,
+    /// User clicked the "n" (right) button or outside the modal
+    No,
+    /// Click was inside modal but not on a button — ignore
+    Ignored,
+}
+
+/// Handle a mouse click against a centered confirm modal.
+///
+/// `modal_width` and `modal_height` must match the values passed to
+/// `center_modal()` when the modal was rendered.  `button_row_offset`
+/// is the row index (from the top of the modal) where the y/n buttons
+/// live.
+///
+/// Returns `ConfirmClick::Yes` when the left half of the button row is
+/// clicked, `No` for right half or outside, and `Ignored` for clicks
+/// inside the modal but not on the button row.
+pub fn handle_confirm_click(
+    mouse: &MouseEvent,
+    area_width: u16,
+    area_height: u16,
+    modal_width: u16,
+    modal_height: u16,
+    button_row_offset: u16,
+) -> ConfirmClick {
+    if !matches!(mouse.kind, MouseEventKind::Down(MouseButton::Left)) {
+        return ConfirmClick::Ignored;
+    }
+
+    let mw = modal_width.min(area_width.saturating_sub(4));
+    let mh = modal_height.min(area_height.saturating_sub(4));
+    let mx = (area_width - mw) / 2;
+    let my = (area_height - mh) / 2;
+    let cx = mouse.column;
+    let cy = mouse.row;
+
+    if cx < mx || cx >= mx + mw || cy < my || cy >= my + mh {
+        return ConfirmClick::No; // outside modal
+    }
+
+    if cy == my + button_row_offset {
+        if cx < mx + mw / 2 {
+            ConfirmClick::Yes
+        } else {
+            ConfirmClick::No
+        }
+    } else {
+        ConfirmClick::Ignored
+    }
+}
 
 /// Calculate a centered modal area within the given parent area.
 ///
@@ -28,39 +85,59 @@ pub fn center_modal(area: Rect, width: u16, height: u16) -> Rect {
 
 /// Render a confirm-delete modal showing count and storage impact.
 ///
-/// Used by both list (single delete) and cleanup (bulk delete) apps.
-pub fn render_confirm_delete_modal(frame: &mut Frame, area: Rect, count: usize, size: u64) {
+/// When `final_confirm` is true, shows "ARE YOU SURE - THIS WILL DELETE"
+/// as the second confirmation step.
+pub fn render_confirm_delete_modal(
+    frame: &mut Frame,
+    area: Rect,
+    count: usize,
+    size: u64,
+    final_confirm: bool,
+) {
     let theme = current_theme();
     let modal_area = center_modal(area, 50, 8);
 
-    // Clear the area behind the modal
     frame.render_widget(Clear, modal_area);
 
-    let title = if count == 1 {
+    let heading = if final_confirm {
+        "ARE YOU SURE - THIS WILL DELETE"
+    } else if count == 1 {
         "Delete Session?"
     } else {
         "Delete Sessions?"
     };
 
+    let body_style = if final_confirm {
+        Style::default().fg(theme.error)
+    } else {
+        Style::default()
+    };
+
     let text = vec![
         Line::from(Span::styled(
-            title,
+            heading,
             Style::default()
                 .fg(theme.error)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(format!("Sessions to delete: {}", count)),
-        Line::from(format!(
-            "Storage to free: {}",
-            humansize::format_size(size, humansize::BINARY)
+        Line::from(Span::styled(
+            format!("Sessions to delete: {}", count),
+            body_style,
+        )),
+        Line::from(Span::styled(
+            format!(
+                "Storage to free: {}",
+                humansize::format_size(size, humansize::BINARY)
+            ),
+            body_style,
         )),
         Line::from(""),
         Line::from(vec![
             Span::styled("y", Style::default().fg(theme.error)),
-            Span::raw(": Yes, delete  |  "),
+            Span::styled(": Yes 🗑️   |  ", body_style),
             Span::styled("n", Style::default().fg(theme.accent)),
-            Span::raw(": No, cancel"),
+            Span::raw(": No ❌"),
         ]),
     ];
 
@@ -78,30 +155,47 @@ pub fn render_confirm_delete_modal(frame: &mut Frame, area: Rect, count: usize, 
 
 /// Render a confirm-unlock modal showing lock details.
 ///
-/// Prompts the user to force-unlock a session that is currently being recorded.
-pub fn render_confirm_unlock_modal(frame: &mut Frame, area: Rect, lock_msg: &str) {
+/// When `final_confirm` is true, shows "ARE YOU SURE - THIS WILL UNLOCK"
+/// as the second confirmation step.
+pub fn render_confirm_unlock_modal(
+    frame: &mut Frame,
+    area: Rect,
+    lock_msg: &str,
+    final_confirm: bool,
+) {
     let theme = current_theme();
     let modal_area = center_modal(area, 55, 8);
 
-    // Clear the area behind the modal
     frame.render_widget(Clear, modal_area);
+
+    let heading = if final_confirm {
+        "ARE YOU SURE - THIS WILL UNLOCK"
+    } else {
+        "Session Locked"
+    };
+
+    let body_style = if final_confirm {
+        Style::default().fg(theme.error)
+    } else {
+        Style::default()
+    };
 
     let text = vec![
         Line::from(Span::styled(
-            "Session Locked",
+            heading,
             Style::default()
                 .fg(theme.error)
                 .add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from("This session is being recorded.".to_string()),
-        Line::from(format!("Lock: {}", lock_msg)),
+        Line::from(Span::styled("This session is being recorded.", body_style)),
+        Line::from(Span::styled(format!("Lock: {}", lock_msg), body_style)),
         Line::from(""),
         Line::from(vec![
             Span::styled("y", Style::default().fg(theme.error)),
-            Span::raw(": Force unlock  |  "),
+            Span::styled(": Yes 🔓  |  ", body_style),
             Span::styled("n", Style::default().fg(theme.accent)),
-            Span::raw(": Cancel"),
+            Span::raw(": No ❌"),
         ]),
     ];
 
