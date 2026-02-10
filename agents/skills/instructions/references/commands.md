@@ -33,3 +33,11 @@ cargo run -- <args>   # Run in development
 ./uninstall.sh        # Remove from system
 ./tests/e2e_test.sh   # Run E2E tests
 ```
+
+## Xtask Workflow
+
+```bash
+cargo xtask validate-workflow                       # Validate role/workflow invariants
+cargo xtask validate-plan --plan .state/<branch>/PLAN.md   # Validate PLAN deterministically
+cargo xtask coordinate-plan --plan .state/<branch>/PLAN.md # Print dependency-safe parallel schedule
+```

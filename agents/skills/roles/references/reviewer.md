@@ -242,3 +242,7 @@ When implementation ran in parallel across multiple PRs:
 1. Review each PR against its assigned stage ownership
 2. Run one additional integration review on the combined result
 3. Report cross-PR conflicts explicitly before approval
+4. Use coordinator schedule output for expected stage ordering:
+   ```bash
+   cargo xtask coordinate-plan --plan .state/<branch-name>/PLAN.md
+   ```

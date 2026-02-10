@@ -25,6 +25,20 @@ Avoid rigid prompts like "pick 1 or 2" for simple greetings.
 
 In Direct Assist, do not spawn roles by default. If the task appears complex (multi-file change, design decision needed, unclear acceptance criteria, or elevated regression risk), propose SDLC and spawn Product Owner only after user confirmation.
 
+## Quick Implementation Loop (Direct Assist)
+
+Use this lightweight loop for small bounded changes that still require code quality safeguards:
+1. Spawn Implementer for the scoped change
+2. Spawn Reviewer (`Phase: internal`) for a focused internal review
+3. Return reviewed result to user
+
+Required quality gates:
+- Implementer must run tests (at least `cargo test` and targeted tests for changed behavior)
+- Reviewer must report findings with severity
+- Blocking findings must be fixed before handoff
+
+Escalate to full SDLC immediately if scope expands, architectural decisions are needed, or multiple subsystems are affected.
+
 ## Spawning Roles
 
 Feed the role definition directly into the initial prompt. Do not instruct the role to load it themselves.
@@ -69,7 +83,7 @@ The Coordinator operates within strict boundaries. Violations compromise the SDL
 2. **Never commit directly** - All commits go through the Implementer role
 3. **Relay only** - The Coordinator passes messages and decisions between Agents; it must not form its own decisions or opinions about the work. Domain expertise belongs to specialized roles (Product Owner, Architect, Engineer, Reviewer).
 4. **Requirements first** - Always start with Product Owner before Architect
-5. **Sequential flow** - One phase at a time, no skipping
+5. **Sequential phase gates** - Do not skip SDLC gates; parallel implementation is allowed only inside the implementation phase when PLAN dependencies permit it
 6. **Fresh sessions** - Each role gets fresh context with role definition
 7. **CodeRabbit required** - Wait for actual review, never proceed while "processing"
 
@@ -94,6 +108,12 @@ Rules:
 3. If shared files are unavoidable (for example `Cargo.toml`), assign a single integration owner
 4. Require each Implementer to use a dedicated branch/PR tied to their stage owner
 5. After parallel work completes, run an integration pass before final review/merge
+
+Execution commands:
+```bash
+cargo xtask validate-plan --plan .state/<branch-name>/PLAN.md
+cargo xtask coordinate-plan --plan .state/<branch-name>/PLAN.md
+```
 
 ### The Only Exception
 
@@ -276,4 +296,4 @@ Before spawning the next role, verify:
 2. Previous role reported explicit completion (not just "done")
 3. If deliverable missing or unclear → ask previous role, do not proceed
 
-Question flow: Role → Other role → User (last resort)
+Question flow: Role → Coordinator-routed other role → User (last resort)

@@ -5,6 +5,9 @@
 //! Commands:
 //! - gen-docs: Generate documentation (man pages, COMMANDS.md, wiki)
 //! - update-wiki: Clone/update wiki repo, generate docs, and optionally push
+//! - validate-workflow: Validate role/workflow documentation invariants
+//! - validate-plan: Validate PLAN.md for deterministic parallel execution
+//! - coordinate-plan: Print dependency-safe coordinator schedule for parallel stages
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -13,6 +16,8 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 
 use agr::cli::Cli;
+
+mod workflow;
 
 #[derive(Parser)]
 #[command(name = "xtask")]
@@ -71,6 +76,26 @@ enum XtaskCommand {
         #[arg(long)]
         no_commit: bool,
     },
+
+    /// Validate role/workflow documentation invariants
+    #[command(name = "validate-workflow")]
+    ValidateWorkflow,
+
+    /// Validate PLAN.md structure for deterministic parallel execution
+    #[command(name = "validate-plan")]
+    ValidatePlan {
+        /// Path to PLAN.md
+        #[arg(long)]
+        plan: PathBuf,
+    },
+
+    /// Print coordinator spawn schedule for parallel implementers + independent review loops
+    #[command(name = "coordinate-plan")]
+    CoordinatePlan {
+        /// Path to PLAN.md
+        #[arg(long)]
+        plan: PathBuf,
+    },
 }
 
 fn main() -> Result<()> {
@@ -106,11 +131,19 @@ fn main() -> Result<()> {
         } => {
             update_wiki(repo, &wiki_dir, &message, push, no_commit)?;
         }
+        XtaskCommand::ValidateWorkflow => {
+            workflow::validate::run()?;
+        }
+        XtaskCommand::ValidatePlan { plan } => {
+            workflow::plan::validate_plan(&plan)?;
+        }
+        XtaskCommand::CoordinatePlan { plan } => {
+            workflow::plan::coordinate_plan(&plan)?;
+        }
     }
 
     Ok(())
 }
-
 /// Generate man pages using clap_mangen
 fn generate_man_pages(output: &Path) -> Result<()> {
     use clap_mangen::Man;

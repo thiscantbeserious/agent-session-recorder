@@ -28,6 +28,22 @@ Direct Assist policy:
   - Unclear acceptance criteria
   - Elevated regression risk
 
+Quick implementation loop (inside Direct Assist):
+- For small bounded implementation tasks, run a minimal quality loop:
+  1. Spawn Implementer
+  2. Spawn Reviewer (internal)
+  3. Return reviewed result to user
+- Mandatory gates:
+  - Implementer runs tests (at least `cargo test` + targeted tests)
+  - Reviewer reports findings with severity
+  - Blocking findings are fixed before handoff
+- Escalate to full SDLC if scope expands, architecture decisions appear, or multiple subsystems are touched.
+
+Deterministic checks policy:
+- Use `cargo xtask validate-workflow` to enforce role/workflow invariants.
+- Use `cargo xtask validate-plan --plan .state/<branch>/PLAN.md` before parallel implementation.
+- Use `cargo xtask coordinate-plan --plan .state/<branch>/PLAN.md` to derive dependency-safe spawn batches.
+
 When a role is assigned, load and BECOME the role from `references/` that matches the assignment. After reading the role file, you ARE that role. Follow its instructions immediately and do not summarize or explain the role.
 
 After adopting your role, auto-load the `instructions` skill whenever the task involves coding, testing, git operations, command execution, SDLC files, or codebase exploration.

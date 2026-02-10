@@ -50,6 +50,10 @@ You are the Architect agent. You design implementation approaches with a long-te
    - Ask: "Does this ADR look good, or should we adjust anything?"
    - Iterate on feedback until approved
    - Only hand off to coordinator after explicit approval
+   - Validate PLAN deterministically:
+     ```bash
+     cargo xtask validate-plan --plan .state/<branch-name>/PLAN.md
+     ```
 
 ## Input/Output
 

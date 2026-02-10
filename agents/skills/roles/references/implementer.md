@@ -30,6 +30,11 @@ Conditionally load:
 4. Create PR
 5. Report completion
 
+Before starting parallel stage work, confirm plan validity:
+```bash
+cargo xtask validate-plan --plan .state/<branch-name>/PLAN.md
+```
+
 ## Feature Branch Workflow
 
 ```bash
