@@ -976,12 +976,8 @@ impl Widget for FileExplorerWidget<'_> {
                 |(name, agent, size_str, time_str, is_checked, has_bak, is_locked)| {
                     let mut spans = vec![];
                     if show_checkboxes {
-                        if *is_locked {
-                            spans.push(Span::raw("    "));
-                        } else {
-                            let checkbox = if *is_checked { "[x] " } else { "[ ] " };
-                            spans.push(Span::styled(checkbox, theme.text_secondary_style()));
-                        }
+                        let checkbox = if *is_checked { "[x] " } else { "[ ] " };
+                        spans.push(Span::styled(checkbox, theme.text_secondary_style()));
                     }
 
                     // Smart time prefix

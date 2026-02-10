@@ -3,7 +3,7 @@ source: tests/integration/snapshot_tui_test.rs
 expression: output
 ---
 ┌ Sessions ────────────────────────────────────────────────┐┌ Preview ─────────────────────────────┐
-│>      2y1m: 20240116-recording.cast 📹   (claude, 10.0 KB)││Name: 20240116-recording.cast         │
+│> [ ]  2y1m: 20240116-recording.cast 📹   (claude, 10.0 KB)││Name: 20240116-recording.cast         │
 │  [ ]  2y1m: 20240115-session1.cast  (claude, 50.0 KB)    ││Agent: claude                         │
 │  [ ]  2y1m: 20240114-session3.cast  (codex, 100.0 KB)    ││Size: 10.0 KB                         │
 │                                                          ││Modified: 2024-01-16 14:00            │
