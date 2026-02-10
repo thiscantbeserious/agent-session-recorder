@@ -1290,6 +1290,12 @@ impl TuiApp for ListApp {
             .as_ref()
             .and_then(|p| self.shared.preview_cache.get(p));
 
+        // Get selected item name for dialog status lines
+        let selected_name = explorer
+            .selected_item()
+            .map(|i| i.name.clone())
+            .unwrap_or_default();
+
         // Check if backup exists for selected file (for context menu)
         let backup_exists = current_path
             .as_ref()
@@ -1330,18 +1336,19 @@ impl TuiApp for ListApp {
                     render_input_line(frame, chunks[1], "Rename: ", &value);
                 }
                 Mode::ConfirmDelete => {
-                    render_input_line(frame, chunks[1], "Delete this session? ", "(y/n)");
+                    render_input_line(frame, chunks[1], "🗑️  Delete? ", &format!("(y/n) — {}", selected_name));
                 }
                 Mode::ConfirmUnlock => {
-                    render_input_line(
-                        frame,
-                        chunks[1],
-                        "This session is being recorded. Force unlock? ",
-                        "(y/n)",
-                    );
+                    render_input_line(frame, chunks[1], "🔓 Force unlock? ", &format!("(y/n) — {}", selected_name));
                 }
-                Mode::ConfirmDeleteFinal | Mode::ConfirmUnlockFinal => {
-                    render_input_line(frame, chunks[1], "Are you sure? ", "(y/n)");
+                Mode::ConfirmDeleteFinal => {
+                    render_input_line(frame, chunks[1], "🗑️  Are you sure? ", &format!("(y/n) — {}", selected_name));
+                }
+                Mode::ConfirmUnlockFinal => {
+                    render_input_line(frame, chunks[1], "🔓 Are you sure? ", &format!("(y/n) — {}", selected_name));
+                }
+                Mode::ContextMenu | Mode::OptimizeResult => {
+                    render_status_line(frame, chunks[1], &selected_name);
                 }
                 _ => {
                     let text = if let Some(msg) = &status {
