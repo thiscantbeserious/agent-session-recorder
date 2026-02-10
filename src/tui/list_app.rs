@@ -707,8 +707,14 @@ impl ListApp {
                     self.rename_cursor = 0;
                     self.rename_selected_all = false;
                 } else if self.rename_cursor > 0 {
-                    self.rename_input.remove(self.rename_cursor - 1);
-                    self.rename_cursor -= 1;
+                    // Find previous char boundary
+                    let prev = self.rename_input[..self.rename_cursor]
+                        .char_indices()
+                        .next_back()
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
+                    self.rename_input.remove(prev);
+                    self.rename_cursor = prev;
                 }
             }
             KeyCode::Delete => {
@@ -718,18 +724,27 @@ impl ListApp {
                     self.rename_selected_all = false;
                 } else if self.rename_cursor < self.rename_input.len() {
                     self.rename_input.remove(self.rename_cursor);
+                    // cursor stays — next char slides into position
                 }
             }
             KeyCode::Left => {
                 self.rename_selected_all = false;
                 if self.rename_cursor > 0 {
-                    self.rename_cursor -= 1;
+                    self.rename_cursor = self.rename_input[..self.rename_cursor]
+                        .char_indices()
+                        .next_back()
+                        .map(|(i, _)| i)
+                        .unwrap_or(0);
                 }
             }
             KeyCode::Right => {
                 self.rename_selected_all = false;
                 if self.rename_cursor < self.rename_input.len() {
-                    self.rename_cursor += 1;
+                    self.rename_cursor += self.rename_input[self.rename_cursor..]
+                        .chars()
+                        .next()
+                        .map(|c| c.len_utf8())
+                        .unwrap_or(0);
                 }
             }
             KeyCode::Home => {
@@ -761,11 +776,11 @@ impl ListApp {
                 if self.rename_selected_all {
                     self.rename_input.clear();
                     self.rename_input.push(c);
-                    self.rename_cursor = 1;
+                    self.rename_cursor = c.len_utf8();
                     self.rename_selected_all = false;
                 } else if self.rename_input.len() < max_stem_len {
                     self.rename_input.insert(self.rename_cursor, c);
-                    self.rename_cursor += 1;
+                    self.rename_cursor += c.len_utf8();
                 }
             }
             _ => {}

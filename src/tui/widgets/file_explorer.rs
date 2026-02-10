@@ -1006,10 +1006,8 @@ impl Widget for FileExplorerWidget<'_> {
                     // Show inline rename input on the selected item
                     if idx == selected_idx {
                         if let Some((input, cursor, selected_all)) = rename_state {
-                            let cursor_style = Style::default()
-                                .bg(theme.success)
-                                .fg(ratatui::style::Color::Black)
-                                .add_modifier(Modifier::SLOW_BLINK);
+                            let cursor_style =
+                                theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
 
                             if selected_all {
                                 // Show entire text as "selected" with cursor style
@@ -1022,12 +1020,18 @@ impl Widget for FileExplorerWidget<'_> {
                                     spans.push(Span::styled(before, theme.text_style()));
                                 }
                                 if cursor < input.len() {
+                                    // Find the end of the char at cursor
+                                    let char_len = input[cursor..]
+                                        .chars()
+                                        .next()
+                                        .map(|c| c.len_utf8())
+                                        .unwrap_or(1);
                                     // Block cursor on character under cursor
                                     spans.push(Span::styled(
-                                        &input[cursor..cursor + 1],
+                                        &input[cursor..cursor + char_len],
                                         cursor_style,
                                     ));
-                                    let after = &input[cursor + 1..];
+                                    let after = &input[cursor + char_len..];
                                     if !after.is_empty() {
                                         spans.push(Span::styled(after, theme.text_style()));
                                     }
