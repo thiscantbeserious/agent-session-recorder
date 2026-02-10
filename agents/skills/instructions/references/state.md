@@ -7,7 +7,7 @@
 ├── <branch>/                # Per-branch SDLC files (REQUIREMENTS/ADR/PLAN)
 └── ...                      # Additional branch-scoped artifacts as needed
 
-agents/skills/architecture/templates/  # Templates for state files
+agents/skills/instructions/templates/  # Templates for state files
 ├── current-phase.md
 ├── phase-progress.md
 

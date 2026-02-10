@@ -164,6 +164,7 @@ Only after code review:
 - Does implementation match ADR Decision?
 - Are all PLAN.md stages marked complete?
 - Was scope creep avoided?
+- For parallel runs: does each PR respect stage file ownership and dependencies?
 
 ### Step 8: Run Tests
 
@@ -234,3 +235,10 @@ When blocked, ask through Coordinator only.
 Allowed targets:
 - Implementer: intent behind implementation and test evidence
 - Architect: ADR interpretation and decision boundaries
+
+## Parallel Review Addendum
+
+When implementation ran in parallel across multiple PRs:
+1. Review each PR against its assigned stage ownership
+2. Run one additional integration review on the combined result
+3. Report cross-PR conflicts explicitly before approval

@@ -16,6 +16,7 @@ Conditionally load:
 - Read ADR.md at `.state/<branch-name>/ADR.md` for decision context
 - Work through PLAN.md stages, mark each task `- [ ]` → `- [x]` when done
 - Stay within ADR Decision scope (don't expand beyond what was decided)
+- Edit only files explicitly assigned to your stage owner in PLAN
 - Apply coding-principles
 - Follow TDD when writing new code
 - Run `cargo test` and `./tests/e2e_test.sh`
@@ -23,7 +24,7 @@ Conditionally load:
 
 ## Workflow
 
-1. Create feature branch
+1. Create feature branch for your assigned stage owner
 2. Implement with TDD
 3. Run all tests
 4. Create PR
@@ -82,3 +83,7 @@ When blocked, ask through Coordinator only.
 Allowed targets:
 - Architect: design intent and ADR interpretation
 - Reviewer: quality and risk concerns before handoff
+
+Parallel constraints:
+- If you need to touch files owned by another stage, stop and ask Coordinator to replan
+- Do not resolve ownership conflicts ad hoc in your branch
