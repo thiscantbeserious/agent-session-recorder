@@ -5,8 +5,7 @@
 ```
 .state/                      # Active state (minimal)
 ├── <branch>/                # Per-branch SDLC files (REQUIREMENTS/ADR/PLAN)
-└── locks/                   # Task claiming mechanism
-    └── .gitkeep
+└── ...                      # Additional branch-scoped artifacts as needed
 
 agents/skills/architecture/templates/  # Templates for state files
 ├── current-phase.md
@@ -26,24 +25,6 @@ gh pr list --state merged -L 10  # Recent completed work
 
 # 2. Check recent context
 gh pr list --state merged -L 10
-```
-
-## Task Locking (for parallel subagents)
-
-**Before working on a task:**
-```bash
-# Check if task is claimed
-if [ -f .state/locks/task-name.lock ]; then
-  echo "Task claimed, pick another"
-  exit 0
-fi
-# Claim it
-echo "$(date +%s)" > .state/locks/task-name.lock
-```
-
-**After completing a task:**
-```bash
-rm .state/locks/task-name.lock
 ```
 
 ## Tracking Progress via GitHub
@@ -84,7 +65,6 @@ Use PR metadata as the live state source:
 **CRITICAL:** After merging PRs and completing a phase, the coordinator MUST:
 
 1. **Clean up state files:**
-   - Remove old lock files from `.state/locks/`
    - Remove stale references to removed features
 
 2. **Archive old state** if needed:
@@ -103,7 +83,6 @@ Use PR metadata as the live state source:
 
 ### State Hygiene Checklist (End of Phase)
 
-- [ ] Old lock files removed from `.state/locks/`
 - [ ] No stale references to removed features
 - [ ] State changes committed and pushed
 

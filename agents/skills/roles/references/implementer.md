@@ -23,12 +23,11 @@ Conditionally load:
 
 ## Workflow
 
-1. Claim task via lock file
-2. Create feature branch
-3. Implement with TDD
-4. Run all tests
-5. Create PR
-6. Report completion
+1. Create feature branch
+2. Implement with TDD
+3. Run all tests
+4. Create PR
+5. Report completion
 
 ## Feature Branch Workflow
 
@@ -75,23 +74,6 @@ cargo tarpaulin    # Fails if coverage < threshold in config
 Coverage rules are defined in `tarpaulin.toml`. Run `cargo tarpaulin` to check.
 If coverage fails, review `coverage/tarpaulin-report.html` for uncovered lines.
 
-## Task Claiming
-
-Before working on a task:
-```bash
-# Check if task is claimed
-if [ -f .state/locks/task-name.lock ]; then
-  echo "Task claimed, pick another"
-  exit 0
-fi
-# Claim it
-echo "$(date +%s)" > .state/locks/task-name.lock
-```
-
-After completing:
-```bash
-rm .state/locks/task-name.lock
-```
 
 ## Role Collaboration
 
