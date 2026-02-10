@@ -51,6 +51,35 @@ pub fn run() -> Result<()> {
         failures
             .push("agents/skills/roles/SKILL.md: missing collaboration protocol section".into());
     }
+    if !roles_skill
+        .contains("Without `/roles`, never start this loop without explicit user confirmation.")
+    {
+        failures.push(
+            "agents/skills/roles/SKILL.md: missing explicit confirmation rule for Direct Assist quick loop".into(),
+        );
+    }
+
+    let coordinator_ref = fs::read_to_string("agents/skills/roles/references/coordinator.md")
+        .context("Failed to read agents/skills/roles/references/coordinator.md")?;
+    if !coordinator_ref.contains("Relay and gate only") {
+        failures.push(
+            "agents/skills/roles/references/coordinator.md: missing relay-and-gate boundary wording".into(),
+        );
+    }
+    if !coordinator_ref
+        .contains("must not make domain, requirements, or technical solution decisions")
+    {
+        failures.push(
+            "agents/skills/roles/references/coordinator.md: missing prohibition on domain/solution decisions".into(),
+        );
+    }
+    if !coordinator_ref
+        .contains("always requires explicit user confirmation before spawning Implementer/Reviewer")
+    {
+        failures.push(
+            "agents/skills/roles/references/coordinator.md: missing explicit confirmation rule for Direct Assist quick loop".into(),
+        );
+    }
 
     let state_ref = fs::read_to_string("agents/skills/instructions/references/state.md")
         .context("Failed to read agents/skills/instructions/references/state.md")?;

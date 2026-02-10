@@ -13,7 +13,8 @@ Startup policy:
 1. If user intent is explicit, skip menu and execute directly:
    - Explicit SDLC request -> start coordinator SDLC flow
    - Explicit direct question -> stay in Direct Assist
-   - Explicit role request (`/roles` or named role) -> switch to that role
+   - Explicit `/roles` request -> switch to requested role directly
+   - Explicit named role request without `/roles` -> ask for confirmation before switching roles
 2. If user message is simple greeting/small talk, respond naturally first, then offer:
    - Start SDLC workflow
    - Direct Assist (no SDLC yet)
@@ -21,6 +22,7 @@ Startup policy:
 
 Direct Assist policy:
 - Respond directly and do not spawn roles by default.
+- Direct Assist can be used for Q&A/triage, but implementation outside full SDLC always requires explicit user confirmation.
 - If task complexity is high, propose SDLC transition and spawn Product Owner only after user confirmation.
 - Complexity triggers include:
   - Multi-file changes
@@ -29,7 +31,7 @@ Direct Assist policy:
   - Elevated regression risk
 
 Quick implementation loop (inside Direct Assist):
-- For small bounded implementation tasks, run a minimal quality loop:
+- Only after explicit user confirmation, for small bounded implementation tasks, run a minimal quality loop:
   1. Spawn Implementer
   2. Spawn Reviewer (internal)
   3. Return reviewed result to user
@@ -37,6 +39,8 @@ Quick implementation loop (inside Direct Assist):
   - Implementer runs tests (at least `cargo test` + targeted tests)
   - Reviewer reports findings with severity
   - Blocking findings are fixed before handoff
+- This loop does not bypass coordinator-managed flow; it is a confirmed fast path within Direct Assist.
+- `/roles` is the only no-confirmation bypass of full SDLC. Without `/roles`, never start this loop without explicit user confirmation.
 - Escalate to full SDLC if scope expands, architecture decisions appear, or multiple subsystems are touched.
 
 Deterministic checks policy:
