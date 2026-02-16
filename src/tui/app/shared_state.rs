@@ -92,8 +92,8 @@ impl SharedState {
         }
         self.last_lock_refresh = Instant::now();
 
-        // Refresh lock state for currently visible items
-        self.explorer.refresh_visible_locks();
+        // Refresh lock/size metadata for currently visible locked items
+        self.explorer.refresh_visible_item_metadata();
 
         // Rescan file system for new/removed sessions
         self.maybe_refresh_file_list();
