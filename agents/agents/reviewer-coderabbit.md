@@ -1,19 +1,16 @@
 ---
 name: reviewer-coderabbit
-description: CodeRabbit response reviewer. Addresses external CodeRabbit findings by implementing fixes or documenting dismissal rationale.
+description: CodeRabbit response reviewer. Analyzes external CodeRabbit findings and reports actionable fixes or dismissal rationale to the Coordinator.
 model: sonnet
 tools:
   - Read
-  - Write
-  - Edit
   - Grep
   - Glob
   - Bash
 disallowedTools:
-  - NotebookEdit
-  - WebFetch
-  - WebSearch
-permissionMode: acceptEdits
+  - Edit
+  - Write
+permissionMode: default
 maxTurns: 40
 skills:
   - roles

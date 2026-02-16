@@ -9,10 +9,6 @@ tools:
   - Grep
   - Glob
   - Bash
-  - NotebookEdit
-disallowedTools:
-  - WebFetch
-  - WebSearch
 permissionMode: acceptEdits
 maxTurns: 75
 skills:

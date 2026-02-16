@@ -251,10 +251,10 @@ After CodeRabbit completes:
 
 1. Read all CodeRabbit comments - don't just skim
 2. For each finding:
-   - If valid: Implement the fix, verify no regressions
-   - If invalid: Document clear rationale for dismissal
-3. Re-run your own critical analysis on any fixes made
-4. Verify tests still pass after changes
+   - If valid: describe the required fix with file path and specific change needed
+   - If invalid: document clear rationale for dismissal
+3. Report all findings to the Coordinator with classification (valid/invalid)
+4. The Coordinator will delegate valid fixes to the Implementer
 
 ---
 

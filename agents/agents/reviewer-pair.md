@@ -10,9 +10,6 @@ tools:
 disallowedTools:
   - Edit
   - Write
-  - NotebookEdit
-  - WebFetch
-  - WebSearch
 permissionMode: default
 maxTurns: 15
 skills:

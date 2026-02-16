@@ -11,7 +11,6 @@ tools:
 disallowedTools:
   - Edit
   - Write
-  - NotebookEdit
 permissionMode: default
 skills:
   - roles

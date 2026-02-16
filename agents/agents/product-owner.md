@@ -10,9 +10,6 @@ tools:
 disallowedTools:
   - Edit
   - Bash
-  - NotebookEdit
-  - WebFetch
-  - WebSearch
 permissionMode: default
 maxTurns: 30
 skills:

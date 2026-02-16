@@ -76,7 +76,7 @@ PLAN: .state/<branch-name>/PLAN.md
 PR: <PR_NUMBER>
 Pair review context: <accumulated non-blocking findings>")
 
-Task(reviewer-coderabbit, "Address CodeRabbit findings.
+Task(reviewer-coderabbit, "Analyze CodeRabbit findings.
 Branch: <branch-name>
 ADR: .state/<branch-name>/ADR.md
 PLAN: .state/<branch-name>/PLAN.md
@@ -320,8 +320,14 @@ User Request
                            │                            │
                            ▼                            │
                   ┌─────────────────┐                   │
-                  │ Reviewer        │ Address CodeRabbit│
+                  │ Reviewer        │ Analyze CodeRabbit│
                   │ (coderabbit)    │ findings          │
+                  └────────┬────────┘                   │
+                           │                            │
+                           ▼                            │
+                  ┌─────────────────┐                   │
+                  │   Implementer   │  Fix valid        │
+                  │  (CodeRabbit)   │  findings         │
                   └────────┬────────┘                   │
                            │                            │
                            ▼                            │
@@ -380,15 +386,20 @@ User Request
 
 7. Spawn CodeRabbit Reviewer
    - `Task(reviewer-coderabbit, "...")`
-   - Addresses or dismisses each finding
+   - Analyzes each finding: classifies as valid (with fix description) or invalid (with rationale)
+   - Reports findings to Coordinator
 
-8. Spawn Product Owner for final validation
+8. Delegate valid CodeRabbit fixes to Implementer
+   - `Task(implementer, "Fix CodeRabbit findings: <valid findings list>")`
+   - Implementer applies fixes and runs tests
+
+9. Spawn Product Owner for final validation
    - `Task(product-owner, "Validate implementation...")`
    - Validates against REQUIREMENTS.md
 
-9. Spawn Maintainer to merge
-   - `Task(maintainer, "...")`
-   - Only after all approvals
+10. Spawn Maintainer to merge
+    - `Task(maintainer, "...")`
+    - Only after all approvals
 
 ## Responsibilities
 
