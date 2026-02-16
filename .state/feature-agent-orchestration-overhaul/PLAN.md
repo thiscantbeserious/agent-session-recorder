@@ -17,16 +17,16 @@ Goal: Create the `.claude/agents/` directory (physically `agents/agents/`) and a
 
 Owner: implementer
 
-- [ ] Create `agents/agents/` directory
-- [ ] Create `agents/agents/coordinator.md` with full frontmatter (model haiku, tools with Task declarations, disallowedTools, permissionMode, skills) and complete body content (starting a cycle, spawning agents, cross-consultation protocol, pair review lifecycle, boundaries, role-to-role routing, parallel mode, flow diagram, steps, transition gates, deterministic checks)
-- [ ] Create `agents/agents/product-owner.md` with frontmatter (Read/Grep/Glob/Write tools, disallowed Edit/Bash/NotebookEdit/WebFetch/WebSearch, maxTurns 30) and body (requirements gathering, interview structure, cross-consultation guidance, validation, sign-off)
-- [ ] Create `agents/agents/architect.md` with frontmatter (model opus, Read/Grep/Glob/Write/Bash tools, disallowed Edit/NotebookEdit/WebFetch/WebSearch, maxTurns 40) and body (mindset, design process, cross-consultation guidance, input/output, key rules)
-- [ ] Create `agents/agents/implementer.md` with frontmatter (Read/Write/Edit/Grep/Glob/Bash/NotebookEdit tools, disallowed WebFetch/WebSearch, acceptEdits, maxTurns 75) and body (required reading, workflow, stage completion reporting, TDD cycle, verification)
-- [ ] Create `agents/agents/reviewer-pair.md` with frontmatter (model haiku, Read/Grep/Glob/Bash tools, disallowed Edit/Write/NotebookEdit/WebFetch/WebSearch, maxTurns 15) and body (mindset, review scope, output format with questions/observations/flags, limitations)
-- [ ] Create `agents/agents/reviewer-internal.md` with frontmatter (model opus, Read/Grep/Glob/Bash tools, disallowed Edit/Write/NotebookEdit/WebFetch/WebSearch, maxTurns 40) and body (mindset, pair review context handling, severity classification, review steps 1-8, output format, anti-patterns, key rules)
-- [ ] Create `agents/agents/reviewer-coderabbit.md` with frontmatter (Read/Write/Edit/Grep/Glob/Bash tools, disallowed NotebookEdit/WebFetch/WebSearch, acceptEdits, maxTurns 40) and body (workflow for addressing CodeRabbit findings, key rules)
-- [ ] Create `agents/agents/maintainer.md` with frontmatter (Read/Grep/Glob/Bash/Edit tools, disallowed Write/NotebookEdit/WebFetch/WebSearch, maxTurns 25) and body (PR workflow, release process, key rules)
-- [ ] Verify all 8 files parse valid YAML frontmatter (manual check or script)
+- [x] Create `agents/agents/` directory
+- [x] Create `agents/agents/coordinator.md` with full frontmatter (model haiku, tools with Task declarations, disallowedTools, permissionMode, skills) and complete body content (starting a cycle, spawning agents, cross-consultation protocol, pair review lifecycle, boundaries, role-to-role routing, parallel mode, flow diagram, steps, transition gates, deterministic checks)
+- [x] Create `agents/agents/product-owner.md` with frontmatter (Read/Grep/Glob/Write tools, disallowed Edit/Bash/NotebookEdit/WebFetch/WebSearch, maxTurns 30) and body (requirements gathering, interview structure, cross-consultation guidance, validation, sign-off)
+- [x] Create `agents/agents/architect.md` with frontmatter (model opus, Read/Grep/Glob/Write/Bash tools, disallowed Edit/NotebookEdit/WebFetch/WebSearch, maxTurns 40) and body (mindset, design process, cross-consultation guidance, input/output, key rules)
+- [x] Create `agents/agents/implementer.md` with frontmatter (Read/Write/Edit/Grep/Glob/Bash/NotebookEdit tools, disallowed WebFetch/WebSearch, acceptEdits, maxTurns 75) and body (required reading, workflow, stage completion reporting, TDD cycle, verification)
+- [x] Create `agents/agents/reviewer-pair.md` with frontmatter (model haiku, Read/Grep/Glob/Bash tools, disallowed Edit/Write/NotebookEdit/WebFetch/WebSearch, maxTurns 15) and body (mindset, review scope, output format with questions/observations/flags, limitations)
+- [x] Create `agents/agents/reviewer-internal.md` with frontmatter (model opus, Read/Grep/Glob/Bash tools, disallowed Edit/Write/NotebookEdit/WebFetch/WebSearch, maxTurns 40) and body (mindset, pair review context handling, severity classification, review steps 1-8, output format, anti-patterns, key rules)
+- [x] Create `agents/agents/reviewer-coderabbit.md` with frontmatter (Read/Write/Edit/Grep/Glob/Bash tools, disallowed NotebookEdit/WebFetch/WebSearch, acceptEdits, maxTurns 40) and body (workflow for addressing CodeRabbit findings, key rules)
+- [x] Create `agents/agents/maintainer.md` with frontmatter (Read/Grep/Glob/Bash/Edit tools, disallowed Write/NotebookEdit/WebFetch/WebSearch, maxTurns 25) and body (PR workflow, release process, key rules)
+- [x] Verify all 8 files parse valid YAML frontmatter (manual check or script)
 
 Files: `agents/agents/coordinator.md`, `agents/agents/product-owner.md`, `agents/agents/architect.md`, `agents/agents/implementer.md`, `agents/agents/reviewer-pair.md`, `agents/agents/reviewer-internal.md`, `agents/agents/reviewer-coderabbit.md`, `agents/agents/maintainer.md`
 Depends on: none
@@ -43,13 +43,13 @@ Goal: Update `.claude/skills/roles/SKILL.md` to add cross-consultation protocol 
 
 Owner: implementer
 
-- [ ] Update Section 1 (Access pattern): change "default to `references/coordinator.md`" to "default to the coordinator agent". Update the role-assignment paragraph to reference agent file bodies instead of `references/` loading. Keep startup policy, Direct Assist policy, quick implementation loop, and deterministic checks unchanged.
-- [ ] Keep Section 2 (Restriction) unchanged
-- [ ] Keep Section 3 (Role-to-Role Collaboration Protocol) unchanged
-- [ ] Keep Section 4 (Verification) unchanged
-- [ ] Add Section 5 (Cross-Consultation Protocol): triggers (lead role request, Coordinator judgment, user request), guard rails (max 3 per phase, max 2 follow-ups, lead role owns artifact, escalation to user), allowed consultations table (PO phase -> Architect, Architect phase -> PO)
-- [ ] Add Section 6 (Phases): definition of phases, naming convention (`<role>-<phase>.md`), current phase definitions (reviewer-pair, reviewer-internal, reviewer-coderabbit)
-- [ ] Verify that existing required content strings still pass `validate-workflow`: "Direct Assist", "Role-to-Role Collaboration Protocol", "Without `/roles`, never start this loop without explicit user confirmation."
+- [x] Update Section 1 (Access pattern): change "default to `references/coordinator.md`" to "default to the coordinator agent". Update the role-assignment paragraph to reference agent file bodies instead of `references/` loading. Keep startup policy, Direct Assist policy, quick implementation loop, and deterministic checks unchanged.
+- [x] Keep Section 2 (Restriction) unchanged
+- [x] Keep Section 3 (Role-to-Role Collaboration Protocol) unchanged
+- [x] Keep Section 4 (Verification) unchanged
+- [x] Add Section 5 (Cross-Consultation Protocol): triggers (lead role request, Coordinator judgment, user request), guard rails (max 3 per phase, max 2 follow-ups, lead role owns artifact, escalation to user), allowed consultations table (PO phase -> Architect, Architect phase -> PO)
+- [x] Add Section 6 (Phases): definition of phases, naming convention (`<role>-<phase>.md`), current phase definitions (reviewer-pair, reviewer-internal, reviewer-coderabbit)
+- [x] Verify that existing required content strings still pass `validate-workflow`: "Direct Assist", "Role-to-Role Collaboration Protocol", "Without `/roles`, never start this loop without explicit user confirmation."
 
 Files: `agents/skills/roles/SKILL.md`
 Depends on: none
@@ -65,11 +65,11 @@ Goal: Update `.claude/skills/roles/README.md` to reflect the new agent-based arc
 
 Owner: implementer
 
-- [ ] Update the Flow diagram to include cross-consultation arrows (PO <-> Architect) and pair review step between implementation stages
-- [ ] Update the Roles section to mention the three reviewer phases (pair, internal, coderabbit) instead of a single Reviewer
-- [ ] Update the "Key Principles" section to add: agent files as configuration, skills as shared protocols
-- [ ] Add a section on Phases explaining the `<role>-<phase>.md` naming convention
-- [ ] Update any references to "references/" directory to explain the new agent-body-based architecture
+- [x] Update the Flow diagram to include cross-consultation arrows (PO <-> Architect) and pair review step between implementation stages
+- [x] Update the Roles section to mention the three reviewer phases (pair, internal, coderabbit) instead of a single Reviewer
+- [x] Update the "Key Principles" section to add: agent files as configuration, skills as shared protocols
+- [x] Add a section on Phases explaining the `<role>-<phase>.md` naming convention
+- [x] Update any references to "references/" directory to explain the new agent-body-based architecture
 
 Files: `agents/skills/roles/README.md`
 Depends on: Stage 1, Stage 2
@@ -84,14 +84,14 @@ Goal: Remove the 6 role reference files whose content has migrated to agent file
 
 Owner: implementer
 
-- [ ] Delete `agents/skills/roles/references/coordinator.md`
-- [ ] Delete `agents/skills/roles/references/product-owner.md`
-- [ ] Delete `agents/skills/roles/references/architect.md`
-- [ ] Delete `agents/skills/roles/references/implementer.md`
-- [ ] Delete `agents/skills/roles/references/reviewer.md`
-- [ ] Delete `agents/skills/roles/references/maintainer.md`
-- [ ] Verify that `agents/skills/roles/references/` directory is empty (or remove it if no templates remain)
-- [ ] Grep entire codebase for remaining references to `references/coordinator.md`, `references/reviewer.md`, etc. and update any stale paths
+- [x] Delete `agents/skills/roles/references/coordinator.md`
+- [x] Delete `agents/skills/roles/references/product-owner.md`
+- [x] Delete `agents/skills/roles/references/architect.md`
+- [x] Delete `agents/skills/roles/references/implementer.md`
+- [x] Delete `agents/skills/roles/references/reviewer.md`
+- [x] Delete `agents/skills/roles/references/maintainer.md`
+- [x] Verify that `agents/skills/roles/references/` directory is empty (or remove it if no templates remain)
+- [x] Grep entire codebase for remaining references to `references/coordinator.md`, `references/reviewer.md`, etc. and update any stale paths
 
 Files: `agents/skills/roles/references/coordinator.md`, `agents/skills/roles/references/product-owner.md`, `agents/skills/roles/references/architect.md`, `agents/skills/roles/references/implementer.md`, `agents/skills/roles/references/reviewer.md`, `agents/skills/roles/references/maintainer.md`
 Depends on: Stage 1, Stage 2
@@ -107,17 +107,17 @@ Goal: Update `xtask/src/workflow/validate.rs` to validate the new agent files in
 
 Owner: implementer
 
-- [ ] Update the `files` array to replace reference file paths with agent file paths: `agents/agents/coordinator.md`, `agents/agents/product-owner.md`, `agents/agents/architect.md`, `agents/agents/implementer.md`, `agents/agents/reviewer-pair.md`, `agents/agents/reviewer-internal.md`, `agents/agents/reviewer-coderabbit.md`, `agents/agents/maintainer.md`
-- [ ] Keep `agents/skills/roles/SKILL.md` and `agents/skills/instructions/references/state.md` in the files array
-- [ ] Update the banned-term check: same banned terms apply to agent files
-- [ ] Update the `orchestrator` legacy term check: apply to agent files in `agents/agents/` (path prefix changes from `agents/skills/roles/` to `agents/agents/`)
-- [ ] Update the Coordinator-specific checks: "Relay and gate only" and "must not make domain, requirements, or technical solution decisions" and "always requires explicit user confirmation before spawning Implementer/Reviewer" must now be found in `agents/agents/coordinator.md` instead of `agents/skills/roles/references/coordinator.md`
-- [ ] Keep SKILL.md checks unchanged (Direct Assist, collaboration protocol, confirmation rule)
-- [ ] Keep state.md and PLAN template checks unchanged
-- [ ] Add new validation: check that all 8 agent files exist in `agents/agents/`
-- [ ] Add new validation: check that `agents/agents/coordinator.md` contains `Task(` (spawning declaration)
-- [ ] Run `cargo xtask validate-workflow` and confirm it passes
-- [ ] Run `cargo test` for the xtask crate
+- [x] Update the `files` array to replace reference file paths with agent file paths: `agents/agents/coordinator.md`, `agents/agents/product-owner.md`, `agents/agents/architect.md`, `agents/agents/implementer.md`, `agents/agents/reviewer-pair.md`, `agents/agents/reviewer-internal.md`, `agents/agents/reviewer-coderabbit.md`, `agents/agents/maintainer.md`
+- [x] Keep `agents/skills/roles/SKILL.md` and `agents/skills/instructions/references/state.md` in the files array
+- [x] Update the banned-term check: same banned terms apply to agent files
+- [x] Update the `orchestrator` legacy term check: apply to agent files in `agents/agents/` (path prefix changes from `agents/skills/roles/` to `agents/agents/`)
+- [x] Update the Coordinator-specific checks: "Relay and gate only" and "must not make domain, requirements, or technical solution decisions" and "always requires explicit user confirmation before spawning Implementer/Reviewer" must now be found in `agents/agents/coordinator.md` instead of `agents/skills/roles/references/coordinator.md`
+- [x] Keep SKILL.md checks unchanged (Direct Assist, collaboration protocol, confirmation rule)
+- [x] Keep state.md and PLAN template checks unchanged
+- [x] Add new validation: check that all 8 agent files exist in `agents/agents/`
+- [x] Add new validation: check that `agents/agents/coordinator.md` contains `Task(` (spawning declaration)
+- [x] Run `cargo xtask validate-workflow` and confirm it passes
+- [x] Run `cargo test` for the xtask crate
 
 Files: `xtask/src/workflow/validate.rs`
 Depends on: Stage 1, Stage 2, Stage 4
@@ -134,11 +134,11 @@ Goal: Update the top-level AGENTS.md (which is also CLAUDE.md via symlink behavi
 
 Owner: implementer
 
-- [ ] Update AGENTS.md Section 1 to reference agent-based spawning instead of skill-based role loading. The "Auto-load the `roles` skill" instruction remains (skills still provide shared protocols), but add context that agents are now spawned by name.
-- [ ] Grep for any remaining references to `references/coordinator.md`, `references/reviewer.md`, `references/architect.md`, `references/implementer.md`, `references/product-owner.md`, `references/maintainer.md` across the entire codebase and update them
-- [ ] Check `agents/skills/instructions/references/sdlc.md` for any references to the old role-loading pattern and update if needed
-- [ ] Check `agents/skills/instructions/references/state.md` for any references that need updating
-- [ ] Run `cargo xtask validate-workflow` as final verification
+- [x] Update AGENTS.md Section 1 to reference agent-based spawning instead of skill-based role loading. The "Auto-load the `roles` skill" instruction remains (skills still provide shared protocols), but add context that agents are now spawned by name.
+- [x] Grep for any remaining references to `references/coordinator.md`, `references/reviewer.md`, `references/architect.md`, `references/implementer.md`, `references/product-owner.md`, `references/maintainer.md` across the entire codebase and update them
+- [x] Check `agents/skills/instructions/references/sdlc.md` for any references to the old role-loading pattern and update if needed
+- [x] Check `agents/skills/instructions/references/state.md` for any references that need updating
+- [x] Run `cargo xtask validate-workflow` as final verification
 
 Files: `AGENTS.md`, `agents/skills/instructions/references/sdlc.md`
 Depends on: Stage 5
@@ -176,9 +176,9 @@ Updated by implementer as work progresses.
 
 | Stage | Status | Notes |
 |-------|--------|-------|
-| 1 | pending | 8 agent files |
-| 2 | pending | SKILL.md update |
-| 3 | pending | README update |
-| 4 | pending | Delete 6 reference files |
-| 5 | pending | Update validate-workflow |
-| 6 | pending | Cross-reference cleanup |
+| 1 | completed | 8 agent files created in agents/agents/, symlink verified, YAML frontmatter validated |
+| 2 | completed | SKILL.md update |
+| 3 | completed | README update with new flow diagram, reviewer phases, agent architecture, phases section |
+| 4 | completed | Deleted 6 reference files, removed empty references/ directory, grepped for stale paths |
+| 5 | completed | Updated validate-workflow xtask to validate new agent files, all tests pass |
+| 6 | completed | Updated AGENTS.md, verified no stale references in active files, validated workflow |

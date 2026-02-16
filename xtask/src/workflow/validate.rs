@@ -6,12 +6,14 @@ pub fn run() -> Result<()> {
     let files = [
         "AGENTS.md",
         "agents/skills/roles/SKILL.md",
-        "agents/skills/roles/references/coordinator.md",
-        "agents/skills/roles/references/architect.md",
-        "agents/skills/roles/references/implementer.md",
-        "agents/skills/roles/references/reviewer.md",
-        "agents/skills/roles/references/product-owner.md",
-        "agents/skills/roles/references/maintainer.md",
+        "agents/agents/coordinator.md",
+        "agents/agents/product-owner.md",
+        "agents/agents/architect.md",
+        "agents/agents/implementer.md",
+        "agents/agents/reviewer-pair.md",
+        "agents/agents/reviewer-internal.md",
+        "agents/agents/reviewer-coderabbit.md",
+        "agents/agents/maintainer.md",
         "agents/skills/instructions/references/state.md",
     ];
 
@@ -34,7 +36,7 @@ pub fn run() -> Result<()> {
             }
         }
 
-        if file.starts_with("agents/skills/roles/")
+        if (file.starts_with("agents/skills/roles/") || file.starts_with("agents/agents/"))
             && content.to_lowercase().contains("orchestrator")
         {
             failures.push(format!(
@@ -61,25 +63,30 @@ pub fn run() -> Result<()> {
         );
     }
 
-    let coordinator_ref = fs::read_to_string("agents/skills/roles/references/coordinator.md")
-        .context("Failed to read agents/skills/roles/references/coordinator.md")?;
+    let coordinator_ref = fs::read_to_string("agents/agents/coordinator.md")
+        .context("Failed to read agents/agents/coordinator.md")?;
     if !coordinator_ref.contains("Relay and gate only") {
-        failures.push(
-            "agents/skills/roles/references/coordinator.md: missing relay-and-gate boundary wording".into(),
-        );
+        failures
+            .push("agents/agents/coordinator.md: missing relay-and-gate boundary wording".into());
     }
     if !coordinator_ref
         .contains("must not make domain, requirements, or technical solution decisions")
     {
         failures.push(
-            "agents/skills/roles/references/coordinator.md: missing prohibition on domain/solution decisions".into(),
+            "agents/agents/coordinator.md: missing prohibition on domain/solution decisions".into(),
         );
     }
     if !coordinator_ref
         .contains("always requires explicit user confirmation before spawning Implementer/Reviewer")
     {
         failures.push(
-            "agents/skills/roles/references/coordinator.md: missing explicit confirmation rule for Direct Assist quick loop".into(),
+            "agents/agents/coordinator.md: missing explicit confirmation rule for Direct Assist quick loop".into(),
+        );
+    }
+    if !coordinator_ref.contains("Task(") {
+        failures.push(
+            "agents/agents/coordinator.md: missing Task( spawning declaration in frontmatter"
+                .into(),
         );
     }
 
@@ -98,6 +105,22 @@ pub fn run() -> Result<()> {
             failures.push(format!(
                 "agents/skills/roles/templates/PLAN.md: missing required field `{required}`"
             ));
+        }
+    }
+
+    let agent_files = [
+        "agents/agents/coordinator.md",
+        "agents/agents/product-owner.md",
+        "agents/agents/architect.md",
+        "agents/agents/implementer.md",
+        "agents/agents/reviewer-pair.md",
+        "agents/agents/reviewer-internal.md",
+        "agents/agents/reviewer-coderabbit.md",
+        "agents/agents/maintainer.md",
+    ];
+    for agent_file in agent_files {
+        if !std::path::Path::new(agent_file).exists() {
+            failures.push(format!("{agent_file}: agent file does not exist"));
         }
     }
 

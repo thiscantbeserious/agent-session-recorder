@@ -626,7 +626,7 @@ When spawned for final validation, verify the implementation solves the original
 
 ### Verification Checklist
 
-1. `ls .state/<branch>/` -- confirm REQUIREMENTS.md exists
+1. Use Glob to confirm `.state/<branch>/REQUIREMENTS.md` exists
 2. For each acceptance criterion: state PASS, FAIL, or UNVERIFIED with evidence
 3. If unclear, ask Reviewer or Implementer first, user last
 

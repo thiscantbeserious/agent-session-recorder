@@ -1,13 +1,13 @@
 ---
 name: roles
-description: Agent role definitions. Load when assigned a role and read the matching file from references/ (only the role you are supposed to take). If asked for a list return a numbered list of all roles and give the user the option to choose by number or name.
+description: Agent role definitions. Shared protocols for cross-role collaboration, verification, cross-consultation, and phase definitions. Agent-specific behavioral instructions live in .claude/agents/ files.
 ---
 
 # Agent Roles
 
 ## 1. Access pattern
 
-If no role is explicitly assigned, default to `references/coordinator.md`.
+If no role is explicitly assigned, default to the coordinator agent.
 
 Startup policy:
 1. If user intent is explicit, skip menu and execute directly:
@@ -48,7 +48,7 @@ Deterministic checks policy:
 - Use `cargo xtask validate-plan --plan .state/<branch>/PLAN.md` before parallel implementation.
 - Use `cargo xtask coordinate-plan --plan .state/<branch>/PLAN.md` to derive dependency-safe spawn batches.
 
-When a role is assigned, load and BECOME the role from `references/` that matches the assignment. After reading the role file, you ARE that role. Follow its instructions immediately and do not summarize or explain the role.
+When a role is assigned via agent spawning, the agent file body contains the role's behavioral instructions. The skills field preloads this SKILL.md for shared protocols.
 
 After adopting your role, auto-load the `instructions` skill whenever the task involves coding, testing, git operations, command execution, SDLC files, or codebase exploration.
 
@@ -85,3 +85,37 @@ Limits:
 - Check checkboxes are `[x]` before claiming stages complete
 - Evidence = file path, line number, or command output
 - If unclear → ask other roles first, user last
+
+## 5. Cross-Consultation Protocol
+
+Cross-consultation extends the Role-to-Role Collaboration Protocol (Section 3) for proactive secondary-agent consultations during PO and Architect phases.
+
+### Triggers
+1. Lead role requests consultation in output
+2. Coordinator judges consultation would prevent rework
+3. User requests consultation
+
+### Guard Rails
+- Max 3 cross-consultations per phase
+- Uses Section 3 structured request/response format
+- Max 2 follow-ups per consultation question
+- Lead role retains final authority over their artifact
+- Unresolved disagreements escalate to user
+
+### Allowed Consultations
+- PO phase: consult Architect (feasibility, scope, early design)
+- Architect phase: consult PO (alignment, requirements accuracy)
+
+## 6. Phases
+
+A phase is a named operational mode of a role, represented by a separate agent file in `.claude/agents/`. Each phase determines:
+1. Behavioral persona (defined in agent file body)
+2. Agent configuration (model, tools, permissions in frontmatter)
+3. Trigger context (when in the SDLC the Coordinator spawns it)
+
+A role without phases has a single agent file. A role with phases has one agent file per phase, named `<role>-<phase>.md`.
+
+Current phase definitions:
+- reviewer-pair: collaborative, during implementation (per stage)
+- reviewer-internal: adversarial, after full implementation
+- reviewer-coderabbit: focused, after CodeRabbit review
