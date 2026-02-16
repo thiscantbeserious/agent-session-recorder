@@ -29,6 +29,8 @@ pub enum ImportError {
     InvalidFormat(String),
     /// Copy operation failed
     CopyFailed(String),
+    /// Agent name is invalid (path traversal attempt or empty)
+    InvalidAgentName(String),
 }
 
 impl std::fmt::Display for ImportError {
@@ -39,11 +41,49 @@ impl std::fmt::Display for ImportError {
             ImportError::WrongExtension(msg) => write!(f, "Wrong extension: {}", msg),
             ImportError::InvalidFormat(msg) => write!(f, "Invalid format: {}", msg),
             ImportError::CopyFailed(msg) => write!(f, "Copy failed: {}", msg),
+            ImportError::InvalidAgentName(msg) => write!(f, "Invalid agent name: {}", msg),
         }
     }
 }
 
 impl std::error::Error for ImportError {}
+
+/// Validates that an agent name is safe to use for directory creation.
+///
+/// Rejects agent names that:
+/// - Contain path separators (`/` or `\`)
+/// - Contain path traversal sequences (`..`)
+/// - Are empty or contain only whitespace
+///
+/// This prevents path traversal attacks when creating agent directories.
+fn validate_agent_name(agent: &str) -> Result<(), ImportError> {
+    let trimmed = agent.trim();
+
+    // Reject empty or whitespace-only names
+    if trimmed.is_empty() {
+        return Err(ImportError::InvalidAgentName(
+            "Agent name cannot be empty".to_string(),
+        ));
+    }
+
+    // Reject path separators
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        return Err(ImportError::InvalidAgentName(format!(
+            "Agent name cannot contain path separators: {}",
+            agent
+        )));
+    }
+
+    // Reject path traversal attempts
+    if trimmed.contains("..") {
+        return Err(ImportError::InvalidAgentName(format!(
+            "Agent name cannot contain '..': {}",
+            agent
+        )));
+    }
+
+    Ok(())
+}
 
 /// Validates that a file is a valid asciicast file by checking its header.
 ///
@@ -567,6 +607,9 @@ impl StorageManager {
     /// * `Ok(PathBuf)` - Full path to the imported file in managed storage
     /// * `Err(ImportError)` - If validation or copy fails
     pub fn import_cast_file(&self, source: &Path, agent: &str) -> Result<PathBuf, ImportError> {
+        // Validate agent name to prevent path traversal
+        validate_agent_name(agent)?;
+
         // Validate the source file
         validate_cast_header(source)?;
 
@@ -583,6 +626,27 @@ impl StorageManager {
 
         // Resolve conflicts
         let target = resolve_filename_conflict(&agent_dir, filename);
+
+        // Defense in depth: verify target path is within storage directory
+        let storage_dir = self.storage_dir();
+        let canonical_storage = storage_dir.canonicalize().map_err(|e| {
+            ImportError::CopyFailed(format!("Failed to canonicalize storage dir: {}", e))
+        })?;
+
+        // Get the parent of target and canonicalize it (target doesn't exist yet)
+        let target_parent = target
+            .parent()
+            .ok_or_else(|| ImportError::CopyFailed("Target path has no parent".to_string()))?;
+        let canonical_target_parent = target_parent.canonicalize().map_err(|e| {
+            ImportError::CopyFailed(format!("Failed to canonicalize target path: {}", e))
+        })?;
+
+        if !canonical_target_parent.starts_with(&canonical_storage) {
+            return Err(ImportError::InvalidAgentName(format!(
+                "Target path is outside storage directory: {}",
+                target.display()
+            )));
+        }
 
         // Copy file
         fs::copy(source, &target)
@@ -750,5 +814,167 @@ mod tests {
         let codex_sessions = manager.list_sessions(Some("codex")).unwrap();
         assert_eq!(codex_sessions.len(), 1);
         assert_eq!(codex_sessions[0].agent, "codex");
+    }
+
+    // ========================================================================
+    // Path Traversal Security Tests
+    // ========================================================================
+
+    /// Test that import_cast_file rejects agent names with path traversal attempts.
+    #[test]
+    fn import_cast_file_rejects_path_traversal() {
+        let temp = TempDir::new().unwrap();
+        let storage_dir = temp.path();
+
+        // Create a valid cast file to import
+        let source = temp.path().join("test.cast");
+        let mut f = fs::File::create(&source).unwrap();
+        writeln!(f, r#"{{"version":3,"width":80,"height":24}}"#).unwrap();
+        writeln!(f, r#"[0.1,"o","test"]"#).unwrap();
+
+        let config = create_test_config(storage_dir);
+        let manager = StorageManager::new(config);
+
+        // Test various path traversal attempts
+        let malicious_names = vec![
+            "../../etc",
+            "../../../root",
+            "..\\..\\windows",
+            "agent/../etc",
+            "./../../tmp",
+        ];
+
+        for agent_name in malicious_names {
+            let result = manager.import_cast_file(&source, agent_name);
+            assert!(
+                result.is_err(),
+                "Should reject path traversal attempt: {}",
+                agent_name
+            );
+
+            // Verify error is InvalidAgentName
+            match result {
+                Err(crate::storage::ImportError::InvalidAgentName(_)) => {
+                    // Expected error type
+                }
+                other => panic!(
+                    "Expected InvalidAgentName error for '{}', got: {:?}",
+                    agent_name, other
+                ),
+            }
+        }
+    }
+
+    /// Test that import_cast_file rejects empty or whitespace-only agent names.
+    #[test]
+    fn import_cast_file_rejects_empty_agent() {
+        let temp = TempDir::new().unwrap();
+        let storage_dir = temp.path();
+
+        // Create a valid cast file
+        let source = temp.path().join("test.cast");
+        let mut f = fs::File::create(&source).unwrap();
+        writeln!(f, r#"{{"version":3,"width":80,"height":24}}"#).unwrap();
+        writeln!(f, r#"[0.1,"o","test"]"#).unwrap();
+
+        let config = create_test_config(storage_dir);
+        let manager = StorageManager::new(config);
+
+        // Test empty and whitespace-only names
+        let invalid_names = vec!["", "   ", "\t", "\n", "  \n\t  "];
+
+        for agent_name in invalid_names {
+            let result = manager.import_cast_file(&source, agent_name);
+            assert!(
+                result.is_err(),
+                "Should reject empty/whitespace agent name: {:?}",
+                agent_name
+            );
+
+            // Verify error is InvalidAgentName
+            match result {
+                Err(crate::storage::ImportError::InvalidAgentName(_)) => {
+                    // Expected error type
+                }
+                other => panic!(
+                    "Expected InvalidAgentName error for '{:?}', got: {:?}",
+                    agent_name, other
+                ),
+            }
+        }
+    }
+
+    /// Test that import_cast_file rejects agent names with slashes.
+    #[test]
+    fn import_cast_file_rejects_slashes() {
+        let temp = TempDir::new().unwrap();
+        let storage_dir = temp.path();
+
+        // Create a valid cast file
+        let source = temp.path().join("test.cast");
+        let mut f = fs::File::create(&source).unwrap();
+        writeln!(f, r#"{{"version":3,"width":80,"height":24}}"#).unwrap();
+        writeln!(f, r#"[0.1,"o","test"]"#).unwrap();
+
+        let config = create_test_config(storage_dir);
+        let manager = StorageManager::new(config);
+
+        // Test names with slashes
+        let invalid_names = vec!["agent/subdir", "path\\to\\agent", "/absolute/path"];
+
+        for agent_name in invalid_names {
+            let result = manager.import_cast_file(&source, agent_name);
+            assert!(
+                result.is_err(),
+                "Should reject agent name with slashes: {}",
+                agent_name
+            );
+
+            match result {
+                Err(crate::storage::ImportError::InvalidAgentName(_)) => {
+                    // Expected error type
+                }
+                other => panic!(
+                    "Expected InvalidAgentName error for '{}', got: {:?}",
+                    agent_name, other
+                ),
+            }
+        }
+    }
+
+    /// Test that import_cast_file accepts valid agent names.
+    #[test]
+    fn import_cast_file_accepts_valid_agent_names() {
+        let temp = TempDir::new().unwrap();
+        let storage_dir = temp.path();
+
+        // Create a valid cast file
+        let source = temp.path().join("test.cast");
+        let mut f = fs::File::create(&source).unwrap();
+        writeln!(f, r#"{{"version":3,"width":80,"height":24}}"#).unwrap();
+        writeln!(f, r#"[0.1,"o","test"]"#).unwrap();
+
+        let config = create_test_config(storage_dir);
+        let manager = StorageManager::new(config);
+
+        // Test valid agent names
+        let valid_names = vec![
+            "claude",
+            "agent-1",
+            "my_agent",
+            "AgentName123",
+            "a",
+            "test-agent_v2",
+        ];
+
+        for agent_name in valid_names {
+            let result = manager.import_cast_file(&source, agent_name);
+            assert!(
+                result.is_ok(),
+                "Should accept valid agent name '{}': {:?}",
+                agent_name,
+                result
+            );
+        }
     }
 }
