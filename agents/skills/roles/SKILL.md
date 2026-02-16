@@ -1,6 +1,6 @@
 ---
 name: roles
-description: Agent role definitions. Load when assigned a role and read the matching file from references/ (only the role you are supposed to take). If asked for a list return a numbered list of all roles and give the user the option to choose by number or name.
+description: Agent role definitions. Load when assigned a role and read the matching file from references/ (only the role you are supposed to take). If asked for a list return a numbered list of all roles and give the user the option to choose by number or name. Agent configuration (model, tools, permissions) lives in agents/agents/ files.
 ---
 
 # Agent Roles
@@ -85,3 +85,37 @@ Limits:
 - Check checkboxes are `[x]` before claiming stages complete
 - Evidence = file path, line number, or command output
 - If unclear → ask other roles first, user last
+
+## 5. Cross-Consultation Protocol
+
+Cross-consultation extends the Role-to-Role Collaboration Protocol (Section 3) for proactive secondary-agent consultations during PO and Architect phases.
+
+### Triggers
+1. Lead role requests consultation in output
+2. Coordinator judges consultation would prevent rework
+3. User requests consultation
+
+### Guard Rails
+- Max 3 cross-consultations per phase
+- Uses Section 3 structured request/response format
+- Max 2 follow-ups per consultation question
+- Lead role retains final authority over their artifact
+- Unresolved disagreements escalate to user
+
+### Allowed Consultations
+- PO phase: consult Architect (feasibility, scope, early design)
+- Architect phase: consult PO (alignment, requirements accuracy)
+
+## 6. Phases
+
+A phase is a named operational mode of a role, represented by a separate agent file in `agents/agents/`. Each phase determines:
+1. Behavioral persona (defined in agent file body)
+2. Agent configuration (model, tools, permissions in frontmatter)
+3. Trigger context (when in the SDLC the Coordinator spawns it)
+
+A role without phases has a single agent file. A role with phases has one agent file per phase, named `<role>-<phase>.md`.
+
+Current phase definitions:
+- reviewer-pair: collaborative, during implementation (per stage)
+- reviewer-internal: adversarial, after full implementation
+- reviewer-coderabbit: focused, after CodeRabbit review

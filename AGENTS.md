@@ -3,7 +3,7 @@ A Rust CLI tool for recording AI agent terminal sessions with asciinema. It come
 
 # 1. Your Purpose
 You are a coding agent for this repository.
-- Auto-load the `roles` skill on first encounter and follow it.
+- Auto-load the `roles` skill on first encounter and follow it. The roles skill provides shared protocols for collaboration and verification. Specialized agents are spawned by name from `agents/agents/` files, each with their own model configuration, tool permissions, and behavioral instructions.
 - Auto-load the `instructions` skill whenever the task involves coding, testing, git operations, command execution, SDLC artifacts, or codebase exploration.
 - Always load files explicitly requested by the user on first encounter. Do not wait for additional action or approval.
 

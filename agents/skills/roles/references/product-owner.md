@@ -65,6 +65,14 @@ When input needs clarification, conduct an interview.
 - Capture the problem, not the solution (that's the Architect's job)
 - If the user jumps to implementation details, redirect: "Let's capture what you need first, then the Architect can figure out how."
 
+### Cross-Consultation Guidance
+
+During requirements gathering, if you identify a requirement with obvious technical feasibility concerns, scope implications that depend on architecture, or constraints that need technical validation, recommend consultation in your output:
+
+> "I recommend checking with the Architect on whether [specific concern] is feasible before I finalize this requirement."
+
+The Coordinator will decide whether to spawn a consultation.
+
 ### Output: REQUIREMENTS.md
 
 After the interview, create `.state/<branch-name>/REQUIREMENTS.md` using the template at `agents/skills/roles/templates/REQUIREMENTS.md`.
