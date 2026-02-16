@@ -803,15 +803,20 @@ impl FileExplorer {
         }
     }
 
-    /// Refresh lock_info for visible items that currently have a lock.
+    /// Refresh lock and size metadata for visible items.
     ///
-    /// Called periodically to detect when recordings end.
-    pub fn refresh_visible_locks(&mut self) {
+    /// Called periodically to detect lock state changes and keep in-progress
+    /// recording size display current for locked items.
+    pub fn refresh_visible_item_metadata(&mut self) {
         for &item_idx in &self.visible_indices {
-            if self.items[item_idx].lock_info.is_some() {
-                let path = self.items[item_idx].path.clone();
-                self.items[item_idx].lock_info = lock::read_lock(std::path::Path::new(&path));
+            let path = self.items[item_idx].path.clone();
+            let lock_info = lock::read_lock(std::path::Path::new(&path));
+            if lock_info.is_some() {
+                if let Ok(metadata) = std::fs::metadata(&path) {
+                    self.items[item_idx].size = metadata.len();
+                }
             }
+            self.items[item_idx].lock_info = lock_info;
         }
     }
 
@@ -1258,6 +1263,8 @@ fn format_size(bytes: u64) -> String {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use std::fs;
+    use tempfile::TempDir;
 
     fn create_test_items() -> Vec<FileItem> {
         vec![
@@ -1525,6 +1532,36 @@ mod tests {
         assert_eq!(format_size(1536), "1.5 KB");
         assert_eq!(format_size(1048576), "1.0 MB");
         assert_eq!(format_size(1073741824), "1.0 GB");
+    }
+
+    #[test]
+    fn refresh_visible_item_metadata_updates_size_when_lock_appears_after_creation() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("session.cast");
+        fs::write(&path, b"abc").unwrap();
+        let modified = Local.with_ymd_and_hms(2024, 1, 15, 10, 0, 0).unwrap();
+
+        // Item is created before lock exists, so cached lock_info starts as None.
+        let item = FileItem::new(
+            path.to_string_lossy().as_ref(),
+            "session.cast",
+            "claude",
+            3,
+            modified,
+        );
+        let mut explorer = FileExplorer::new(vec![item]);
+        assert!(explorer.selected_item().unwrap().lock_info.is_none());
+
+        // Recording lock appears and file grows.
+        lock::create_lock(&path).unwrap();
+        fs::write(&path, b"abcdefghij").unwrap();
+
+        explorer.refresh_visible_item_metadata();
+        let selected = explorer.selected_item().unwrap();
+        assert_eq!(selected.size, 10);
+        assert!(selected.lock_info.is_some());
+
+        lock::remove_lock(&path);
     }
 
     // Search filter tests

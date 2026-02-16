@@ -411,7 +411,7 @@ impl ListApp {
         if let Some(item) = self.shared.explorer.selected_item() {
             let path = std::path::Path::new(&item.path);
             lock::remove_lock(path);
-            self.shared.explorer.refresh_visible_locks();
+            self.shared.explorer.refresh_visible_item_metadata();
             self.shared.status_message = Some("Lock removed".to_string());
         }
     }
