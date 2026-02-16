@@ -160,10 +160,10 @@ What must be done before what:
 
 ```
 Stage 1 ──┬──► Stage 3 ──► (informational, no downstream dependency)
-           │
+           │        ▲
            ├──► Stage 4 ──► Stage 5 ──► Stage 6
-           │         ▲
-Stage 2 ──┘─────────┘
+           │    ▲   ▲
+Stage 2 ──┴────┘───┘
 ```
 
 Parallel opportunities:

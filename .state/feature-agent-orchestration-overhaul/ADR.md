@@ -72,7 +72,7 @@ Rationale:
 
 ### Key Design Decisions
 
-**D1: Coordinator agent file is required.** The Coordinator runs as the main thread. Its agent file declares the explicit allowlist of spawnable agents via `Task(...)` in the `tools` field and denies Edit/Write to enforce "never write code." Without the file, the main thread could spawn any agent without restriction.
+**D1: Coordinator agent file is required.** The Coordinator runs as the main thread. Its agent file declares the explicit allowlist of spawnable agents via `Task(...)` in the `tools` field and denies Edit/Write to enforce "never write code." Without the file, the main thread could spawn any agent without restriction. The Coordinator omits `maxTurns` because it is the main thread agent, not a spawned subagent — turn limits do not apply.
 
 **D2: Skills field loads SKILL.md entry point only.** `skills: [roles, instructions]` injects the content of `SKILL.md` files, not the `references/` subdirectories. This means agent bodies must carry role-specific behavioral content directly. Shared cross-cutting content (collaboration protocol, verification rules, coding principles) comes from the skills.
 
@@ -542,6 +542,7 @@ If a user clearly wants to skip the process and just code, point them to `/roles
 ---
 name: product-owner
 description: Product Owner agent for requirements gathering and delivery validation. Spawned at the start of SDLC cycles for interviews and at the end for acceptance verification.
+model: sonnet
 tools:
   - Read
   - Grep
@@ -730,6 +731,7 @@ Use templates from `agents/skills/roles/templates/` for ADR.md and PLAN.md struc
 ---
 name: implementer
 description: Implementer agent for code changes. Works from PLAN stages, follows TDD, creates PRs. Spawned per implementation task.
+model: sonnet
 tools:
   - Read
   - Write
@@ -1038,6 +1040,7 @@ Use the REVIEW.md template format with severity-classified findings.
 ---
 name: reviewer-coderabbit
 description: CodeRabbit response reviewer. Addresses external CodeRabbit findings by implementing fixes or documenting dismissal rationale.
+model: sonnet
 tools:
   - Read
   - Write
@@ -1096,6 +1099,7 @@ After CodeRabbit completes its review:
 ---
 name: maintainer
 description: Maintainer agent for PR lifecycle and release management. Handles merging, CI monitoring, ADR status updates, and version tagging.
+model: sonnet
 tools:
   - Read
   - Grep
