@@ -14,6 +14,12 @@ pub fn run() -> Result<()> {
         "agents/agents/reviewer-internal.md",
         "agents/agents/reviewer-coderabbit.md",
         "agents/agents/maintainer.md",
+        "agents/skills/roles/references/coordinator.md",
+        "agents/skills/roles/references/product-owner.md",
+        "agents/skills/roles/references/architect.md",
+        "agents/skills/roles/references/implementer.md",
+        "agents/skills/roles/references/reviewer.md",
+        "agents/skills/roles/references/maintainer.md",
         "agents/skills/instructions/references/state.md",
     ];
 
@@ -63,27 +69,32 @@ pub fn run() -> Result<()> {
         );
     }
 
-    let coordinator_ref = fs::read_to_string("agents/agents/coordinator.md")
-        .context("Failed to read agents/agents/coordinator.md")?;
+    let coordinator_ref = fs::read_to_string("agents/skills/roles/references/coordinator.md")
+        .context("Failed to read agents/skills/roles/references/coordinator.md")?;
     if !coordinator_ref.contains("Relay and gate only") {
-        failures
-            .push("agents/agents/coordinator.md: missing relay-and-gate boundary wording".into());
+        failures.push(
+            "agents/skills/roles/references/coordinator.md: missing relay-and-gate boundary wording"
+                .into(),
+        );
     }
     if !coordinator_ref
         .contains("must not make domain, requirements, or technical solution decisions")
     {
         failures.push(
-            "agents/agents/coordinator.md: missing prohibition on domain/solution decisions".into(),
+            "agents/skills/roles/references/coordinator.md: missing prohibition on domain/solution decisions".into(),
         );
     }
     if !coordinator_ref
         .contains("always requires explicit user confirmation before spawning Implementer/Reviewer")
     {
         failures.push(
-            "agents/agents/coordinator.md: missing explicit confirmation rule for Direct Assist quick loop".into(),
+            "agents/skills/roles/references/coordinator.md: missing explicit confirmation rule for Direct Assist quick loop".into(),
         );
     }
-    if !coordinator_ref.contains("Task(") {
+
+    let coordinator_agent = fs::read_to_string("agents/agents/coordinator.md")
+        .context("Failed to read agents/agents/coordinator.md")?;
+    if !coordinator_agent.contains("Task(") {
         failures.push(
             "agents/agents/coordinator.md: missing Task( spawning declaration in frontmatter"
                 .into(),

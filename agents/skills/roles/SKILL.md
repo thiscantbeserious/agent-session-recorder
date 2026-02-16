@@ -1,13 +1,13 @@
 ---
 name: roles
-description: Agent role definitions. Shared protocols for cross-role collaboration, verification, cross-consultation, and phase definitions. Agent-specific behavioral instructions live in .claude/agents/ files.
+description: Agent role definitions. Load when assigned a role and read the matching file from references/ (only the role you are supposed to take). If asked for a list return a numbered list of all roles and give the user the option to choose by number or name. Agent configuration (model, tools, permissions) lives in agents/agents/ files.
 ---
 
 # Agent Roles
 
 ## 1. Access pattern
 
-If no role is explicitly assigned, default to the coordinator agent.
+If no role is explicitly assigned, default to `references/coordinator.md`.
 
 Startup policy:
 1. If user intent is explicit, skip menu and execute directly:
@@ -48,7 +48,7 @@ Deterministic checks policy:
 - Use `cargo xtask validate-plan --plan .state/<branch>/PLAN.md` before parallel implementation.
 - Use `cargo xtask coordinate-plan --plan .state/<branch>/PLAN.md` to derive dependency-safe spawn batches.
 
-When a role is assigned via agent spawning, the agent file body contains the role's behavioral instructions. The skills field preloads this SKILL.md for shared protocols.
+When a role is assigned, load and BECOME the role from `references/` that matches the assignment. After reading the role file, you ARE that role. Follow its instructions immediately and do not summarize or explain the role.
 
 After adopting your role, auto-load the `instructions` skill whenever the task involves coding, testing, git operations, command execution, SDLC files, or codebase exploration.
 
