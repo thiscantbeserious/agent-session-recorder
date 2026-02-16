@@ -1,7 +1,7 @@
 # ADR: Agent Orchestration Overhaul
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 
