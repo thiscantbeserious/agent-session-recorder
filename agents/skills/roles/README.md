@@ -84,7 +84,7 @@ User Request
 
 ## Agent-Based Architecture
 
-Roles are implemented as agent files in `.claude/agents/` (physically at `agents/agents/`). Each agent file contains:
+Roles are implemented as agent files in `agents/agents/` (physically at `agents/agents/`). Each agent file contains:
 
 1. **YAML frontmatter** - configuration (model, tools, permissions, skills, maxTurns)
 2. **Markdown body** - role-specific behavioral instructions, workflow, and output format
@@ -180,7 +180,7 @@ Modified by: Implementer (progress), Architect (scope changes via ADR loop)
 
 ## Phases
 
-A **phase** is a named operational mode of a role, represented by a separate agent file in `.claude/agents/`. Each phase determines:
+A **phase** is a named operational mode of a role, represented by a separate agent file in `agents/agents/`. Each phase determines:
 1. **Behavioral persona** (defined in agent file body)
 2. **Agent configuration** (model, tools, permissions in frontmatter)
 3. **Trigger context** (when in the SDLC the Coordinator spawns it)

@@ -108,7 +108,7 @@ Cross-consultation extends the Role-to-Role Collaboration Protocol (Section 3) f
 
 ## 6. Phases
 
-A phase is a named operational mode of a role, represented by a separate agent file in `.claude/agents/`. Each phase determines:
+A phase is a named operational mode of a role, represented by a separate agent file in `agents/agents/`. Each phase determines:
 1. Behavioral persona (defined in agent file body)
 2. Agent configuration (model, tools, permissions in frontmatter)
 3. Trigger context (when in the SDLC the Coordinator spawns it)
