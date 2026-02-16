@@ -648,6 +648,7 @@ When implementation includes work outside original requirements, identify out-of
 ---
 name: architect
 description: Architect agent for solution design. Creates ADR and PLAN documents with options analysis and execution stages.
+model: opus
 tools:
   - Read
   - Grep
