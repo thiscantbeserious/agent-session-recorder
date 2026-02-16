@@ -1,13 +1,146 @@
 //! Storage management for recorded sessions
+//!
+//! Provides functionality for:
+//! - Listing and filtering session recordings
+//! - Importing external .cast files into managed storage
+//! - Managing agent directories and session metadata
+//! - Computing storage statistics
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Datelike, Local};
 use humansize::{format_size, BINARY};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::io::BufRead;
+use std::path::{Path, PathBuf};
 
 use crate::config::Config;
+
+/// Errors that can occur during cast file import
+#[derive(Debug, Clone)]
+pub enum ImportError {
+    /// File was not found at the given path
+    NotFound(String),
+    /// Permission denied when accessing the file
+    PermissionDenied(String),
+    /// File does not have .cast extension
+    WrongExtension(String),
+    /// File format is invalid (not valid asciicast JSON)
+    InvalidFormat(String),
+    /// Copy operation failed
+    CopyFailed(String),
+}
+
+impl std::fmt::Display for ImportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ImportError::NotFound(msg) => write!(f, "File not found: {}", msg),
+            ImportError::PermissionDenied(msg) => write!(f, "Permission denied: {}", msg),
+            ImportError::WrongExtension(msg) => write!(f, "Wrong extension: {}", msg),
+            ImportError::InvalidFormat(msg) => write!(f, "Invalid format: {}", msg),
+            ImportError::CopyFailed(msg) => write!(f, "Copy failed: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for ImportError {}
+
+/// Validates that a file is a valid asciicast file by checking its header.
+///
+/// Checks:
+/// - File exists and is readable
+/// - Has .cast extension
+/// - First line is valid JSON with a "version" field
+/// - Version is 2 or 3
+pub fn validate_cast_header(path: &Path) -> Result<(), ImportError> {
+    // Check if file exists
+    if !path.exists() {
+        return Err(ImportError::NotFound(format!("{}", path.display())));
+    }
+
+    // Check extension
+    if path.extension().and_then(|e| e.to_str()) != Some("cast") {
+        return Err(ImportError::WrongExtension(format!(
+            "Expected .cast extension, got: {}",
+            path.display()
+        )));
+    }
+
+    // Try to open file
+    let file = fs::File::open(path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::PermissionDenied {
+            ImportError::PermissionDenied(format!("{}: {}", path.display(), e))
+        } else {
+            ImportError::NotFound(format!("{}: {}", path.display(), e))
+        }
+    })?;
+
+    // Read first line
+    let mut reader = std::io::BufReader::new(file);
+    let mut first_line = String::new();
+    reader
+        .read_line(&mut first_line)
+        .map_err(|e| ImportError::InvalidFormat(format!("Failed to read first line: {}", e)))?;
+
+    // Parse as JSON and check for version field
+    let json: serde_json::Value = serde_json::from_str(first_line.trim())
+        .map_err(|e| ImportError::InvalidFormat(format!("First line is not valid JSON: {}", e)))?;
+
+    // Check for version field
+    let version = json.get("version").ok_or_else(|| {
+        ImportError::InvalidFormat("Missing 'version' field in header".to_string())
+    })?;
+
+    // Accept version 2 or 3
+    if let Some(v) = version.as_u64() {
+        if v == 2 || v == 3 {
+            return Ok(());
+        }
+    }
+
+    Err(ImportError::InvalidFormat(format!(
+        "Unsupported asciicast version: {}",
+        version
+    )))
+}
+
+/// Helper function to resolve filename conflicts by adding a numeric suffix.
+///
+/// If the target path does not exist, returns it unchanged.
+/// If it exists, tries stem-1.ext, stem-2.ext, etc. up to stem-999.ext.
+fn resolve_filename_conflict(dir: &Path, filename: &str) -> PathBuf {
+    let target = dir.join(filename);
+
+    // No conflict - return as-is
+    if !target.exists() {
+        return target;
+    }
+
+    // Split filename into stem and extension
+    let path = Path::new(filename);
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(filename);
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+    // Try numbered variants
+    for i in 1..=999 {
+        let new_filename = if ext.is_empty() {
+            format!("{}-{}", stem, i)
+        } else {
+            format!("{}-{}.{}", stem, i, ext)
+        };
+
+        let candidate = dir.join(&new_filename);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    // Fallback - return original target (should be very rare)
+    target
+}
 
 /// Format a timestamp as a smart time prefix:
 /// - Today:      `14:05` (H:MM)
@@ -419,6 +552,43 @@ impl StorageManager {
         }
 
         Ok(files)
+    }
+
+    /// Imports a cast file into managed storage under the specified agent directory.
+    ///
+    /// Validates the file header, ensures the agent directory exists, resolves
+    /// filename conflicts by adding numeric suffixes if needed, and copies the file.
+    ///
+    /// # Arguments
+    /// * `source` - Path to the source .cast file to import
+    /// * `agent` - Agent name (subdirectory) to import the file into
+    ///
+    /// # Returns
+    /// * `Ok(PathBuf)` - Full path to the imported file in managed storage
+    /// * `Err(ImportError)` - If validation or copy fails
+    pub fn import_cast_file(&self, source: &Path, agent: &str) -> Result<PathBuf, ImportError> {
+        // Validate the source file
+        validate_cast_header(source)?;
+
+        // Ensure agent directory exists
+        let agent_dir = self
+            .ensure_agent_dir(agent)
+            .map_err(|e| ImportError::CopyFailed(format!("Failed to create agent dir: {}", e)))?;
+
+        // Get source filename
+        let filename = source
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| ImportError::CopyFailed("Invalid source filename".to_string()))?;
+
+        // Resolve conflicts
+        let target = resolve_filename_conflict(&agent_dir, filename);
+
+        // Copy file
+        fs::copy(source, &target)
+            .map_err(|e| ImportError::CopyFailed(format!("Failed to copy file: {}", e)))?;
+
+        Ok(target)
     }
 }
 

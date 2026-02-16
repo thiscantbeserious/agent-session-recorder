@@ -1076,3 +1076,147 @@ fn snapshot_status_bar_copied() {
     let output = render_status_line_to_string("🎬 Copied 20250115-session.cast to clipboard", 60);
     insta::assert_snapshot!("status_bar_copied", output);
 }
+
+// ============================================================================
+// Import Modal Snapshots
+// ============================================================================
+
+#[test]
+fn snapshot_import_agent_input_modal() {
+    use agr::tui::import::ImportState;
+
+    let agents = vec![
+        "claude".to_string(),
+        "codex".to_string(),
+        "cursor".to_string(),
+        "gemini".to_string(),
+    ];
+
+    let mut state = ImportState::new("/path/session1.cast\n/path/session2.cast", &agents);
+    // Type "c" to filter autocomplete
+    state.agent_input_char('c');
+    state.update_agent_filter(&agents);
+
+    let width = 60u16;
+    let height = 20u16;
+    let area = Rect::new(0, 0, width, height);
+
+    let backend = ratatui::backend::TestBackend::new(width, height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| {
+            agr::tui::import::render(&state, frame, area);
+        })
+        .unwrap();
+
+    let backend = terminal.backend();
+    let mut output = String::new();
+    for y in 0..height {
+        for x in 0..width {
+            let cell = backend.buffer()[(x, y)].symbol();
+            output.push_str(cell);
+        }
+        output.push('\n');
+    }
+    insta::assert_snapshot!("import_agent_input_modal", output);
+}
+
+#[test]
+fn snapshot_import_result_modal_success() {
+    use agr::tui::import::{ImportPhase, ImportResult, ImportState};
+    use std::path::PathBuf;
+
+    let agents = vec!["claude".to_string()];
+    let mut state = ImportState::new("/path/session1.cast\n/path/session2.cast", &agents);
+
+    // Simulate successful imports
+    state.phase = ImportPhase::Done;
+    state.results = vec![
+        ImportResult {
+            filename: "session1.cast".to_string(),
+            outcome: Ok(PathBuf::from("/sessions/claude/session1.cast")),
+        },
+        ImportResult {
+            filename: "session2.cast".to_string(),
+            outcome: Ok(PathBuf::from("/sessions/claude/session2.cast")),
+        },
+    ];
+
+    let width = 70u16;
+    let height = 20u16;
+    let area = Rect::new(0, 0, width, height);
+
+    let backend = ratatui::backend::TestBackend::new(width, height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| {
+            agr::tui::import::render(&state, frame, area);
+        })
+        .unwrap();
+
+    let backend = terminal.backend();
+    let mut output = String::new();
+    for y in 0..height {
+        for x in 0..width {
+            let cell = backend.buffer()[(x, y)].symbol();
+            output.push_str(cell);
+        }
+        output.push('\n');
+    }
+    insta::assert_snapshot!("import_result_modal_success", output);
+}
+
+#[test]
+fn snapshot_import_result_modal_mixed() {
+    use agr::tui::import::{ImportPhase, ImportResult, ImportState};
+    use std::path::PathBuf;
+
+    let agents = vec!["claude".to_string()];
+    let mut state = ImportState::new(
+        "/path/session1.cast\n/path/session2.cast\n/path/invalid.txt",
+        &agents,
+    );
+
+    // Simulate mixed results
+    state.phase = ImportPhase::Done;
+    state.results = vec![
+        ImportResult {
+            filename: "session1.cast".to_string(),
+            outcome: Ok(PathBuf::from("/sessions/claude/session1.cast")),
+        },
+        ImportResult {
+            filename: "session2.cast".to_string(),
+            outcome: Ok(PathBuf::from("/sessions/claude/session2.cast")),
+        },
+        ImportResult {
+            filename: "invalid.txt".to_string(),
+            outcome: Err("Wrong extension: expected .cast".to_string()),
+        },
+    ];
+
+    let width = 70u16;
+    let height = 20u16;
+    let area = Rect::new(0, 0, width, height);
+
+    let backend = ratatui::backend::TestBackend::new(width, height);
+    let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+    terminal
+        .draw(|frame| {
+            agr::tui::import::render(&state, frame, area);
+        })
+        .unwrap();
+
+    let backend = terminal.backend();
+    let mut output = String::new();
+    for y in 0..height {
+        for x in 0..width {
+            let cell = backend.buffer()[(x, y)].symbol();
+            output.push_str(cell);
+        }
+        output.push('\n');
+    }
+    insta::assert_snapshot!("import_result_modal_mixed", output);
+}

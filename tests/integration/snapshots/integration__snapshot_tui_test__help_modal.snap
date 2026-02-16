@@ -19,6 +19,7 @@ expression: output
      │  t           Optimize (removes silence)                  │     
      │  a           Analyze session                             │     
      │  d           Delete session                              │     
+     │  Paste       Import .cast file(s)                        │     
      │                                                          │     
      │Filtering                                                 │     
      │  /           Search by filename                          │     
@@ -29,5 +30,4 @@ expression: output
      │  q           Quit                                        │     
      │                                                          │     
      │Press any key to close                                    │     
-     │                                                          │     
      └──────────────────────────────────────────────────────────┘

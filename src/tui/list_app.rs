@@ -1,7 +1,7 @@
 //! List command TUI application
 //!
 //! Interactive file explorer for browsing and managing session recordings.
-//! Features: search, agent filter, play, copy, rename, optimize, analyze, restore, delete.
+//! Features: search, agent filter, play, copy, rename, optimize, analyze, restore, delete, import.
 
 use std::path::Path;
 use std::time::Duration;
@@ -21,6 +21,7 @@ use super::app::list_view::{render_explorer_list, render_explorer_list_with_rena
 use super::app::modals;
 use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
 use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
+use super::import;
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
 use crate::asciicast::{apply_transforms, TransformResult};
@@ -56,6 +57,8 @@ pub enum Mode {
     ConfirmUnlockFinal,
     /// Rename input mode - typing new filename
     RenameInput,
+    /// Import mode - pasting .cast files to import
+    Import,
 }
 
 impl Mode {
@@ -71,7 +74,8 @@ impl Mode {
             | Mode::ConfirmUnlock
             | Mode::ConfirmUnlockFinal
             | Mode::ConfirmDeleteFinal
-            | Mode::RenameInput => None,
+            | Mode::RenameInput
+            | Mode::Import => None,
         }
     }
 
@@ -169,6 +173,8 @@ pub struct ListApp {
     rename_cursor: usize,
     /// Whether the entire rename input is "selected" (first keystroke replaces all)
     rename_selected_all: bool,
+    /// Import state for drag-and-drop .cast file imports
+    import_state: Option<import::ImportState>,
 }
 
 impl ListApp {
@@ -186,6 +192,7 @@ impl ListApp {
             rename_input: String::new(),
             rename_cursor: 0,
             rename_selected_all: false,
+            import_state: None,
         })
     }
 
@@ -793,6 +800,85 @@ impl ListApp {
         Ok(())
     }
 
+    /// Handle keys in import mode.
+    fn handle_import_key(&mut self, key: KeyEvent) -> Result<()> {
+        let state = self
+            .import_state
+            .as_mut()
+            .expect("import_state must exist in Import mode");
+
+        match state.phase {
+            import::ImportPhase::AgentInput => match key.code {
+                KeyCode::Esc => {
+                    self.mode = Mode::Normal;
+                    self.import_state = None;
+                }
+                KeyCode::Enter => {
+                    if !state.selected_agent().is_empty() {
+                        state.phase = import::ImportPhase::Importing;
+                        self.execute_import()?;
+                    }
+                }
+                KeyCode::Up => {
+                    state.autocomplete_up();
+                }
+                KeyCode::Down => {
+                    state.autocomplete_down();
+                }
+                KeyCode::Tab => {
+                    state.accept_autocomplete();
+                    state.update_agent_filter(&self.shared.available_agents);
+                }
+                KeyCode::Backspace => {
+                    state.agent_input_backspace();
+                    state.update_agent_filter(&self.shared.available_agents);
+                }
+                KeyCode::Char(c) => {
+                    state.agent_input_char(c);
+                    state.update_agent_filter(&self.shared.available_agents);
+                }
+                _ => {}
+            },
+            import::ImportPhase::Importing => {
+                // Ignore all keys during import (synchronous phase)
+            }
+            import::ImportPhase::Done => match key.code {
+                KeyCode::Enter | KeyCode::Esc => {
+                    self.mode = Mode::Normal;
+                    self.import_state = None;
+                }
+                _ => {}
+            },
+        }
+        Ok(())
+    }
+
+    /// Execute the import operation for all paths in import_state.
+    fn execute_import(&mut self) -> Result<()> {
+        let state = self.import_state.as_mut().expect("import_state must exist");
+        let storage = self.shared.storage.as_ref().expect("storage must exist");
+        let agent = state.selected_agent().to_string();
+
+        for path in &state.paths {
+            let filename = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            let outcome = storage
+                .import_cast_file(path, &agent)
+                .map_err(|e| e.to_string());
+
+            state
+                .results
+                .push(import::ImportResult { filename, outcome });
+        }
+
+        state.phase = import::ImportPhase::Done;
+        Ok(())
+    }
+
     /// Rename the selected session file on disk.
     ///
     /// Returns `true` on success (or no-op), `false` on error (so caller can
@@ -903,6 +989,10 @@ impl ListApp {
             Line::from(vec![
                 Span::styled("  d", Style::default().fg(theme.accent)),
                 Span::raw("           Delete session"),
+            ]),
+            Line::from(vec![
+                Span::styled("  Paste", Style::default().fg(theme.accent)),
+                Span::raw("       Import .cast file(s)"),
             ]),
             Line::from(""),
             // Filter section
@@ -1287,6 +1377,17 @@ impl TuiApp for ListApp {
         Ok(())
     }
 
+    fn handle_paste(&mut self, text: String) -> Result<()> {
+        let state = import::ImportState::new(&text, &self.shared.available_agents);
+        if !state.has_paths() {
+            self.shared.status_message = Some("No file paths found in pasted text".to_string());
+            return Ok(());
+        }
+        self.import_state = Some(state);
+        self.mode = Mode::Import;
+        Ok(())
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
         // Try shared key handling first (navigation, search, agent filter, help)
         if let Some(shared_mode) = self.mode.to_shared() {
@@ -1310,6 +1411,7 @@ impl TuiApp for ListApp {
             Mode::ConfirmUnlock => self.handle_confirm_unlock_key(key)?,
             Mode::ConfirmUnlockFinal => self.handle_confirm_unlock_final_key(key)?,
             Mode::RenameInput => self.handle_rename_input_key(key)?,
+            Mode::Import => self.handle_import_key(key)?,
             _ => {}
         }
         Ok(())
@@ -1338,6 +1440,7 @@ impl TuiApp for ListApp {
         let rename_input = &self.rename_input;
         let rename_cursor = self.rename_cursor;
         let rename_selected_all = self.rename_selected_all;
+        let import_state = &self.import_state;
 
         // Get preview for current selection from cache
         let current_path = explorer.selected_item().map(|i| i.path.clone());
@@ -1425,6 +1528,24 @@ impl TuiApp for ListApp {
                 Mode::ContextMenu | Mode::OptimizeResult => {
                     render_status_line(frame, chunks[1], &selected_name);
                 }
+                Mode::Import => {
+                    if let Some(ref state) = import_state {
+                        let text = match state.phase {
+                            import::ImportPhase::AgentInput => {
+                                format!("Import: select agent for {} file(s)", state.file_count())
+                            }
+                            import::ImportPhase::Importing => {
+                                format!("Importing {} file(s)...", state.file_count())
+                            }
+                            import::ImportPhase::Done => {
+                                let success_count = state.results.iter().filter(|r| r.outcome.is_ok()).count();
+                                let total_count = state.results.len();
+                                format!("Imported {}/{} files", success_count, total_count)
+                            }
+                        };
+                        render_status_line(frame, chunks[1], &text);
+                    }
+                }
                 _ => {
                     let text = if let Some(msg) = &status {
                         msg.clone()
@@ -1463,6 +1584,17 @@ impl TuiApp for ListApp {
                 Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
                 Mode::RenameInput => "Enter: confirm | Esc: cancel | Backspace: delete char",
                 Mode::OptimizeResult => "Enter/Esc: dismiss",
+                Mode::Import => {
+                    if let Some(ref state) = import_state {
+                        match state.phase {
+                            import::ImportPhase::AgentInput => "Enter: confirm | Esc: cancel | Tab: complete | Up/Down: select",
+                            import::ImportPhase::Importing => "Importing...",
+                            import::ImportPhase::Done => "Enter/Esc: dismiss",
+                        }
+                    } else {
+                        ""
+                    }
+                }
                 Mode::Normal => {
                     "↑↓: navigate | Enter: menu | p: play | c: copy | r: rename | t: optimize | a: analyze | d: delete | ?: help | q: quit"
                 }
@@ -1499,6 +1631,11 @@ impl TuiApp for ListApp {
                         };
                         let final_confirm = mode == Mode::ConfirmUnlockFinal;
                         modals::render_confirm_unlock_modal(frame, area, &lock_msg, final_confirm);
+                    }
+                }
+                Mode::Import => {
+                    if let Some(ref state) = import_state {
+                        import::render(state, frame, area);
                     }
                 }
                 _ => {}
@@ -1664,5 +1801,22 @@ mod tests {
         assert!(filename::is_valid_filename_char('-'));
         assert!(filename::is_valid_filename_char('_'));
         assert!(filename::is_valid_filename_char('.'));
+    }
+
+    #[test]
+    fn import_mode_exists() {
+        assert_eq!(Mode::Import, Mode::Import);
+        assert_ne!(Mode::Import, Mode::Normal);
+    }
+
+    #[test]
+    fn paste_with_no_paths_shows_status() {
+        // Test the import state creation logic directly
+        let agents = vec!["agent1".to_string(), "agent2".to_string()];
+        let state = import::ImportState::new("   \n\n  ", &agents);
+
+        // Empty text should result in no paths
+        assert!(!state.has_paths());
+        assert_eq!(state.file_count(), 0);
     }
 }

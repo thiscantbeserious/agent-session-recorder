@@ -1,0 +1,19 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+expression: output
+---
+                                                            
+                                                            
+                                                            
+                                                            
+     ┌ Import ────────────────────────────────────────┐     
+     │Import 2 file(s)                                │     
+     │                                                │     
+     │Agent: c│                                       │     
+     │                                                │     
+     │Suggestions:                                    │     
+     │> claude                                        │     
+     │  codex                                         │     
+     │  cursor                                        │     
+     │                                                │     
+     └────────────────────────────────────────────────┘

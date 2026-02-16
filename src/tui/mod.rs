@@ -9,6 +9,7 @@
 pub mod app;
 pub mod cleanup_app;
 pub mod event_bus;
+pub mod import;
 pub mod list_app;
 pub mod lru_cache;
 pub mod ui;

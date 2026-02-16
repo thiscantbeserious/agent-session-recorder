@@ -89,3 +89,6 @@ mod file_explorer_test;
 
 #[path = "integration/process_guard_test.rs"]
 mod process_guard_test;
+
+#[path = "integration/import_test.rs"]
+mod import_test;

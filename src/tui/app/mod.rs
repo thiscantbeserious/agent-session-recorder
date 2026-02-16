@@ -20,7 +20,10 @@ use std::time::Duration;
 use anyhow::Result;
 use crossterm::{
     cursor::MoveTo,
-    event::{DisableMouseCapture, EnableMouseCapture, KeyEvent, MouseEvent},
+    event::{
+        DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        KeyEvent, MouseEvent,
+    },
     execute,
     style::ResetColor,
     terminal::{
@@ -57,7 +60,12 @@ impl App {
 
         // If alternate screen fails, restore raw mode
         let mut stdout = io::stdout();
-        if let Err(e) = execute!(stdout, EnterAlternateScreen, EnableMouseCapture) {
+        if let Err(e) = execute!(
+            stdout,
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            EnableBracketedPaste
+        ) {
             let _ = disable_raw_mode();
             return Err(e.into());
         }
@@ -68,7 +76,12 @@ impl App {
             Ok(t) => t,
             Err(e) => {
                 let mut stdout = io::stdout();
-                let _ = execute!(stdout, LeaveAlternateScreen, DisableMouseCapture);
+                let _ = execute!(
+                    stdout,
+                    LeaveAlternateScreen,
+                    DisableMouseCapture,
+                    DisableBracketedPaste
+                );
                 let _ = disable_raw_mode();
                 return Err(e.into());
             }
@@ -133,7 +146,8 @@ impl App {
         execute!(
             self.terminal.backend_mut(),
             LeaveAlternateScreen,
-            DisableMouseCapture
+            DisableMouseCapture,
+            DisableBracketedPaste
         )?;
         self.terminal.show_cursor()?;
 
@@ -176,7 +190,8 @@ impl App {
         execute!(
             self.terminal.backend_mut(),
             EnterAlternateScreen,
-            EnableMouseCapture
+            EnableMouseCapture,
+            EnableBracketedPaste
         )?;
 
         // Reset colors and clear alternate screen for clean state
@@ -203,7 +218,8 @@ impl Drop for App {
         let _ = execute!(
             self.terminal.backend_mut(),
             LeaveAlternateScreen,
-            DisableMouseCapture
+            DisableMouseCapture,
+            DisableBracketedPaste
         );
         let _ = self.terminal.show_cursor();
     }
@@ -231,6 +247,12 @@ pub trait TuiApp {
     /// Draw the current UI state. Called from the default `run()` event loop.
     fn draw(&mut self) -> Result<()>;
 
+    /// Handle a paste event. Default implementation does nothing.
+    /// Override in apps that support paste (e.g. import .cast files).
+    fn handle_paste(&mut self, _text: String) -> Result<()> {
+        Ok(())
+    }
+
     /// Shared event loop used by all TUI explorer applications.
     ///
     /// Draws the UI, waits for events, and dispatches to `handle_key()`.
@@ -242,6 +264,7 @@ pub trait TuiApp {
             match self.app().next_event()? {
                 Event::Key(key) => self.handle_key(key)?,
                 Event::Mouse(mouse) => self.handle_mouse(mouse)?,
+                Event::Paste(text) => self.handle_paste(text)?,
                 Event::Resize(_, _) => {}
                 Event::Tick => {
                     self.shared_state().maybe_refresh_tick();

@@ -1,0 +1,18 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+expression: output
+---
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+     ┌ Import ──────────────────────────────────────────────────┐     
+     │Import Complete                                           │     
+     │                                                          │     
+     │✓ session1.cast                                           │     
+     │✓ session2.cast                                           │     
+     │                                                          │     
+     │Imported 2/2 files                                        │     
+     └──────────────────────────────────────────────────────────┘
