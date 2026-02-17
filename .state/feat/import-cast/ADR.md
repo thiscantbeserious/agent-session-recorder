@@ -1,7 +1,7 @@
 # ADR: Drop/Paste .cast Files into TUI
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 
