@@ -1370,6 +1370,7 @@ impl TuiApp for ListApp {
                 if let MouseEventKind::Down(crossterm::event::MouseButton::Left) = mouse.kind {
                     self.mode = Mode::Normal;
                     self.optimize_result = None;
+                    self.import_state = None;
                 }
             }
         }

@@ -56,7 +56,8 @@ impl std::error::Error for ImportError {}
 /// - Are empty or contain only whitespace
 ///
 /// This prevents path traversal attacks when creating agent directories.
-fn validate_agent_name(agent: &str) -> Result<(), ImportError> {
+/// Returns the trimmed agent name on success.
+fn validate_agent_name(agent: &str) -> Result<String, ImportError> {
     let trimmed = agent.trim();
 
     // Reject empty or whitespace-only names
@@ -82,7 +83,7 @@ fn validate_agent_name(agent: &str) -> Result<(), ImportError> {
         )));
     }
 
-    Ok(())
+    Ok(trimmed.to_string())
 }
 
 /// Validates that a file is a valid asciicast file by checking its header.
@@ -607,15 +608,15 @@ impl StorageManager {
     /// * `Ok(PathBuf)` - Full path to the imported file in managed storage
     /// * `Err(ImportError)` - If validation or copy fails
     pub fn import_cast_file(&self, source: &Path, agent: &str) -> Result<PathBuf, ImportError> {
-        // Validate agent name to prevent path traversal
-        validate_agent_name(agent)?;
+        // Validate agent name to prevent path traversal and get trimmed name
+        let agent = validate_agent_name(agent)?;
 
         // Validate the source file
         validate_cast_header(source)?;
 
         // Ensure agent directory exists
         let agent_dir = self
-            .ensure_agent_dir(agent)
+            .ensure_agent_dir(&agent)
             .map_err(|e| ImportError::CopyFailed(format!("Failed to create agent dir: {}", e)))?;
 
         // Get source filename

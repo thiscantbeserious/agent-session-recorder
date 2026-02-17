@@ -339,7 +339,12 @@ fn render_result(state: &ImportState, frame: &mut Frame, area: Rect) {
     let theme = current_theme();
 
     // Calculate modal size based on results
-    let result_lines = state.results.len();
+    // Failed imports render 2 lines (filename + error detail), successful imports render 1 line
+    let result_lines: usize = state
+        .results
+        .iter()
+        .map(|r| if r.outcome.is_err() { 2 } else { 1 })
+        .sum();
     let modal_height = (6 + result_lines as u16).min(20); // title + results + footer + padding
     let modal_area = center_modal(area, 60, modal_height);
 
@@ -446,9 +451,8 @@ mod tests {
         let paths = parse_paste_paths(text);
         assert_eq!(paths.len(), 1);
         // Should expand to home directory
-        if let Some(home) = dirs::home_dir() {
-            assert_eq!(paths[0], home.join("session.cast"));
-        }
+        let home = dirs::home_dir().expect("HOME must be set for this test");
+        assert_eq!(paths[0], home.join("session.cast"));
     }
 
     #[test]

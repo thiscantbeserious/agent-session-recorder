@@ -308,10 +308,9 @@ fn parse_paste_tilde_expansion() {
     assert_eq!(paths.len(), 1);
 
     // Should expand to home directory
-    if let Some(home) = dirs::home_dir() {
-        let expected = home.join("recordings/session.cast");
-        assert_eq!(paths[0], expected);
-    }
+    let home = dirs::home_dir().expect("HOME must be set for this test");
+    let expected = home.join("recordings/session.cast");
+    assert_eq!(paths[0], expected);
 }
 
 #[test]

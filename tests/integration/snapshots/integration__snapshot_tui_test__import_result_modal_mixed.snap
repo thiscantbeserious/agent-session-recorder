@@ -15,4 +15,5 @@ expression: output
      │✗ invalid.txt                                             │     
      │  Wrong extension: expected .cast                         │     
      │                                                          │     
+     │Imported 2/3 files                                        │     
      └──────────────────────────────────────────────────────────┘
