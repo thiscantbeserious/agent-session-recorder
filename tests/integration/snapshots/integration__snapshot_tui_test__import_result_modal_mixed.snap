@@ -1,0 +1,19 @@
+---
+source: tests/integration/snapshot_tui_test.rs
+expression: output
+---
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+                                                                      
+     ┌ Import ──────────────────────────────────────────────────┐     
+     │Import Results                                            │     
+     │                                                          │     
+     │✓ session1.cast                                           │     
+     │✓ session2.cast                                           │     
+     │✗ invalid.txt                                             │     
+     │  Wrong extension: expected .cast                         │     
+     │                                                          │     
+     │Imported 2/3 files                                        │     
+     └──────────────────────────────────────────────────────────┘

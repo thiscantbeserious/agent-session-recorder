@@ -24,6 +24,8 @@ pub enum Event {
     Tick,
     /// Quit event
     Quit,
+    /// Paste event (bracketed paste)
+    Paste(String),
 }
 
 /// Event handler that runs in a separate thread
@@ -78,6 +80,11 @@ impl EventHandler {
                             }
                             Ok(CrosstermEvent::Mouse(mouse)) => {
                                 if tx.send(Event::Mouse(mouse)).is_err() {
+                                    break;
+                                }
+                            }
+                            Ok(CrosstermEvent::Paste(text)) => {
+                                if tx.send(Event::Paste(text)).is_err() {
                                     break;
                                 }
                             }
@@ -152,5 +159,24 @@ mod tests {
         handler.stop();
         // After stop, the thread should have exited and next() should fail
         assert!(handler.next().is_err());
+    }
+
+    #[test]
+    fn event_paste_variant_debug() {
+        let event = Event::Paste("foo".into());
+        let debug = format!("{:?}", event);
+        assert!(debug.contains("Paste"));
+        assert!(debug.contains("foo"));
+    }
+
+    #[test]
+    fn event_paste_clone() {
+        let event = Event::Paste("test content".into());
+        let cloned = event.clone();
+        if let Event::Paste(text) = cloned {
+            assert_eq!(text, "test content");
+        } else {
+            panic!("Expected Paste variant");
+        }
     }
 }
