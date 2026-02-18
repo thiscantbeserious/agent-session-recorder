@@ -12,7 +12,7 @@
 [ Agent Session Recorder ] - Record, replay, and understand AI agent sessions.
 ```
 
-  <video src="./demo.mp4" width="600" autoplay loop muted playsinline></video>
+  <video src="https://github.com/user-attachments/assets/e83cf993-467f-4869-b413-f86ddfae1fad" width="600" autoplay loop muted playsinline></video>
 
 [![CI](https://github.com/thiscantbeserious/agent-session-recorder/actions/workflows/ci.yml/badge.svg)](https://github.com/thiscantbeserious/agent-session-recorder/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/thiscantbeserious/agent-session-recorder/graph/badge.svg)](https://codecov.io/gh/thiscantbeserious/agent-session-recorder)
