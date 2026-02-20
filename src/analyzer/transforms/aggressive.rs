@@ -606,24 +606,7 @@ impl WindowedLineDeduplicator {
 
             let line_trimmed_end = line_text.trim_end();
 
-            // O(1) repeat detection via HashMap
-            let is_repeated = last_occurrence
-                .get(line_trimmed_end)
-                .map(|&last| last > i)
-                .unwrap_or(false);
-
-            // O(n) prefix detection only when line is not already a repeat
-            let is_prefix = if !is_repeated {
-                lines[(i + 1)..].iter().any(|(later, _)| {
-                    let later_trimmed = later.trim_end();
-                    later_trimmed.starts_with(line_trimmed_end)
-                        && later_trimmed.len() > line_trimmed_end.len()
-                })
-            } else {
-                false
-            };
-
-            if !is_prefix && !is_repeated {
+            if !is_line_redundant(line_trimmed_end, i, &last_occurrence, &lines) {
                 current_data.push_str(line_text);
                 current_time += *time;
             } else {
@@ -678,4 +661,30 @@ impl Transform for WindowedLineDeduplicator {
         self.flush_lines(&mut output);
         *events = output;
     }
+}
+
+/// Check whether the line at `index` (with trailing whitespace already stripped
+/// as `line_trimmed_end`) is redundant -- either a repeat that occurs again later
+/// in `lines`, or a strict prefix of a later line.
+fn is_line_redundant(
+    line_trimmed_end: &str,
+    index: usize,
+    last_occurrence: &HashMap<&str, usize>,
+    lines: &[(String, f64)],
+) -> bool {
+    // O(1) repeat detection via HashMap
+    let is_repeated = last_occurrence
+        .get(line_trimmed_end)
+        .map(|&last| last > index)
+        .unwrap_or(false);
+
+    if is_repeated {
+        return true;
+    }
+
+    // O(n) prefix detection only when line is not already a repeat
+    lines[(index + 1)..].iter().any(|(later, _)| {
+        let later_trimmed = later.trim_end();
+        later_trimmed.starts_with(line_trimmed_end) && later_trimmed.len() > line_trimmed_end.len()
+    })
 }

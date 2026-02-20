@@ -341,34 +341,46 @@ pub fn extract_json(response: &str) -> BackendResult<AnalysisResponse> {
     // Try Claude CLI wrapper format first
     // Without schema: {"type":"result","result":"```json\n{...}\n```",...}
     // With schema: {"type":"result","result":"","structured_output":{...},...}
-    if let Ok(wrapper) = serde_json::from_str::<ClaudeWrapper>(trimmed) {
-        if wrapper.response_type.as_deref() == Some("result") {
-            // Check for error response
-            if wrapper.is_error == Some(true) {
-                return Err(BackendError::JsonExtraction {
-                    response: wrapper
-                        .result
-                        .unwrap_or_else(|| "Claude returned an error".to_string()),
-                });
-            }
-
-            // Check for structured_output first (when using --json-schema)
-            if let Some(structured) = wrapper.structured_output {
-                // Parse the structured output directly
-                return serde_json::from_value(structured).map_err(BackendError::JsonParse);
-            }
-
-            // Fall back to result field (without --json-schema)
-            if let Some(inner) = wrapper.result {
-                if !inner.is_empty() {
-                    return extract_json_inner(&inner);
-                }
-            }
-        }
+    if let Some(result) = try_claude_wrapper(trimmed) {
+        return result;
     }
 
     // Fall back to standard extraction
     extract_json_inner(trimmed)
+}
+
+/// Attempt to parse `trimmed` as a Claude CLI wrapper envelope and extract the
+/// `AnalysisResponse` from it.  Returns `Some(result)` when the input is a
+/// recognised wrapper, `None` to fall through to standard extraction.
+fn try_claude_wrapper(trimmed: &str) -> Option<BackendResult<AnalysisResponse>> {
+    let wrapper = serde_json::from_str::<ClaudeWrapper>(trimmed).ok()?;
+
+    if wrapper.response_type.as_deref() != Some("result") {
+        return None;
+    }
+
+    // Error response
+    if wrapper.is_error == Some(true) {
+        return Some(Err(BackendError::JsonExtraction {
+            response: wrapper
+                .result
+                .unwrap_or_else(|| "Claude returned an error".to_string()),
+        }));
+    }
+
+    // Structured output (--json-schema)
+    if let Some(structured) = wrapper.structured_output {
+        return Some(serde_json::from_value(structured).map_err(BackendError::JsonParse));
+    }
+
+    // Plain result field (without --json-schema)
+    if let Some(inner) = wrapper.result {
+        if !inner.is_empty() {
+            return Some(extract_json_inner(&inner));
+        }
+    }
+
+    None
 }
 
 /// Inner JSON extraction logic (handles direct JSON, text-embedded, code blocks).

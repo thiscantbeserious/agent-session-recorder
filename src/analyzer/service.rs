@@ -422,22 +422,11 @@ impl AnalyzerService {
         }
 
         // 4. Calculate chunks (Stage 2)
-        let calculator = if let Some(budget_tokens) = self.options.token_budget_override {
-            if budget_tokens < 10000 {
-                eprintln!(
-                    "Warning: token_budget {} is below minimum (10000). Using default budget.",
-                    budget_tokens
-                );
-                ChunkCalculator::for_agent(self.options.agent)
-            } else {
-                // Use overridden token budget from per-agent config
-                let mut budget = self.options.agent.token_budget();
-                budget.max_input_tokens = budget_tokens;
-                ChunkCalculator::new(budget, ChunkConfig::default())
-            }
-        } else {
-            ChunkCalculator::for_agent(self.options.agent)
-        };
+        let calculator = build_chunk_calculator(
+            self.options.agent,
+            self.options.token_budget_override,
+            self.options.quiet,
+        );
         let chunks = calculator.calculate_chunks(&content);
 
         // 5. Execute analysis (Stage 3+4)
@@ -637,6 +626,30 @@ impl AnalyzerService {
 
         Some(result)
     }
+}
+
+/// Build a `ChunkCalculator` from the given agent and optional budget override.
+///
+/// When `token_budget_override` is below the 10 000-token minimum, a warning is
+/// printed and the default agent budget is used instead.
+fn build_chunk_calculator(
+    agent: AgentType,
+    token_budget_override: Option<usize>,
+    _quiet: bool,
+) -> ChunkCalculator {
+    if let Some(budget_tokens) = token_budget_override {
+        if budget_tokens < 10000 {
+            eprintln!(
+                "Warning: token_budget {} is below minimum (10000). Using default budget.",
+                budget_tokens
+            );
+            return ChunkCalculator::for_agent(agent);
+        }
+        let mut budget = agent.token_budget();
+        budget.max_input_tokens = budget_tokens;
+        return ChunkCalculator::new(budget, ChunkConfig::default());
+    }
+    ChunkCalculator::for_agent(agent)
 }
 
 #[cfg(test)]

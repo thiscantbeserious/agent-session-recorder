@@ -297,71 +297,18 @@ impl ChunkCalculator {
             let segment_start = accumulated_tokens;
             let segment_end = accumulated_tokens + segment.estimated_tokens;
 
-            // Check if segment overlaps with target range
-            if segment_end > start_tokens && segment_start < end_tokens {
-                // Calculate how much of this segment to include
-                let include_start = start_tokens.saturating_sub(segment_start);
-                let include_end = (end_tokens - segment_start).min(segment.estimated_tokens);
-
-                if include_end > include_start {
-                    // Calculate proportional time range within the segment
-                    let segment_duration = segment.end_time - segment.start_time;
-                    let segment_tokens = segment.estimated_tokens.max(1);
-                    let time_per_token = segment_duration / segment_tokens as f64;
-
-                    let partial_start_time =
-                        segment.start_time + (include_start as f64 * time_per_token);
-                    let partial_end_time =
-                        segment.start_time + (include_end as f64 * time_per_token);
-
-                    if start_time.is_none() {
-                        start_time = Some(partial_start_time);
-                    }
-                    end_time = partial_end_time;
-
-                    // Create a partial segment with only the included portion
-                    let included_tokens = include_end - include_start;
-
-                    // Extract partial content if we're not including the whole segment
-                    let partial_content = if include_start == 0
-                        && include_end == segment.estimated_tokens
-                    {
-                        segment.content.clone()
-                    } else if segment.content.is_empty() {
-                        String::new()
-                    } else {
-                        // Estimate character boundaries from token positions
-                        // Use proportional mapping: char_pos = token_pos * (total_chars / total_tokens)
-                        let total_chars = segment.content.chars().count();
-                        let ratio = total_chars as f64 / segment_tokens as f64;
-                        let char_start = ((include_start as f64 * ratio) as usize).min(total_chars);
-                        let char_end = ((include_end as f64 * ratio) as usize).min(total_chars);
-
-                        // Ensure we get at least some content if there are tokens to include
-                        let (char_start, char_end) =
-                            if char_end <= char_start && included_tokens > 0 {
-                                // Fall back to including all content if calculation fails
-                                (0, total_chars)
-                            } else {
-                                (char_start, char_end)
-                            };
-
-                        segment
-                            .content
-                            .chars()
-                            .skip(char_start)
-                            .take(char_end.saturating_sub(char_start))
-                            .collect()
-                    };
-
-                    segments.push(AnalysisSegment {
-                        start_time: partial_start_time,
-                        end_time: partial_end_time,
-                        content: partial_content,
-                        estimated_tokens: included_tokens,
-                        event_range: segment.event_range, // Keep original for reference
-                    });
+            if let Some(partial) = build_partial_segment(
+                segment,
+                segment_start,
+                segment_end,
+                start_tokens,
+                end_tokens,
+            ) {
+                if start_time.is_none() {
+                    start_time = Some(partial.start_time);
                 }
+                end_time = partial.end_time;
+                segments.push(partial);
             }
 
             accumulated_tokens = segment_end;
@@ -391,6 +338,91 @@ impl ChunkCalculator {
         // Ceiling division considering overlap
         ((total_tokens.saturating_sub(overlap)) + step - 1) / step
     }
+}
+
+/// Extract partial content from a segment using proportional token-to-character mapping.
+///
+/// Returns the full content if the whole segment is included, handles empty content,
+/// and falls back to full content if the proportional mapping produces an empty slice.
+fn extract_partial_content(
+    content: &str,
+    estimated_tokens: usize,
+    include_start: usize,
+    include_end: usize,
+    included_tokens: usize,
+) -> String {
+    if include_start == 0 && include_end == estimated_tokens {
+        return content.to_string();
+    }
+    if content.is_empty() {
+        return String::new();
+    }
+
+    let segment_tokens = estimated_tokens.max(1);
+    let total_chars = content.chars().count();
+    let ratio = total_chars as f64 / segment_tokens as f64;
+    let char_start = ((include_start as f64 * ratio) as usize).min(total_chars);
+    let char_end = ((include_end as f64 * ratio) as usize).min(total_chars);
+
+    let (char_start, char_end) = if char_end <= char_start && included_tokens > 0 {
+        // Fall back to including all content if calculation fails
+        (0, total_chars)
+    } else {
+        (char_start, char_end)
+    };
+
+    content
+        .chars()
+        .skip(char_start)
+        .take(char_end.saturating_sub(char_start))
+        .collect()
+}
+
+/// Build a partial `AnalysisSegment` for the portion of `segment` that overlaps
+/// `[start_tokens, end_tokens)`.  Returns `None` if there is no overlap or the
+/// resulting slice is empty.
+fn build_partial_segment(
+    segment: &AnalysisSegment,
+    segment_start: usize,
+    segment_end: usize,
+    start_tokens: usize,
+    end_tokens: usize,
+) -> Option<AnalysisSegment> {
+    // Check if segment overlaps with target range
+    if segment_end <= start_tokens || segment_start >= end_tokens {
+        return None;
+    }
+
+    let include_start = start_tokens.saturating_sub(segment_start);
+    let include_end = (end_tokens - segment_start).min(segment.estimated_tokens);
+
+    if include_end <= include_start {
+        return None;
+    }
+
+    let segment_tokens = segment.estimated_tokens.max(1);
+    let segment_duration = segment.end_time - segment.start_time;
+    let time_per_token = segment_duration / segment_tokens as f64;
+
+    let partial_start_time = segment.start_time + (include_start as f64 * time_per_token);
+    let partial_end_time = segment.start_time + (include_end as f64 * time_per_token);
+    let included_tokens = include_end - include_start;
+
+    let partial_content = extract_partial_content(
+        &segment.content,
+        segment.estimated_tokens,
+        include_start,
+        include_end,
+        included_tokens,
+    );
+
+    Some(AnalysisSegment {
+        start_time: partial_start_time,
+        end_time: partial_end_time,
+        content: partial_content,
+        estimated_tokens: included_tokens,
+        event_range: segment.event_range,
+    })
 }
 
 #[cfg(test)]

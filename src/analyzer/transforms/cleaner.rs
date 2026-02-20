@@ -48,68 +48,76 @@ pub struct ContentCleaner {
     control_stripped: usize,
 }
 
-impl ContentCleaner {
-    /// Create a new content cleaner with the given configuration.
-    pub fn new(config: &ExtractionConfig) -> Self {
-        let mut strip_chars = HashSet::new();
-        let mut semantic_chars = HashSet::new();
+/// Build the set of characters with semantic meaning that must never be stripped.
+fn build_semantic_chars() -> HashSet<char> {
+    [
+        '\u{2713}', // ✓ Check mark
+        '\u{2714}', // ✔ Heavy check mark
+        '\u{2715}', // ✕ Multiplication X
+        '\u{26A0}', // ⚠ Warning sign
+        '\u{2139}', // ℹ Information source
+        '\u{2610}', // ☐ Ballot box
+        '\u{2611}', // ☑ Ballot box with check
+    ]
+    .iter()
+    .copied()
+    .collect()
+}
 
-        // Semantic chars - NEVER strip (help LLM identify outcomes)
-        for c in [
-            '\u{2713}', // ✓ Check mark
-            '\u{2714}', // ✔ Heavy check mark
-            '\u{2715}', // ✕ Multiplication X
-            '\u{26A0}', // ⚠ Warning sign
-            '\u{2139}', // ℹ Information source
-            '\u{2610}', // ☐ Ballot box
-            '\u{2611}', // ☑ Ballot box with check
-        ] {
-            semantic_chars.insert(c);
-        }
+/// Build the set of visual-only characters to strip, based on `config` flags.
+///
+/// Characters in `semantic_chars` are never added to the strip set.
+fn build_strip_chars(config: &ExtractionConfig, semantic_chars: &HashSet<char>) -> HashSet<char> {
+    let mut strip_chars = HashSet::new();
 
-        // Box drawing characters (U+2500-U+257F)
-        if config.strip_box_drawing {
-            for c in '\u{2500}'..='\u{257F}' {
-                if !semantic_chars.contains(&c) {
-                    strip_chars.insert(c);
-                }
-            }
-            // Also block elements used in box drawing (U+2580-U+259F)
-            for c in '\u{2580}'..='\u{259F}' {
-                if !semantic_chars.contains(&c) {
-                    strip_chars.insert(c);
-                }
-            }
-        }
-
-        // Spinner characters (visual animation only)
-        if config.strip_spinner_chars {
-            // Claude spinners
-            for c in ['\u{273B}', '\u{2733}', '\u{2722}', '\u{2736}', '\u{273D}'] {
-                strip_chars.insert(c); // ✻ ✳ ✢ ✶ ✽
-            }
-            // Gemini braille spinner
-            for c in [
-                '\u{280B}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283C}', '\u{2834}', '\u{2826}',
-                '\u{2827}', '\u{2807}', '\u{280F}',
-            ] {
-                strip_chars.insert(c); // ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
-            }
-            // Visual-only bullets
-            for c in ['\u{2022}', '\u{203A}', '\u{25E6}', '\u{22EE}'] {
-                strip_chars.insert(c); // • › ◦ ⋮
-            }
-        }
-
-        // Progress bar blocks
-        if config.strip_progress_blocks {
-            for c in [
-                '\u{2588}', '\u{2591}', '\u{2592}', '\u{2593}', // █ ░ ▒ ▓
-                '\u{25BC}', '\u{25B2}', '\u{25CF}', '\u{25CB}', // ▼ ▲ ● ○
-            ] {
+    // Box drawing characters (U+2500-U+257F) and block elements (U+2580-U+259F)
+    if config.strip_box_drawing {
+        for c in '\u{2500}'..='\u{257F}' {
+            if !semantic_chars.contains(&c) {
                 strip_chars.insert(c);
             }
         }
+        for c in '\u{2580}'..='\u{259F}' {
+            if !semantic_chars.contains(&c) {
+                strip_chars.insert(c);
+            }
+        }
+    }
+
+    // Spinner characters (visual animation only)
+    if config.strip_spinner_chars {
+        for c in ['\u{273B}', '\u{2733}', '\u{2722}', '\u{2736}', '\u{273D}'] {
+            strip_chars.insert(c); // ✻ ✳ ✢ ✶ ✽
+        }
+        for c in [
+            '\u{280B}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283C}', '\u{2834}', '\u{2826}',
+            '\u{2827}', '\u{2807}', '\u{280F}',
+        ] {
+            strip_chars.insert(c); // ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
+        }
+        for c in ['\u{2022}', '\u{203A}', '\u{25E6}', '\u{22EE}'] {
+            strip_chars.insert(c); // • › ◦ ⋮
+        }
+    }
+
+    // Progress bar blocks
+    if config.strip_progress_blocks {
+        for c in [
+            '\u{2588}', '\u{2591}', '\u{2592}', '\u{2593}', // █ ░ ▒ ▓
+            '\u{25BC}', '\u{25B2}', '\u{25CF}', '\u{25CB}', // ▼ ▲ ● ○
+        ] {
+            strip_chars.insert(c);
+        }
+    }
+
+    strip_chars
+}
+
+impl ContentCleaner {
+    /// Create a new content cleaner with the given configuration.
+    pub fn new(config: &ExtractionConfig) -> Self {
+        let semantic_chars = build_semantic_chars();
+        let strip_chars = build_strip_chars(config, &semantic_chars);
 
         Self {
             buffer: String::with_capacity(4096),

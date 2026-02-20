@@ -174,19 +174,7 @@ impl ContentExtractor {
     /// total recording duration while preventing segment time ranges from
     /// clustering at the end.
     fn redistribute_time(events: &mut [Event], max_gap: f64) {
-        let mut excess = 0.0;
-        let mut normal_output_count = 0usize;
-
-        // First pass: measure excess
-        for event in events.iter() {
-            if event.is_output() {
-                if event.time > max_gap {
-                    excess += event.time - max_gap;
-                } else {
-                    normal_output_count += 1;
-                }
-            }
-        }
+        let (excess, normal_output_count) = measure_excess_time(events, max_gap);
 
         if excess <= 0.0 {
             return;
@@ -284,6 +272,27 @@ impl Default for ContentExtractor {
     fn default() -> Self {
         Self::new(ExtractionConfig::default())
     }
+}
+
+/// First pass of time redistribution: compute total excess time above `max_gap`
+/// and the count of normal-duration output events.
+///
+/// Returns `(excess, normal_output_count)`.
+fn measure_excess_time(events: &[Event], max_gap: f64) -> (f64, usize) {
+    let mut excess = 0.0;
+    let mut normal_output_count = 0usize;
+
+    for event in events.iter() {
+        if event.is_output() {
+            if event.time > max_gap {
+                excess += event.time - max_gap;
+            } else {
+                normal_output_count += 1;
+            }
+        }
+    }
+
+    (excess, normal_output_count)
 }
 
 #[cfg(test)]

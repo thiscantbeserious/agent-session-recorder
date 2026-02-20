@@ -31,21 +31,7 @@ impl Transform for NormalizeWhitespace {
     fn transform(&mut self, events: &mut Vec<Event>) {
         for event in events.iter_mut() {
             if event.is_output() {
-                let mut result = String::with_capacity(event.data.len());
-                let mut newline_count = 0;
-
-                for c in event.data.chars() {
-                    if c == '\n' {
-                        newline_count += 1;
-                        if newline_count <= self.max_consecutive_newlines {
-                            result.push(c);
-                        }
-                    } else {
-                        newline_count = 0;
-                        result.push(c);
-                    }
-                }
-                event.data = result;
+                event.data = normalize_newlines(&event.data, self.max_consecutive_newlines);
             }
         }
     }
@@ -124,19 +110,7 @@ impl Transform for EmptyLineFilter {
                 continue;
             }
 
-            let mut new_data = String::with_capacity(event.data.len());
-            for line in event.data.split_inclusive('\n') {
-                // A line is truly empty if it only contains \n or \r\n
-                let is_empty = line == "\n" || line == "\r\n";
-
-                if is_empty && self.last_line_was_empty {
-                    // Skip consecutive truly empty line
-                    continue;
-                }
-
-                new_data.push_str(line);
-                self.last_line_was_empty = is_empty;
-            }
+            let new_data = filter_empty_lines(&event.data, &mut self.last_line_was_empty);
 
             if !new_data.is_empty() {
                 event.data = new_data;
@@ -156,6 +130,47 @@ impl Transform for EmptyLineFilter {
 
         *events = output;
     }
+}
+
+/// Limit consecutive `\n` characters in `data` to at most `max_consecutive`.
+fn normalize_newlines(data: &str, max_consecutive: usize) -> String {
+    let mut result = String::with_capacity(data.len());
+    let mut newline_count = 0;
+
+    for c in data.chars() {
+        if c == '\n' {
+            newline_count += 1;
+            if newline_count <= max_consecutive {
+                result.push(c);
+            }
+        } else {
+            newline_count = 0;
+            result.push(c);
+        }
+    }
+
+    result
+}
+
+/// Remove consecutive truly-empty lines (`\n` or `\r\n`) from `data`.
+///
+/// `last_line_was_empty` carries state across calls so that emptiness is
+/// tracked between events.
+fn filter_empty_lines(data: &str, last_line_was_empty: &mut bool) -> String {
+    let mut new_data = String::with_capacity(data.len());
+
+    for line in data.split_inclusive('\n') {
+        let is_empty = line == "\n" || line == "\r\n";
+
+        if is_empty && *last_line_was_empty {
+            continue;
+        }
+
+        new_data.push_str(line);
+        *last_line_was_empty = is_empty;
+    }
+
+    new_data
 }
 
 #[cfg(test)]
