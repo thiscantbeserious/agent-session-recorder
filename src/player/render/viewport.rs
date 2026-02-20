@@ -7,7 +7,101 @@ use std::io::{self, Write};
 use anyhow::Result;
 
 use crate::player::render::ansi::{style_to_ansi_attrs, style_to_ansi_bg, style_to_ansi_fg};
-use crate::terminal::{CellStyle, TerminalBuffer};
+use crate::terminal::{Cell, CellStyle, TerminalBuffer};
+
+/// Render a single row's content into `output`.
+///
+/// Handles the column loop, per-cell style tracking, highlight vs. normal mode,
+/// filling spaces past content, and the end-of-row ANSI reset.
+fn render_row(
+    output: &mut String,
+    row: Option<&[Cell]>,
+    col_offset: usize,
+    view_cols: usize,
+    is_highlighted: bool,
+) {
+    if let Some(cells) = row {
+        render_row_cells(output, cells, col_offset, view_cols, is_highlighted);
+    } else {
+        render_empty_row(output, view_cols, is_highlighted);
+    }
+}
+
+/// Render cells from a populated row, tracking style changes.
+fn render_row_cells(
+    output: &mut String,
+    cells: &[Cell],
+    col_offset: usize,
+    view_cols: usize,
+    is_highlighted: bool,
+) {
+    let mut current_style = CellStyle::default();
+    let mut in_highlight_style = is_highlighted;
+
+    for view_col in 0..view_cols {
+        let buf_col = view_col + col_offset;
+        if buf_col < cells.len() {
+            render_cell(
+                output,
+                &cells[buf_col],
+                is_highlighted,
+                &mut current_style,
+                &mut in_highlight_style,
+            );
+        } else {
+            render_space_past_content(output, is_highlighted, &mut current_style);
+        }
+    }
+
+    if current_style != CellStyle::default() || is_highlighted {
+        output.push_str("\x1b[0m");
+    }
+}
+
+/// Render a single cell, applying or tracking style changes.
+fn render_cell(
+    output: &mut String,
+    cell: &Cell,
+    is_highlighted: bool,
+    current_style: &mut CellStyle,
+    in_highlight_style: &mut bool,
+) {
+    if !is_highlighted && cell.style != *current_style {
+        output.push_str("\x1b[0m");
+        style_to_ansi_fg(&cell.style, output);
+        style_to_ansi_bg(&cell.style, output);
+        style_to_ansi_attrs(&cell.style, output);
+        *current_style = cell.style;
+        *in_highlight_style = false;
+    } else if is_highlighted && !*in_highlight_style {
+        output.push_str("\x1b[97;42m");
+        *in_highlight_style = true;
+    }
+    output.push(cell.char);
+}
+
+/// Render a space for a column past the end of row content, resetting style if needed.
+fn render_space_past_content(
+    output: &mut String,
+    is_highlighted: bool,
+    current_style: &mut CellStyle,
+) {
+    if !is_highlighted && *current_style != CellStyle::default() {
+        output.push_str("\x1b[0m");
+        *current_style = CellStyle::default();
+    }
+    output.push(' ');
+}
+
+/// Render an empty row (no cells), filling with spaces and resetting if highlighted.
+fn render_empty_row(output: &mut String, view_cols: usize, is_highlighted: bool) {
+    for _ in 0..view_cols {
+        output.push(' ');
+    }
+    if is_highlighted {
+        output.push_str("\x1b[0m");
+    }
+}
 
 /// Render a viewport of the terminal buffer to stdout.
 ///
@@ -31,80 +125,24 @@ pub fn render_viewport(
     view_cols: usize,
     highlight_line: Option<usize>,
 ) -> Result<()> {
-    // Build output string to minimize syscalls
     let mut output = String::with_capacity(view_rows * view_cols * 2);
 
     for view_row in 0..view_rows {
         let buf_row = view_row + row_offset;
         let is_highlighted = highlight_line == Some(buf_row);
 
-        // Move cursor to start of line (no clear - we'll overwrite)
         output.push_str(&format!("\x1b[{};1H", view_row + 1));
-
-        // Set highlight style if needed
         if is_highlighted {
-            output.push_str("\x1b[97;42m"); // White text on green background
+            output.push_str("\x1b[97;42m");
         }
 
-        let mut chars_written = 0;
-
-        if let Some(row) = buffer.row(buf_row) {
-            let mut current_style = CellStyle::default();
-            let mut in_highlight_style = is_highlighted;
-
-            for view_col in 0..view_cols {
-                let buf_col = view_col + col_offset;
-
-                if buf_col < row.len() {
-                    let cell = &row[buf_col];
-
-                    if !is_highlighted && cell.style != current_style {
-                        // Apply style using ANSI codes directly
-                        output.push_str("\x1b[0m"); // Reset
-                        style_to_ansi_fg(&cell.style, &mut output);
-                        style_to_ansi_bg(&cell.style, &mut output);
-                        style_to_ansi_attrs(&cell.style, &mut output);
-                        current_style = cell.style;
-                        in_highlight_style = false;
-                    } else if is_highlighted && !in_highlight_style {
-                        output.push_str("\x1b[97;42m");
-                        in_highlight_style = true;
-                    }
-
-                    output.push(cell.char);
-                    chars_written += 1;
-                } else {
-                    // Past end of row content - fill with spaces
-                    if !is_highlighted && current_style != CellStyle::default() {
-                        output.push_str("\x1b[0m");
-                        current_style = CellStyle::default();
-                    }
-                    output.push(' ');
-                    chars_written += 1;
-                }
-            }
-
-            // Reset at end of line
-            if current_style != CellStyle::default() || is_highlighted {
-                output.push_str("\x1b[0m");
-            }
-        } else {
-            // Empty row - fill with spaces
-            if is_highlighted {
-                for _ in 0..view_cols {
-                    output.push(' ');
-                }
-                output.push_str("\x1b[0m");
-            } else {
-                for _ in 0..view_cols {
-                    output.push(' ');
-                }
-            }
-            chars_written = view_cols;
-        }
-
-        // Ensure we've written the full width (clear any trailing content)
-        let _ = chars_written; // Already writing full width above
+        render_row(
+            &mut output,
+            buffer.row(buf_row),
+            col_offset,
+            view_cols,
+            is_highlighted,
+        );
     }
 
     write!(stdout, "{}", output)?;
@@ -134,60 +172,24 @@ pub fn render_single_line(
     view_cols: usize,
     is_highlighted: bool,
 ) -> Result<()> {
-    // Calculate screen row from buffer row
     if buf_row < view_row_offset {
-        return Ok(()); // Line is above viewport
+        return Ok(());
     }
     let screen_row = buf_row - view_row_offset;
 
     let mut output = String::with_capacity(view_cols * 2);
-
-    // Move cursor to start of line
     output.push_str(&format!("\x1b[{};1H", screen_row + 1));
-
     if is_highlighted {
-        output.push_str("\x1b[97;42m"); // White on green
+        output.push_str("\x1b[97;42m");
     }
 
-    if let Some(row) = buffer.row(buf_row) {
-        let mut current_style = CellStyle::default();
-
-        for view_col in 0..view_cols {
-            let buf_col = view_col + col_offset;
-
-            if buf_col < row.len() {
-                let cell = &row[buf_col];
-
-                if !is_highlighted && cell.style != current_style {
-                    output.push_str("\x1b[0m");
-                    style_to_ansi_fg(&cell.style, &mut output);
-                    style_to_ansi_bg(&cell.style, &mut output);
-                    style_to_ansi_attrs(&cell.style, &mut output);
-                    current_style = cell.style;
-                }
-
-                output.push(cell.char);
-            } else {
-                if !is_highlighted && current_style != CellStyle::default() {
-                    output.push_str("\x1b[0m");
-                    current_style = CellStyle::default();
-                }
-                output.push(' ');
-            }
-        }
-
-        if current_style != CellStyle::default() || is_highlighted {
-            output.push_str("\x1b[0m");
-        }
-    } else {
-        // Empty row
-        for _ in 0..view_cols {
-            output.push(' ');
-        }
-        if is_highlighted {
-            output.push_str("\x1b[0m");
-        }
-    }
+    render_row(
+        &mut output,
+        buffer.row(buf_row),
+        col_offset,
+        view_cols,
+        is_highlighted,
+    );
 
     write!(stdout, "{}", output)?;
     Ok(())
