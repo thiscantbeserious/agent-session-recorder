@@ -38,38 +38,16 @@ impl Copy {
     /// Tries file copy first, falls back to content copy.
     /// Content fallback has a size limit to prevent memory exhaustion.
     pub fn file(&self, path: &Path) -> Result<CopyResult, ClipboardError> {
-        // Validate file exists
         if !path.exists() {
             return Err(ClipboardError::FileNotFound {
                 path: path.to_path_buf(),
             });
         }
 
-        // Try file copy with tools that support it
-        let mut last_error: Option<String> = None;
-        for tool in &self.tools {
-            if tool.is_available() && tool.can_copy_files() {
-                match tool.try_copy_file(path) {
-                    Ok(()) => {
-                        return Ok(CopyResult::file_copied(tool.method()));
-                    }
-                    Err(CopyToolError::NotSupported) => continue,
-                    Err(CopyToolError::NotFound) => continue,
-                    Err(CopyToolError::Failed(msg)) => {
-                        // Log the error for debugging, then try next tool
-                        eprintln!(
-                            "Clipboard: {} failed ({}), trying next tool...",
-                            tool.name(),
-                            msg
-                        );
-                        last_error = Some(msg);
-                        continue;
-                    }
-                }
-            }
+        if let Ok(result) = self.try_copy_file_with_tools(path) {
+            return Ok(result);
         }
 
-        // Check file size before content fallback to prevent memory exhaustion
         let metadata = std::fs::metadata(path)?;
         if metadata.len() > MAX_CONTENT_SIZE {
             return Err(ClipboardError::FileTooLarge {
@@ -78,37 +56,70 @@ impl Copy {
             });
         }
 
-        // Fall back to content copy
         let content = std::fs::read_to_string(path)?;
-        let size = content.len();
 
+        match self.try_copy_text_with_tools(&content) {
+            Ok(result) => Ok(result),
+            Err(last_error) => {
+                if let Some(err) = last_error {
+                    eprintln!("Clipboard: All tools failed. Last error: {}", err);
+                }
+                Err(ClipboardError::NoToolAvailable)
+            }
+        }
+    }
+
+    /// Iterate available file-capable tools and attempt file copy.
+    ///
+    /// Returns `Ok(CopyResult)` on first success. Returns `Err(Some(msg))` if
+    /// a tool reported a failure, or `Err(None)` if no eligible tool was found.
+    fn try_copy_file_with_tools(&self, path: &Path) -> Result<CopyResult, Option<String>> {
+        let mut last_error: Option<String> = None;
         for tool in &self.tools {
-            if tool.is_available() {
-                match tool.try_copy_text(&content) {
-                    Ok(()) => {
-                        return Ok(CopyResult::content_copied(tool.method(), size));
-                    }
-                    Err(CopyToolError::NotSupported) => continue,
-                    Err(CopyToolError::NotFound) => continue,
-                    Err(CopyToolError::Failed(msg)) => {
-                        eprintln!(
-                            "Clipboard: {} text copy failed ({}), trying next tool...",
-                            tool.name(),
-                            msg
-                        );
-                        last_error = Some(msg);
-                        continue;
-                    }
+            if !tool.is_available() || !tool.can_copy_files() {
+                continue;
+            }
+            match tool.try_copy_file(path) {
+                Ok(()) => return Ok(CopyResult::file_copied(tool.method())),
+                Err(CopyToolError::NotSupported) | Err(CopyToolError::NotFound) => continue,
+                Err(CopyToolError::Failed(msg)) => {
+                    eprintln!(
+                        "Clipboard: {} failed ({}), trying next tool...",
+                        tool.name(),
+                        msg
+                    );
+                    last_error = Some(msg);
                 }
             }
         }
+        Err(last_error)
+    }
 
-        // Include last error in debug output if all tools failed
-        if let Some(err) = last_error {
-            eprintln!("Clipboard: All tools failed. Last error: {}", err);
+    /// Iterate available tools and attempt text copy.
+    ///
+    /// Returns `Ok(CopyResult)` on first success. Returns `Err(Some(msg))` if
+    /// a tool reported a failure, or `Err(None)` if no eligible tool was found.
+    fn try_copy_text_with_tools(&self, content: &str) -> Result<CopyResult, Option<String>> {
+        let size = content.len();
+        let mut last_error: Option<String> = None;
+        for tool in &self.tools {
+            if !tool.is_available() {
+                continue;
+            }
+            match tool.try_copy_text(content) {
+                Ok(()) => return Ok(CopyResult::content_copied(tool.method(), size)),
+                Err(CopyToolError::NotSupported) | Err(CopyToolError::NotFound) => continue,
+                Err(CopyToolError::Failed(msg)) => {
+                    eprintln!(
+                        "Clipboard: {} text copy failed ({}), trying next tool...",
+                        tool.name(),
+                        msg
+                    );
+                    last_error = Some(msg);
+                }
+            }
         }
-
-        Err(ClipboardError::NoToolAvailable)
+        Err(last_error)
     }
 }
 
