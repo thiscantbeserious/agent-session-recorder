@@ -162,12 +162,20 @@ fn sort_toml_text(text: &str) -> String {
         return text.to_string();
     }
 
-    // Preamble: everything before the first section header
     let preamble_end = headers[0].0;
+    let preamble = lines[..preamble_end].join("\n");
 
-    // Build section blocks: group consecutive headers that share a top-level group,
-    // and also merge non-consecutive sections with the same group.
-    // Each block is (group_name, text_content).
+    let blocks = collect_section_blocks(&headers, &lines);
+    let sorted_blocks = sort_blocks_by_order(&blocks);
+
+    reassemble_toml(&preamble, &sorted_blocks)
+}
+
+/// Build section blocks from headers, merging sub-sections into their parent group.
+///
+/// Returns `Vec<(group_name, block_text)>` where non-consecutive sections with
+/// the same top-level group are concatenated into a single block.
+fn collect_section_blocks(headers: &[(usize, String)], lines: &[&str]) -> Vec<(String, String)> {
     let mut blocks: Vec<(String, String)> = Vec::new();
     let mut seen_groups: Vec<String> = Vec::new();
 
@@ -180,7 +188,6 @@ fn sort_toml_text(text: &str) -> String {
 
         let block_text = lines[*start..end].join("\n");
 
-        // Append to existing block for this group, or create a new one
         if let Some(pos) = seen_groups.iter().position(|g| g == group) {
             blocks[pos].1.push('\n');
             blocks[pos].1.push_str(&block_text);
@@ -190,38 +197,41 @@ fn sort_toml_text(text: &str) -> String {
         }
     }
 
-    // Sort blocks: known sections in SECTION_ORDER, then unknowns in original order
-    let mut sorted_blocks: Vec<&(String, String)> = Vec::new();
+    blocks
+}
+
+/// Sort blocks so that known sections appear in `SECTION_ORDER`, unknowns follow in original order.
+fn sort_blocks_by_order(blocks: &[(String, String)]) -> Vec<&(String, String)> {
+    let mut sorted: Vec<&(String, String)> = Vec::new();
     for &section in SECTION_ORDER {
         if let Some(block) = blocks.iter().find(|(g, _)| g == section) {
-            sorted_blocks.push(block);
+            sorted.push(block);
         }
     }
-    for block in &blocks {
+    for block in blocks {
         if !SECTION_ORDER.contains(&block.0.as_str()) {
-            sorted_blocks.push(block);
+            sorted.push(block);
         }
     }
+    sorted
+}
 
-    // Reassemble
-    let preamble = lines[..preamble_end].join("\n");
+/// Reassemble preamble and sorted blocks into a single TOML string.
+///
+/// Ensures exactly one blank line between adjacent blocks and a trailing newline.
+fn reassemble_toml(preamble: &str, sorted_blocks: &[&(String, String)]) -> String {
     let mut result = String::new();
+
     if !preamble.is_empty() {
-        result.push_str(&preamble);
+        result.push_str(preamble);
         if !result.ends_with('\n') {
             result.push('\n');
         }
     }
+
     for (i, block) in sorted_blocks.iter().enumerate() {
         if i > 0 || !preamble.is_empty() {
-            // Ensure blank line between blocks (but don't double up)
-            if !result.ends_with("\n\n") {
-                if result.ends_with('\n') {
-                    result.push('\n');
-                } else {
-                    result.push_str("\n\n");
-                }
-            }
+            ensure_blank_line_separator(&mut result);
         }
         result.push_str(&block.1);
         if !result.ends_with('\n') {
@@ -230,6 +240,17 @@ fn sort_toml_text(text: &str) -> String {
     }
 
     result
+}
+
+/// Append the separator needed so that `result` ends with exactly two newlines.
+fn ensure_blank_line_separator(result: &mut String) {
+    if !result.ends_with("\n\n") {
+        if result.ends_with('\n') {
+            result.push('\n');
+        } else {
+            result.push_str("\n\n");
+        }
+    }
 }
 
 /// Extract section name from a TOML header line like `[section]` or `[section.sub]`.
