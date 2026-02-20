@@ -1,134 +1,72 @@
-# ADR: Reduce Cognitive Complexity for SonarCloud Quality Gate -- Round 2
+# Sub-ADR: tui/widgets -- 1 Violation
 
-## Status
-Proposed
+Parent: [ADR.md](ADR.md)
 
-## Context
+## Scope
 
-After PR #141 eliminated all cognitive complexity >= 20 violations, SonarCloud still
-reports 32 remaining violations of rule `rust:S3776` (threshold 15). The worst offenders
-are TUI input/draw handlers (scores 80, 79, 48) and command handlers (score 62). The
-SonarCloud quality gate remains blocked by this technical debt.
+File: `src/tui/widgets/file_explorer.rs` (1260+ lines)
+Violations: 1 function, score 79
 
-PR #141's ADR (`.state/chore-sonarcloud-quality-fixes/ADR.md`) established a proven
-approach: **inline helper-function extraction within the same file/impl block** (Option 1).
-That approach successfully resolved all >= 20 violations with zero regressions. This ADR
-reuses the same approach for the remaining 32 violations.
+## SonarCloud-to-Source Mapping (verified)
 
-### Forces
+| SonarCloud Name | SonarCloud Line | Actual Function | Actual Line | Score |
+|-----------------|-----------------|-----------------|-------------|-------|
+| `handle_input()` | 958 | `FileExplorerWidget::render()` (Widget trait impl) | 958 | 79 |
 
-- **Proven pattern**: PR #141 demonstrated that inline extraction works, reviews cleanly,
-  and introduces no regressions. No reason to deviate.
-- **Scale**: 32 functions across 14+ files is roughly 3x the scope of PR #141 (10 functions
-  across 7 files). Parallelization by file is essential.
-- **TUI file concentration**: `src/tui/list_app.rs` alone has 5 violations (lines 213,
-  704, 1047, 1254, 1426). These must be planned as a single unit to avoid conflicting edits.
-- **Test file refactoring**: One violation is in a test file
-  (`tests/integration/snapshot_player_test.rs`). Extraction must not alter assertions or
-  test intent.
-- **Many functions are `#[cfg(not(tarpaulin_include))]`**: Several command handlers
-  (`analyze::handle`, `config::handle_migrate`, `config::print_diff_preview`) are excluded
-  from code coverage. These cannot be meaningfully unit-tested; the TDD "RED" phase for
-  these means verifying `cargo test` passes as baseline, not writing new tests.
-- **Incomplete violation list**: REQUIREMENTS explicitly names 25 of 32 violations. The
-  remaining 7 Medium-tier violations are expected in `src/main.rs` and other files. The
-  implementer must discover these via `cargo clippy` or the SonarCloud dashboard and include
-  them in the work.
+## Function Analysis
 
-## Options Considered
+### `render()` at line 958 -- score 79
 
-### Option 1: Inline helper extraction (same approach as PR #141)
+**Signature:**
+```rust
+impl Widget for FileExplorerWidget<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer)
+```
 
-Extract cohesive blocks into private helper functions within the same `impl` block or
-module. No module restructuring.
+**Current structure:**
+Lines 958-1242. The function has three major blocks:
 
-- Pros: Proven pattern, minimal diff per function, low risk, directly targets the
-  SonarCloud metric, easy to review
-- Cons: Large files remain large (deferred concern), 32 functions means a larger overall
-  diff
+1. **Layout and item data collection** (lines 958-984): Splits area, collects visible items into `item_data: Vec<(String, String, String, String, bool, bool, bool)>`.
 
-### Option 2: Inline extraction + module splits for oversize files
+2. **Item span construction** (lines 989-1080): The `.map()` closure iterating over `item_data` is the biggest complexity contributor. For each item, it:
+   - Optionally adds checkbox span (lines 995-998)
+   - Adds time prefix span (lines 1001-1004)
+   - Adds backup indicator (lines 1007-1009)
+   - **Rename branch** (lines 1012-1056): `if idx == selected_idx { if let Some((input, cursor, selected_all)) = rename_state { ... } }` with deeply nested:
+     - `if selected_all { ... } else { ... }` (line 1017)
+     - Inside else: `if !before.is_empty()` (line 1024), `if cursor < input.len()` (line 1027) with inner `if !after.is_empty()` (line 1040), and `else` for cursor-at-end (lines 1044-1048)
+   - **Normal item branch** (lines 1059-1077): lock-based style selection, recording indicator, metadata spans.
 
-Same as Option 1, but also split `list_app.rs` (1700+ lines) into submodules during the
-refactoring.
+3. **Preview panel rendering** (lines 1130-1241): `if self.show_preview && chunks.len() > 1` wraps a large block with:
+   - `if let Some((name, agent, size, modified, path, lock_data)) = preview_data` (line 1132)
+   - `if let Some((duration, markers, styled_preview)) = session_preview_data` (line 1149) with nested `if has_backup` (line 1159), `if let Some(ref lock) = lock_data` (line 1171), `if !styled_preview.is_empty()` (line 1189)
+   - `else` fallback for no session preview (lines 1213-1226)
+   - `else` for no file selected (lines 1229-1231)
 
-- Pros: Addresses both complexity and file-size concerns simultaneously
-- Cons: Larger scope, higher risk of merge conflicts, mixes two objectives (complexity
-  reduction and file organization), harder to review
+**Why complexity is high:** The item-building closure has 5+ levels of nesting from the rename state branch. The preview panel has 4 levels of nesting from chained `if let` / `if` conditions.
 
-## Decision
+**Borrow checker constraint:** `render(self, ...)` consumes `self` (moved). The item data is pre-collected to avoid borrow issues with `self.explorer` during the `.map()`. Extracted helpers must be **free functions** since `self` is consumed and fields are accessed through locals. The `rename_state: Option<(&str, usize, bool)>` contains a `&str` reference -- the extracted function must accept this reference as a parameter.
 
-**Option 1: Inline helper extraction**, consistent with PR #141.
+**Extraction targets:**
 
-Rationale: The requirements explicitly state "pure refactoring only." Mixing in module
-restructuring would increase risk and review burden without being required by the SonarCloud
-quality gate. File-size improvements can follow in a separate chore.
+1. `build_rename_item_spans(input: &str, cursor: usize, selected_all: bool, agent: &str, size_str: &str, theme: &Theme) -> Vec<Span>` -- free function. Covers lines 1013-1055 (the entire rename-state rendering block). Takes the rename state tuple fields and returns the span vector. This eliminates the deepest nesting. The function handles:
+   - `selected_all` branch: cursor-style text + `.cast` suffix
+   - Normal edit branch: before-cursor text, cursor character with blink style, after-cursor text, `.cast` suffix
 
-## Module-Scoped Sub-ADRs
+2. `build_normal_item_spans(name: &str, agent: &str, size_str: &str, is_locked: bool, is_checked: bool, show_checkboxes: bool, time_str: &str, has_bak: bool, theme: &Theme) -> Vec<Span>` -- free function. Covers lines 994-1077 minus the rename path. Builds the standard item spans including checkbox, time prefix, backup indicator, lock indicator, and metadata. This is optional -- it may not reduce complexity enough on its own since the remaining normal path has low branching.
 
-This ADR is decomposed into per-module sub-ADRs, each containing source-verified function
-analysis, extraction targets with line ranges, borrow checker constraints, and testability
-assessment. The sub-ADRs are:
+3. `render_preview_panel(buf: &mut Buffer, area: Rect, preview_data: Option<(...)>, session_preview_data: Option<(...)>, has_backup: bool, theme: &Theme)` -- free function. Covers lines 1130-1241. Takes the pre-collected preview data and renders the preview panel. This is a substantial block but the nesting is mostly from `if let` guards which are hard to simplify beyond extraction.
 
-| Sub-ADR | Module | Files | Violations | Total Score |
-|---------|--------|-------|------------|-------------|
-| [ADR-tui-list-app.md](ADR-tui-list-app.md) | tui/list_app | `src/tui/list_app.rs` | 5 | 181 |
-| [ADR-tui-widgets.md](ADR-tui-widgets.md) | tui/widgets | `src/tui/widgets/file_explorer.rs` | 1 | 79 |
-| [ADR-tui-event-bus.md](ADR-tui-event-bus.md) | tui/event_bus | `src/tui/event_bus.rs` | 1 | 43 |
-| [ADR-tui-cleanup-app.md](ADR-tui-cleanup-app.md) | tui/cleanup_app | `src/tui/cleanup_app.rs` | 1 | 16 |
-| [ADR-commands.md](ADR-commands.md) | commands | `src/commands/analyze.rs`, `src/commands/config.rs` | 3 | 107 |
-| [ADR-analyzer.md](ADR-analyzer.md) | analyzer | 7 files under `src/analyzer/` | 9 | 167 |
-| [ADR-player.md](ADR-player.md) | player | `src/player/render/viewport.rs` | 2 | 71 |
-| [ADR-config.md](ADR-config.md) | config | `src/config/migrate/mod.rs`, `src/config/docs.rs` | 2 | 62 |
-| [ADR-clipboard.md](ADR-clipboard.md) | clipboard | `src/clipboard/copy.rs` | 1 | 16 |
-| [ADR-tests.md](ADR-tests.md) | tests | `tests/integration/snapshot_player_test.rs` | 1 | 21 |
+**Minimum viable extraction:** Target (1) alone may reduce the score sufficiently since the rename branch contributes the majority of the nesting. If the score is still > 15 after extracting (1), add (3) for the preview panel.
 
-### Common TDD Cycle for Pure Refactoring
+## Dependencies
 
-Since this is pure refactoring (no new behavior), every function follows this cycle:
+- `render()` is called by the ratatui framework through the `Widget` trait.
+- It references `self.explorer`, `self.show_checkboxes`, `self.rename_state`, `self.session_preview`, `self.has_backup`, and `self.show_preview`.
+- No other functions in this file are flagged.
 
-1. **RED/GREEN (test baseline)**: Verify `cargo test` passes before touching source code.
-   For functions with existing dedicated tests, run those specifically. For functions without
-   tests (TUI handlers, command handlers), the full test suite is the baseline.
-2. **REFACTOR**: Extract helper functions to reduce complexity below 15. No behavioral changes.
-3. **GREEN (regression check)**: Run the same tests again -- they must still pass.
-4. **Format and lint**: `cargo fmt` and `cargo clippy`.
+## Testability Assessment
 
-### Common Extraction Patterns
+**Existing tests:** `tests/integration/snapshot_tui_test.rs` contains snapshot tests for the file explorer rendering. These are the primary regression safety net.
 
-- **Free functions**: Required when `self` is already mutably borrowed (e.g., `draw()` closures,
-  `render()` trait implementations). Take explicit parameters instead of `&self`.
-- **Methods on `&mut self`**: Used when the function already has `&mut self` and no conflicting
-  borrows exist (e.g., `handle_mouse()` delegates to `handle_normal_mouse(&mut self, ...)`).
-- **Static methods / associated functions**: Used for pure computation that does not need any
-  instance state.
-
-## Consequences
-
-- What becomes easier:
-  - SonarCloud quality gate passes
-  - Each extracted helper is a named, scannable unit of work
-  - Future unit tests can target individual helpers
-  - Onboarding developers can follow coordinator-pattern functions
-
-- What becomes harder:
-  - One more level of indirection when reading code
-  - File line counts remain high for some files (deferred)
-
-- Follow-ups to scope for later:
-  - Split oversize files (`list_app.rs`, `aggressive.rs`) into submodules
-  - Add unit tests for extracted TUI helpers where feasible
-
-## Decision History
-
-1. Reuse Option 1 (inline extraction) from PR #141 ADR -- proven approach, same constraints.
-2. `list_app.rs` has 5 violations -- plan all 5 together as one unit to avoid conflicting
-   edits across separate passes.
-3. Functions marked `#[cfg(not(tarpaulin_include))]` cannot have meaningful unit tests
-   written for the RED phase; baseline `cargo test` pass is the TDD gate for those.
-4. Test file `snapshot_player_test.rs` extraction must only consolidate setup/repeated
-   control flow, not alter assertions or test intent.
-5. 7 of 32 Medium-tier violations are not explicitly listed in REQUIREMENTS. The implementer
-   must discover and fix these as part of the work.
-6. Restructured monolithic ADR into per-module sub-ADRs for thorough source-level analysis
-   of each extraction target.
+**TDD approach:** `render()` is a Widget trait method requiring a `Buffer` to render into. It cannot be easily unit-tested in isolation. The snapshot integration tests are the baseline. Extracted free functions (like `build_rename_item_spans()`) would be independently testable but writing tests is out of scope for this pure refactoring.
