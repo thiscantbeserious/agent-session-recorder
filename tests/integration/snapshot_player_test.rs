@@ -323,6 +323,48 @@ fn render_help_snapshot(term_width: u16, term_height: u16) -> String {
     output
 }
 
+/// Render a single row of buffer content for snapshot testing.
+///
+/// Returns the character content for `view_cols` columns starting at `col_offset`.
+/// Fills with spaces if the buffer row is absent or shorter than the requested range.
+fn render_snapshot_row(
+    buffer: &TerminalBuffer,
+    buf_row: usize,
+    col_offset: usize,
+    view_cols: usize,
+) -> String {
+    let mut content = String::new();
+    if let Some(row) = buffer.row(buf_row) {
+        for view_col in 0..view_cols {
+            let buf_col = view_col + col_offset;
+            if buf_col < row.len() {
+                content.push(row[buf_col].char);
+            } else {
+                content.push(' ');
+            }
+        }
+    } else {
+        for _ in 0..view_cols {
+            content.push(' ');
+        }
+    }
+    content
+}
+
+/// Render one viewport row including highlight markers for snapshot testing.
+fn render_viewport_row(
+    buffer: &TerminalBuffer,
+    buf_row: usize,
+    col_offset: usize,
+    view_cols: usize,
+    is_highlighted: bool,
+) -> String {
+    let prefix = if is_highlighted { ">>> " } else { "    " };
+    let content = render_snapshot_row(buffer, buf_row, col_offset, view_cols);
+    let suffix = if is_highlighted { " <<<" } else { "" };
+    format!("{}{}{}\n", prefix, content, suffix)
+}
+
 /// Render viewport content to string for snapshot testing.
 fn render_viewport_snapshot(
     buffer: &TerminalBuffer,
@@ -350,32 +392,13 @@ fn render_viewport_snapshot(
     for view_row in 0..view_rows {
         let buf_row = view_row + row_offset;
         let is_highlighted = highlight_line == Some(buf_row);
-
-        if is_highlighted {
-            output.push_str(">>> ");
-        } else {
-            output.push_str("    ");
-        }
-
-        if let Some(row) = buffer.row(buf_row) {
-            for view_col in 0..view_cols {
-                let buf_col = view_col + col_offset;
-                if buf_col < row.len() {
-                    output.push(row[buf_col].char);
-                } else {
-                    output.push(' ');
-                }
-            }
-        } else {
-            for _ in 0..view_cols {
-                output.push(' ');
-            }
-        }
-
-        if is_highlighted {
-            output.push_str(" <<<");
-        }
-        output.push('\n');
+        output.push_str(&render_viewport_row(
+            buffer,
+            buf_row,
+            col_offset,
+            view_cols,
+            is_highlighted,
+        ));
     }
 
     output
