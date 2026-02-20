@@ -20,9 +20,10 @@
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-informational)]()
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=thiscantbeserious_agent-session-recorder&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=thiscantbeserious_agent-session-recorder)
 [![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=thiscantbeserious_agent-session-recorder&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=thiscantbeserious_agent-session-recorder)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=thiscantbeserious_agent-session-recorder&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=thiscantbeserious_agent-session-recorder)
 [![Security](https://sonarcloud.io/api/project_badges/measure?project=thiscantbeserious_agent-session-recorder&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=thiscantbeserious_agent-session-recorder)
 [![Reliability](https://sonarcloud.io/api/project_badges/measure?project=thiscantbeserious_agent-session-recorder&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=thiscantbeserious_agent-session-recorder)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=thiscantbeserious_agent-session-recorder&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=thiscantbeserious_agent-session-recorder)
+
 
 <video src="https://github.com/user-attachments/assets/e83cf993-467f-4869-b413-f86ddfae1fad" width="600" autoplay loop muted playsinline></video>
 
