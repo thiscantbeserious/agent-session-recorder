@@ -954,6 +954,16 @@ impl<'a> FileExplorerWidget<'a> {
     }
 }
 
+/// Pre-collected metadata for the preview panel to avoid borrow issues during rendering.
+type PreviewData = (
+    String,
+    String,
+    u64,
+    chrono::DateTime<chrono::Local>,
+    String,
+    Option<LockInfo>,
+);
+
 impl Widget for FileExplorerWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let theme = current_theme();
@@ -996,84 +1006,32 @@ impl Widget for FileExplorerWidget<'_> {
                         let checkbox = if *is_checked { "[x] " } else { "[ ] " };
                         spans.push(Span::styled(checkbox, theme.text_secondary_style()));
                     }
-
-                    // Smart time prefix
                     spans.push(Span::styled(
                         format!("{:>5}: ", time_str),
                         theme.text_secondary_style(),
                     ));
-
-                    // Add [opt] indicator prefix if backup exists
                     if *has_bak {
                         spans.push(Span::styled("[opt] ", theme.accent_style()));
                     }
 
-                    // Show inline rename input on the selected item
                     if idx == selected_idx {
                         if let Some((input, cursor, selected_all)) = rename_state {
-                            let cursor_style =
-                                theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
-
-                            if selected_all {
-                                // Show entire text as "selected" with cursor style
-                                spans.push(Span::styled(input, cursor_style));
-                                spans.push(Span::styled(".cast", theme.text_secondary_style()));
-                            } else {
-                                // Text before cursor
-                                let before = &input[..cursor];
-                                if !before.is_empty() {
-                                    spans.push(Span::styled(before, theme.text_style()));
-                                }
-                                if cursor < input.len() {
-                                    // Find the end of the char at cursor
-                                    let char_len = input[cursor..]
-                                        .chars()
-                                        .next()
-                                        .map(|c| c.len_utf8())
-                                        .unwrap_or(1);
-                                    // Block cursor on character under cursor
-                                    spans.push(Span::styled(
-                                        &input[cursor..cursor + char_len],
-                                        cursor_style,
-                                    ));
-                                    let after = &input[cursor + char_len..];
-                                    if !after.is_empty() {
-                                        spans.push(Span::styled(after, theme.text_style()));
-                                    }
-                                    spans.push(Span::styled(".cast", theme.text_secondary_style()));
-                                } else {
-                                    // Cursor at end: style the "." of ".cast" as cursor
-                                    spans.push(Span::styled(".", cursor_style));
-                                    spans.push(Span::styled("cast", theme.text_secondary_style()));
-                                }
-                            }
-                            spans.push(Span::raw("  "));
-                            spans.push(Span::styled(
-                                format!("({}, {})", agent, size_str),
-                                theme.text_secondary_style(),
-                            ));
+                            let mut rename_spans = build_rename_item_spans(
+                                input,
+                                cursor,
+                                selected_all,
+                                agent,
+                                size_str,
+                                &theme,
+                            );
+                            spans.append(&mut rename_spans);
                             return ListItem::new(Line::from(spans));
                         }
                     }
 
-                    // Use greyed style for locked (actively recording) files
-                    let name_style = if *is_locked {
-                        theme.text_secondary_style()
-                    } else {
-                        theme.text_style()
-                    };
-                    spans.push(Span::styled(name.as_str(), name_style));
-
-                    // Add recording indicator for locked files
-                    if *is_locked {
-                        spans.push(Span::styled(" \u{1F4F9}", theme.text_secondary_style()));
-                    }
-
-                    spans.push(Span::raw("  "));
-                    spans.push(Span::styled(
-                        format!("({}, {})", agent, size_str),
-                        theme.text_secondary_style(),
-                    ));
+                    let mut normal_spans =
+                        build_normal_item_spans(name, agent, size_str, *is_locked, &theme);
+                    spans.append(&mut normal_spans);
                     ListItem::new(Line::from(spans))
                 },
             )
@@ -1128,116 +1086,266 @@ impl Widget for FileExplorerWidget<'_> {
 
         // Render preview panel if enabled
         if self.show_preview && chunks.len() > 1 {
-            let preview_text =
-                if let Some((name, agent, size, modified, path, lock_data)) = preview_data {
-                    let mut lines = vec![
-                        Line::from(vec![
-                            Span::styled("Name: ", theme.text_secondary_style()),
-                            Span::styled(name, theme.text_style()),
-                        ]),
-                        Line::from(vec![
-                            Span::styled("Agent: ", theme.text_secondary_style()),
-                            Span::styled(agent, theme.accent_style()),
-                        ]),
-                        Line::from(vec![
-                            Span::styled("Size: ", theme.text_secondary_style()),
-                            Span::styled(format_size(size), theme.text_style()),
-                        ]),
-                    ];
-
-                    // Add duration and markers if session preview is available
-                    if let Some((duration, markers, styled_preview)) = session_preview_data {
-                        lines.push(Line::from(vec![
-                            Span::styled("Duration: ", theme.text_secondary_style()),
-                            Span::styled(duration, theme.text_style()),
-                        ]));
-                        lines.push(Line::from(vec![
-                            Span::styled("Markers: ", theme.text_secondary_style()),
-                            Span::styled(markers.to_string(), theme.text_style()),
-                        ]));
-                        // Show backup status
-                        if has_backup {
-                            lines.push(Line::from(vec![
-                                Span::styled("Backup: ", theme.text_secondary_style()),
-                                Span::styled(
-                                    "Available",
-                                    Style::default()
-                                        .fg(theme.success)
-                                        .add_modifier(Modifier::BOLD),
-                                ),
-                            ]));
-                        }
-                        // Show lock/recording status
-                        if let Some(ref lock) = lock_data {
-                            lines.push(Line::from(vec![
-                                Span::styled("Status: ", theme.text_secondary_style()),
-                                Span::styled(
-                                    format!("\u{1F4F9} Recording (PID {})", lock.pid),
-                                    theme.text_secondary_style(),
-                                ),
-                            ]));
-                        }
-                        lines.push(Line::from(vec![
-                            Span::styled("Modified: ", theme.text_secondary_style()),
-                            Span::styled(
-                                modified.format("%Y-%m-%d %H:%M").to_string(),
-                                theme.text_style(),
-                            ),
-                        ]));
-
-                        // Add terminal preview section if not empty
-                        if !styled_preview.is_empty() {
-                            lines.push(Line::from("")); // Empty line separator
-                            lines.push(Line::from(vec![Span::styled(
-                                "Preview",
-                                theme.text_secondary_style(),
-                            )]));
-
-                            // Add terminal preview lines with colors (limited to fit)
-                            for styled_line in styled_preview.iter().take(12) {
-                                // Prepend a space and convert to ratatui Line with colors
-                                let mut ratatui_line =
-                                    SessionPreview::styled_line_to_ratatui(styled_line);
-                                // Insert space at start
-                                if let Some(first_span) = ratatui_line.spans.first_mut() {
-                                    *first_span = Span::styled(
-                                        format!(" {}", first_span.content),
-                                        first_span.style,
-                                    );
-                                } else {
-                                    ratatui_line.spans.insert(0, Span::raw(" "));
-                                }
-                                lines.push(ratatui_line);
-                            }
-                        }
-                    } else {
-                        // Fallback when no session preview is available
-                        lines.push(Line::from(vec![
-                            Span::styled("Modified: ", theme.text_secondary_style()),
-                            Span::styled(
-                                modified.format("%Y-%m-%d %H:%M").to_string(),
-                                theme.text_style(),
-                            ),
-                        ]));
-                        lines.push(Line::from(vec![
-                            Span::styled("Path: ", theme.text_secondary_style()),
-                            Span::styled(path, theme.text_secondary_style()),
-                        ]));
-                    }
-
-                    lines
-                } else {
-                    vec![Line::from("No file selected")]
-                };
-
-            let preview = Paragraph::new(preview_text).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Preview ")
-                    .border_style(theme.text_secondary_style()),
+            render_preview_panel(
+                buf,
+                chunks[1],
+                preview_data,
+                session_preview_data,
+                has_backup,
+                &theme,
             );
+        }
+    }
+}
 
-            preview.render(chunks[1], buf);
+/// Build spans for an item that is currently being renamed.
+///
+/// Handles both `selected_all` mode (entire text highlighted) and normal edit mode
+/// with a block cursor rendered at the byte position `cursor` within `input`.
+fn build_rename_item_spans<'a>(
+    input: &'a str,
+    cursor: usize,
+    selected_all: bool,
+    agent: &str,
+    size_str: &str,
+    theme: &crate::theme::Theme,
+) -> Vec<Span<'a>> {
+    let cursor_style = theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
+    let mut spans: Vec<Span<'a>> = vec![];
+
+    if selected_all {
+        spans.push(Span::styled(input, cursor_style));
+        spans.push(Span::styled(".cast", theme.text_secondary_style()));
+    } else {
+        let before = &input[..cursor];
+        if !before.is_empty() {
+            spans.push(Span::styled(before, theme.text_style()));
+        }
+        if cursor < input.len() {
+            let char_len = input[cursor..]
+                .chars()
+                .next()
+                .map(|c| c.len_utf8())
+                .unwrap_or(1);
+            spans.push(Span::styled(
+                &input[cursor..cursor + char_len],
+                cursor_style,
+            ));
+            let after = &input[cursor + char_len..];
+            if !after.is_empty() {
+                spans.push(Span::styled(after, theme.text_style()));
+            }
+            spans.push(Span::styled(".cast", theme.text_secondary_style()));
+        } else {
+            // Cursor at end: style the "." of ".cast" as cursor
+            spans.push(Span::styled(".", cursor_style));
+            spans.push(Span::styled("cast", theme.text_secondary_style()));
+        }
+    }
+
+    spans.push(Span::raw("  "));
+    spans.push(Span::styled(
+        format!("({}, {})", agent, size_str),
+        theme.text_secondary_style(),
+    ));
+    spans
+}
+
+/// Build spans for a normal (non-rename) list item.
+///
+/// Applies a dimmed style to locked (actively recording) items and appends
+/// the recording indicator emoji for locked files.
+fn build_normal_item_spans<'a>(
+    name: &'a str,
+    agent: &str,
+    size_str: &str,
+    is_locked: bool,
+    theme: &crate::theme::Theme,
+) -> Vec<Span<'a>> {
+    let name_style = if is_locked {
+        theme.text_secondary_style()
+    } else {
+        theme.text_style()
+    };
+
+    let mut spans: Vec<Span<'a>> = vec![Span::styled(name, name_style)];
+
+    if is_locked {
+        spans.push(Span::styled(" \u{1F4F9}", theme.text_secondary_style()));
+    }
+
+    spans.push(Span::raw("  "));
+    spans.push(Span::styled(
+        format!("({}, {})", agent, size_str),
+        theme.text_secondary_style(),
+    ));
+    spans
+}
+
+/// Render the right-hand preview panel for the currently selected session.
+///
+/// Displays file metadata, optional session duration/markers/terminal snapshot,
+/// and a fallback "No file selected" message when `preview_data` is `None`.
+fn render_preview_panel(
+    buf: &mut Buffer,
+    area: Rect,
+    preview_data: Option<PreviewData>,
+    session_preview_data: Option<(String, usize, Vec<crate::terminal::StyledLine>)>,
+    has_backup: bool,
+    theme: &crate::theme::Theme,
+) {
+    let preview_text = if let Some((name, agent, size, modified, path, lock_data)) = preview_data {
+        build_preview_lines(
+            name,
+            agent,
+            size,
+            modified,
+            path,
+            lock_data,
+            session_preview_data,
+            has_backup,
+            theme,
+        )
+    } else {
+        vec![Line::from("No file selected")]
+    };
+
+    let preview = Paragraph::new(preview_text).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Preview ")
+            .border_style(theme.text_secondary_style()),
+    );
+
+    preview.render(area, buf);
+}
+
+/// Build the list of text lines shown inside the preview panel.
+///
+/// Includes file name, agent, size, and conditionally duration, markers,
+/// backup status, lock status, modified time, and a terminal snapshot.
+#[allow(clippy::too_many_arguments)]
+fn build_preview_lines(
+    name: String,
+    agent: String,
+    size: u64,
+    modified: chrono::DateTime<chrono::Local>,
+    path: String,
+    lock_data: Option<LockInfo>,
+    session_preview_data: Option<(String, usize, Vec<crate::terminal::StyledLine>)>,
+    has_backup: bool,
+    theme: &crate::theme::Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled("Name: ", theme.text_secondary_style()),
+            Span::styled(name, theme.text_style()),
+        ]),
+        Line::from(vec![
+            Span::styled("Agent: ", theme.text_secondary_style()),
+            Span::styled(agent, theme.accent_style()),
+        ]),
+        Line::from(vec![
+            Span::styled("Size: ", theme.text_secondary_style()),
+            Span::styled(format_size(size), theme.text_style()),
+        ]),
+    ];
+
+    if let Some((duration, markers, styled_preview)) = session_preview_data {
+        append_session_preview_lines(
+            &mut lines,
+            duration,
+            markers,
+            styled_preview,
+            modified,
+            lock_data,
+            has_backup,
+            theme,
+        );
+    } else {
+        lines.push(Line::from(vec![
+            Span::styled("Modified: ", theme.text_secondary_style()),
+            Span::styled(
+                modified.format("%Y-%m-%d %H:%M").to_string(),
+                theme.text_style(),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Path: ", theme.text_secondary_style()),
+            Span::styled(path, theme.text_secondary_style()),
+        ]));
+    }
+
+    lines
+}
+
+/// Append duration, markers, backup/lock status, modified time, and terminal
+/// snapshot lines to an existing preview line buffer.
+#[allow(clippy::too_many_arguments)]
+fn append_session_preview_lines(
+    lines: &mut Vec<Line<'static>>,
+    duration: String,
+    markers: usize,
+    styled_preview: Vec<crate::terminal::StyledLine>,
+    modified: chrono::DateTime<chrono::Local>,
+    lock_data: Option<LockInfo>,
+    has_backup: bool,
+    theme: &crate::theme::Theme,
+) {
+    lines.push(Line::from(vec![
+        Span::styled("Duration: ", theme.text_secondary_style()),
+        Span::styled(duration, theme.text_style()),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("Markers: ", theme.text_secondary_style()),
+        Span::styled(markers.to_string(), theme.text_style()),
+    ]));
+
+    if has_backup {
+        lines.push(Line::from(vec![
+            Span::styled("Backup: ", theme.text_secondary_style()),
+            Span::styled(
+                "Available",
+                Style::default()
+                    .fg(theme.success)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]));
+    }
+
+    if let Some(ref lock) = lock_data {
+        lines.push(Line::from(vec![
+            Span::styled("Status: ", theme.text_secondary_style()),
+            Span::styled(
+                format!("\u{1F4F9} Recording (PID {})", lock.pid),
+                theme.text_secondary_style(),
+            ),
+        ]));
+    }
+
+    lines.push(Line::from(vec![
+        Span::styled("Modified: ", theme.text_secondary_style()),
+        Span::styled(
+            modified.format("%Y-%m-%d %H:%M").to_string(),
+            theme.text_style(),
+        ),
+    ]));
+
+    if !styled_preview.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![Span::styled(
+            "Preview",
+            theme.text_secondary_style(),
+        )]));
+
+        for styled_line in styled_preview.iter().take(12) {
+            let mut ratatui_line = SessionPreview::styled_line_to_ratatui(styled_line);
+            if let Some(first_span) = ratatui_line.spans.first_mut() {
+                *first_span = Span::styled(format!(" {}", first_span.content), first_span.style);
+            } else {
+                ratatui_line.spans.insert(0, Span::raw(" "));
+            }
+            lines.push(ratatui_line);
         }
     }
 }
