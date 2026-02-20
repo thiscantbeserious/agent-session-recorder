@@ -1,134 +1,143 @@
-# ADR: Reduce Cognitive Complexity for SonarCloud Quality Gate -- Round 2
+# Sub-ADR: commands -- 3 Violations
 
-## Status
-Proposed
+Parent: [ADR.md](ADR.md)
 
-## Context
+## Scope
 
-After PR #141 eliminated all cognitive complexity >= 20 violations, SonarCloud still
-reports 32 remaining violations of rule `rust:S3776` (threshold 15). The worst offenders
-are TUI input/draw handlers (scores 80, 79, 48) and command handlers (score 62). The
-SonarCloud quality gate remains blocked by this technical debt.
+Files:
+- `src/commands/analyze.rs` (328 lines)
+- `src/commands/config.rs` (402 lines)
 
-PR #141's ADR (`.state/chore-sonarcloud-quality-fixes/ADR.md`) established a proven
-approach: **inline helper-function extraction within the same file/impl block** (Option 1).
-That approach successfully resolved all >= 20 violations with zero regressions. This ADR
-reuses the same approach for the remaining 32 violations.
+Violations: 3 functions, combined score 107
 
-### Forces
+## SonarCloud-to-Source Mapping (verified)
 
-- **Proven pattern**: PR #141 demonstrated that inline extraction works, reviews cleanly,
-  and introduces no regressions. No reason to deviate.
-- **Scale**: 32 functions across 14+ files is roughly 3x the scope of PR #141 (10 functions
-  across 7 files). Parallelization by file is essential.
-- **TUI file concentration**: `src/tui/list_app.rs` alone has 5 violations (lines 213,
-  704, 1047, 1254, 1426). These must be planned as a single unit to avoid conflicting edits.
-- **Test file refactoring**: One violation is in a test file
-  (`tests/integration/snapshot_player_test.rs`). Extraction must not alter assertions or
-  test intent.
-- **Many functions are `#[cfg(not(tarpaulin_include))]`**: Several command handlers
-  (`analyze::handle`, `config::handle_migrate`, `config::print_diff_preview`) are excluded
-  from code coverage. These cannot be meaningfully unit-tested; the TDD "RED" phase for
-  these means verifying `cargo test` passes as baseline, not writing new tests.
-- **Incomplete violation list**: REQUIREMENTS explicitly names 25 of 32 violations. The
-  remaining 7 Medium-tier violations are expected in `src/main.rs` and other files. The
-  implementer must discover these via `cargo clippy` or the SonarCloud dashboard and include
-  them in the work.
+| SonarCloud Name | SonarCloud Line | Actual Function | Actual Line | Score |
+|-----------------|-----------------|-----------------|-------------|-------|
+| `execute()` | 34 | `analyze::handle()` | 34 | 62 |
+| `handle()` | 243 | `config::print_diff_preview()` | 243 | 28 |
+| `run()` | 70 | `config::handle_migrate()` | 70 | 17 |
 
-## Options Considered
+## Function Analysis
 
-### Option 1: Inline helper extraction (same approach as PR #141)
+### 1. `analyze::handle()` at line 34 -- score 62
 
-Extract cohesive blocks into private helper functions within the same `impl` block or
-module. No module restructuring.
+**Signature:**
+```rust
+#[cfg(not(tarpaulin_include))]
+#[allow(clippy::too_many_arguments)]
+pub fn handle(
+    file: &str, agent_override: Option<&str>, workers: Option<usize>,
+    timeout: Option<u64>, no_parallel: bool, curate: bool, debug: bool,
+    output: Option<String>, fast: bool, wait: bool,
+) -> Result<()>
+```
 
-- Pros: Proven pattern, minimal diff per function, low risk, directly targets the
-  SonarCloud metric, easy to review
-- Cons: Large files remain large (deferred concern), 32 functions means a larger overall
-  diff
+**Current structure:**
+Lines 34-282. A long sequential pipeline:
+1. Config load and agent resolution (lines 46-53)
+2. File path resolution and validation (lines 55-73)
+3. Agent config lookup (line 76)
+4. **Option building** (lines 78-127): Three-tier cascade for workers (lines 82-86), timeout (lines 89-93), no_parallel/debug/output (lines 95-103), fast (lines 106-108), then per-agent config application (lines 111-127) with 4 nested `if let Some(...) { if !...is_empty() { ... } }` blocks.
+5. Service creation and availability check (lines 129-140)
+6. **Existing markers prompt** (lines 142-158): stdin prompt with `if existing_count > 0` and `if input.trim().eq_ignore_ascii_case("y")`.
+7. Analysis execution and result reporting (lines 160-176)
+8. **Curation flow** (lines 178-228): `if result.markers.len() > CURATION_THRESHOLD` with nested `if effective_curate` / `else` prompt, then `if should_curate` with `match service.curate_markers(...)` (Ok/Err arms).
+9. **Rename suggestion flow** (lines 236-272): `if !result.markers.is_empty()` with nested `match service.suggest_rename(...)` -> `Some(suggested)` with `if new_path != filepath && !new_path.exists()` and stdin prompt.
+10. Wait prompt (lines 274-279)
 
-### Option 2: Inline extraction + module splits for oversize files
+**Why complexity is high:** Long function with 12+ levels of sequential branching. The option cascade and curation/rename interactive flows contribute the most nesting.
 
-Same as Option 1, but also split `list_app.rs` (1700+ lines) into submodules during the
-refactoring.
+**Borrow checker constraint:** This is a free function (not a method). All data flows through parameters and local variables. No borrow checker issues. Extracted helpers can be free functions in the same module.
 
-- Pros: Addresses both complexity and file-size concerns simultaneously
-- Cons: Larger scope, higher risk of merge conflicts, mixes two objectives (complexity
-  reduction and file organization), harder to review
+**Tarpaulin/test constraint:** The function is `#[cfg(not(tarpaulin_include))]` and interacts with `stdin`/`stdout`. No unit tests can exercise it. All extracted helpers that also use stdin/stdout should also be marked `#[cfg(not(tarpaulin_include))]`. The TDD baseline is `cargo test` passing.
 
-## Decision
+**Extraction targets:**
 
-**Option 1: Inline helper extraction**, consistent with PR #141.
+1. `build_analyze_options(config: &Config, agent: AgentType, workers: Option<usize>, timeout: Option<u64>, no_parallel: bool, debug: bool, output: Option<String>, fast: bool) -> AnalyzeOptions` -- free function. Covers lines 79-108. Builds the options struct with the three-tier cascade. Pure computation, no stdin/stdout.
 
-Rationale: The requirements explicitly state "pure refactoring only." Mixing in module
-restructuring would increase risk and review burden without being required by the SonarCloud
-quality gate. File-size improvements can follow in a separate chore.
+2. `apply_agent_config(options: AnalyzeOptions, agent_config: Option<&AgentConfig>) -> AnalyzeOptions` -- free function. Covers lines 110-127. Applies per-agent extra_args and token_budget. Pure computation, no stdin/stdout.
 
-## Module-Scoped Sub-ADRs
+3. `handle_curation(service: &AnalyzerService, markers: &[ValidatedMarker], total_duration: f64, effective_curate: bool, filepath: &Path, timeout: Option<u64>) -> Result<usize>` -- free function. Covers lines 178-228. Handles the curation prompt and execution. Uses stdin/stdout, so mark `#[cfg(not(tarpaulin_include))]`.
 
-This ADR is decomposed into per-module sub-ADRs, each containing source-verified function
-analysis, extraction targets with line ranges, borrow checker constraints, and testability
-assessment. The sub-ADRs are:
+4. `handle_rename_suggestion(service: &AnalyzerService, markers: &[ValidatedMarker], total_duration: f64, filepath: &Path, timeout: Option<u64>) -> Result<()>` -- free function. Covers lines 236-272. Handles the rename prompt. Uses stdin/stdout, so mark `#[cfg(not(tarpaulin_include))]`.
 
-| Sub-ADR | Module | Files | Violations | Total Score |
-|---------|--------|-------|------------|-------------|
-| [ADR-tui-list-app.md](ADR-tui-list-app.md) | tui/list_app | `src/tui/list_app.rs` | 5 | 181 |
-| [ADR-tui-widgets.md](ADR-tui-widgets.md) | tui/widgets | `src/tui/widgets/file_explorer.rs` | 1 | 79 |
-| [ADR-tui-event-bus.md](ADR-tui-event-bus.md) | tui/event_bus | `src/tui/event_bus.rs` | 1 | 43 |
-| [ADR-tui-cleanup-app.md](ADR-tui-cleanup-app.md) | tui/cleanup_app | `src/tui/cleanup_app.rs` | 1 | 16 |
-| [ADR-commands.md](ADR-commands.md) | commands | `src/commands/analyze.rs`, `src/commands/config.rs` | 3 | 107 |
-| [ADR-analyzer.md](ADR-analyzer.md) | analyzer | 7 files under `src/analyzer/` | 9 | 167 |
-| [ADR-player.md](ADR-player.md) | player | `src/player/render/viewport.rs` | 2 | 71 |
-| [ADR-config.md](ADR-config.md) | config | `src/config/migrate/mod.rs`, `src/config/docs.rs` | 2 | 62 |
-| [ADR-clipboard.md](ADR-clipboard.md) | clipboard | `src/clipboard/copy.rs` | 1 | 16 |
-| [ADR-tests.md](ADR-tests.md) | tests | `tests/integration/snapshot_player_test.rs` | 1 | 21 |
+With all 4 extractions, `handle()` becomes a linear pipeline of named function calls.
 
-### Common TDD Cycle for Pure Refactoring
+### 2. `config::print_diff_preview()` at line 243 -- score 28
 
-Since this is pure refactoring (no new behavior), every function follows this cycle:
+**Signature:**
+```rust
+fn print_diff_preview(new_content: &str, added_fields: &[String], is_new_file: bool)
+```
 
-1. **RED/GREEN (test baseline)**: Verify `cargo test` passes before touching source code.
-   For functions with existing dedicated tests, run those specifically. For functions without
-   tests (TUI handlers, command handlers), the full test suite is the baseline.
-2. **REFACTOR**: Extract helper functions to reduce complexity below 15. No behavioral changes.
-3. **GREEN (regression check)**: Run the same tests again -- they must still pass.
-4. **Format and lint**: `cargo fmt` and `cargo clippy`.
+**Current structure:**
+Lines 243-306. Iterates over `new_content.lines()` with mutable state tracking:
+- `current_section: String` -- current TOML section name
+- `section_has_additions: bool` -- whether current section has added fields
+- `pending_section_header: Option<String>` -- deferred section header output
 
-### Common Extraction Patterns
+For each line:
+1. **Section header branch** (lines 256-272): `if let Some(section_name) = parse_simple_section_header(trimmed)` with nested `let is_added_section = ...`, assignment to `current_section` and `section_has_additions`, and `if is_new_file || is_added_section` for queuing the header.
+2. **Field assignment branch** (lines 275-297): `if let Some(eq_pos) = trimmed.find('=')` with nested `if is_new_file || is_added` for printing green-prefixed output, and `if let Some(header) = pending_section_header.take()` for flushing deferred headers. Then `else if section_has_additions` with another `if let Some(header)`.
+3. **Remaining lines branch** (lines 298-304): `else if is_new_file && !trimmed.is_empty()` for printing comments in new files.
 
-- **Free functions**: Required when `self` is already mutably borrowed (e.g., `draw()` closures,
-  `render()` trait implementations). Take explicit parameters instead of `&self`.
-- **Methods on `&mut self`**: Used when the function already has `&mut self` and no conflicting
-  borrows exist (e.g., `handle_mouse()` delegates to `handle_normal_mouse(&mut self, ...)`).
-- **Static methods / associated functions**: Used for pure computation that does not need any
-  instance state.
+**Why complexity is high:** Three-way branching inside a loop, with each branch containing 2-3 levels of nested conditionals. The `pending_section_header` deferred output pattern adds control flow complexity.
 
-## Consequences
+**Borrow checker constraint:** Free function taking references. No borrow issues.
 
-- What becomes easier:
-  - SonarCloud quality gate passes
-  - Each extracted helper is a named, scannable unit of work
-  - Future unit tests can target individual helpers
-  - Onboarding developers can follow coordinator-pattern functions
+**Tarpaulin/test constraint:** This function is not marked `#[cfg(not(tarpaulin_include))]` itself, but it prints directly to stdout. No unit tests exist for it.
 
-- What becomes harder:
-  - One more level of indirection when reading code
-  - File line counts remain high for some files (deferred)
+**Extraction targets:**
 
-- Follow-ups to scope for later:
-  - Split oversize files (`list_app.rs`, `aggressive.rs`) into submodules
-  - Add unit tests for extracted TUI helpers where feasible
+1. `handle_section_header_line(trimmed: &str, added_fields: &[String], is_new_file: bool, current_section: &mut String, section_has_additions: &mut bool, pending_section_header: &mut Option<String>)` -- free function. Covers lines 256-272. Updates the mutable state variables for a section header line and decides whether to queue the header. Returns early if the line is not a section header (i.e., returns `bool` indicating whether it was processed).
 
-## Decision History
+2. `print_field_line(line: &str, trimmed: &str, current_section: &str, added_field_set: &HashSet<&str>, is_new_file: bool, section_has_additions: bool, pending_section_header: &mut Option<String>)` -- free function. Covers lines 275-297. Handles a field assignment line: checks if added, prints with green prefix or as context.
 
-1. Reuse Option 1 (inline extraction) from PR #141 ADR -- proven approach, same constraints.
-2. `list_app.rs` has 5 violations -- plan all 5 together as one unit to avoid conflicting
-   edits across separate passes.
-3. Functions marked `#[cfg(not(tarpaulin_include))]` cannot have meaningful unit tests
-   written for the RED phase; baseline `cargo test` pass is the TDD gate for those.
-4. Test file `snapshot_player_test.rs` extraction must only consolidate setup/repeated
-   control flow, not alter assertions or test intent.
-5. 7 of 32 Medium-tier violations are not explicitly listed in REQUIREMENTS. The implementer
-   must discover and fix these as part of the work.
-6. Restructured monolithic ADR into per-module sub-ADRs for thorough source-level analysis
-   of each extraction target.
+With both extractions, the main loop becomes a simple dispatch: parse section header? call (1). Has `=`? call (2). Else handle remaining. This should reduce complexity well below 15.
+
+### 3. `config::handle_migrate()` at line 70 -- score 17
+
+**Signature:**
+```rust
+#[cfg(not(tarpaulin_include))]
+pub fn handle_migrate(auto_confirm: bool) -> Result<()>
+```
+
+**Current structure:**
+Lines 70-183. Three sequential cases:
+1. **Case 1: No changes** (lines 86-89): `if !result.has_changes()` -- early return.
+2. **Case 2: New config** (lines 92-116): `if !file_exists` -- prints preview, prompts, creates dir, writes file, early return. Has nested `if let Some(parent) = config_path.parent()`.
+3. **Case 3: Existing config update** (lines 118-182): Prints version info (`if result.old_version != result.new_version`), removed fields (`if !result.removed_fields.is_empty()`), added fields summary (`if total_fields > 0` with nested `if total_sections > 0`), preview, prompt, and write.
+
+**Why complexity is high:** Score 17 barely exceeds the threshold. The branching comes from the three cases plus nested conditionals within Case 3 for version info, removed fields, and added fields display.
+
+**Borrow checker constraint:** Free function, no issues.
+
+**Tarpaulin/test constraint:** Marked `#[cfg(not(tarpaulin_include))]`, uses stdin/stdout. No unit tests. Baseline is `cargo test`.
+
+**Extraction targets:**
+
+1. `print_migration_info(result: &MigrationResult, theme: &Theme)` -- free function. Covers lines 120-163. Prints version info, removed fields, and added fields summary. This is the display logic for Case 3 that contributes most of the conditional nesting.
+
+If extracting the display logic is not sufficient, an alternative is:
+
+2. `handle_new_config_creation(config_path: &Path, result: &MigrationResult, auto_confirm: bool, theme: &Theme) -> Result<bool>` -- free function. Covers lines 92-116 (Case 2). Returns `true` if handled (early return from caller), `false` to continue.
+
+## Dependencies Between Functions
+
+- `handle_migrate()` calls `print_diff_preview()`. Both are in `src/commands/config.rs`.
+- `print_diff_preview()` is at line 243, `handle_migrate()` is at line 70. They do not overlap.
+- **Important:** Both functions are in the same file. If refactored in parallel, edits would conflict. They must be done sequentially. Recommendation: refactor `print_diff_preview()` first (it is lower in the file at line 243), then `handle_migrate()` (at line 70) so line-number shifts from the first edit do not affect the second.
+
+## Testability Assessment
+
+**Existing tests in `src/commands/analyze.rs` (lines 304-327):**
+- `parse_agent_type_claude()`, `parse_agent_type_codex()`, `parse_agent_type_gemini()`, `parse_agent_type_unknown()` -- test the `parse_agent_type()` helper, not `handle()` itself.
+
+**Existing tests for `config.rs`:** None directly. `parse_simple_section_header()` and `should_proceed()` are helper functions that could have tests but do not.
+
+**TDD approach:**
+- `analyze::handle()`: Not unit-testable (stdin/stdout, `#[cfg(not(tarpaulin_include))]`). Full `cargo test` is the baseline. The extracted `build_analyze_options()` and `apply_agent_config()` are pure functions that could be unit-tested, but writing tests is out of scope.
+- `config::print_diff_preview()`: Not unit-testable (prints to stdout). Full `cargo test` is the baseline.
+- `config::handle_migrate()`: Not unit-testable (stdin/stdout, `#[cfg(not(tarpaulin_include))]`). Full `cargo test` is the baseline.
