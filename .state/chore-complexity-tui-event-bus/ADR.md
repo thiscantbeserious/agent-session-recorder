@@ -1,134 +1,78 @@
-# ADR: Reduce Cognitive Complexity for SonarCloud Quality Gate -- Round 2
+# Sub-ADR: tui/event_bus -- 1 Violation
 
-## Status
-Proposed
+Parent: [ADR.md](ADR.md)
 
-## Context
+## Scope
 
-After PR #141 eliminated all cognitive complexity >= 20 violations, SonarCloud still
-reports 32 remaining violations of rule `rust:S3776` (threshold 15). The worst offenders
-are TUI input/draw handlers (scores 80, 79, 48) and command handlers (score 62). The
-SonarCloud quality gate remains blocked by this technical debt.
+File: `src/tui/event_bus.rs` (182 lines)
+Violations: 1 function, score 43
 
-PR #141's ADR (`.state/chore-sonarcloud-quality-fixes/ADR.md`) established a proven
-approach: **inline helper-function extraction within the same file/impl block** (Option 1).
-That approach successfully resolved all >= 20 violations with zero regressions. This ADR
-reuses the same approach for the remaining 32 violations.
+## SonarCloud-to-Source Mapping (verified)
 
-### Forces
+| SonarCloud Name | SonarCloud Line | Actual Function | Actual Line | Score |
+|-----------------|-----------------|-----------------|-------------|-------|
+| `recv()` | 45 | `EventHandler::new()` | 45 | 43 |
 
-- **Proven pattern**: PR #141 demonstrated that inline extraction works, reviews cleanly,
-  and introduces no regressions. No reason to deviate.
-- **Scale**: 32 functions across 14+ files is roughly 3x the scope of PR #141 (10 functions
-  across 7 files). Parallelization by file is essential.
-- **TUI file concentration**: `src/tui/list_app.rs` alone has 5 violations (lines 213,
-  704, 1047, 1254, 1426). These must be planned as a single unit to avoid conflicting edits.
-- **Test file refactoring**: One violation is in a test file
-  (`tests/integration/snapshot_player_test.rs`). Extraction must not alter assertions or
-  test intent.
-- **Many functions are `#[cfg(not(tarpaulin_include))]`**: Several command handlers
-  (`analyze::handle`, `config::handle_migrate`, `config::print_diff_preview`) are excluded
-  from code coverage. These cannot be meaningfully unit-tested; the TDD "RED" phase for
-  these means verifying `cargo test` passes as baseline, not writing new tests.
-- **Incomplete violation list**: REQUIREMENTS explicitly names 25 of 32 violations. The
-  remaining 7 Medium-tier violations are expected in `src/main.rs` and other files. The
-  implementer must discover these via `cargo clippy` or the SonarCloud dashboard and include
-  them in the work.
+## Function Analysis
 
-## Options Considered
+### `EventHandler::new()` at line 45 -- score 43
 
-### Option 1: Inline helper extraction (same approach as PR #141)
+**Signature:**
+```rust
+pub fn new(tick_rate: Duration) -> Self
+```
 
-Extract cohesive blocks into private helper functions within the same `impl` block or
-module. No module restructuring.
+**Current structure:**
+Lines 45-114. The function:
+1. Creates channel and running flag (lines 46-48)
+2. Spawns a thread with `thread::spawn(move || { ... })` (lines 50-107)
+3. Constructs and returns `Self` (lines 109-113)
 
-- Pros: Proven pattern, minimal diff per function, low risk, directly targets the
-  SonarCloud metric, easy to review
-- Cons: Large files remain large (deferred concern), 32 functions means a larger overall
-  diff
+Inside the spawned thread closure (lines 50-107):
+- `while thread_running.load(Ordering::Relaxed)` loop (line 51)
+  - `match event::poll(tick_rate)` -- 3 arms: `Ok(true)`, `Ok(false)`, `Err(_)` (lines 53-105)
+    - `Ok(true)` arm (lines 54-93):
+      - Early stop check `if !thread_running.load(...)` (lines 56-58)
+      - `match event::read()` -- 6 arms (lines 60-93):
+        - `Ok(CrosstermEvent::Key(key))` (lines 61-74): nested `if key.code == KeyCode::Char('c') && key.modifiers.contains(CONTROL)` for Ctrl+C, then `if tx.send(...).is_err()` for break
+        - `Ok(CrosstermEvent::Resize(w, h))` (lines 76-79): `if tx.send(...).is_err()`
+        - `Ok(CrosstermEvent::Mouse(mouse))` (lines 81-84): `if tx.send(...).is_err()`
+        - `Ok(CrosstermEvent::Paste(text))` (lines 86-89): `if tx.send(...).is_err()`
+        - `Ok(_)` (line 91): ignored
+        - `Err(_)` (line 92): break
+    - `Ok(false)` arm (lines 95-99): send Tick, break on error
+    - `Err(_)` arm (lines 101-103): break
 
-### Option 2: Inline extraction + module splits for oversize files
+**Why complexity is high:** Three levels of nesting (`while` > `match poll` > `match read`), each with multiple arms and conditional breaks. The `Key` arm has an additional nesting level for the Ctrl+C check.
 
-Same as Option 1, but also split `list_app.rs` (1700+ lines) into submodules during the
-refactoring.
+**Borrow checker constraint:** The entire body runs inside `thread::spawn(move || { ... })`. The closure captures `tx: mpsc::Sender<Event>`, `thread_running: Arc<AtomicBool>`, and `tick_rate: Duration` by move. Extracted helpers must be **free functions** that accept these captured values as parameters. The helper signature must be `Send + 'static` since it runs in a spawned thread -- `mpsc::Sender`, `Arc<AtomicBool>`, and `Duration` all satisfy this.
 
-- Pros: Addresses both complexity and file-size concerns simultaneously
-- Cons: Larger scope, higher risk of merge conflicts, mixes two objectives (complexity
-  reduction and file organization), harder to review
+**Extraction targets:**
 
-## Decision
+1. `poll_events(tx: mpsc::Sender<Event>, running: Arc<AtomicBool>, tick_rate: Duration)` -- free function. Moves the entire `while running.load(...)` loop body out of the closure. The `thread::spawn` call becomes:
+   ```rust
+   let handle = thread::spawn(move || poll_events(tx, thread_running, tick_rate));
+   ```
+   This alone eliminates one nesting level but does not drop below 15.
 
-**Option 1: Inline helper extraction**, consistent with PR #141.
+2. `dispatch_crossterm_event(event: CrosstermEvent, tx: &mpsc::Sender<Event>) -> bool` -- free function inside `poll_events()`. Maps a `CrosstermEvent` to an `Event` and sends it. Returns `false` to signal the loop should break (Ctrl+C or send error), `true` to continue. Covers lines 60-93 (the `match event::read()` Ok arms). The Ctrl+C check lives here.
 
-Rationale: The requirements explicitly state "pure refactoring only." Mixing in module
-restructuring would increase risk and review burden without being required by the SonarCloud
-quality gate. File-size improvements can follow in a separate chore.
+With both extractions, `new()` reduces to: create channel, create flag, spawn thread calling `poll_events()`, return Self. `poll_events()` reduces to: while loop, poll, on Ok(true) call `dispatch_crossterm_event()`, on Ok(false) send Tick, on Err break. Both should be well below 15.
 
-## Module-Scoped Sub-ADRs
+## Dependencies
 
-This ADR is decomposed into per-module sub-ADRs, each containing source-verified function
-analysis, extraction targets with line ranges, borrow checker constraints, and testability
-assessment. The sub-ADRs are:
+- `EventHandler::new()` is the only constructor. It is called from TUI app startup code.
+- The `Event` enum and `EventHandler` struct are defined in the same file.
+- `EventHandler::next()` and `EventHandler::stop()` are separate methods with no complexity issues.
 
-| Sub-ADR | Module | Files | Violations | Total Score |
-|---------|--------|-------|------------|-------------|
-| [ADR-tui-list-app.md](ADR-tui-list-app.md) | tui/list_app | `src/tui/list_app.rs` | 5 | 181 |
-| [ADR-tui-widgets.md](ADR-tui-widgets.md) | tui/widgets | `src/tui/widgets/file_explorer.rs` | 1 | 79 |
-| [ADR-tui-event-bus.md](ADR-tui-event-bus.md) | tui/event_bus | `src/tui/event_bus.rs` | 1 | 43 |
-| [ADR-tui-cleanup-app.md](ADR-tui-cleanup-app.md) | tui/cleanup_app | `src/tui/cleanup_app.rs` | 1 | 16 |
-| [ADR-commands.md](ADR-commands.md) | commands | `src/commands/analyze.rs`, `src/commands/config.rs` | 3 | 107 |
-| [ADR-analyzer.md](ADR-analyzer.md) | analyzer | 7 files under `src/analyzer/` | 9 | 167 |
-| [ADR-player.md](ADR-player.md) | player | `src/player/render/viewport.rs` | 2 | 71 |
-| [ADR-config.md](ADR-config.md) | config | `src/config/migrate/mod.rs`, `src/config/docs.rs` | 2 | 62 |
-| [ADR-clipboard.md](ADR-clipboard.md) | clipboard | `src/clipboard/copy.rs` | 1 | 16 |
-| [ADR-tests.md](ADR-tests.md) | tests | `tests/integration/snapshot_player_test.rs` | 1 | 21 |
+## Testability Assessment
 
-### Common TDD Cycle for Pure Refactoring
+**Existing tests (lines 136-181):**
+- `event_debug_format()` -- tests `Event` enum debug formatting
+- `event_clone_works()` -- tests `Event` clone
+- `event_handler_stop()` -- creates an `EventHandler`, calls `stop()`, verifies `next()` fails. This test exercises `new()` indirectly.
+- `event_paste_variant_debug()` and `event_paste_clone()` -- tests for `Event::Paste`
 
-Since this is pure refactoring (no new behavior), every function follows this cycle:
+**TDD approach:** The `event_handler_stop` test is the most relevant -- it creates a handler (calling `new()`), stops it, and verifies shutdown. After extraction, this test verifies the refactored code still functions. Additionally, `cargo test event_bus` runs all tests in this module.
 
-1. **RED/GREEN (test baseline)**: Verify `cargo test` passes before touching source code.
-   For functions with existing dedicated tests, run those specifically. For functions without
-   tests (TUI handlers, command handlers), the full test suite is the baseline.
-2. **REFACTOR**: Extract helper functions to reduce complexity below 15. No behavioral changes.
-3. **GREEN (regression check)**: Run the same tests again -- they must still pass.
-4. **Format and lint**: `cargo fmt` and `cargo clippy`.
-
-### Common Extraction Patterns
-
-- **Free functions**: Required when `self` is already mutably borrowed (e.g., `draw()` closures,
-  `render()` trait implementations). Take explicit parameters instead of `&self`.
-- **Methods on `&mut self`**: Used when the function already has `&mut self` and no conflicting
-  borrows exist (e.g., `handle_mouse()` delegates to `handle_normal_mouse(&mut self, ...)`).
-- **Static methods / associated functions**: Used for pure computation that does not need any
-  instance state.
-
-## Consequences
-
-- What becomes easier:
-  - SonarCloud quality gate passes
-  - Each extracted helper is a named, scannable unit of work
-  - Future unit tests can target individual helpers
-  - Onboarding developers can follow coordinator-pattern functions
-
-- What becomes harder:
-  - One more level of indirection when reading code
-  - File line counts remain high for some files (deferred)
-
-- Follow-ups to scope for later:
-  - Split oversize files (`list_app.rs`, `aggressive.rs`) into submodules
-  - Add unit tests for extracted TUI helpers where feasible
-
-## Decision History
-
-1. Reuse Option 1 (inline extraction) from PR #141 ADR -- proven approach, same constraints.
-2. `list_app.rs` has 5 violations -- plan all 5 together as one unit to avoid conflicting
-   edits across separate passes.
-3. Functions marked `#[cfg(not(tarpaulin_include))]` cannot have meaningful unit tests
-   written for the RED phase; baseline `cargo test` pass is the TDD gate for those.
-4. Test file `snapshot_player_test.rs` extraction must only consolidate setup/repeated
-   control flow, not alter assertions or test intent.
-5. 7 of 32 Medium-tier violations are not explicitly listed in REQUIREMENTS. The implementer
-   must discover and fix these as part of the work.
-6. Restructured monolithic ADR into per-module sub-ADRs for thorough source-level analysis
-   of each extraction target.
+The extracted `dispatch_crossterm_event()` function could be unit-tested by constructing `CrosstermEvent` variants and checking the `Event` sent through the channel, but writing new tests is out of scope for pure refactoring.
