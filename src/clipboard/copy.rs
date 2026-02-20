@@ -44,9 +44,10 @@ impl Copy {
             });
         }
 
-        if let Ok(result) = self.try_copy_file_with_tools(path) {
-            return Ok(result);
-        }
+        let file_copy_last_error = match self.try_copy_file_with_tools(path) {
+            Ok(result) => return Ok(result),
+            Err(last_error) => last_error,
+        };
 
         let metadata = std::fs::metadata(path)?;
         if metadata.len() > MAX_CONTENT_SIZE {
@@ -60,8 +61,9 @@ impl Copy {
 
         match self.try_copy_text_with_tools(&content) {
             Ok(result) => Ok(result),
-            Err(last_error) => {
-                if let Some(err) = last_error {
+            Err(text_last_error) => {
+                let final_error = text_last_error.or(file_copy_last_error);
+                if let Some(err) = final_error {
                     eprintln!("Clipboard: All tools failed. Last error: {}", err);
                 }
                 Err(ClipboardError::NoToolAvailable)
