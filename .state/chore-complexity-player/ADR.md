@@ -1,134 +1,117 @@
-# ADR: Reduce Cognitive Complexity for SonarCloud Quality Gate -- Round 2
+# Sub-ADR: player -- 2 Violations
 
-## Status
-Proposed
+Parent: [ADR.md](ADR.md)
 
-## Context
+## Scope
 
-After PR #141 eliminated all cognitive complexity >= 20 violations, SonarCloud still
-reports 32 remaining violations of rule `rust:S3776` (threshold 15). The worst offenders
-are TUI input/draw handlers (scores 80, 79, 48) and command handlers (score 62). The
-SonarCloud quality gate remains blocked by this technical debt.
+File: `src/player/render/viewport.rs` (437 lines)
+Violations: 2 functions, combined score 71
 
-PR #141's ADR (`.state/chore-sonarcloud-quality-fixes/ADR.md`) established a proven
-approach: **inline helper-function extraction within the same file/impl block** (Option 1).
-That approach successfully resolved all >= 20 violations with zero regressions. This ADR
-reuses the same approach for the remaining 32 violations.
+## SonarCloud-to-Source Mapping (verified)
 
-### Forces
+| SonarCloud Name | SonarCloud Line | Actual Function | Actual Line | Score |
+|-----------------|-----------------|-----------------|-------------|-------|
+| `compute()` | 25 | `render_viewport()` | 25 | 44 |
+| `render_diff()` | 128 | `render_single_line()` | 128 | 27 |
 
-- **Proven pattern**: PR #141 demonstrated that inline extraction works, reviews cleanly,
-  and introduces no regressions. No reason to deviate.
-- **Scale**: 32 functions across 14+ files is roughly 3x the scope of PR #141 (10 functions
-  across 7 files). Parallelization by file is essential.
-- **TUI file concentration**: `src/tui/list_app.rs` alone has 5 violations (lines 213,
-  704, 1047, 1254, 1426). These must be planned as a single unit to avoid conflicting edits.
-- **Test file refactoring**: One violation is in a test file
-  (`tests/integration/snapshot_player_test.rs`). Extraction must not alter assertions or
-  test intent.
-- **Many functions are `#[cfg(not(tarpaulin_include))]`**: Several command handlers
-  (`analyze::handle`, `config::handle_migrate`, `config::print_diff_preview`) are excluded
-  from code coverage. These cannot be meaningfully unit-tested; the TDD "RED" phase for
-  these means verifying `cargo test` passes as baseline, not writing new tests.
-- **Incomplete violation list**: REQUIREMENTS explicitly names 25 of 32 violations. The
-  remaining 7 Medium-tier violations are expected in `src/main.rs` and other files. The
-  implementer must discover these via `cargo clippy` or the SonarCloud dashboard and include
-  them in the work.
+## Function Analysis
 
-## Options Considered
+### 1. `render_viewport()` at line 25 -- score 44
 
-### Option 1: Inline helper extraction (same approach as PR #141)
+**Signature:**
+```rust
+#[allow(clippy::too_many_arguments)]
+pub fn render_viewport(
+    stdout: &mut io::Stdout, buffer: &TerminalBuffer,
+    row_offset: usize, col_offset: usize,
+    view_rows: usize, view_cols: usize,
+    highlight_line: Option<usize>,
+) -> Result<()>
+```
 
-Extract cohesive blocks into private helper functions within the same `impl` block or
-module. No module restructuring.
+**Current structure:**
+Lines 25-112. For each `view_row` in `0..view_rows`:
+1. Move cursor to line start (line 42)
+2. `if is_highlighted` set highlight style (lines 45-47)
+3. `if let Some(row) = buffer.row(buf_row)` (line 51) -- the row-exists branch:
+   - Inner column loop `for view_col in 0..view_cols` (line 55):
+     - `if buf_col < row.len()` (line 58) -- cell exists:
+       - `if !is_highlighted && cell.style != current_style` (line 61): reset + apply ANSI codes
+       - `else if is_highlighted && !in_highlight_style` (line 69): re-apply highlight
+       - Push cell char (line 74)
+     - `else` (lines 76-84) -- past end of row:
+       - `if !is_highlighted && current_style != CellStyle::default()` (line 78): reset style
+       - Push space
+   - Post-row reset: `if current_style != CellStyle::default() || is_highlighted` (lines 88-90)
+4. `else` (lines 91-104) -- empty row:
+   - `if is_highlighted` / `else` for filling with spaces and optional reset
 
-- Pros: Proven pattern, minimal diff per function, low risk, directly targets the
-  SonarCloud metric, easy to review
-- Cons: Large files remain large (deferred concern), 32 functions means a larger overall
-  diff
+**Why complexity is high:** Four nesting levels: row loop > row exists > column loop > cell exists. Within the cell-exists branch, the highlight/style tracking adds more conditionals. The empty-row branch also has a conditional for highlight mode.
 
-### Option 2: Inline extraction + module splits for oversize files
+**Borrow checker constraint:** Free function. All data passed by reference. No borrow issues.
 
-Same as Option 1, but also split `list_app.rs` (1700+ lines) into submodules during the
-refactoring.
+### 2. `render_single_line()` at line 128 -- score 27
 
-- Pros: Addresses both complexity and file-size concerns simultaneously
-- Cons: Larger scope, higher risk of merge conflicts, mixes two objectives (complexity
-  reduction and file organization), harder to review
+**Signature:**
+```rust
+#[allow(clippy::too_many_arguments)]
+pub fn render_single_line(
+    stdout: &mut io::Stdout, buffer: &TerminalBuffer,
+    buf_row: usize, view_row_offset: usize,
+    col_offset: usize, view_cols: usize,
+    is_highlighted: bool,
+) -> Result<()>
+```
 
-## Decision
+**Current structure:**
+Lines 128-194. Nearly identical to the inner body of `render_viewport()`'s row loop:
+1. Early return if `buf_row < view_row_offset` (lines 138-140)
+2. Calculate screen row (line 141)
+3. Move cursor, set highlight (lines 146-149)
+4. `if let Some(row) = buffer.row(buf_row)` (line 152):
+   - Column loop with same cell-exists / past-end branching and style tracking as `render_viewport()` (lines 155-177)
+   - Post-row reset (lines 179-181)
+5. `else` -- empty row with spaces and optional highlight reset (lines 182-190)
 
-**Option 1: Inline helper extraction**, consistent with PR #141.
+**Why complexity is high:** Same structure as `render_viewport()`'s inner loop. The column loop with style tracking contributes the nesting.
 
-Rationale: The requirements explicitly state "pure refactoring only." Mixing in module
-restructuring would increase risk and review burden without being required by the SonarCloud
-quality gate. File-size improvements can follow in a separate chore.
+**Shared logic between both functions:** The column-rendering logic (iterate columns, check cell existence, apply/track styles, handle highlight vs. normal, fill spaces past content, reset at end) is nearly identical. A shared `render_row()` helper would serve both.
 
-## Module-Scoped Sub-ADRs
+**Extraction targets:**
 
-This ADR is decomposed into per-module sub-ADRs, each containing source-verified function
-analysis, extraction targets with line ranges, borrow checker constraints, and testability
-assessment. The sub-ADRs are:
+1. `render_row(output: &mut String, row: Option<&[Cell]>, col_offset: usize, view_cols: usize, is_highlighted: bool)` -- free function. Renders a single row's content to the output string. Handles:
+   - The `if let Some(row)` / else for empty rows
+   - The column loop with style tracking
+   - Highlight vs. normal style application
+   - End-of-row reset
 
-| Sub-ADR | Module | Files | Violations | Total Score |
-|---------|--------|-------|------------|-------------|
-| [ADR-tui-list-app.md](ADR-tui-list-app.md) | tui/list_app | `src/tui/list_app.rs` | 5 | 181 |
-| [ADR-tui-widgets.md](ADR-tui-widgets.md) | tui/widgets | `src/tui/widgets/file_explorer.rs` | 1 | 79 |
-| [ADR-tui-event-bus.md](ADR-tui-event-bus.md) | tui/event_bus | `src/tui/event_bus.rs` | 1 | 43 |
-| [ADR-tui-cleanup-app.md](ADR-tui-cleanup-app.md) | tui/cleanup_app | `src/tui/cleanup_app.rs` | 1 | 16 |
-| [ADR-commands.md](ADR-commands.md) | commands | `src/commands/analyze.rs`, `src/commands/config.rs` | 3 | 107 |
-| [ADR-analyzer.md](ADR-analyzer.md) | analyzer | 7 files under `src/analyzer/` | 9 | 167 |
-| [ADR-player.md](ADR-player.md) | player | `src/player/render/viewport.rs` | 2 | 71 |
-| [ADR-config.md](ADR-config.md) | config | `src/config/migrate/mod.rs`, `src/config/docs.rs` | 2 | 62 |
-| [ADR-clipboard.md](ADR-clipboard.md) | clipboard | `src/clipboard/copy.rs` | 1 | 16 |
-| [ADR-tests.md](ADR-tests.md) | tests | `tests/integration/snapshot_player_test.rs` | 1 | 21 |
+   This covers:
+   - Lines 51-104 in `render_viewport()` (the inner body of the row loop, after cursor positioning)
+   - Lines 152-190 in `render_single_line()` (the row rendering, after cursor positioning)
 
-### Common TDD Cycle for Pure Refactoring
+With this extraction:
+- `render_viewport()` becomes: allocate string, for each row: position cursor, set highlight prefix, call `render_row()`, write to stdout.
+- `render_single_line()` becomes: early return check, allocate string, position cursor, set highlight prefix, call `render_row()`, write to stdout.
+- Both should be well below 15 complexity.
 
-Since this is pure refactoring (no new behavior), every function follows this cycle:
+Note: `render_row()` needs access to the ANSI style functions (`style_to_ansi_fg`, `style_to_ansi_bg`, `style_to_ansi_attrs`) which are already module-level imports. The `CellStyle` tracking state is local to each row, so no cross-row state complicates the extraction.
 
-1. **RED/GREEN (test baseline)**: Verify `cargo test` passes before touching source code.
-   For functions with existing dedicated tests, run those specifically. For functions without
-   tests (TUI handlers, command handlers), the full test suite is the baseline.
-2. **REFACTOR**: Extract helper functions to reduce complexity below 15. No behavioral changes.
-3. **GREEN (regression check)**: Run the same tests again -- they must still pass.
-4. **Format and lint**: `cargo fmt` and `cargo clippy`.
+## Dependencies
 
-### Common Extraction Patterns
+- `render_viewport()` is called from the player's main rendering loop.
+- `render_single_line()` is called from the player's free-mode highlight update.
+- Both use `style_to_ansi_fg`, `style_to_ansi_bg`, `style_to_ansi_attrs` from `crate::player::render::ansi`.
+- Both use `CellStyle` and `TerminalBuffer` from `crate::terminal`.
+- Neither calls the other.
 
-- **Free functions**: Required when `self` is already mutably borrowed (e.g., `draw()` closures,
-  `render()` trait implementations). Take explicit parameters instead of `&self`.
-- **Methods on `&mut self`**: Used when the function already has `&mut self` and no conflicting
-  borrows exist (e.g., `handle_mouse()` delegates to `handle_normal_mouse(&mut self, ...)`).
-- **Static methods / associated functions**: Used for pure computation that does not need any
-  instance state.
+## Testability Assessment
 
-## Consequences
+**Existing tests (lines 196-437):**
+- `render_viewport_*`: 12 tests covering empty buffer, content, offsets, highlight, small view, larger-than-buffer, colors, bold, multiline. All assert `result.is_ok()` (no-panic tests).
+- `render_single_line_*`: 11 tests covering empty, content, highlight, above-viewport, within-viewport, col offset, colors, narrow view, past content, row beyond buffer.
 
-- What becomes easier:
-  - SonarCloud quality gate passes
-  - Each extracted helper is a named, scannable unit of work
-  - Future unit tests can target individual helpers
-  - Onboarding developers can follow coordinator-pattern functions
+These tests exercise both functions through their public API. The refactored code (delegating to `render_row()`) will be covered by the same tests.
 
-- What becomes harder:
-  - One more level of indirection when reading code
-  - File line counts remain high for some files (deferred)
+**Additional tests for `render_row()`:** The extracted function operates on a `String` output buffer, making it more testable than the original stdout-writing functions. However, writing new tests is out of scope.
 
-- Follow-ups to scope for later:
-  - Split oversize files (`list_app.rs`, `aggressive.rs`) into submodules
-  - Add unit tests for extracted TUI helpers where feasible
-
-## Decision History
-
-1. Reuse Option 1 (inline extraction) from PR #141 ADR -- proven approach, same constraints.
-2. `list_app.rs` has 5 violations -- plan all 5 together as one unit to avoid conflicting
-   edits across separate passes.
-3. Functions marked `#[cfg(not(tarpaulin_include))]` cannot have meaningful unit tests
-   written for the RED phase; baseline `cargo test` pass is the TDD gate for those.
-4. Test file `snapshot_player_test.rs` extraction must only consolidate setup/repeated
-   control flow, not alter assertions or test intent.
-5. 7 of 32 Medium-tier violations are not explicitly listed in REQUIREMENTS. The implementer
-   must discover and fix these as part of the work.
-6. Restructured monolithic ADR into per-module sub-ADRs for thorough source-level analysis
-   of each extraction target.
+**TDD approach:** Run `cargo test viewport` before and after extraction. Also run `cargo test snapshot_player_test` since the snapshot tests verify rendering output.
