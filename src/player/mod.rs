@@ -200,6 +200,7 @@ fn process_pending_events(
 /// Advance playback by processing cast events up to the current elapsed time.
 ///
 /// No-op when paused. Sets `needs_render = true` while playing since time always changes.
+#[doc(hidden)]
 pub fn advance_playback(
     state: &mut PlaybackState,
     buffer: &mut TerminalBuffer,
@@ -389,6 +390,10 @@ fn run_main_loop(
 
         let skip_sleep = render_frame(stdout, buffer, state, markers, total_duration)?;
 
+        if skip_sleep {
+            continue;
+        }
+
         stdout.flush()?;
 
         if state.event_idx() >= cast.events.len() && !state.paused {
@@ -396,9 +401,7 @@ fn run_main_loop(
             return Ok(PlaybackResult::Success(name.to_string()));
         }
 
-        if !skip_sleep {
-            std::thread::sleep(Duration::from_millis(8));
-        }
+        std::thread::sleep(Duration::from_millis(8));
     }
 }
 

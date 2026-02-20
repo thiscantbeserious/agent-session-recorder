@@ -187,9 +187,8 @@ impl ContentCleaner {
                     self.ansi_state = AnsiParseState::Osc;
                 }
             }
-            // Normal is handled in clean(); this arm is unreachable but exhaustive
             AnsiParseState::Normal => {
-                self.process_normal_char(c);
+                unreachable!("handle_escape_char is only called for non-Normal states")
             }
         }
     }

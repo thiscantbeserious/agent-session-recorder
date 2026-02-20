@@ -1,7 +1,7 @@
 # ADR: Reduce Cognitive Complexity for SonarCloud Quality Gate
 
 ## Status
-Proposed
+Accepted
 
 ## Context
 
