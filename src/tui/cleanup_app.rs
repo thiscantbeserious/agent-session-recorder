@@ -675,10 +675,11 @@ fn handle_normal_mouse_click(shared: &mut SharedState, height: u16, click_row: u
     Ok(())
 }
 
-/// Compute the status line text for Normal mode (no active input mode).
+/// Compute the status line text for the current mode.
 ///
 /// Returns a status message if one is set; otherwise builds a summary based on
-/// selection count and active filters.
+/// selection count and active filters. Returns an empty string for all modes
+/// other than `Mode::Normal`.
 pub fn status_line_content(
     mode: Mode,
     status: &Option<String>,

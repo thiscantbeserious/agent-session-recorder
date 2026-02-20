@@ -152,9 +152,9 @@ impl ContentCleaner {
                 match c {
                     '[' => self.ansi_state = AnsiParseState::Csi,
                     ']' => self.ansi_state = AnsiParseState::Osc,
-                    // Simple escape: ESC followed by single alphabetic/bracket char
+                    // Simple escape: ESC followed by alphabetic or charset designator
                     _ if c.is_ascii_alphabetic() || c == '(' || c == ')' => {
-                        // Skip this char (e.g. ESC c, ESC 7, ESC 8)
+                        // Skip this char (e.g. ESC c, ESC D, ESC M, ESC ( / ESC ))
                         self.ansi_state = AnsiParseState::Normal;
                     }
                     // Any other char: invalid sequence, reset

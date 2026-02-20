@@ -72,7 +72,7 @@ fn global_dedup_large_duplicate_events_time_accumulated() {
         output(2.0, &large_data), // duplicate — time should accumulate
         output(
             3.0,
-            "different large content that is at least 128 bytes long and unique here",
+            "different content that is definitely at least one hundred and twenty eight bytes long to exceed the min_hash_bytes threshold here",
         ),
     ];
     let mut dedup = GlobalDeduplicator::new(100, 50);

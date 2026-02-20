@@ -390,10 +390,10 @@ impl GlobalDeduplicator {
     /// `max_line_repeats`. Empty/whitespace-only lines are always kept.
     fn apply_line_frequency_cap(&mut self, data: &str) -> String {
         let mut new_data = String::with_capacity(data.len());
-        for line in data.split_inclusive('\n').map(|s| s.to_string()) {
+        for line in data.split_inclusive('\n') {
             let trimmed = line.trim();
             if trimmed.is_empty() {
-                new_data.push_str(&line);
+                new_data.push_str(line);
                 continue;
             }
             let count = self.line_counts.entry(trimmed.to_string()).or_insert(0);
@@ -402,7 +402,7 @@ impl GlobalDeduplicator {
                 continue;
             }
             *count += 1;
-            new_data.push_str(&line);
+            new_data.push_str(line);
         }
         new_data
     }

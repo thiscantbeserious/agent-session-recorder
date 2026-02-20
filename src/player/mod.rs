@@ -200,6 +200,10 @@ fn process_pending_events(
 /// Advance playback by processing cast events up to the current elapsed time.
 ///
 /// No-op when paused. Sets `needs_render = true` while playing since time always changes.
+///
+/// # Note
+///
+/// Intentionally `pub` for integration testing; not part of the stable public API.
 #[doc(hidden)]
 pub fn advance_playback(
     state: &mut PlaybackState,

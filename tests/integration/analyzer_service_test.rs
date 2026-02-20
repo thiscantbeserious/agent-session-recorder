@@ -318,6 +318,11 @@ fn analyzer_service_debug_output_mode_writes_file_and_returns_early() {
                 analysis.markers.is_empty(),
                 "Debug mode should return empty markers"
             );
+            // Verify the debug output file was written
+            assert!(
+                std::path::Path::new(&output_path).exists(),
+                "Debug output file should have been created"
+            );
         }
         Err(AnalysisError::NoContent) => {
             // Acceptable: content may not survive extraction pipeline
