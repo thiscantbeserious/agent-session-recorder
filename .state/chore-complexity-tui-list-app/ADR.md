@@ -1,134 +1,173 @@
-# ADR: Reduce Cognitive Complexity for SonarCloud Quality Gate -- Round 2
+# Sub-ADR: tui/list_app -- 5 Violations
 
-## Status
-Proposed
+Parent: [ADR.md](ADR.md)
 
-## Context
+## Scope
 
-After PR #141 eliminated all cognitive complexity >= 20 violations, SonarCloud still
-reports 32 remaining violations of rule `rust:S3776` (threshold 15). The worst offenders
-are TUI input/draw handlers (scores 80, 79, 48) and command handlers (score 62). The
-SonarCloud quality gate remains blocked by this technical debt.
+File: `src/tui/list_app.rs` (1675 lines)
+Violations: 5 functions, combined score 181
 
-PR #141's ADR (`.state/chore-sonarcloud-quality-fixes/ADR.md`) established a proven
-approach: **inline helper-function extraction within the same file/impl block** (Option 1).
-That approach successfully resolved all >= 20 violations with zero regressions. This ADR
-reuses the same approach for the remaining 32 violations.
+## SonarCloud-to-Source Mapping (verified)
 
-### Forces
+| SonarCloud Name | SonarCloud Line | Actual Function | Actual Line | Score |
+|-----------------|-----------------|-----------------|-------------|-------|
+| `handle_input()` | 1426 | `ListApp::draw()` (via `TuiApp` impl) | 1426 | 80 |
+| `handle_key()` | 1254 | `ListApp::handle_mouse()` (via `TuiApp` impl) | 1254 | 48 |
+| `handle_scroll()` | 704 | `ListApp::handle_rename_input_key()` | 704 | 18 |
+| `process_event()` | 1047 | `ListApp::render_context_menu_modal()` | 1047 | 18 |
+| `new()` | 213 | `ListApp::handle_normal_key()` | 213 | 17 |
 
-- **Proven pattern**: PR #141 demonstrated that inline extraction works, reviews cleanly,
-  and introduces no regressions. No reason to deviate.
-- **Scale**: 32 functions across 14+ files is roughly 3x the scope of PR #141 (10 functions
-  across 7 files). Parallelization by file is essential.
-- **TUI file concentration**: `src/tui/list_app.rs` alone has 5 violations (lines 213,
-  704, 1047, 1254, 1426). These must be planned as a single unit to avoid conflicting edits.
-- **Test file refactoring**: One violation is in a test file
-  (`tests/integration/snapshot_player_test.rs`). Extraction must not alter assertions or
-  test intent.
-- **Many functions are `#[cfg(not(tarpaulin_include))]`**: Several command handlers
-  (`analyze::handle`, `config::handle_migrate`, `config::print_diff_preview`) are excluded
-  from code coverage. These cannot be meaningfully unit-tested; the TDD "RED" phase for
-  these means verifying `cargo test` passes as baseline, not writing new tests.
-- **Incomplete violation list**: REQUIREMENTS explicitly names 25 of 32 violations. The
-  remaining 7 Medium-tier violations are expected in `src/main.rs` and other files. The
-  implementer must discover these via `cargo clippy` or the SonarCloud dashboard and include
-  them in the work.
+## Function Analysis
 
-## Options Considered
+### 1. `draw()` at line 1426 -- score 80
 
-### Option 1: Inline helper extraction (same approach as PR #141)
+**Signature:**
+```rust
+fn draw(&mut self) -> Result<()>   // impl TuiApp for ListApp
+```
 
-Extract cohesive blocks into private helper functions within the same `impl` block or
-module. No module restructuring.
+**Current structure:**
+Lines 1426-1652. The function:
+1. Calculates terminal size and sets page size (lines 1427-1431)
+2. Polls preview cache and prefetches adjacent previews (lines 1433-1435)
+3. Extracts shared fields into local variables before the closure (lines 1437-1449)
+4. Builds preview and backup state (lines 1452-1467)
+5. Calls `self.app.draw(|frame| { ... })` with a large closure (lines 1469-1649)
 
-- Pros: Proven pattern, minimal diff per function, low risk, directly targets the
-  SonarCloud metric, easy to review
-- Cons: Large files remain large (deferred concern), 32 functions means a larger overall
-  diff
+Inside the closure (lines 1469-1649):
+- Renders file explorer list (lines 1472-1480) -- conditional on `mode == Mode::RenameInput`
+- **Status line match block** (lines 1484-1579) -- 11-arm match on `mode`, biggest complexity contributor. The `Mode::RenameInput` arm (lines 1498-1521) has deeply nested `if rename_selected_all` / `if !before.is_empty()` / `if !after.is_empty()` conditions building spans.
+- **Footer text match block** (lines 1582-1607) -- 12-arm match returning static `&str`. The `Mode::Import` arm (lines 1593-1603) has a nested match on `state.phase`.
+- **Modal overlay match block** (lines 1610-1648) -- 8-arm match delegating to render functions. Several arms have nested `if let Some(item) = explorer.selected_item()`.
 
-### Option 2: Inline extraction + module splits for oversize files
+**Why complexity is high:** Three large `match mode` blocks stacked sequentially inside a closure. Each has many arms, and several arms contain further nesting (conditionals, `if let`).
 
-Same as Option 1, but also split `list_app.rs` (1700+ lines) into submodules during the
-refactoring.
+**Borrow checker constraint:** `self.app.draw(|frame| {...})` takes `&mut self.app`, preventing the closure from borrowing any other field through `self`. All `self` fields are pre-extracted into local variables before the closure (lines 1437-1449). Extracted helpers MUST be **free functions** (not `&self` methods), taking these locals as explicit parameters.
 
-- Pros: Addresses both complexity and file-size concerns simultaneously
-- Cons: Larger scope, higher risk of merge conflicts, mixes two objectives (complexity
-  reduction and file organization), harder to review
+**Extraction targets:**
 
-## Decision
+1. `render_status_line_for_mode()` -- free function. Takes `(frame, area, mode, search_input, available_agents, agent_filter_idx, rename_input, rename_cursor, rename_selected_all, import_state, status, explorer, selected_name)`. Replaces lines 1484-1579. Returns nothing (renders directly to frame). The inner `Mode::RenameInput` arm can further delegate to a `build_rename_status_spans()` helper returning `Vec<Span>`.
 
-**Option 1: Inline helper extraction**, consistent with PR #141.
+2. `footer_text_for_mode()` -- free function. Takes `(mode, import_state) -> &str`. Replaces lines 1582-1607. Each arm is a static string except `Mode::Import` which matches on `state.phase`.
 
-Rationale: The requirements explicitly state "pure refactoring only." Mixing in module
-restructuring would increase risk and review burden without being required by the SonarCloud
-quality gate. File-size improvements can follow in a separate chore.
+3. `render_modal_overlays()` -- free function. Takes `(frame, area, mode, explorer, context_menu_idx, backup_exists, optimize_result, import_state)`. Replaces lines 1610-1648. Each arm delegates to an existing `render_*` function.
 
-## Module-Scoped Sub-ADRs
+### 2. `handle_mouse()` at line 1254 -- score 48
 
-This ADR is decomposed into per-module sub-ADRs, each containing source-verified function
-analysis, extraction targets with line ranges, borrow checker constraints, and testability
-assessment. The sub-ADRs are:
+**Signature:**
+```rust
+fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()>   // impl TuiApp for ListApp
+```
 
-| Sub-ADR | Module | Files | Violations | Total Score |
-|---------|--------|-------|------------|-------------|
-| [ADR-tui-list-app.md](ADR-tui-list-app.md) | tui/list_app | `src/tui/list_app.rs` | 5 | 181 |
-| [ADR-tui-widgets.md](ADR-tui-widgets.md) | tui/widgets | `src/tui/widgets/file_explorer.rs` | 1 | 79 |
-| [ADR-tui-event-bus.md](ADR-tui-event-bus.md) | tui/event_bus | `src/tui/event_bus.rs` | 1 | 43 |
-| [ADR-tui-cleanup-app.md](ADR-tui-cleanup-app.md) | tui/cleanup_app | `src/tui/cleanup_app.rs` | 1 | 16 |
-| [ADR-commands.md](ADR-commands.md) | commands | `src/commands/analyze.rs`, `src/commands/config.rs` | 3 | 107 |
-| [ADR-analyzer.md](ADR-analyzer.md) | analyzer | 7 files under `src/analyzer/` | 9 | 167 |
-| [ADR-player.md](ADR-player.md) | player | `src/player/render/viewport.rs` | 2 | 71 |
-| [ADR-config.md](ADR-config.md) | config | `src/config/migrate/mod.rs`, `src/config/docs.rs` | 2 | 62 |
-| [ADR-clipboard.md](ADR-clipboard.md) | clipboard | `src/clipboard/copy.rs` | 1 | 16 |
-| [ADR-tests.md](ADR-tests.md) | tests | `tests/integration/snapshot_player_test.rs` | 1 | 21 |
+**Current structure:**
+Lines 1254-1378. Top-level `match self.mode` with 6 arms:
+- `Mode::Normal` (lines 1258-1285): nested `match mouse.kind` with 3 arms. The `Down(Left)` arm (lines 1266-1283) has nested click-to-index calculation with `if click_row >= 1 && ...` and locked-item redirect.
+- `Mode::ContextMenu` (lines 1287-1328): nested `match mouse.kind` with 3 arms. The `Down(Left)` arm (lines 1300-1326) has modal geometry calculation and hit testing.
+- `Mode::ConfirmDelete | Mode::ConfirmUnlock` (lines 1330-1347): delegates to `modals::handle_confirm_click` with mode-conditional width and result mapping.
+- `Mode::ConfirmDeleteFinal | Mode::ConfirmUnlockFinal` (lines 1349-1367): nearly identical to above.
+- `_` wildcard (lines 1369-1375): click-outside-dismisses for remaining modal modes.
 
-### Common TDD Cycle for Pure Refactoring
+**Why complexity is high:** Doubly nested `match` (mode then mouse.kind), with further nesting inside click handlers for geometry and hit testing.
 
-Since this is pure refactoring (no new behavior), every function follows this cycle:
+**Borrow checker constraint:** This is `&mut self`, so extracted helpers can be methods on `ListApp`. No conflicting borrows.
 
-1. **RED/GREEN (test baseline)**: Verify `cargo test` passes before touching source code.
-   For functions with existing dedicated tests, run those specifically. For functions without
-   tests (TUI handlers, command handlers), the full test suite is the baseline.
-2. **REFACTOR**: Extract helper functions to reduce complexity below 15. No behavioral changes.
-3. **GREEN (regression check)**: Run the same tests again -- they must still pass.
-4. **Format and lint**: `cargo fmt` and `cargo clippy`.
+**Extraction targets:**
 
-### Common Extraction Patterns
+1. `handle_normal_mouse(&mut self, mouse: MouseEvent, explorer_height: u16)` -- method. Covers lines 1258-1285.
+2. `handle_context_menu_mouse(&mut self, mouse: MouseEvent, width: u16, height: u16)` -- method. Covers lines 1287-1328.
+3. `handle_confirm_modal_mouse(&mut self, mouse: MouseEvent, width: u16, height: u16)` -- method. Merges the two confirm-modal arms (lines 1330-1367) into one parameterized by the current mode.
 
-- **Free functions**: Required when `self` is already mutably borrowed (e.g., `draw()` closures,
-  `render()` trait implementations). Take explicit parameters instead of `&self`.
-- **Methods on `&mut self`**: Used when the function already has `&mut self` and no conflicting
-  borrows exist (e.g., `handle_mouse()` delegates to `handle_normal_mouse(&mut self, ...)`).
-- **Static methods / associated functions**: Used for pure computation that does not need any
-  instance state.
+### 3. `handle_rename_input_key()` at line 704 -- score 18
 
-## Consequences
+**Signature:**
+```rust
+fn handle_rename_input_key(&mut self, key: KeyEvent) -> Result<()>
+```
 
-- What becomes easier:
-  - SonarCloud quality gate passes
-  - Each extracted helper is a named, scannable unit of work
-  - Future unit tests can target individual helpers
-  - Onboarding developers can follow coordinator-pattern functions
+**Current structure:**
+Lines 704-799. A `match key.code` with 9 arms: `Esc`, `Enter`, `Backspace`, `Delete`, `Left`, `Right`, `Home`, `End`, `Char(c)`, and `_`.
 
-- What becomes harder:
-  - One more level of indirection when reading code
-  - File line counts remain high for some files (deferred)
+The complexity sources are:
+- `Backspace` arm (lines 716-730): `if self.rename_selected_all { ... } else if self.rename_cursor > 0 { ... }` with char boundary navigation.
+- `Delete` arm (lines 732-741): `if self.rename_selected_all { ... } else if self.rename_cursor < ... { ... }`.
+- `Char(c)` arm (lines 770-796): validates char, computes max stem length via chained `map`/`unwrap_or`, then `if self.rename_selected_all { ... } else if ... < max_stem_len { ... }`.
 
-- Follow-ups to scope for later:
-  - Split oversize files (`list_app.rs`, `aggressive.rs`) into submodules
-  - Add unit tests for extracted TUI helpers where feasible
+**Borrow checker constraint:** `&mut self`, no conflicting borrows. Extracted helpers can be methods.
 
-## Decision History
+**Extraction targets:**
 
-1. Reuse Option 1 (inline extraction) from PR #141 ADR -- proven approach, same constraints.
-2. `list_app.rs` has 5 violations -- plan all 5 together as one unit to avoid conflicting
-   edits across separate passes.
-3. Functions marked `#[cfg(not(tarpaulin_include))]` cannot have meaningful unit tests
-   written for the RED phase; baseline `cargo test` pass is the TDD gate for those.
-4. Test file `snapshot_player_test.rs` extraction must only consolidate setup/repeated
-   control flow, not alter assertions or test intent.
-5. 7 of 32 Medium-tier violations are not explicitly listed in REQUIREMENTS. The implementer
-   must discover and fix these as part of the work.
-6. Restructured monolithic ADR into per-module sub-ADRs for thorough source-level analysis
-   of each extraction target.
+1. `handle_rename_backspace(&mut self)` -- method. Covers lines 716-730. Handles select-all clear vs. char-boundary deletion.
+2. `handle_rename_delete(&mut self)` -- method. Covers lines 732-741. Handles select-all clear vs. forward deletion.
+3. `handle_rename_char_input(&mut self, c: char)` -- method. Covers lines 770-796. Handles validation, max-length check, select-all replacement, and insert-at-cursor.
+
+### 4. `render_context_menu_modal()` at line 1047 -- score 18
+
+**Signature:**
+```rust
+pub fn render_context_menu_modal(frame: &mut Frame, area: Rect, selected_idx: usize, backup_exists: bool)
+```
+
+**Current structure:**
+Lines 1047-1130. An associated function (already `Self::`, not `&self`). Iterates over `ContextMenuItem::ALL` (lines 1077-1109) building styled `Line` spans. Complexity from:
+- `is_restore && !backup_exists` check (line 1083) with nested `if item.has_shortcut()` (lines 1083-1093) for label formatting.
+- `if is_selected / else if is_disabled / else` style chain (lines 1095-1101).
+- Selection prefix logic (line 1104).
+
+**Borrow checker constraint:** This is already a static method (`pub fn`, not `&self`). No borrow issues.
+
+**Extraction targets:**
+
+1. `build_menu_item_label(item: &ContextMenuItem, backup_exists: bool) -> String` -- free function. Takes the item and backup flag, returns the formatted label with shortcut and disabled hints. Covers lines 1083-1093.
+2. `menu_item_style(is_selected: bool, is_disabled: bool, theme: &Theme) -> Style` -- free function. Returns the appropriate style. Covers lines 1095-1101.
+
+### 5. `handle_normal_key()` at line 213 -- score 17
+
+**Signature:**
+```rust
+fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()>
+```
+
+**Current structure:**
+Lines 213-279. A `match key.code` with 9 arms. The complexity comes from 6 arms (`Enter`, `Char('p')`, `Char('t')`, `Char('a')`, `Char('r')`, `Char('d')`) all containing the identical pattern:
+```rust
+if self.is_selected_locked() {
+    self.mode = Mode::ConfirmUnlock;
+    return Ok(());
+}
+```
+This repeated pattern at lines 217-219, 229-231, 237-239, 243-245, 250-252, 257-259 adds `+2` complexity for each `if` (nesting increment + condition).
+
+**Borrow checker constraint:** `&mut self`, no issues. Simple method extraction.
+
+**Extraction targets:**
+
+1. `redirect_if_locked(&mut self) -> bool` -- method. Returns `true` (and sets mode to `ConfirmUnlock`) if the selected item is locked, `false` otherwise. Replaces 6 identical code blocks.
+
+## Dependencies Between Functions
+
+- `draw()` and `handle_mouse()` and `handle_normal_key()` all reference `self.mode` and `self.context_menu_idx`. They do not call each other.
+- `handle_rename_input_key()` is called from `handle_key()` (line 1419) which is the `TuiApp::handle_key` implementation.
+- `render_context_menu_modal()` is called from within `draw()`'s closure (line 1624) and from snapshot tests.
+- All 5 functions are in the same file and must be refactored sequentially (bottom-to-top to minimize line-number drift).
+
+## Testability Assessment
+
+**Existing tests in `src/tui/list_app.rs` (lines 1676-1730+):**
+- `mode_default_is_normal`, `mode_equality`, `mode_clone_and_copy`, `mode_debug_format` -- test `Mode` enum, not the flagged functions.
+- `context_menu_has_seven_items`, `context_menu_items_have_labels` -- test `ContextMenuItem`, relevant to `render_context_menu_modal()`.
+
+**Existing integration/snapshot tests:** `tests/integration/snapshot_tui_test.rs` provides snapshot-based regression tests for the TUI rendering pipeline. These are the primary safety net for `draw()` and `render_context_menu_modal()`.
+
+**TDD approach:**
+- `draw()`, `handle_mouse()`, `handle_rename_input_key()`, `handle_normal_key()`: Not directly unit-testable (require terminal). Full `cargo test` is the baseline. Snapshot tests are the regression net.
+- `render_context_menu_modal()`: Existing snapshot tests cover this. The extracted `build_menu_item_label()` and `menu_item_style()` functions could have unit tests added, but this is out of scope (pure refactoring).
+- `redirect_if_locked()`: Could be unit-tested if `ListApp` can be constructed in test, but this is also out of scope.
+
+## Edit Strategy
+
+Work bottom-to-top in the file to minimize line-number shifts:
+1. `draw()` at line 1426 (extract 3 free functions, add before line 1426 or after `impl TuiApp`)
+2. `handle_mouse()` at line 1254 (extract 3 methods into `impl ListApp`)
+3. `render_context_menu_modal()` at line 1047 (extract 2 free functions)
+4. `handle_rename_input_key()` at line 704 (extract 3 methods into `impl ListApp`)
+5. `handle_normal_key()` at line 213 (extract 1 method into `impl ListApp`)
