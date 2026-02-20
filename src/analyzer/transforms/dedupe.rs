@@ -27,6 +27,77 @@ impl DeduplicateProgressLines {
     pub fn deduped_count(&self) -> usize {
         self.deduped_count
     }
+
+    /// Flush the current line as an output event followed by a newline.
+    ///
+    /// Consumes the current line via `mem::take` and resets `accumulated_time`.
+    fn emit_line_with_newline(&mut self, output_events: &mut Vec<Event>) {
+        let data = if !self.current_line.is_empty() {
+            format!("{}\n", std::mem::take(&mut self.current_line))
+        } else {
+            "\n".to_string()
+        };
+        output_events.push(Event::output(self.accumulated_time, data));
+        self.accumulated_time = 0.0;
+    }
+
+    /// Handle a non-output event: flush any pending CR state, carry accumulated
+    /// time onto the marker/resize event, and emit any buffered line first.
+    fn flush_non_output(&mut self, event: Event, output_events: &mut Vec<Event>) {
+        // A bare CR before a non-output event means the current line is overwritten
+        if self.pending_cr {
+            self.current_line.clear();
+            self.pending_cr = false;
+        }
+
+        let mut marker = event;
+        marker.time += self.accumulated_time;
+        self.accumulated_time = 0.0;
+
+        // Emit any buffered line before the marker so ordering is preserved
+        if !self.current_line.is_empty() {
+            output_events.push(Event::output(
+                marker.time,
+                std::mem::take(&mut self.current_line),
+            ));
+            marker.time = 0.0;
+        }
+
+        output_events.push(marker);
+    }
+
+    /// Process a single character from an output event data stream.
+    ///
+    /// Updates `pending_cr`, `current_line`, `accumulated_time`, and
+    /// `deduped_count` according to the CR-overwrite state machine.
+    fn process_char(&mut self, ch: char, output_events: &mut Vec<Event>) {
+        // Resolve a pending CR before processing the next character
+        if self.pending_cr {
+            self.pending_cr = false;
+            if ch == '\n' {
+                // CR+LF = line break: emit current line and continue
+                self.emit_line_with_newline(output_events);
+                return;
+            }
+            // CR followed by anything else = overwrite: discard current line
+            if !self.current_line.is_empty() {
+                self.deduped_count += 1;
+            }
+            self.current_line.clear();
+        }
+
+        match ch {
+            '\r' => {
+                self.pending_cr = true;
+            }
+            '\n' => {
+                self.emit_line_with_newline(output_events);
+            }
+            _ => {
+                self.current_line.push(ch);
+            }
+        }
+    }
 }
 
 impl Default for DeduplicateProgressLines {
@@ -41,67 +112,14 @@ impl Transform for DeduplicateProgressLines {
 
         for event in events.drain(..) {
             if !event.is_output() {
-                // Flash pending CR as overwrite if followed by non-output
-                if self.pending_cr {
-                    self.current_line.clear();
-                    self.pending_cr = false;
-                }
-
-                let mut marker = event;
-                marker.time += self.accumulated_time;
-                self.accumulated_time = 0.0;
-
-                if !self.current_line.is_empty() {
-                    output_events.push(Event::output(
-                        marker.time,
-                        std::mem::take(&mut self.current_line),
-                    ));
-                    marker.time = 0.0;
-                }
-
-                output_events.push(marker);
+                self.flush_non_output(event, &mut output_events);
                 continue;
             }
 
             self.accumulated_time += event.time;
 
             for ch in event.data.chars() {
-                if self.pending_cr {
-                    self.pending_cr = false;
-                    if ch == '\n' {
-                        let data = if !self.current_line.is_empty() {
-                            format!("{}\n", std::mem::take(&mut self.current_line))
-                        } else {
-                            "\n".to_string()
-                        };
-                        output_events.push(Event::output(self.accumulated_time, data));
-                        self.accumulated_time = 0.0;
-                        continue;
-                    } else {
-                        if !self.current_line.is_empty() {
-                            self.deduped_count += 1;
-                        }
-                        self.current_line.clear();
-                    }
-                }
-
-                match ch {
-                    '\r' => {
-                        self.pending_cr = true;
-                    }
-                    '\n' => {
-                        let data = if !self.current_line.is_empty() {
-                            format!("{}\n", std::mem::take(&mut self.current_line))
-                        } else {
-                            "\n".to_string()
-                        };
-                        output_events.push(Event::output(self.accumulated_time, data));
-                        self.accumulated_time = 0.0;
-                    }
-                    _ => {
-                        self.current_line.push(ch);
-                    }
-                }
+                self.process_char(ch, &mut output_events);
             }
         }
 

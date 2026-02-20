@@ -126,70 +126,72 @@ impl ContentCleaner {
         self.buffer.clear();
 
         for c in data.chars() {
-            match (&self.ansi_state, c) {
-                // ANSI escape start
-                (AnsiParseState::Normal, '\x1b') => {
+            if self.ansi_state == AnsiParseState::Normal {
+                if c == '\x1b' {
                     self.ansi_state = AnsiParseState::Escape;
                     self.ansi_stripped += 1;
-                }
-                // CSI sequence start: ESC [
-                (AnsiParseState::Escape, '[') => {
-                    self.ansi_state = AnsiParseState::Csi;
-                }
-                // OSC sequence start: ESC ]
-                (AnsiParseState::Escape, ']') => {
-                    self.ansi_state = AnsiParseState::Osc;
-                }
-                // Simple escape sequence: ESC followed by single char
-                (AnsiParseState::Escape, c) if c.is_ascii_alphabetic() || c == '(' || c == ')' => {
-                    // Skip the character after ESC (e.g., ESC c, ESC 7, ESC 8)
-                    self.ansi_state = AnsiParseState::Normal;
-                }
-                // CSI parameter chars
-                (AnsiParseState::Csi | AnsiParseState::CsiParams, c)
-                    if c.is_ascii_digit() || c == ';' || c == '?' || c == '>' || c == '!' =>
-                {
-                    self.ansi_state = AnsiParseState::CsiParams;
-                }
-                // CSI final byte (ends sequence)
-                (AnsiParseState::Csi | AnsiParseState::CsiParams, c)
-                    if c.is_ascii_alphabetic() || c == '@' || c == '`' =>
-                {
-                    self.ansi_state = AnsiParseState::Normal;
-                }
-                // OSC content (consume until BEL or ST)
-                (AnsiParseState::Osc, '\x07') => {
-                    // BEL terminates OSC
-                    self.ansi_state = AnsiParseState::Normal;
-                }
-                (AnsiParseState::Osc, '\x1b') => {
-                    // Possible ST (ESC \) terminator
-                    self.ansi_state = AnsiParseState::OscEscape;
-                }
-                (AnsiParseState::OscEscape, '\\') => {
-                    // ST terminator complete
-                    self.ansi_state = AnsiParseState::Normal;
-                }
-                (AnsiParseState::OscEscape, _) => {
-                    // Not a valid ST, continue OSC
-                    self.ansi_state = AnsiParseState::Osc;
-                }
-                (AnsiParseState::Osc, _) => {
-                    // Inside OSC, skip content
-                }
-                // Inside any escape sequence - skip
-                (AnsiParseState::Escape | AnsiParseState::Csi | AnsiParseState::CsiParams, _) => {
-                    // Invalid sequence, reset
-                    self.ansi_state = AnsiParseState::Normal;
-                }
-                // Normal character processing
-                (AnsiParseState::Normal, c) => {
+                } else {
                     self.process_normal_char(c);
                 }
+            } else {
+                self.handle_escape_char(c);
             }
         }
 
         self.buffer.clone()
+    }
+
+    /// Advance the ANSI state machine for a character received while inside
+    /// an escape sequence (any state other than Normal).
+    ///
+    /// All state transitions for Escape, Csi, CsiParams, Osc, and OscEscape
+    /// are handled here, keeping `clean()` free of their detail.
+    fn handle_escape_char(&mut self, c: char) {
+        match self.ansi_state {
+            AnsiParseState::Escape => {
+                match c {
+                    '[' => self.ansi_state = AnsiParseState::Csi,
+                    ']' => self.ansi_state = AnsiParseState::Osc,
+                    // Simple escape: ESC followed by single alphabetic/bracket char
+                    _ if c.is_ascii_alphabetic() || c == '(' || c == ')' => {
+                        // Skip this char (e.g. ESC c, ESC 7, ESC 8)
+                        self.ansi_state = AnsiParseState::Normal;
+                    }
+                    // Any other char: invalid sequence, reset
+                    _ => self.ansi_state = AnsiParseState::Normal,
+                }
+            }
+            AnsiParseState::Csi | AnsiParseState::CsiParams => {
+                if c.is_ascii_digit() || c == ';' || c == '?' || c == '>' || c == '!' {
+                    // CSI parameter byte
+                    self.ansi_state = AnsiParseState::CsiParams;
+                } else if c.is_ascii_alphabetic() || c == '@' || c == '`' {
+                    // CSI final byte: sequence ends
+                    self.ansi_state = AnsiParseState::Normal;
+                } else {
+                    // Unexpected byte: reset
+                    self.ansi_state = AnsiParseState::Normal;
+                }
+            }
+            AnsiParseState::Osc => match c {
+                '\x07' => self.ansi_state = AnsiParseState::Normal, // BEL terminates OSC
+                '\x1b' => self.ansi_state = AnsiParseState::OscEscape, // possible ST
+                _ => {}                                             // inside OSC: skip content
+            },
+            AnsiParseState::OscEscape => {
+                if c == '\\' {
+                    // ST terminator (ESC \) complete
+                    self.ansi_state = AnsiParseState::Normal;
+                } else {
+                    // Not a valid ST: stay in OSC
+                    self.ansi_state = AnsiParseState::Osc;
+                }
+            }
+            // Normal is handled in clean(); this arm is unreachable but exhaustive
+            AnsiParseState::Normal => {
+                self.process_normal_char(c);
+            }
+        }
     }
 
     /// Process a normal (non-escape) character.

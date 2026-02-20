@@ -151,6 +151,207 @@ pub fn play_session_native(path: &Path) -> Result<PlaybackResult> {
     result
 }
 
+/// Poll and handle all pending input events.
+///
+/// Returns `Some(PlaybackResult)` if the user requests quit, or `None` to continue.
+/// First poll waits up to 16ms; subsequent polls use zero timeout to drain the queue.
+#[allow(clippy::too_many_arguments)]
+fn process_pending_events(
+    state: &mut PlaybackState,
+    buffer: &mut TerminalBuffer,
+    cast: &AsciicastFile,
+    markers: &[MarkerPosition],
+    total_duration: f64,
+    rec_cols: u32,
+    rec_rows: u32,
+    name: &str,
+) -> Result<Option<PlaybackResult>> {
+    let mut first_poll = true;
+    while event::poll(if first_poll {
+        Duration::from_millis(16)
+    } else {
+        Duration::ZERO
+    })? {
+        first_poll = false;
+        let event = event::read()?;
+
+        let result = handle_event(
+            event,
+            state,
+            buffer,
+            cast,
+            markers,
+            total_duration,
+            rec_cols,
+            rec_rows,
+        );
+
+        match result {
+            InputResult::Quit => return Ok(Some(PlaybackResult::Interrupted)),
+            InputResult::QuitWithFile => {
+                return Ok(Some(PlaybackResult::Success(name.to_string())))
+            }
+            InputResult::Continue => {}
+        }
+    }
+    Ok(None)
+}
+
+/// Advance playback by processing cast events up to the current elapsed time.
+///
+/// No-op when paused. Sets `needs_render = true` while playing since time always changes.
+pub fn advance_playback(
+    state: &mut PlaybackState,
+    buffer: &mut TerminalBuffer,
+    cast: &AsciicastFile,
+    total_duration: f64,
+) {
+    if state.paused {
+        return;
+    }
+
+    let elapsed = state.start_time.elapsed().as_secs_f64() * state.speed + state.time_offset();
+    let elapsed = elapsed.min(total_duration);
+    state.set_current_time(elapsed, total_duration);
+    state.needs_render = true;
+
+    while state.event_idx() < cast.events.len() {
+        let evt = &cast.events[state.event_idx()];
+        let next_time = state.cumulative_time() + evt.time;
+
+        if next_time > elapsed {
+            break;
+        }
+
+        state.set_cumulative_time(next_time);
+
+        if evt.is_output() {
+            buffer.process(&evt.data, None);
+        } else if let Some((cols, rows)) = evt.parse_resize() {
+            buffer.resize(cols as usize, rows as usize);
+        }
+
+        state.increment_event_idx(cast.events.len());
+    }
+}
+
+/// Render one frame to stdout.
+///
+/// Returns `true` if the caller should skip the end-of-loop sleep (partial update path),
+/// `false` if the normal 8ms sleep should occur.
+#[allow(clippy::too_many_arguments)]
+fn render_frame(
+    stdout: &mut io::Stdout,
+    buffer: &TerminalBuffer,
+    state: &mut PlaybackState,
+    markers: &[MarkerPosition],
+    total_duration: f64,
+) -> Result<bool> {
+    if state.show_help {
+        render_help(stdout, state.term_cols, state.term_rows)?;
+        return Ok(false);
+    }
+
+    // Begin synchronized update to prevent flicker
+    write!(stdout, "\x1b[?2026h")?;
+
+    // Partial update: only re-render changed highlight lines in free mode
+    if state.free_line_only && state.free_mode {
+        render_single_line(
+            stdout,
+            buffer,
+            state.prev_free_line,
+            state.view_row_offset(),
+            state.view_col_offset(),
+            state.view_cols,
+            false,
+        )?;
+        render_single_line(
+            stdout,
+            buffer,
+            state.free_line(),
+            state.view_row_offset(),
+            state.view_col_offset(),
+            state.view_cols,
+            true,
+        )?;
+        state.free_line_only = false;
+        write!(stdout, "\x1b[?2026l")?;
+        stdout.flush()?;
+        return Ok(true); // Skip the sleep at end of loop for faster response
+    }
+
+    render_full_frame(stdout, buffer, state, markers, total_duration)?;
+    Ok(false)
+}
+
+/// Render the full frame: viewport, scroll indicator, separator, progress bar, status bar.
+///
+/// Called from `render_frame()` when a full redraw is needed (not a partial free-mode update).
+fn render_full_frame(
+    stdout: &mut io::Stdout,
+    buffer: &TerminalBuffer,
+    state: &PlaybackState,
+    markers: &[MarkerPosition],
+    total_duration: f64,
+) -> Result<()> {
+    render_viewport(
+        stdout,
+        buffer,
+        state.view_row_offset(),
+        state.view_col_offset(),
+        state.view_rows,
+        state.view_cols,
+        if state.free_mode {
+            Some(state.free_line())
+        } else {
+            None
+        },
+    )?;
+
+    render_scroll_indicator(
+        stdout,
+        state.term_cols,
+        state.view_row_offset(),
+        state.view_col_offset(),
+        state.view_rows,
+        state.view_cols,
+        buffer.height(),
+        buffer.width(),
+    )?;
+
+    render_separator_line(stdout, state.term_cols, state.term_rows.saturating_sub(3))?;
+
+    render_progress_bar(
+        stdout,
+        state.term_cols,
+        state.term_rows.saturating_sub(2),
+        state.current_time(),
+        total_duration,
+        markers,
+    )?;
+
+    render_status_bar(
+        stdout,
+        state.term_cols,
+        state.term_rows.saturating_sub(1),
+        state.paused,
+        state.speed,
+        buffer.width() as u32,
+        buffer.height() as u32,
+        state.view_cols,
+        state.view_rows,
+        state.view_col_offset(),
+        state.view_row_offset(),
+        markers.len(),
+        state.viewport_mode,
+        state.free_mode,
+    )?;
+
+    write!(stdout, "\x1b[?2026l")?;
+    Ok(())
+}
+
 /// Main playback loop
 #[allow(clippy::too_many_arguments)]
 fn run_main_loop(
@@ -165,162 +366,28 @@ fn run_main_loop(
     name: &str,
 ) -> Result<PlaybackResult> {
     loop {
-        // Handle all pending input events before rendering
-        // First poll waits up to 16ms, then drain any queued events with zero timeout
-        let mut first_poll = true;
-        while event::poll(if first_poll {
-            Duration::from_millis(16)
-        } else {
-            Duration::ZERO
-        })? {
-            first_poll = false;
-            let event = event::read()?;
-
-            let result = handle_event(
-                event,
-                state,
-                buffer,
-                cast,
-                markers,
-                total_duration,
-                rec_cols,
-                rec_rows,
-            );
-
-            match result {
-                InputResult::Quit => return Ok(PlaybackResult::Interrupted),
-                InputResult::QuitWithFile => return Ok(PlaybackResult::Success(name.to_string())),
-                InputResult::Continue => {}
-            }
+        if let Some(result) = process_pending_events(
+            state,
+            buffer,
+            cast,
+            markers,
+            total_duration,
+            rec_cols,
+            rec_rows,
+            name,
+        )? {
+            return Ok(result);
         }
 
-        // Process events if not paused
-        if !state.paused {
-            let elapsed =
-                state.start_time.elapsed().as_secs_f64() * state.speed + state.time_offset();
-            // Cap elapsed time to total duration
-            let elapsed = elapsed.min(total_duration);
-            state.set_current_time(elapsed, total_duration);
-            state.needs_render = true; // Always render when playing (time changes)
+        advance_playback(state, buffer, cast, total_duration);
 
-            while state.event_idx() < cast.events.len() {
-                let evt = &cast.events[state.event_idx()];
-                let next_time = state.cumulative_time() + evt.time;
-
-                if next_time > elapsed {
-                    break;
-                }
-
-                state.set_cumulative_time(next_time);
-
-                if evt.is_output() {
-                    buffer.process(&evt.data, None);
-                } else if let Some((cols, rows)) = evt.parse_resize() {
-                    buffer.resize(cols as usize, rows as usize);
-                }
-
-                state.increment_event_idx(cast.events.len());
-            }
-        }
-
-        // Render only when needed
         if !state.needs_render {
             std::thread::sleep(Duration::from_millis(8));
             continue;
         }
         state.needs_render = false;
 
-        if state.show_help {
-            render_help(stdout, state.term_cols, state.term_rows)?;
-        } else {
-            // Begin synchronized update to prevent flicker
-            write!(stdout, "\x1b[?2026h")?;
-
-            // Partial update: only re-render changed highlight lines in free mode
-            // Skip all UI chrome (progress bar, status bar, etc.) for partial updates
-            if state.free_line_only && state.free_mode {
-                render_single_line(
-                    stdout,
-                    buffer,
-                    state.prev_free_line,
-                    state.view_row_offset(),
-                    state.view_col_offset(),
-                    state.view_cols,
-                    false, // not highlighted
-                )?;
-                render_single_line(
-                    stdout,
-                    buffer,
-                    state.free_line(),
-                    state.view_row_offset(),
-                    state.view_col_offset(),
-                    state.view_cols,
-                    true, // highlighted
-                )?;
-                state.free_line_only = false;
-                // End synchronized update and skip UI chrome
-                write!(stdout, "\x1b[?2026l")?;
-                stdout.flush()?;
-                continue; // Skip the sleep at end of loop for faster response
-            } else {
-                render_viewport(
-                    stdout,
-                    buffer,
-                    state.view_row_offset(),
-                    state.view_col_offset(),
-                    state.view_rows,
-                    state.view_cols,
-                    if state.free_mode {
-                        Some(state.free_line())
-                    } else {
-                        None
-                    },
-                )?;
-
-                // Show scroll indicator if viewport can scroll
-                render_scroll_indicator(
-                    stdout,
-                    state.term_cols,
-                    state.view_row_offset(),
-                    state.view_col_offset(),
-                    state.view_rows,
-                    state.view_cols,
-                    buffer.height(),
-                    buffer.width(),
-                )?;
-
-                render_separator_line(stdout, state.term_cols, state.term_rows.saturating_sub(3))?;
-
-                render_progress_bar(
-                    stdout,
-                    state.term_cols,
-                    state.term_rows.saturating_sub(2),
-                    state.current_time(),
-                    total_duration,
-                    markers,
-                )?;
-
-                render_status_bar(
-                    stdout,
-                    state.term_cols,
-                    state.term_rows.saturating_sub(1),
-                    state.paused,
-                    state.speed,
-                    buffer.width() as u32,
-                    buffer.height() as u32,
-                    state.view_cols,
-                    state.view_rows,
-                    state.view_col_offset(),
-                    state.view_row_offset(),
-                    markers.len(),
-                    state.viewport_mode,
-                    state.free_mode,
-                )?;
-
-                // End synchronized update
-                write!(stdout, "\x1b[?2026l")?;
-            }
-        }
+        let skip_sleep = render_frame(stdout, buffer, state, markers, total_duration)?;
 
         stdout.flush()?;
 
@@ -329,7 +396,9 @@ fn run_main_loop(
             return Ok(PlaybackResult::Success(name.to_string()));
         }
 
-        std::thread::sleep(Duration::from_millis(8));
+        if !skip_sleep {
+            std::thread::sleep(Duration::from_millis(8));
+        }
     }
 }
 

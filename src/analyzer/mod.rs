@@ -55,7 +55,8 @@ pub use config::ExtractionConfig;
 pub use extractor::ContentExtractor;
 pub use progress::DefaultProgressReporter;
 pub use transforms::{
-    ContentCleaner, DeduplicateProgressLines, FilterEmptyEvents, NormalizeWhitespace,
+    ContentCleaner, DeduplicateProgressLines, FilterEmptyEvents, GlobalDeduplicator,
+    NormalizeWhitespace, SimilarityFilter, TerminalTransform,
 };
 pub use types::{AnalysisContent, AnalysisSegment, ExtractionStats, TokenEstimator};
 pub use worker::{

@@ -424,6 +424,63 @@ impl CleanupApp {
 
         frame.render_widget(help, modal_area);
     }
+
+    /// Render the status line for the current mode.
+    ///
+    /// Input modes render `render_input_line`; Normal mode renders a status
+    /// summary; other modes render nothing.
+    #[allow(clippy::too_many_arguments)]
+    fn render_status_for_mode(
+        frame: &mut Frame,
+        area: Rect,
+        mode: Mode,
+        search_input: &str,
+        glob_input: &str,
+        agent: &str,
+        status: &Option<String>,
+        selected_count: usize,
+        selected_size: u64,
+        explorer_len: usize,
+        search_filter: Option<&str>,
+        agent_filter: Option<&str>,
+    ) {
+        match mode {
+            Mode::Search => {
+                let value = format!("{}_", search_input);
+                render_input_line(frame, area, "Search: ", &value);
+            }
+            Mode::GlobSelect => {
+                let value = format!("{}_", glob_input);
+                render_input_line(frame, area, "Glob pattern: ", &value);
+            }
+            Mode::AgentFilter => {
+                render_input_line(
+                    frame,
+                    area,
+                    "Filter by agent: ",
+                    &format!("{} (left/right to change, Enter to apply)", agent),
+                );
+            }
+            Mode::ConfirmDelete => {
+                render_input_line(frame, area, "Delete selected sessions? ", "(y/n)");
+            }
+            Mode::ConfirmDeleteFinal => {
+                render_input_line(frame, area, "Are you sure? ", "(y/n)");
+            }
+            _ => {
+                let text = status_line_content(
+                    mode,
+                    status,
+                    selected_count,
+                    selected_size,
+                    explorer_len,
+                    search_filter,
+                    agent_filter,
+                );
+                render_status_line(frame, area, &text);
+            }
+        }
+    }
 }
 
 impl TuiApp for CleanupApp {
@@ -443,24 +500,7 @@ impl TuiApp for CleanupApp {
                     MouseEventKind::ScrollUp => self.shared.explorer.up(),
                     MouseEventKind::ScrollDown => self.shared.explorer.down(),
                     MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
-                        let explorer_height = height.saturating_sub(2);
-                        let click_row = mouse.row;
-                        if click_row >= 1 && click_row < explorer_height.saturating_sub(1) {
-                            let item_offset = (click_row - 1) as usize;
-                            let scroll_offset = self.shared.explorer.scroll_offset();
-                            let visible_idx = scroll_offset + item_offset;
-                            if self.shared.explorer.select_index(visible_idx) {
-                                // Block selection of locked items
-                                if let Some(item) = self.shared.explorer.selected_item() {
-                                    if item.lock_info.is_some() {
-                                        self.shared.status_message =
-                                            Some("Session is locked (being recorded)".to_string());
-                                        return Ok(());
-                                    }
-                                }
-                                self.shared.explorer.toggle_select();
-                            }
-                        }
+                        handle_normal_mouse_click(&mut self.shared, height, mouse.row)?;
                     }
                     _ => {}
                 }
@@ -543,12 +583,17 @@ impl TuiApp for CleanupApp {
         // Calculate selected size for status bar
         let selected_size: u64 = explorer.selected_items().iter().map(|i| i.size).sum();
         let selected_count = explorer.selected_count();
+        let explorer_len = explorer.len();
+        let search_filter = explorer.search_filter().map(|s| s.to_string());
+        let agent_filter = explorer.agent_filter().map(|s| s.to_string());
 
         // Get preview for current selection from cache
         let current_path = explorer.selected_item().map(|i| i.path.clone());
         let preview = current_path
             .as_ref()
             .and_then(|p| self.shared.preview_cache.get(p));
+
+        let agent = available_agents[agent_filter_idx].clone();
 
         self.app.draw(|frame| {
             let area = frame.area();
@@ -559,97 +604,28 @@ impl TuiApp for CleanupApp {
             // Render file explorer with checkboxes (cleanup uses multi-select)
             render_explorer_list(frame, chunks[0], explorer, preview, true, false);
 
-            // Render status line — input modes highlight only the input
-            // value and always take priority over status_message.
-            match mode {
-                Mode::Search => {
-                    let value = format!("{}_", search_input);
-                    render_input_line(frame, chunks[1], "Search: ", &value);
-                }
-                Mode::GlobSelect => {
-                    let value = format!("{}_", glob_input);
-                    render_input_line(frame, chunks[1], "Glob pattern: ", &value);
-                }
-                Mode::AgentFilter => {
-                    let agent = &available_agents[agent_filter_idx];
-                    render_input_line(
-                        frame,
-                        chunks[1],
-                        "Filter by agent: ",
-                        &format!("{} (left/right to change, Enter to apply)", agent),
-                    );
-                }
-                Mode::ConfirmDelete => {
-                    render_input_line(
-                        frame,
-                        chunks[1],
-                        "Delete selected sessions? ",
-                        "(y/n)",
-                    );
-                }
-                Mode::ConfirmDeleteFinal => {
-                    render_input_line(frame, chunks[1], "Are you sure? ", "(y/n)");
-                }
-                _ => {
-                    let text = if let Some(msg) = &status {
-                        msg.clone()
-                    } else {
-                        match mode {
-                            Mode::Normal => {
-                                if selected_count > 0 {
-                                    format!(
-                                        "{} selected ({}) | {} total sessions",
-                                        selected_count,
-                                        format_size(selected_size),
-                                        explorer.len()
-                                    )
-                                } else {
-                                    let mut parts = vec![];
-                                    if let Some(search) = explorer.search_filter() {
-                                        parts.push(format!("search: \"{}\"", search));
-                                    }
-                                    if let Some(agent) = explorer.agent_filter() {
-                                        parts.push(format!("agent: {}", agent));
-                                    }
-                                    if parts.is_empty() {
-                                        format!("{} sessions | Space to select", explorer.len())
-                                    } else {
-                                        format!(
-                                            "{} sessions ({}) | Space to select",
-                                            explorer.len(),
-                                            parts.join(", ")
-                                        )
-                                    }
-                                }
-                            }
-                            _ => String::new(),
-                        }
-                    };
-                    render_status_line(frame, chunks[1], &text);
-                }
-            }
+            CleanupApp::render_status_for_mode(
+                frame,
+                chunks[1],
+                mode,
+                search_input,
+                glob_input,
+                &agent,
+                &status,
+                selected_count,
+                selected_size,
+                explorer_len,
+                search_filter.as_deref(),
+                agent_filter.as_deref(),
+            );
 
             // Render footer with keybindings
-            let footer_text = match mode {
-                Mode::Search => "Esc: cancel | Enter: apply | Backspace: delete",
-                Mode::GlobSelect => "Esc: cancel | Enter: select matching | Backspace: delete",
-                Mode::AgentFilter => "left/right: change | Enter: apply | Esc: cancel",
-                Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
-                Mode::ConfirmDeleteFinal => "y: confirm | n/Esc: cancel",
-                Mode::Help => "Press any key to close",
-                Mode::Normal => {
-                    if selected_count > 0 {
-                        "Space: toggle | a: toggle all | Enter: delete selected | Esc: clear | ?: help"
-                    } else {
-                        "Space: select | a: all | g: glob | /: search | f: filter | ?: help | q: quit"
-                    }
-                }
-            };
+            let footer_text = footer_text_for_mode(mode, selected_count);
             render_footer_text(frame, chunks[2], footer_text);
 
             // Render modal overlays
             match mode {
-                Mode::Help => Self::render_help_modal(frame, area),
+                Mode::Help => CleanupApp::render_help_modal(frame, area),
                 Mode::ConfirmDelete => {
                     modals::render_confirm_delete_modal(
                         frame,
@@ -673,6 +649,110 @@ impl TuiApp for CleanupApp {
         })?;
 
         Ok(())
+    }
+}
+
+/// Handle a left-click in Normal mode: navigate to the clicked item and toggle its selection.
+///
+/// Skips locked items (currently being recorded) and shows a status message instead.
+fn handle_normal_mouse_click(shared: &mut SharedState, height: u16, click_row: u16) -> Result<()> {
+    let explorer_height = height.saturating_sub(2);
+    if click_row >= 1 && click_row < explorer_height.saturating_sub(1) {
+        let item_offset = (click_row - 1) as usize;
+        let scroll_offset = shared.explorer.scroll_offset();
+        let visible_idx = scroll_offset + item_offset;
+        if shared.explorer.select_index(visible_idx) {
+            // Block selection of locked items
+            if let Some(item) = shared.explorer.selected_item() {
+                if item.lock_info.is_some() {
+                    shared.status_message = Some("Session is locked (being recorded)".to_string());
+                    return Ok(());
+                }
+            }
+            shared.explorer.toggle_select();
+        }
+    }
+    Ok(())
+}
+
+/// Compute the status line text for Normal mode (no active input mode).
+///
+/// Returns a status message if one is set; otherwise builds a summary based on
+/// selection count and active filters.
+pub fn status_line_content(
+    mode: Mode,
+    status: &Option<String>,
+    selected_count: usize,
+    selected_size: u64,
+    explorer_len: usize,
+    search_filter: Option<&str>,
+    agent_filter: Option<&str>,
+) -> String {
+    if let Some(msg) = status {
+        return msg.clone();
+    }
+
+    match mode {
+        Mode::Normal => {
+            if selected_count > 0 {
+                format!(
+                    "{} selected ({}) | {} total sessions",
+                    selected_count,
+                    format_size(selected_size),
+                    explorer_len
+                )
+            } else {
+                build_normal_status(explorer_len, search_filter, agent_filter)
+            }
+        }
+        _ => String::new(),
+    }
+}
+
+/// Build the status line for Normal mode with no selection.
+///
+/// Shows active filters as context, or a default hint when none are active.
+fn build_normal_status(
+    explorer_len: usize,
+    search_filter: Option<&str>,
+    agent_filter: Option<&str>,
+) -> String {
+    let mut parts = vec![];
+    if let Some(search) = search_filter {
+        parts.push(format!("search: \"{}\"", search));
+    }
+    if let Some(agent) = agent_filter {
+        parts.push(format!("agent: {}", agent));
+    }
+    if parts.is_empty() {
+        format!("{} sessions | Space to select", explorer_len)
+    } else {
+        format!(
+            "{} sessions ({}) | Space to select",
+            explorer_len,
+            parts.join(", ")
+        )
+    }
+}
+
+/// Return the footer keybinding text for the given mode.
+///
+/// In Normal mode, the text changes based on whether items are selected.
+pub fn footer_text_for_mode(mode: Mode, selected_count: usize) -> &'static str {
+    match mode {
+        Mode::Search => "Esc: cancel | Enter: apply | Backspace: delete",
+        Mode::GlobSelect => "Esc: cancel | Enter: select matching | Backspace: delete",
+        Mode::AgentFilter => "left/right: change | Enter: apply | Esc: cancel",
+        Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
+        Mode::ConfirmDeleteFinal => "y: confirm | n/Esc: cancel",
+        Mode::Help => "Press any key to close",
+        Mode::Normal => {
+            if selected_count > 0 {
+                "Space: toggle | a: toggle all | Enter: delete selected | Esc: clear | ?: help"
+            } else {
+                "Space: select | a: all | g: glob | /: search | f: filter | ?: help | q: quit"
+            }
+        }
     }
 }
 

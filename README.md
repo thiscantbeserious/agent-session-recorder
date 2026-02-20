@@ -12,14 +12,17 @@
 [ Agent Session Recorder ] - Record, replay, and understand AI agent sessions.
 ```
 
-  <video src="https://github.com/user-attachments/assets/e83cf993-467f-4869-b413-f86ddfae1fad" width="600" autoplay loop muted playsinline></video>
-
 [![CI](https://github.com/thiscantbeserious/agent-session-recorder/actions/workflows/ci.yml/badge.svg)](https://github.com/thiscantbeserious/agent-session-recorder/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/thiscantbeserious/agent-session-recorder/graph/badge.svg)](https://codecov.io/gh/thiscantbeserious/agent-session-recorder)
 [![Rust](https://img.shields.io/badge/Rust-2021-orange?logo=rust)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![asciinema](https://img.shields.io/badge/powered%20by-asciinema-d40000)](https://asciinema.org/)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS-informational)]()
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=thiscantbeserious_agent-session-recorder&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=thiscantbeserious_agent-session-recorder)
+[![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=thiscantbeserious_agent-session-recorder&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=thiscantbeserious_agent-session-recorder)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=thiscantbeserious_agent-session-recorder&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=thiscantbeserious_agent-session-recorder)
+
+<video src="https://github.com/user-attachments/assets/e83cf993-467f-4869-b413-f86ddfae1fad" width="600" autoplay loop muted playsinline></video>
 
 **Record, replay, and understand your AI agent sessions.**
 

@@ -119,6 +119,181 @@ impl TerminalTransform {
         }
         result
     }
+
+    /// Process a scrolled-off batch of lines: tag with noise status, shift
+    /// row counts, filter, and return an output event if any lines survive.
+    ///
+    /// `scrolled_lines` are the raw lines that scrolled off the top.
+    /// `accumulated_time` is consumed on a successful emit (set to 0 by caller).
+    fn emit_scrolled_lines(
+        &mut self,
+        scrolled_lines: Vec<String>,
+        accumulated_time: f64,
+    ) -> Option<Event> {
+        let scroll_count = scrolled_lines.len();
+
+        // Tag each scrolled line with its row's noise status before shifting
+        // counts. Scrolled lines come from the top rows (0..scroll_count).
+        let tagged: Vec<(String, bool)> = scrolled_lines
+            .into_iter()
+            .enumerate()
+            .map(|(i, line)| {
+                let noisy = self.is_noisy_row(i);
+                (line, noisy)
+            })
+            .collect();
+
+        // Shift row counts now that those rows are gone
+        self.shift_row_counts(scroll_count);
+
+        let new_lines = self.filter_new_lines(tagged);
+        if new_lines.is_empty() {
+            return None;
+        }
+        Some(Event::output(accumulated_time, new_lines.join("\n")))
+    }
+
+    /// Collect and emit lines that became stable during this output event.
+    ///
+    /// "Stable" means the cursor has moved past them (cursor row above) or
+    /// the event contained a newline / a long pause. Returns an output event
+    /// if any new lines survive noise and hash filtering.
+    fn emit_stable_lines(
+        &mut self,
+        current_lines: &[String],
+        current_cursor: (usize, usize),
+        has_newline: bool,
+        long_pause: bool,
+        accumulated_time: f64,
+    ) -> Option<Event> {
+        let mut lines_to_emit: Vec<(String, bool)> = Vec::new();
+
+        // Identify lines that the cursor has moved past
+        while self.stable_lines_count < current_cursor.0
+            && self.stable_lines_count < current_lines.len()
+        {
+            let row = self.stable_lines_count;
+            let noisy = self.is_noisy_row(row);
+            lines_to_emit.push((current_lines[row].clone(), noisy));
+            self.stable_lines_count += 1;
+        }
+
+        // Emit the current line IF it was finalized
+        let is_stable = has_newline || current_cursor.0 < self.last_cursor_pos.0 || long_pause;
+
+        if is_stable
+            && current_cursor.0 < current_lines.len()
+            && self.stable_lines_count <= current_cursor.0
+        {
+            let row = current_cursor.0;
+            let noisy = self.is_noisy_row(row);
+            lines_to_emit.push((current_lines[row].clone(), noisy));
+            if has_newline {
+                self.stable_lines_count = current_cursor.0 + 1;
+            }
+        }
+
+        if lines_to_emit.is_empty() {
+            return None;
+        }
+        let new_lines = self.filter_new_lines(lines_to_emit);
+        if new_lines.is_empty() {
+            return None;
+        }
+        Some(Event::output(accumulated_time, new_lines.join("\n")))
+    }
+
+    /// Flush any remaining buffer content that was not yet emitted as stable.
+    ///
+    /// Called after all events are processed to capture lines that the cursor
+    /// never moved past (e.g. trailing output without a trailing newline).
+    fn flush_remaining_lines(&mut self, accumulated_time: f64) -> Option<Event> {
+        let current_display = self.buffer.to_string();
+        let current_lines: Vec<String> = current_display
+            .lines()
+            .map(|s| s.trim_end().to_string())
+            .collect();
+
+        let mut final_lines: Vec<(String, bool)> = Vec::new();
+        while self.stable_lines_count < current_lines.len() {
+            let row = self.stable_lines_count;
+            let noisy = self.is_noisy_row(row);
+            final_lines.push((current_lines[row].clone(), noisy));
+            self.stable_lines_count += 1;
+        }
+
+        let filtered = self.filter_new_lines(final_lines);
+        if filtered.is_empty() {
+            return None;
+        }
+        Some(Event::output(accumulated_time, filtered.join("\n")))
+    }
+
+    /// Process a single output event through the virtual terminal.
+    ///
+    /// Feeds `event.data` into the terminal buffer, updates row write counts,
+    /// emits scrolled lines and newly stable lines, and returns any emitted
+    /// events together with the updated `accumulated_time`.
+    fn handle_output_event(
+        &mut self,
+        event: Event,
+        accumulated_time: &mut f64,
+        output_events: &mut Vec<Event>,
+    ) {
+        // Feed data into the virtual terminal; collect scroll callbacks
+        let mut scrolled_lines = Vec::new();
+        {
+            let mut scroll_cb = |cells: Vec<crate::terminal::Cell>| {
+                let line: String = cells.iter().map(|c| c.char).collect::<String>();
+                scrolled_lines.push(line.trim_end().to_string());
+            };
+            self.buffer.process(&event.data, Some(&mut scroll_cb));
+        }
+        *accumulated_time += event.time;
+
+        // Track which row the cursor landed on after processing
+        let cursor_row = self.buffer.cursor_row();
+        if cursor_row < self.row_write_counts.len() {
+            self.row_write_counts[cursor_row] += 1;
+        }
+
+        // 1. Emit lines that were scrolled off the screen
+        let had_scroll = !scrolled_lines.is_empty();
+        if had_scroll {
+            if let Some(ev) = self.emit_scrolled_lines(scrolled_lines, *accumulated_time) {
+                output_events.push(ev);
+                *accumulated_time = 0.0;
+            }
+        }
+
+        let current_cursor = (self.buffer.cursor_row(), self.buffer.cursor_col());
+
+        // Optimization: only snapshot the buffer when something interesting
+        // happened (cursor moved, scroll, newline, or long pause).
+        let cursor_moved = current_cursor != self.last_cursor_pos;
+        let has_newline = event.data.contains('\n');
+        let long_pause = event.time > 2.0;
+
+        if cursor_moved || had_scroll || has_newline || long_pause {
+            let current_display = self.buffer.to_string();
+            let current_lines: Vec<String> =
+                current_display.lines().map(|s| s.to_string()).collect();
+
+            // 2 & 3. Emit stable lines (past and current)
+            if let Some(ev) = self.emit_stable_lines(
+                &current_lines,
+                current_cursor,
+                has_newline,
+                long_pause,
+                *accumulated_time,
+            ) {
+                output_events.push(ev);
+                *accumulated_time = 0.0;
+            }
+        }
+
+        self.last_cursor_pos = current_cursor;
+    }
 }
 
 impl Transform for TerminalTransform {
@@ -129,104 +304,7 @@ impl Transform for TerminalTransform {
         for event in events.drain(..) {
             match event.event_type {
                 EventType::Output => {
-                    let mut scrolled_lines = Vec::new();
-                    {
-                        let mut scroll_cb = |cells: Vec<crate::terminal::Cell>| {
-                            let line: String = cells.iter().map(|c| c.char).collect::<String>();
-                            scrolled_lines.push(line.trim_end().to_string());
-                        };
-                        self.buffer.process(&event.data, Some(&mut scroll_cb));
-                    }
-                    accumulated_time += event.time;
-
-                    // Track which row the cursor landed on after processing
-                    let cursor_row = self.buffer.cursor_row();
-                    if cursor_row < self.row_write_counts.len() {
-                        self.row_write_counts[cursor_row] += 1;
-                    }
-
-                    // 1. Emit lines that were scrolled off the screen immediately
-                    let had_scroll = !scrolled_lines.is_empty();
-                    let scroll_count = scrolled_lines.len();
-                    if had_scroll {
-                        // Tag each scrolled line with its row's noise status
-                        // before shifting counts. Scrolled lines come from the
-                        // top rows (0..scroll_count).
-                        let tagged: Vec<(String, bool)> = scrolled_lines
-                            .into_iter()
-                            .enumerate()
-                            .map(|(i, line)| {
-                                let noisy = self.is_noisy_row(i);
-                                (line, noisy)
-                            })
-                            .collect();
-
-                        // Shift row counts now that those rows are gone
-                        self.shift_row_counts(scroll_count);
-
-                        let new_lines = self.filter_new_lines(tagged);
-                        if !new_lines.is_empty() {
-                            output_events
-                                .push(Event::output(accumulated_time, new_lines.join("\n")));
-                            accumulated_time = 0.0;
-                        }
-                    }
-
-                    let current_cursor = (self.buffer.cursor_row(), self.buffer.cursor_col());
-
-                    // Optimization: only snapshot the buffer when something
-                    // interesting happened (cursor moved, scroll, newline, or
-                    // long pause). Skipping to_string() for typing-within-line
-                    // events eliminates the dominant cost on large files.
-                    let cursor_moved = current_cursor != self.last_cursor_pos;
-                    let has_newline = event.data.contains('\n');
-                    let long_pause = event.time > 2.0;
-
-                    if cursor_moved || had_scroll || has_newline || long_pause {
-                        let current_display = self.buffer.to_string();
-                        let current_lines: Vec<String> =
-                            current_display.lines().map(|s| s.to_string()).collect();
-
-                        // Logic: lines ABOVE the cursor are considered stable and finished.
-                        let mut lines_to_emit: Vec<(String, bool)> = Vec::new();
-
-                        // 2. Identify lines that the cursor has moved past
-                        while self.stable_lines_count < current_cursor.0
-                            && self.stable_lines_count < current_lines.len()
-                        {
-                            let row = self.stable_lines_count;
-                            let noisy = self.is_noisy_row(row);
-                            lines_to_emit.push((current_lines[row].clone(), noisy));
-                            self.stable_lines_count += 1;
-                        }
-
-                        // 3. Emit the current line IF it was finalized
-                        let is_stable =
-                            has_newline || current_cursor.0 < self.last_cursor_pos.0 || long_pause;
-
-                        if is_stable
-                            && current_cursor.0 < current_lines.len()
-                            && self.stable_lines_count <= current_cursor.0
-                        {
-                            let row = current_cursor.0;
-                            let noisy = self.is_noisy_row(row);
-                            lines_to_emit.push((current_lines[row].clone(), noisy));
-                            if has_newline {
-                                self.stable_lines_count = current_cursor.0 + 1;
-                            }
-                        }
-
-                        if !lines_to_emit.is_empty() {
-                            let new_lines = self.filter_new_lines(lines_to_emit);
-                            if !new_lines.is_empty() {
-                                output_events
-                                    .push(Event::output(accumulated_time, new_lines.join("\n")));
-                                accumulated_time = 0.0;
-                            }
-                        }
-                    }
-
-                    self.last_cursor_pos = current_cursor;
+                    self.handle_output_event(event, &mut accumulated_time, &mut output_events);
                 }
                 EventType::Resize => {
                     if let Some((w, h)) = event.parse_resize() {
@@ -247,28 +325,9 @@ impl Transform for TerminalTransform {
             }
         }
 
-        // Final flush
-        let current_display = self.buffer.to_string();
-        let current_lines: Vec<String> = current_display
-            .lines()
-            .map(|s| s.trim_end().to_string())
-            .collect();
-        let mut final_lines: Vec<(String, bool)> = Vec::new();
-        while self.stable_lines_count < current_lines.len() {
-            let row = self.stable_lines_count;
-            let noisy = self.is_noisy_row(row);
-            final_lines.push((current_lines[row].clone(), noisy));
-            self.stable_lines_count += 1;
-        }
-        if let Some(text) = {
-            let filtered = self.filter_new_lines(final_lines);
-            if filtered.is_empty() {
-                None
-            } else {
-                Some(filtered.join("\n"))
-            }
-        } {
-            output_events.push(Event::output(accumulated_time, text));
+        // Final flush: emit any remaining buffer content
+        if let Some(ev) = self.flush_remaining_lines(accumulated_time) {
+            output_events.push(ev);
         }
 
         *events = output_events;
