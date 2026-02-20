@@ -361,3 +361,19 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy -- -D warnings
+
+  # SonarCloud - static analysis
+  sonarcloud:
+    name: SonarCloud
+    needs: detect-changes
+    if: needs.detect-changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
