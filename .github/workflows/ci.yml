@@ -362,11 +362,9 @@ jobs:
       - name: Run clippy
         run: cargo clippy -- -D warnings
 
-  # SonarCloud - static analysis
+  # SonarCloud - static analysis (runs on every push/PR, no path gate)
   sonarcloud:
     name: SonarCloud
-    needs: detect-changes
-    if: needs.detect-changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
