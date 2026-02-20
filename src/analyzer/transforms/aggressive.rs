@@ -89,6 +89,44 @@ impl SimilarityFilter {
     }
 }
 
+impl SimilarityFilter {
+    /// Process all lines in a single output event, collapsing similar ones.
+    ///
+    /// Applies similarity check to each `\n`-inclusive line and builds the
+    /// filtered output string. Calls `flush_skips()` inside the loop whenever
+    /// a dissimilar line is encountered (preserving the inner flush call-point).
+    /// Modifies `accumulated_time` in place when the inner flush fires.
+    fn process_output_lines(&mut self, data: &str, accumulated_time: &mut f64) -> String {
+        let mut new_data = String::with_capacity(data.len());
+        for line in data.split_inclusive('\n') {
+            let trimmed_line = line.trim();
+
+            let similarity = if let Some(ref last) = self.last_line {
+                Self::calculate_similarity(last, trimmed_line)
+            } else {
+                0.0
+            };
+
+            if similarity >= self.threshold {
+                self.skip_count += 1;
+            } else {
+                if let Some(skip_event) = self.flush_skips(*accumulated_time) {
+                    new_data.push_str(&skip_event.data);
+                    *accumulated_time = 0.0;
+                }
+                new_data.push_str(line);
+                // Only track as last_line if it was substantial
+                if trimmed_line.len() >= 30 {
+                    self.last_line = Some(trimmed_line.to_string());
+                } else {
+                    self.last_line = None;
+                }
+            }
+        }
+        new_data
+    }
+}
+
 impl Transform for SimilarityFilter {
     /// Process events and collapse similar consecutive lines.
     /// Preserves cumulative time by adding deltas to the next kept event.
@@ -108,33 +146,7 @@ impl Transform for SimilarityFilter {
                 continue;
             }
 
-            let mut new_data = String::with_capacity(event.data.len());
-            for line in event.data.split_inclusive('\n') {
-                let trimmed_line = line.trim();
-
-                let similarity = if let Some(ref last) = self.last_line {
-                    Self::calculate_similarity(last, trimmed_line)
-                } else {
-                    0.0
-                };
-
-                if similarity >= self.threshold {
-                    self.skip_count += 1;
-                } else {
-                    if let Some(skip_event) = self.flush_skips(accumulated_time) {
-                        new_data.push_str(&skip_event.data);
-                        accumulated_time = 0.0;
-                    }
-                    new_data.push_str(line);
-                    // Only track as last_line if it was substantial
-                    if trimmed_line.len() >= 30 {
-                        self.last_line = Some(trimmed_line.to_string());
-                    } else {
-                        self.last_line = None;
-                    }
-                }
-            }
-
+            let new_data = self.process_output_lines(&event.data, &mut accumulated_time);
             if !new_data.is_empty() {
                 event.data = new_data;
                 event.time += accumulated_time;
@@ -344,6 +356,58 @@ impl GlobalDeduplicator {
     }
 }
 
+impl GlobalDeduplicator {
+    /// Check whether an event is a windowed hash duplicate.
+    ///
+    /// Returns `true` if the event's content hash was already seen within
+    /// the sliding window (caller should skip the event). Returns `false`
+    /// when the event is new and its hash has been added to the window.
+    ///
+    /// Small events (below `min_hash_bytes`) bypass the hash check entirely
+    /// and always return `false` (never treated as duplicates).
+    fn check_windowed_hash(&mut self, event: &Event) -> bool {
+        if event.data.len() < self.min_hash_bytes {
+            return false;
+        }
+        let h = Self::hash_string(&event.data);
+        if self.event_hash_set.contains(&h) {
+            self.total_deduped_events += 1;
+            return true;
+        }
+        self.event_hashes.push_back(h);
+        self.event_hash_set.insert(h);
+        if self.event_hashes.len() > self.window_size {
+            if let Some(old) = self.event_hashes.pop_front() {
+                self.event_hash_set.remove(&old);
+            }
+        }
+        false
+    }
+
+    /// Apply the global line frequency cap to an event's data.
+    ///
+    /// Returns a new string containing only lines that have not yet exceeded
+    /// `max_line_repeats`. Empty/whitespace-only lines are always kept.
+    fn apply_line_frequency_cap(&mut self, data: &str) -> String {
+        let mut new_data = String::with_capacity(data.len());
+        for line in data.split_inclusive('\n') {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                new_data.push_str(line);
+                continue;
+            }
+            let count = self.line_counts.entry(trimmed.to_string()).or_insert(0);
+            if *count >= self.max_line_repeats {
+                self.total_deduped_lines += 1;
+                continue;
+            }
+            *count += 1;
+            new_data.push_str(line);
+        }
+        new_data
+    }
+}
+
 impl Transform for GlobalDeduplicator {
     /// Removes redundant events and repetitive lines across the entire session.
     /// Carefully accumulates time deltas to maintain timestamp integrity.
@@ -359,49 +423,12 @@ impl Transform for GlobalDeduplicator {
                 continue;
             }
 
-            // Windowed event hashing (targets TUI redraw frames)
-            // Skip small events: keystrokes and short output are not redraws
-            if event.data.len() >= self.min_hash_bytes {
-                let h = Self::hash_string(&event.data);
-                if self.event_hash_set.contains(&h) {
-                    self.total_deduped_events += 1;
-                    accumulated_time += event.time;
-                    continue;
-                }
-                self.event_hashes.push_back(h);
-                self.event_hash_set.insert(h);
-                if self.event_hashes.len() > self.window_size {
-                    if let Some(old) = self.event_hashes.pop_front() {
-                        self.event_hash_set.remove(&old);
-                    }
-                }
+            if self.check_windowed_hash(&event) {
+                accumulated_time += event.time;
+                continue;
             }
 
-            // Line frequency capping (Global)
-            // We keep only the last few instances of any given non-empty line
-            let mut new_data = String::with_capacity(event.data.len());
-            let lines: Vec<String> = event
-                .data
-                .split_inclusive('\n')
-                .map(|s| s.to_string())
-                .collect();
-
-            for line in lines {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
-                    new_data.push_str(&line);
-                    continue;
-                }
-
-                let count = self.line_counts.entry(trimmed.to_string()).or_insert(0);
-                if *count >= self.max_line_repeats {
-                    self.total_deduped_lines += 1;
-                    continue;
-                }
-                *count += 1;
-                new_data.push_str(&line);
-            }
-
+            let new_data = self.apply_line_frequency_cap(&event.data);
             if !new_data.is_empty() {
                 event.data = new_data;
                 event.time += accumulated_time;

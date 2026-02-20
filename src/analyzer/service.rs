@@ -28,8 +28,11 @@ use super::progress::DefaultProgressReporter;
 use super::prompt::{
     build_analyze_prompt, build_curation_prompt, build_rename_prompt, extract_rename_response,
 };
-use super::result::{MarkerWriter, ResultAggregator, ValidatedMarker, WriteReport};
+use super::result::{
+    AggregationReport, MarkerWriter, ResultAggregator, ValidatedMarker, WriteReport,
+};
 use super::tracker::UsageSummary;
+use super::types::ExtractionStats;
 use super::worker::{ProgressReporter, RetryExecutor, WorkerConfig, WorkerScaler};
 
 /// Default timeout for agent invocations in seconds.
@@ -193,6 +196,139 @@ impl AnalysisResult {
     }
 }
 
+/// Print extraction statistics to stderr.
+///
+/// Formats and displays the compression ratio, redraw cleanup counts,
+/// content pruning counts, and sanitization statistics.
+fn print_extraction_stats(stats: &ExtractionStats) {
+    let compression = if stats.original_bytes > 0 {
+        100.0 - (stats.extracted_bytes as f64 / stats.original_bytes as f64 * 100.0)
+    } else {
+        0.0
+    };
+
+    eprintln!("\nExtraction Summary:");
+    eprintln!("──────────────────────────────────────────────────────────────────────────────");
+    eprintln!(
+        "  Size Reduction:    {:>8}KB → {:>8}KB ({:.1}%)",
+        stats.original_bytes / 1024,
+        stats.extracted_bytes / 1024,
+        compression
+    );
+    eprintln!("──────────────────────────────────────────────────────────────────────────────");
+    eprintln!(
+        "  Redraw Cleanup:    {:>8} redraw frames coalesced",
+        stats.events_coalesced
+    );
+    eprintln!(
+        "                     {:>8} status lines deduped",
+        stats.windowed_lines_deduped
+    );
+    eprintln!(
+        "  Content Pruning:   {:>8} redundant lines removed",
+        stats.global_lines_deduped
+    );
+    eprintln!(
+        "                     {:>8} similar blocks collapsed",
+        stats.lines_collapsed
+    );
+    eprintln!(
+        "                     {:>8} large output bursts truncated",
+        stats.bursts_collapsed
+    );
+    eprintln!(
+        "                     {:>8} massive events truncated",
+        stats.blocks_truncated
+    );
+    eprintln!(
+        "  Sanitization:      {:>8} ANSI sequences stripped",
+        stats.ansi_sequences_stripped
+    );
+    eprintln!(
+        "                     {:>8} control characters removed",
+        stats.control_chars_stripped
+    );
+    eprintln!("──────────────────────────────────────────────────────────────────────────────\n");
+}
+
+/// Write cleaned content to the debug output path.
+///
+/// Resolves the output path (using the provided path or deriving it from
+/// the input file stem), writes the content text, and optionally prints
+/// a confirmation message. Returns an error if the path cannot be derived
+/// or the file cannot be written.
+fn handle_debug_output(
+    input_path: &Path,
+    content_text: &str,
+    output_path_opt: &Option<String>,
+    quiet: bool,
+) -> Result<(), AnalysisError> {
+    let output_path = match output_path_opt {
+        Some(p) if !p.is_empty() => p.clone(),
+        _ => {
+            let stem = input_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or_else(|| AnalysisError::IoError {
+                    operation: "deriving debug output path".to_string(),
+                    message: "Path does not have a valid filename".to_string(),
+                })?;
+            format!("/tmp/{}.txt", stem)
+        }
+    };
+
+    std::fs::write(&output_path, content_text).map_err(|e| AnalysisError::IoError {
+        operation: "writing debug output".to_string(),
+        message: e.to_string(),
+    })?;
+
+    if !quiet {
+        eprintln!("Cleaned content written to: {}", output_path);
+    }
+    Ok(())
+}
+
+/// Report the analysis summary to the progress reporter.
+///
+/// Calls either `finish` (all chunks succeeded) or `finish_partial_with_errors`
+/// (some chunks failed) based on the aggregation report.
+fn report_analysis_summary(
+    progress: &DefaultProgressReporter,
+    agg_report: &AggregationReport,
+    chunks: &[super::chunk::AnalysisChunk],
+    write_report: &WriteReport,
+    usage_summary: &super::tracker::UsageSummary,
+) {
+    if agg_report.failed_chunks.is_empty() {
+        progress.finish(write_report.markers_written);
+        return;
+    }
+    let failed_ranges: Vec<_> = chunks
+        .iter()
+        .filter(|c| agg_report.failed_chunks.contains(&c.id))
+        .map(|c| (c.time_range.start, c.time_range.end))
+        .collect();
+    let error_messages: Vec<_> = chunks
+        .iter()
+        .filter(|c| agg_report.failed_chunks.contains(&c.id))
+        .map(|c| {
+            agg_report
+                .failed_chunk_details
+                .iter()
+                .find(|f| f.chunk_id == c.id)
+                .map(|f| f.error.clone())
+                .unwrap_or_default()
+        })
+        .collect();
+    progress.finish_partial_with_errors(
+        usage_summary.successful_chunks,
+        usage_summary.chunks_processed,
+        write_report.markers_written,
+        &failed_ranges,
+        &error_messages,
+    );
+}
+
 /// Main service for analyzing cast files.
 ///
 /// Facade pattern - coordinates all analysis components.
@@ -266,89 +402,19 @@ impl AnalyzerService {
 
         // Show extraction stats (before NoContent check so --debug always sees them)
         if !self.options.quiet {
-            let stats = &content.stats;
-            let compression = if stats.original_bytes > 0 {
-                100.0 - (stats.extracted_bytes as f64 / stats.original_bytes as f64 * 100.0)
-            } else {
-                0.0
-            };
-
-            eprintln!("\nExtraction Summary:");
-            eprintln!(
-                "──────────────────────────────────────────────────────────────────────────────"
-            );
-            eprintln!(
-                "  Size Reduction:    {:>8}KB → {:>8}KB ({:.1}%)",
-                stats.original_bytes / 1024,
-                stats.extracted_bytes / 1024,
-                compression
-            );
-            eprintln!(
-                "──────────────────────────────────────────────────────────────────────────────"
-            );
-            eprintln!(
-                "  Redraw Cleanup:    {:>8} redraw frames coalesced",
-                stats.events_coalesced
-            );
-            eprintln!(
-                "                     {:>8} status lines deduped",
-                stats.windowed_lines_deduped
-            );
-            eprintln!(
-                "  Content Pruning:   {:>8} redundant lines removed",
-                stats.global_lines_deduped
-            );
-            eprintln!(
-                "                     {:>8} similar blocks collapsed",
-                stats.lines_collapsed
-            );
-            eprintln!(
-                "                     {:>8} large output bursts truncated",
-                stats.bursts_collapsed
-            );
-            eprintln!(
-                "                     {:>8} massive events truncated",
-                stats.blocks_truncated
-            );
-            eprintln!(
-                "  Sanitization:      {:>8} ANSI sequences stripped",
-                stats.ansi_sequences_stripped
-            );
-            eprintln!(
-                "                     {:>8} control characters removed",
-                stats.control_chars_stripped
-            );
-            eprintln!(
-                "──────────────────────────────────────────────────────────────────────────────\n"
-            );
+            print_extraction_stats(&content.stats);
         }
 
         // Handle debug output if requested (--debug AND --output flags)
         // --debug is required, --output triggers the save-and-exit behavior
         let save_debug_output = self.options.debug && self.options.output_path.is_some();
         if save_debug_output {
-            // Use provided path, or auto-derive from input if empty
-            let output_path = match &self.options.output_path {
-                Some(p) if !p.is_empty() => p.clone(),
-                _ => {
-                    let stem = path.file_stem().and_then(|s| s.to_str()).ok_or_else(|| {
-                        AnalysisError::IoError {
-                            operation: "deriving debug output path".to_string(),
-                            message: "Path does not have a valid filename".to_string(),
-                        }
-                    })?;
-                    format!("/tmp/{}.txt", stem)
-                }
-            };
-
-            std::fs::write(&output_path, content.text()).map_err(|e| AnalysisError::IoError {
-                operation: "writing debug output".to_string(),
-                message: e.to_string(),
-            })?;
-
-            if !self.options.quiet {
-                eprintln!("Cleaned content written to: {}", output_path);
-            }
+            handle_debug_output(
+                path,
+                &content.text(),
+                &self.options.output_path,
+                self.options.quiet,
+            )?;
         }
 
         if content.total_tokens == 0 || content.segments.is_empty() {
@@ -436,35 +502,13 @@ impl AnalyzerService {
         let usage_summary = tracker.summary();
 
         if !self.options.quiet {
-            if agg_report.failed_chunks.is_empty() {
-                progress.finish(write_report.markers_written);
-            } else {
-                let failed_ranges: Vec<_> = chunks
-                    .iter()
-                    .filter(|c| agg_report.failed_chunks.contains(&c.id))
-                    .map(|c| (c.time_range.start, c.time_range.end))
-                    .collect();
-                // Collect error messages in same order as failed_ranges
-                let error_messages: Vec<_> = chunks
-                    .iter()
-                    .filter(|c| agg_report.failed_chunks.contains(&c.id))
-                    .map(|c| {
-                        agg_report
-                            .failed_chunk_details
-                            .iter()
-                            .find(|f| f.chunk_id == c.id)
-                            .map(|f| f.error.clone())
-                            .unwrap_or_default()
-                    })
-                    .collect();
-                progress.finish_partial_with_errors(
-                    usage_summary.successful_chunks,
-                    usage_summary.chunks_processed,
-                    write_report.markers_written,
-                    &failed_ranges,
-                    &error_messages,
-                );
-            }
+            report_analysis_summary(
+                &progress,
+                &agg_report,
+                &chunks,
+                &write_report,
+                &usage_summary,
+            );
         }
 
         Ok(AnalysisResult {

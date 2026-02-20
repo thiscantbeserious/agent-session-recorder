@@ -92,3 +92,24 @@ mod process_guard_test;
 
 #[path = "integration/import_test.rs"]
 mod import_test;
+
+#[path = "integration/terminal_transform_test.rs"]
+mod terminal_transform_test;
+
+#[path = "integration/dedupe_transform_test.rs"]
+mod dedupe_transform_test;
+
+#[path = "integration/content_cleaner_test.rs"]
+mod content_cleaner_test;
+
+#[path = "integration/aggressive_transform_test.rs"]
+mod aggressive_transform_test;
+
+#[path = "integration/analyzer_service_test.rs"]
+mod analyzer_service_test;
+
+#[path = "integration/player_loop_test.rs"]
+mod player_loop_test;
+
+#[path = "integration/cleanup_draw_test.rs"]
+mod cleanup_draw_test;
