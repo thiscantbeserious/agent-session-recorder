@@ -185,13 +185,7 @@ impl CleanupApp {
     /// Supports: * (any chars), ? (single char), agent/pattern syntax
     fn select_by_glob(&mut self, pattern: &str) -> usize {
         // Parse agent/pattern syntax (e.g., "claude/*.cast" or "*2024*")
-        let (agent_filter, file_pattern) = if let Some(slash_pos) = pattern.find('/') {
-            let agent = &pattern[..slash_pos];
-            let pat = &pattern[slash_pos + 1..];
-            (Some(agent), pat)
-        } else {
-            (None, pattern)
-        };
+        let (agent_filter, file_pattern) = parse_glob_pattern(pattern);
 
         // Collect matching items that aren't already selected
         let items_to_select: Vec<(usize, String, String, bool, bool)> = self
@@ -218,12 +212,7 @@ impl CleanupApp {
             if is_locked {
                 continue;
             }
-            let matches = if let Some(agent_pat) = agent_filter {
-                glob_match(&agent, agent_pat) && glob_match(&name, file_pattern)
-            } else {
-                glob_match(&name, file_pattern)
-            };
-            if matches && !is_selected {
+            if matches_glob_pattern(&agent, &name, agent_filter, file_pattern) && !is_selected {
                 // Navigate to this item and select it
                 self.shared.explorer.home();
                 for _ in 0..vis_idx {
@@ -675,6 +664,36 @@ pub fn footer_text_for_mode(mode: Mode, selected_count: usize) -> &'static str {
                 "Space: select | a: all | g: glob | /: search | f: filter | ?: help | q: quit"
             }
         }
+    }
+}
+
+/// Parse an optional `agent/file_pattern` glob syntax into its two components.
+///
+/// Returns `(Some(agent_pattern), file_pattern)` when a `/` separator is present,
+/// or `(None, pattern)` for a bare file pattern.
+fn parse_glob_pattern(pattern: &str) -> (Option<&str>, &str) {
+    if let Some(slash_pos) = pattern.find('/') {
+        (Some(&pattern[..slash_pos]), &pattern[slash_pos + 1..])
+    } else {
+        (None, pattern)
+    }
+}
+
+/// Return whether an item's agent/name matches the parsed glob filter.
+///
+/// When `agent_filter` is `Some`, both the agent and name must match their
+/// respective patterns. When `None`, only the name is matched against
+/// `file_pattern`.
+fn matches_glob_pattern(
+    agent: &str,
+    name: &str,
+    agent_filter: Option<&str>,
+    file_pattern: &str,
+) -> bool {
+    if let Some(agent_pat) = agent_filter {
+        glob_match(agent, agent_pat) && glob_match(name, file_pattern)
+    } else {
+        glob_match(name, file_pattern)
     }
 }
 
