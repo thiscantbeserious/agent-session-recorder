@@ -44,7 +44,7 @@ References: [ADR.md](ADR.md) | [REQUIREMENTS.md](REQUIREMENTS.md)
 - [x] Internal review: APPROVE
 
 ## Files Modified
-- `src/tui/list_app.rs` — extracted 12 helpers (4 free functions + 8 methods) from 5 flagged functions, reducing combined complexity from 181 to well below 15 each
+- `src/tui/list_app.rs` — extracted 13 helpers (6 free functions + 7 methods) from 5 flagged functions, reducing combined complexity from 181 to well below 15 each
 
 ## Extracted Functions
 | Original Function | Score | Extracted Helpers | New Score |
