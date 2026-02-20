@@ -422,11 +422,8 @@ impl AnalyzerService {
         }
 
         // 4. Calculate chunks (Stage 2)
-        let calculator = build_chunk_calculator(
-            self.options.agent,
-            self.options.token_budget_override,
-            self.options.quiet,
-        );
+        let calculator =
+            build_chunk_calculator(self.options.agent, self.options.token_budget_override);
         let chunks = calculator.calculate_chunks(&content);
 
         // 5. Execute analysis (Stage 3+4)
@@ -635,7 +632,6 @@ impl AnalyzerService {
 fn build_chunk_calculator(
     agent: AgentType,
     token_budget_override: Option<usize>,
-    _quiet: bool,
 ) -> ChunkCalculator {
     if let Some(budget_tokens) = token_budget_override {
         if budget_tokens < 10000 {
