@@ -198,7 +198,7 @@ pub fn render_single_line(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::terminal::TerminalBuffer;
+    use crate::terminal::{Cell, CellStyle, Color, TerminalBuffer};
 
     fn create_buffer_with_content(width: usize, height: usize, content: &str) -> TerminalBuffer {
         let mut buffer = TerminalBuffer::new(width, height);
@@ -435,5 +435,396 @@ mod tests {
         // Render row 15, but buffer only has 10 rows
         let result = render_single_line(&mut stdout, &buffer, 15, 0, 0, 80, false);
         assert!(result.is_ok());
+    }
+
+    // === render_cell tests ===
+
+    #[test]
+    fn render_cell_default_style_no_escape_emitted() {
+        let cell = Cell {
+            char: 'A',
+            style: CellStyle::default(),
+        };
+        let mut output = String::new();
+        let mut current_style = CellStyle::default();
+        let mut in_highlight_style = false;
+        render_cell(
+            &mut output,
+            &cell,
+            false,
+            &mut current_style,
+            &mut in_highlight_style,
+        );
+        // style matches current_style, so no escape codes should be emitted
+        assert!(
+            !output.contains('\x1b'),
+            "no escape expected for default style"
+        );
+        assert!(output.contains('A'));
+    }
+
+    #[test]
+    fn render_cell_style_change_emits_reset_and_new_style() {
+        let cell = Cell {
+            char: 'B',
+            style: CellStyle {
+                fg: Color::Red,
+                ..Default::default()
+            },
+        };
+        let mut output = String::new();
+        let mut current_style = CellStyle::default();
+        let mut in_highlight_style = false;
+        render_cell(
+            &mut output,
+            &cell,
+            false,
+            &mut current_style,
+            &mut in_highlight_style,
+        );
+        assert!(output.contains("\x1b[0m"), "reset expected on style change");
+        assert!(output.contains("\x1b[31m"), "red fg escape expected");
+        assert!(output.contains('B'));
+        assert_eq!(current_style.fg, Color::Red);
+    }
+
+    #[test]
+    fn render_cell_consecutive_same_style_no_extra_escape() {
+        let style = CellStyle {
+            fg: Color::Green,
+            ..Default::default()
+        };
+        let cell1 = Cell { char: 'X', style };
+        let cell2 = Cell { char: 'Y', style };
+        let mut output = String::new();
+        let mut current_style = CellStyle::default();
+        let mut in_highlight_style = false;
+        render_cell(
+            &mut output,
+            &cell1,
+            false,
+            &mut current_style,
+            &mut in_highlight_style,
+        );
+        let after_first = output.len();
+        render_cell(
+            &mut output,
+            &cell2,
+            false,
+            &mut current_style,
+            &mut in_highlight_style,
+        );
+        // Second cell has same style: only 'Y' should be added, no extra escapes
+        let second_addition = &output[after_first..];
+        assert_eq!(second_addition, "Y");
+    }
+
+    #[test]
+    fn render_cell_red_to_green_transition_emits_two_codes() {
+        let red_style = CellStyle {
+            fg: Color::Red,
+            ..Default::default()
+        };
+        let green_style = CellStyle {
+            fg: Color::Green,
+            ..Default::default()
+        };
+        let cell_red = Cell {
+            char: 'R',
+            style: red_style,
+        };
+        let cell_green = Cell {
+            char: 'G',
+            style: green_style,
+        };
+        let mut output = String::new();
+        let mut current_style = CellStyle::default();
+        let mut in_highlight_style = false;
+        render_cell(
+            &mut output,
+            &cell_red,
+            false,
+            &mut current_style,
+            &mut in_highlight_style,
+        );
+        output.clear();
+        render_cell(
+            &mut output,
+            &cell_green,
+            false,
+            &mut current_style,
+            &mut in_highlight_style,
+        );
+        // Transition from red to green: should reset and then apply green
+        assert!(output.contains("\x1b[0m"), "reset expected on transition");
+        assert!(output.contains("\x1b[32m"), "green fg escape expected");
+        assert!(output.contains('G'));
+    }
+
+    #[test]
+    fn render_cell_highlighted_restores_highlight_style() {
+        // When in_highlight_style is false but is_highlighted is true, re-emit highlight escape
+        let cell = Cell {
+            char: 'H',
+            style: CellStyle::default(),
+        };
+        let mut output = String::new();
+        let mut current_style = CellStyle::default();
+        let mut in_highlight_style = false;
+        render_cell(
+            &mut output,
+            &cell,
+            true,
+            &mut current_style,
+            &mut in_highlight_style,
+        );
+        assert!(output.contains("\x1b[97;42m"), "highlight escape expected");
+        assert!(output.contains('H'));
+        assert!(in_highlight_style);
+    }
+
+    #[test]
+    fn render_cell_highlighted_no_repeat_when_already_in_highlight() {
+        let cell = Cell {
+            char: 'J',
+            style: CellStyle::default(),
+        };
+        let mut output = String::new();
+        let mut current_style = CellStyle::default();
+        let mut in_highlight_style = true;
+        render_cell(
+            &mut output,
+            &cell,
+            true,
+            &mut current_style,
+            &mut in_highlight_style,
+        );
+        // already in highlight style, no escape should be re-emitted
+        assert!(
+            !output.contains('\x1b'),
+            "no repeated highlight escape expected"
+        );
+        assert!(output.contains('J'));
+    }
+
+    #[test]
+    fn render_cell_bold_style_emits_bold_attr() {
+        let bold_style = CellStyle {
+            bold: true,
+            ..Default::default()
+        };
+        let cell = Cell {
+            char: 'Z',
+            style: bold_style,
+        };
+        let mut output = String::new();
+        let mut current_style = CellStyle::default();
+        let mut in_highlight_style = false;
+        render_cell(
+            &mut output,
+            &cell,
+            false,
+            &mut current_style,
+            &mut in_highlight_style,
+        );
+        assert!(output.contains("\x1b[1m"), "bold escape expected");
+        assert!(output.contains('Z'));
+    }
+
+    // === render_space_past_content tests ===
+
+    #[test]
+    fn render_space_past_content_active_style_emits_reset() {
+        let mut output = String::new();
+        let mut current_style = CellStyle {
+            fg: Color::Red,
+            ..Default::default()
+        };
+        render_space_past_content(&mut output, false, &mut current_style);
+        assert!(
+            output.contains("\x1b[0m"),
+            "reset expected when active non-default style"
+        );
+        assert!(output.ends_with(' '));
+        assert_eq!(current_style, CellStyle::default());
+    }
+
+    #[test]
+    fn render_space_past_content_default_style_no_reset() {
+        let mut output = String::new();
+        let mut current_style = CellStyle::default();
+        render_space_past_content(&mut output, false, &mut current_style);
+        assert!(
+            !output.contains('\x1b'),
+            "no escape expected for default style"
+        );
+        assert_eq!(output, " ");
+    }
+
+    #[test]
+    fn render_space_past_content_highlighted_no_reset() {
+        // When highlighted, reset should NOT be emitted even if style is active
+        let mut output = String::new();
+        let mut current_style = CellStyle {
+            fg: Color::Blue,
+            ..Default::default()
+        };
+        render_space_past_content(&mut output, true, &mut current_style);
+        assert!(
+            !output.contains('\x1b'),
+            "no reset expected when highlighted"
+        );
+        assert_eq!(output, " ");
+        // current_style should remain unchanged
+        assert_eq!(current_style.fg, Color::Blue);
+    }
+
+    #[test]
+    fn render_space_past_content_consecutive_no_double_reset() {
+        let mut output = String::new();
+        let mut current_style = CellStyle {
+            fg: Color::Cyan,
+            ..Default::default()
+        };
+        render_space_past_content(&mut output, false, &mut current_style);
+        // After first call current_style is reset
+        let first_len = output.len();
+        render_space_past_content(&mut output, false, &mut current_style);
+        let second_addition = &output[first_len..];
+        // Second call should emit only a space (no reset since style is already default)
+        assert_eq!(second_addition, " ", "only space expected on second call");
+    }
+
+    // === render_empty_row tests ===
+
+    #[test]
+    fn render_empty_row_not_highlighted_spaces_only() {
+        let mut output = String::new();
+        render_empty_row(&mut output, 5, false);
+        assert_eq!(output, "     ", "5 spaces expected");
+        assert!(!output.contains('\x1b'));
+    }
+
+    #[test]
+    fn render_empty_row_highlighted_appends_reset() {
+        let mut output = String::new();
+        render_empty_row(&mut output, 3, true);
+        assert!(output.starts_with("   "), "3 spaces expected first");
+        assert!(
+            output.ends_with("\x1b[0m"),
+            "reset expected at end when highlighted"
+        );
+    }
+
+    #[test]
+    fn render_empty_row_zero_cols_highlighted_still_resets() {
+        let mut output = String::new();
+        render_empty_row(&mut output, 0, true);
+        // No spaces, but reset should still appear
+        assert_eq!(output, "\x1b[0m");
+    }
+
+    // === render_row_cells tests ===
+
+    #[test]
+    fn render_row_cells_non_default_style_end_reset() {
+        let red_cell = Cell {
+            char: 'R',
+            style: CellStyle {
+                fg: Color::Red,
+                ..Default::default()
+            },
+        };
+        let cells = vec![red_cell];
+        let mut output = String::new();
+        render_row_cells(&mut output, &cells, 0, 1, false);
+        assert!(
+            output.ends_with("\x1b[0m"),
+            "end reset expected for non-default style"
+        );
+    }
+
+    #[test]
+    fn render_row_cells_default_style_no_end_reset() {
+        let cell = Cell {
+            char: 'A',
+            style: CellStyle::default(),
+        };
+        let cells = vec![cell];
+        let mut output = String::new();
+        render_row_cells(&mut output, &cells, 0, 1, false);
+        // Default style, not highlighted: no end reset
+        assert!(
+            !output.ends_with("\x1b[0m"),
+            "no end reset expected for default style"
+        );
+        assert!(output.contains('A'));
+    }
+
+    #[test]
+    fn render_row_cells_highlighted_emits_reset_at_end() {
+        let cell = Cell {
+            char: 'K',
+            style: CellStyle::default(),
+        };
+        let cells = vec![cell];
+        let mut output = String::new();
+        render_row_cells(&mut output, &cells, 0, 1, true);
+        assert!(
+            output.ends_with("\x1b[0m"),
+            "end reset expected when highlighted"
+        );
+    }
+
+    #[test]
+    fn render_row_cells_col_offset_skips_early_columns() {
+        let cell_a = Cell {
+            char: 'A',
+            style: CellStyle::default(),
+        };
+        let cell_b = Cell {
+            char: 'B',
+            style: CellStyle::default(),
+        };
+        let cells = vec![cell_a, cell_b];
+        let mut output = String::new();
+        // col_offset=1 skips 'A', only 'B' should appear
+        render_row_cells(&mut output, &cells, 1, 1, false);
+        assert!(output.contains('B'), "'B' should be rendered");
+        assert!(!output.contains('A'), "'A' should be skipped by col_offset");
+    }
+
+    #[test]
+    fn render_row_cells_zero_view_cols_produces_only_reset_if_highlighted() {
+        let cell = Cell {
+            char: 'Q',
+            style: CellStyle::default(),
+        };
+        let cells = vec![cell];
+        let mut output = String::new();
+        render_row_cells(&mut output, &cells, 0, 0, true);
+        // No cells rendered, but is_highlighted so end reset fires
+        assert_eq!(output, "\x1b[0m");
+    }
+
+    // === render_row tests ===
+
+    #[test]
+    fn render_row_none_produces_spaces() {
+        let mut output = String::new();
+        render_row(&mut output, None, 0, 4, false);
+        assert_eq!(output, "    ", "4 spaces expected for None row");
+    }
+
+    #[test]
+    fn render_row_some_empty_slice_produces_spaces_with_reset_if_highlighted() {
+        let mut output = String::new();
+        render_row(&mut output, Some(&[]), 0, 3, true);
+        // All 3 columns are past content (empty slice), so spaces + end reset
+        assert!(output.contains("   "), "3 spaces expected");
+        assert!(
+            output.ends_with("\x1b[0m"),
+            "reset expected when highlighted"
+        );
     }
 }
