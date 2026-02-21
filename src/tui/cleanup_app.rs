@@ -727,12 +727,12 @@ fn glob_match_recursive(text: &str, pattern: &str) -> bool {
 
                 // Try matching rest of pattern at each position
                 let rest_text: String = text_chars.collect();
-                for i in 0..=rest_text.len() {
+                for (i, _) in rest_text.char_indices() {
                     if glob_match_recursive(&rest_text[i..], &rest_pattern) {
                         return true;
                     }
                 }
-                return false;
+                return glob_match_recursive("", &rest_pattern);
             }
             '?' => {
                 // Match any single character
@@ -967,5 +967,12 @@ mod tests {
     fn glob_match_star_matches_empty() {
         // "*" alone must match the empty string
         assert!(glob_match("", "*"));
+    }
+
+    #[test]
+    fn glob_match_multibyte_utf8() {
+        assert!(glob_match("café.cast", "*.cast"));
+        assert!(glob_match("über.cast", "?ber.cast"));
+        assert!(glob_match("日本語.cast", "*.cast"));
     }
 }
