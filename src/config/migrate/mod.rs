@@ -903,6 +903,54 @@ extra_args = ["--model", "gpt-5.2-codex"]
     }
 
     // -----------------------------------------------------------------------
+    // parse_section_header
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_section_header_valid_section() {
+        assert_eq!(
+            parse_section_header("[recording]"),
+            Some("recording".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_section_header_dotted_section() {
+        assert_eq!(
+            parse_section_header("[agents.claude]"),
+            Some("agents.claude".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_section_header_array_of_tables_returns_none() {
+        assert_eq!(parse_section_header("[[array]]"), None);
+    }
+
+    #[test]
+    fn parse_section_header_not_a_section() {
+        assert_eq!(parse_section_header("key = value"), None);
+    }
+
+    #[test]
+    fn parse_section_header_empty_brackets() {
+        assert_eq!(parse_section_header("[]"), None);
+    }
+
+    #[test]
+    fn parse_section_header_with_whitespace() {
+        assert_eq!(
+            parse_section_header("[ recording ]"),
+            Some("recording".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_section_header_empty_string() {
+        assert_eq!(parse_section_header(""), None);
+    }
+
+    // -----------------------------------------------------------------------
     // (existing integration tests follow)
     // -----------------------------------------------------------------------
 
