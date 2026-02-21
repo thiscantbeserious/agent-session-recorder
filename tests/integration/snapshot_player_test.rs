@@ -1284,3 +1284,34 @@ fn snapshot_viewport_row_exactly_fills_view() {
         insta::assert_snapshot!("viewport_row_exactly_fills_view", output);
     });
 }
+
+#[test]
+fn snapshot_viewport_truly_absent_row() {
+    // Buffer has only 5 rows; row_offset=5 pushes buf_row to 5..7, which are all
+    // past buffer.height(). This exercises the absent-row else branch in render_snapshot_row.
+    let buffer = TerminalBuffer::new(80, 5);
+
+    let output = render_viewport_snapshot(&buffer, 5, 0, 3, 20, None);
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_truly_absent_row", output);
+    });
+}
+
+#[test]
+fn snapshot_viewport_straddling_buffer_boundary() {
+    // Buffer has only 3 rows; viewport starts at row 1 and requests 4 rows.
+    // Rows 1-2 exist in the buffer; rows 3-4 are absent (past buffer.height()).
+    // This exercises the transition from present to absent rows.
+    let mut buffer = TerminalBuffer::new(80, 3);
+    buffer.process("Row0\r\n", None);
+    buffer.process("Row1\r\n", None);
+
+    let output = render_viewport_snapshot(&buffer, 1, 0, 4, 20, None);
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_straddling_buffer_boundary", output);
+    });
+}
