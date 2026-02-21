@@ -657,4 +657,30 @@ mod tests {
         assert_eq!(opts.token_budget_override, None);
         assert_eq!(opts.timeout_secs, 90);
     }
+
+    #[test]
+    fn apply_agent_config_global_args_fallback_into_curate_and_rename() {
+        let base = AnalyzeOptions::with_agent(AgentType::Claude);
+        let ac = AgentAnalysisConfig {
+            extra_args: vec!["--global".to_string()],
+            ..AgentAnalysisConfig::default()
+        };
+        let opts = apply_agent_config(base, Some(&ac));
+        assert_eq!(opts.extra_args, vec!["--global"]);
+        assert_eq!(opts.curate_extra_args, vec!["--global"]);
+        assert_eq!(opts.rename_extra_args, vec!["--global"]);
+    }
+
+    #[test]
+    fn apply_agent_config_rename_args_set() {
+        let base = AnalyzeOptions::with_agent(AgentType::Claude);
+        let ac = AgentAnalysisConfig {
+            rename_extra_args: vec!["--rename-flag".to_string()],
+            ..AgentAnalysisConfig::default()
+        };
+        let opts = apply_agent_config(base, Some(&ac));
+        assert_eq!(opts.rename_extra_args, vec!["--rename-flag"]);
+        // Curate should not be affected
+        assert!(opts.curate_extra_args.is_empty());
+    }
 }
