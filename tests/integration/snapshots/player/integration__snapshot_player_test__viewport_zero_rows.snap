@@ -1,0 +1,7 @@
+---
+source: tests/integration/snapshot_player_test.rs
+expression: output
+---
+Viewport: 20x0 at offset (0, 0)
+Buffer size: 80x24
+---

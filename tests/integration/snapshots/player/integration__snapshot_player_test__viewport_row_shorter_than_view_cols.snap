@@ -1,0 +1,9 @@
+---
+source: tests/integration/snapshot_player_test.rs
+assertion_line: 1163
+expression: output
+---
+Viewport: 20x3 at offset (0, 0)
+Buffer size: 80x24
+---
+    Hi

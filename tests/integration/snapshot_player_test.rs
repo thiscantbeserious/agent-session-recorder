@@ -1144,3 +1144,143 @@ fn snapshot_cast_file_with_markers_playback() {
         insta::assert_snapshot!("cast_file_with_markers", output);
     });
 }
+
+// ============================================================================
+// Viewport Unit Tests
+// ============================================================================
+
+#[test]
+fn snapshot_viewport_row_shorter_than_view_cols() {
+    // row.len() < view_cols: trailing columns must be filled with spaces
+    let mut buffer = TerminalBuffer::new(80, 24);
+    buffer.process("Hi\r\n", None);
+
+    // view_cols=20 but row only has 2 chars: spaces fill remaining 18
+    let output = render_viewport_snapshot(&buffer, 0, 0, 3, 20, None);
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_row_shorter_than_view_cols", output);
+    });
+}
+
+#[test]
+fn snapshot_viewport_empty_buffer() {
+    // Empty buffer: every row is absent, all output should be spaces
+    let buffer = TerminalBuffer::new(80, 24);
+
+    let output = render_viewport_snapshot(&buffer, 0, 0, 4, 10, None);
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_empty_buffer", output);
+    });
+}
+
+#[test]
+fn snapshot_viewport_highlight_on_absent_row() {
+    // highlight_line points to a row that has no content (absent row)
+    let buffer = TerminalBuffer::new(80, 24);
+
+    let output = render_viewport_snapshot(&buffer, 0, 0, 5, 20, Some(2));
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_highlight_on_absent_row", output);
+    });
+}
+
+#[test]
+fn snapshot_viewport_highlight_first_row() {
+    // Boundary: highlight on row 0
+    let mut buffer = TerminalBuffer::new(80, 24);
+    buffer.process("First\r\n", None);
+    buffer.process("Second\r\n", None);
+    buffer.process("Third\r\n", None);
+
+    let output = render_viewport_snapshot(&buffer, 0, 0, 5, 20, Some(0));
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_highlight_first_row", output);
+    });
+}
+
+#[test]
+fn snapshot_viewport_highlight_last_row() {
+    // Boundary: highlight on the last visible row
+    let mut buffer = TerminalBuffer::new(80, 24);
+    buffer.process("Row 0\r\n", None);
+    buffer.process("Row 1\r\n", None);
+    buffer.process("Row 2\r\n", None);
+    buffer.process("Row 3\r\n", None);
+    buffer.process("Row 4\r\n", None);
+
+    // view_rows=5, last visible buf_row = 0+4 = 4
+    let output = render_viewport_snapshot(&buffer, 0, 0, 5, 20, Some(4));
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_highlight_last_row", output);
+    });
+}
+
+#[test]
+fn snapshot_viewport_col_offset_past_content() {
+    // col_offset > row.len(): every visible column is past content, filled with spaces
+    let mut buffer = TerminalBuffer::new(80, 24);
+    buffer.process("Short\r\n", None);
+
+    // "Short" has 5 chars; col_offset=10 is past all content
+    let output = render_viewport_snapshot(&buffer, 0, 10, 3, 15, None);
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_col_offset_past_content", output);
+    });
+}
+
+#[test]
+fn snapshot_viewport_zero_rows() {
+    // view_rows=0: no rows rendered, output contains only header metadata
+    let mut buffer = TerminalBuffer::new(80, 24);
+    buffer.process("Hello\r\n", None);
+
+    let output = render_viewport_snapshot(&buffer, 0, 0, 0, 20, None);
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_zero_rows", output);
+    });
+}
+
+#[test]
+fn snapshot_viewport_zero_cols() {
+    // view_cols=0: each row renders zero characters (only prefix/suffix markers)
+    let mut buffer = TerminalBuffer::new(80, 24);
+    buffer.process("Hello\r\n", None);
+    buffer.process("World\r\n", None);
+
+    let output = render_viewport_snapshot(&buffer, 0, 0, 3, 0, None);
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_zero_cols", output);
+    });
+}
+
+#[test]
+fn snapshot_viewport_row_exactly_fills_view() {
+    // Row length == view_cols: no space-fill needed, exact fit
+    let mut buffer = TerminalBuffer::new(80, 24);
+    // "1234567890" is exactly 10 chars
+    buffer.process("1234567890\r\n", None);
+    buffer.process("abcdefghij\r\n", None);
+
+    let output = render_viewport_snapshot(&buffer, 0, 0, 3, 10, None);
+    insta::with_settings!({
+        snapshot_path => "snapshots/player"
+    }, {
+        insta::assert_snapshot!("viewport_row_exactly_fills_view", output);
+    });
+}
