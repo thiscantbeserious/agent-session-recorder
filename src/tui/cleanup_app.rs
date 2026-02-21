@@ -838,4 +838,134 @@ mod tests {
         assert!(glob_match("claude_session.cast", "*_session.cast"));
         assert!(!glob_match("test.txt", "*.cast"));
     }
+
+    // parse_glob_pattern tests
+
+    #[test]
+    fn parse_glob_bare_pattern() {
+        let (agent, name) = parse_glob_pattern("foo");
+        assert_eq!(agent, None);
+        assert_eq!(name, "foo");
+    }
+
+    #[test]
+    fn parse_glob_slash_split() {
+        let (agent, name) = parse_glob_pattern("agent/name");
+        assert_eq!(agent, Some("agent"));
+        assert_eq!(name, "name");
+    }
+
+    #[test]
+    fn parse_glob_multiple_slashes() {
+        // Only the first slash is used as the separator
+        let (agent, name) = parse_glob_pattern("a/b/c");
+        assert_eq!(agent, Some("a"));
+        assert_eq!(name, "b/c");
+    }
+
+    #[test]
+    fn parse_glob_empty() {
+        let (agent, name) = parse_glob_pattern("");
+        assert_eq!(agent, None);
+        assert_eq!(name, "");
+    }
+
+    #[test]
+    fn parse_glob_leading_slash() {
+        let (agent, name) = parse_glob_pattern("/name");
+        assert_eq!(agent, Some(""));
+        assert_eq!(name, "name");
+    }
+
+    #[test]
+    fn parse_glob_trailing_slash() {
+        let (agent, name) = parse_glob_pattern("agent/");
+        assert_eq!(agent, Some("agent"));
+        assert_eq!(name, "");
+    }
+
+    // matches_glob_pattern tests
+
+    #[test]
+    fn matches_no_agent_filter() {
+        // None agent_filter: any agent is accepted, only name is matched
+        assert!(matches_glob_pattern("any-agent", "session.cast", None, "*"));
+        assert!(matches_glob_pattern("claude", "hello.cast", None, "*.cast"));
+        assert!(!matches_glob_pattern("claude", "hello.txt", None, "*.cast"));
+    }
+
+    #[test]
+    fn matches_both_agent_and_name() {
+        assert!(matches_glob_pattern(
+            "claude",
+            "session.cast",
+            Some("claude"),
+            "*.cast"
+        ));
+    }
+
+    #[test]
+    fn matches_agent_only() {
+        // Agent matches but name does not → false
+        assert!(!matches_glob_pattern(
+            "claude",
+            "session.txt",
+            Some("claude"),
+            "*.cast"
+        ));
+    }
+
+    #[test]
+    fn matches_name_only() {
+        // Name matches but agent does not → false
+        assert!(!matches_glob_pattern(
+            "gpt",
+            "session.cast",
+            Some("claude"),
+            "*.cast"
+        ));
+    }
+
+    #[test]
+    fn matches_agent_glob_with_star() {
+        // "*" agent pattern must match any agent string
+        assert!(matches_glob_pattern(
+            "claude",
+            "session.cast",
+            Some("*"),
+            "*.cast"
+        ));
+        assert!(matches_glob_pattern(
+            "gpt-4",
+            "notes.cast",
+            Some("*"),
+            "notes.cast"
+        ));
+    }
+
+    // glob_match edge-case tests
+
+    #[test]
+    fn glob_match_empty_empty() {
+        // Both empty: pattern is satisfied
+        assert!(glob_match("", ""));
+    }
+
+    #[test]
+    fn glob_match_empty_pattern() {
+        // Non-empty text against empty pattern: no match
+        assert!(!glob_match("text", ""));
+    }
+
+    #[test]
+    fn glob_match_empty_text() {
+        // Non-wildcard pattern against empty text: no match
+        assert!(!glob_match("", "pattern"));
+    }
+
+    #[test]
+    fn glob_match_star_matches_empty() {
+        // "*" alone must match the empty string
+        assert!(glob_match("", "*"));
+    }
 }
