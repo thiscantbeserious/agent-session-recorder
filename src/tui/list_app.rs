@@ -1831,7 +1831,7 @@ fn render_modal_overlays(
 /// - 3661.0 -> "1h 1m 1s"
 /// - 30.0 -> "30s"
 fn format_duration(seconds: f64) -> String {
-    let total_secs = seconds.round() as u64;
+    let total_secs = seconds.max(0.0).round() as u64;
     let hours = total_secs / 3600;
     let minutes = (total_secs % 3600) / 60;
     let secs = total_secs % 60;
@@ -2238,5 +2238,30 @@ mod tests {
         build_rename_status_spans(&mut spans, "", 0, false, hl, blink);
         assert_eq!(spans.len(), 1);
         assert_eq!(spans[0].content, "|");
+    }
+
+    #[test]
+    fn format_duration_negative_input_clamps_to_zero() {
+        assert_eq!(format_duration(-5.0), "0s");
+    }
+
+    #[test]
+    fn format_duration_nan_clamps_to_zero() {
+        assert_eq!(format_duration(f64::NAN), "0s");
+    }
+
+    #[test]
+    fn rename_spans_multibyte_cursor_at_char_boundary() {
+        let theme = crate::theme::Theme::claude_code();
+        let hl = theme.highlight_style();
+        let blink = Style::default().add_modifier(Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        // é is 2 bytes in UTF-8
+        let input = "\u{00e9}llo"; // 4 bytes total
+        build_rename_status_spans(&mut spans, input, 2, false, hl, blink);
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content, "\u{00e9}");
+        assert_eq!(spans[1].content, "|");
+        assert_eq!(spans[2].content, "llo");
     }
 }
