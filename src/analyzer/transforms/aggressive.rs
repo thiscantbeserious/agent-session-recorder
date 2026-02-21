@@ -688,3 +688,65 @@ fn is_line_redundant(
         later_trimmed.starts_with(line_trimmed_end) && later_trimmed.len() > line_trimmed_end.len()
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper: build (last_occurrence, lines) from a slice of &str values.
+    fn build_test_data<'a>(strs: &'a [&'a str]) -> (HashMap<&'a str, usize>, Vec<(String, f64)>) {
+        let lines: Vec<(String, f64)> = strs.iter().map(|s| (s.to_string(), 0.1)).collect();
+        let mut last_occurrence: HashMap<&str, usize> = HashMap::new();
+        for (i, s) in strs.iter().enumerate() {
+            last_occurrence.insert(s, i);
+        }
+        (last_occurrence, lines)
+    }
+
+    // ============================================
+    // is_line_redundant Tests
+    // ============================================
+
+    #[test]
+    fn is_line_redundant_exact_repeat() {
+        // "foo" appears at index 0 and index 2; index 0 is redundant (last occurrence > 0)
+        let strs = &["foo", "bar", "foo"];
+        let (mut last_occ, lines) = build_test_data(strs);
+        // Fix last_occurrence so index 0 maps to last=2
+        last_occ.insert("foo", 2);
+        assert!(is_line_redundant("foo", 0, &last_occ, &lines));
+    }
+
+    #[test]
+    fn is_line_redundant_only_occurrence() {
+        // "foo" only appears once; not a repeat and no later prefix match
+        let strs = &["foo", "bar", "baz"];
+        let (last_occ, lines) = build_test_data(strs);
+        assert!(!is_line_redundant("foo", 0, &last_occ, &lines));
+    }
+
+    #[test]
+    fn is_line_redundant_prefix_of_later() {
+        // "foo" at index 0 is a strict prefix of "foobar" at index 1 => redundant
+        let strs = &["foo", "foobar"];
+        let (last_occ, lines) = build_test_data(strs);
+        assert!(is_line_redundant("foo", 0, &last_occ, &lines));
+    }
+
+    #[test]
+    fn is_line_redundant_unique_no_prefix() {
+        // "foo" at index 0 is NOT a prefix of "bar" at index 1 => not redundant
+        let strs = &["foo", "bar"];
+        let (last_occ, lines) = build_test_data(strs);
+        assert!(!is_line_redundant("foo", 0, &last_occ, &lines));
+    }
+
+    #[test]
+    fn is_line_redundant_last_line() {
+        // Last line can never be a repeat-of-later, but could be prefix-of-later.
+        // With only one element there's nothing after it.
+        let strs = &["only"];
+        let (last_occ, lines) = build_test_data(strs);
+        assert!(!is_line_redundant("only", 0, &last_occ, &lines));
+    }
+}

@@ -298,6 +298,102 @@ mod tests {
         assert!((events[2].time - 9.0).abs() < 0.001);
     }
 
+    // ============================================
+    // normalize_newlines Tests
+    // ============================================
+
+    #[test]
+    fn normalize_newlines_no_newlines() {
+        assert_eq!(normalize_newlines("hello world", 2), "hello world");
+    }
+
+    #[test]
+    fn normalize_newlines_exactly_max() {
+        // Exactly max consecutive newlines are all kept
+        assert_eq!(normalize_newlines("a\n\nb", 2), "a\n\nb");
+    }
+
+    #[test]
+    fn normalize_newlines_one_above_max() {
+        // 3 consecutive newlines with max=2 => keep only 2
+        assert_eq!(normalize_newlines("a\n\n\nb", 2), "a\n\nb");
+    }
+
+    #[test]
+    fn normalize_newlines_all_newlines() {
+        // A string of only newlines with max=1 => keep only 1
+        assert_eq!(normalize_newlines("\n\n\n\n", 1), "\n");
+    }
+
+    #[test]
+    fn normalize_newlines_max_1() {
+        assert_eq!(normalize_newlines("a\n\nb", 1), "a\nb");
+    }
+
+    #[test]
+    fn normalize_newlines_interleaved() {
+        // Interleaved text resets the newline counter
+        assert_eq!(normalize_newlines("a\n\n\nb\n\n\nc", 2), "a\n\nb\n\nc");
+    }
+
+    // ============================================
+    // filter_empty_lines Tests
+    // ============================================
+
+    #[test]
+    fn filter_empty_lines_all_empty() {
+        let mut state = false;
+        // Second empty line should be dropped; first is kept
+        let result = filter_empty_lines("\n\n\n", &mut state);
+        assert_eq!(result, "\n");
+        assert!(state);
+    }
+
+    #[test]
+    fn filter_empty_lines_no_empty() {
+        let mut state = false;
+        let result = filter_empty_lines("hello\nworld\n", &mut state);
+        assert_eq!(result, "hello\nworld\n");
+        assert!(!state); // last line was "world\n" which is not empty
+    }
+
+    #[test]
+    fn filter_empty_lines_alternating() {
+        let mut state = false;
+        // "a\n", "\n", "b\n" => keep all (empty line not consecutive)
+        let result = filter_empty_lines("a\n\nb\n", &mut state);
+        assert_eq!(result, "a\n\nb\n");
+    }
+
+    #[test]
+    fn filter_empty_lines_crlf() {
+        let mut state = false;
+        // CRLF empty lines should also be collapsed
+        let result = filter_empty_lines("\r\n\r\n", &mut state);
+        assert_eq!(result, "\r\n");
+        assert!(state);
+    }
+
+    #[test]
+    fn filter_empty_lines_content_resets_state() {
+        let mut state = true; // simulate previous call ended with empty line
+        let result = filter_empty_lines("hello\n", &mut state);
+        // "hello\n" is not empty, so it is kept and state resets to false
+        assert_eq!(result, "hello\n");
+        assert!(!state);
+    }
+
+    #[test]
+    fn filter_empty_lines_cross_call_state() {
+        // If previous call left state=true and this call starts with an empty line,
+        // the empty line should be suppressed.
+        let mut state = true;
+        let result = filter_empty_lines("\nhello\n", &mut state);
+        // First "\n" is suppressed because state==true; "hello\n" is kept
+        assert_eq!(result, "hello\n");
+        assert!(!state);
+    }
+
     #[test]
     fn accumulated_time_passes_to_marker() {
         let mut events = vec![

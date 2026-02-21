@@ -827,6 +827,118 @@ mod tests {
         }
     }
 
+    // ============================================
+    // extract_partial_content Tests
+    // ============================================
+
+    #[test]
+    fn extract_partial_content_full_range_returns_full() {
+        // include_start == 0 and include_end == estimated_tokens => short-circuit, full content
+        let result = extract_partial_content("hello world", 4, 0, 4, 4);
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn extract_partial_content_empty_content() {
+        let result = extract_partial_content("", 10, 2, 8, 6);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn extract_partial_content_fallback_when_collapsed() {
+        // When proportional mapping collapses char_end <= char_start but included_tokens > 0,
+        // the function falls back to returning all content.
+        // Force this by using a large include_start that equals include_end at the same char.
+        let content = "ab"; // 2 chars, 10 tokens
+                            // include_start=5, include_end=5 => char_start == char_end, included_tokens=0
+                            // With included_tokens == 0 the fallback does NOT fire; result is "".
+        let result = extract_partial_content(content, 10, 5, 5, 0);
+        assert_eq!(result, "");
+        // Now with included_tokens > 0 the fallback fires and returns full content.
+        let result2 = extract_partial_content(content, 10, 5, 5, 1);
+        assert_eq!(result2, content);
+    }
+
+    #[test]
+    fn extract_partial_content_unicode() {
+        // "日本語" is 3 chars, 6 tokens; take first 3 tokens (half = first 1.5 chars, floor=1)
+        let content = "日本語";
+        let result = extract_partial_content(content, 6, 0, 3, 3);
+        // char_end = floor(3 * 3/6) = floor(1.5) = 1
+        assert_eq!(result, "日");
+    }
+
+    #[test]
+    fn extract_partial_content_zero_tokens_denominator() {
+        // estimated_tokens == 0: the function uses max(1) so ratio = chars / 1
+        let content = "abc";
+        // With estimated_tokens=0, include_start=0, include_end=0 => full range short-circuit
+        let result = extract_partial_content(content, 0, 0, 0, 0);
+        assert_eq!(result, content);
+    }
+
+    // ============================================
+    // build_partial_segment Tests
+    // ============================================
+
+    fn make_segment(start: f64, end: f64, content: &str, tokens: usize) -> AnalysisSegment {
+        AnalysisSegment {
+            start_time: start,
+            end_time: end,
+            content: content.to_string(),
+            estimated_tokens: tokens,
+            event_range: (0, 1),
+        }
+    }
+
+    #[test]
+    fn build_partial_segment_no_overlap_before() {
+        // segment occupies [10, 20), range is [0, 10) => no overlap
+        let seg = make_segment(0.0, 10.0, "hello", 10);
+        let result = build_partial_segment(&seg, 10, 20, 0, 10);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_partial_segment_no_overlap_past_range() {
+        // segment occupies [20, 30), range is [0, 20) => no overlap
+        let seg = make_segment(0.0, 10.0, "hello", 10);
+        let result = build_partial_segment(&seg, 20, 30, 0, 20);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_partial_segment_collapsed_include_range() {
+        // include_end <= include_start triggers None
+        // segment [0,10), range [5,5) => include_start=5, include_end=min(5-0,10)=5 => None
+        let seg = make_segment(0.0, 10.0, "hello", 10);
+        let result = build_partial_segment(&seg, 0, 10, 5, 5);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_partial_segment_full_in_range() {
+        // segment [0,10) fully inside range [0,20) => full partial (all tokens)
+        let seg = make_segment(1.0, 3.0, "hello world", 10);
+        let result = build_partial_segment(&seg, 0, 10, 0, 20).unwrap();
+        assert_eq!(result.estimated_tokens, 10);
+        assert_eq!(result.content, "hello world"); // full short-circuit
+        assert!((result.start_time - 1.0).abs() < 0.001);
+        assert!((result.end_time - 3.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn build_partial_segment_zero_tokens_segment() {
+        // estimated_tokens == 0 should use max(1) internally, no panic
+        let seg = make_segment(0.0, 2.0, "x", 0);
+        // segment [0,1) inside range [0,10) => include_start=0, include_end=min(10,max(0,1))
+        // estimated_tokens.max(1)=1, so include_end=1 but segment.estimated_tokens=0 =>
+        // include_end = (10 - 0).min(0) = 0, include_start=0 => None
+        let result = build_partial_segment(&seg, 0, 1, 0, 10);
+        // With estimated_tokens=0, include_end = min(10, 0) = 0, == include_start -> None
+        assert!(result.is_none());
+    }
+
     /// Test that chunks don't have inflated token counts when splitting large segments.
     #[test]
     fn chunk_calculator_no_duplicate_tokens() {

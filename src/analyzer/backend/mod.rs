@@ -884,6 +884,49 @@ Done."#;
     }
 
     // ============================================
+    // try_claude_wrapper Tests
+    // ============================================
+
+    #[test]
+    fn try_claude_wrapper_non_wrapper_json() {
+        // Valid JSON but type != "result" => returns None (fall through)
+        let json = r#"{"type":"other","result":"foo","is_error":false}"#;
+        let result = try_claude_wrapper(json);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn try_claude_wrapper_non_json() {
+        // Not valid JSON at all => returns None
+        let result = try_claude_wrapper("this is plain text");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn try_claude_wrapper_error_wrapper() {
+        // is_error: true => Some(Err(JsonExtraction))
+        let json = r#"{"type":"result","is_error":true,"result":"Something went wrong"}"#;
+        let result = try_claude_wrapper(json).expect("should return Some");
+        assert!(matches!(result, Err(BackendError::JsonExtraction { .. })));
+    }
+
+    #[test]
+    fn try_claude_wrapper_empty_result_returns_none() {
+        // type=result, is_error=false, result="" and no structured_output => None
+        let json = r#"{"type":"result","is_error":false,"result":""}"#;
+        let result = try_claude_wrapper(json);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn try_claude_wrapper_missing_type_returns_none() {
+        // No "type" field => response_type is None => not "result" => returns None
+        let json = r#"{"is_error":false,"result":"{\"markers\":[]}"}"#;
+        let result = try_claude_wrapper(json);
+        assert!(result.is_none());
+    }
+
+    // ============================================
     // AgentType Tests
     // ============================================
 

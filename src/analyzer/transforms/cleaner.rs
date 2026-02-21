@@ -397,4 +397,115 @@ mod tests {
         let output = cleaner.clean(input);
         assert_eq!(output, "hello");
     }
+
+    // ============================================
+    // build_semantic_chars Tests
+    // ============================================
+
+    #[test]
+    fn build_semantic_chars_all_7() {
+        let chars = build_semantic_chars();
+        // All 7 documented semantic chars must be present
+        assert!(chars.contains(&'\u{2713}')); // ✓
+        assert!(chars.contains(&'\u{2714}')); // ✔
+        assert!(chars.contains(&'\u{2715}')); // ✕
+        assert!(chars.contains(&'\u{26A0}')); // ⚠
+        assert!(chars.contains(&'\u{2139}')); // ℹ
+        assert!(chars.contains(&'\u{2610}')); // ☐
+        assert!(chars.contains(&'\u{2611}')); // ☑
+    }
+
+    #[test]
+    fn build_semantic_chars_exact_size() {
+        let chars = build_semantic_chars();
+        assert_eq!(chars.len(), 7);
+    }
+
+    #[test]
+    fn build_semantic_chars_no_box_overlap() {
+        let chars = build_semantic_chars();
+        // Box drawing range U+2500-U+257F must not intersect semantic chars
+        for c in '\u{2500}'..='\u{257F}' {
+            assert!(
+                !chars.contains(&c),
+                "Box-drawing char {:?} should not be in semantic set",
+                c
+            );
+        }
+    }
+
+    // ============================================
+    // build_strip_chars Tests
+    // ============================================
+
+    #[test]
+    fn build_strip_chars_all_false() {
+        let mut config = ExtractionConfig::default();
+        config.strip_box_drawing = false;
+        config.strip_spinner_chars = false;
+        config.strip_progress_blocks = false;
+        let semantic = build_semantic_chars();
+        let strip = build_strip_chars(&config, &semantic);
+        assert!(strip.is_empty());
+    }
+
+    #[test]
+    fn build_strip_chars_only_box() {
+        let mut config = ExtractionConfig::default();
+        config.strip_box_drawing = true;
+        config.strip_spinner_chars = false;
+        config.strip_progress_blocks = false;
+        let semantic = build_semantic_chars();
+        let strip = build_strip_chars(&config, &semantic);
+        // Should contain box-drawing chars (U+2500-U+257F) and block elements (U+2580-U+259F)
+        assert!(strip.contains(&'\u{2500}')); // ─ box-drawing
+        assert!(strip.contains(&'\u{2588}')); // █ block element (included via strip_box_drawing)
+                                              // Spinner chars (not in box range) should NOT be present
+        assert!(!strip.contains(&'\u{273B}')); // ✻ spinner
+                                               // Progress blocks added by strip_progress_blocks only — \u{25BC} is not in 2500-259F
+        assert!(!strip.contains(&'\u{25BC}')); // ▼ progress (only added by strip_progress_blocks)
+    }
+
+    #[test]
+    fn build_strip_chars_only_spinner() {
+        let mut config = ExtractionConfig::default();
+        config.strip_box_drawing = false;
+        config.strip_spinner_chars = true;
+        config.strip_progress_blocks = false;
+        let semantic = build_semantic_chars();
+        let strip = build_strip_chars(&config, &semantic);
+        assert!(strip.contains(&'\u{273B}')); // ✻
+        assert!(strip.contains(&'\u{280B}')); // ⠋
+        assert!(!strip.contains(&'\u{2500}')); // ─ box
+        assert!(!strip.contains(&'\u{2588}')); // █ block
+    }
+
+    #[test]
+    fn build_strip_chars_only_progress() {
+        let mut config = ExtractionConfig::default();
+        config.strip_box_drawing = false;
+        config.strip_spinner_chars = false;
+        config.strip_progress_blocks = true;
+        let semantic = build_semantic_chars();
+        let strip = build_strip_chars(&config, &semantic);
+        assert!(strip.contains(&'\u{2588}')); // █
+        assert!(strip.contains(&'\u{2591}')); // ░
+        assert!(!strip.contains(&'\u{273B}')); // ✻ spinner
+        assert!(!strip.contains(&'\u{2500}')); // ─ box
+    }
+
+    #[test]
+    fn build_strip_chars_semantic_never_stripped() {
+        // Even with all flags on, semantic chars must never appear in strip set
+        let config = ExtractionConfig::default(); // all strip flags true
+        let semantic = build_semantic_chars();
+        let strip = build_strip_chars(&config, &semantic);
+        for c in &semantic {
+            assert!(
+                !strip.contains(c),
+                "Semantic char {:?} must not be in strip set",
+                c
+            );
+        }
+    }
 }

@@ -1078,6 +1078,42 @@ mod tests {
         assert_eq!(result.markers_added(), 5);
     }
 
+    // ============================================
+    // build_chunk_calculator Tests
+    // ============================================
+
+    #[test]
+    fn build_chunk_calculator_no_override() {
+        // No override -> uses Claude default (72K available).
+        // 72K tokens exactly fits in 1 chunk.
+        let calc = build_chunk_calculator(AgentType::Claude, None);
+        assert_eq!(calc.calculate_chunk_count(72_000), 1);
+    }
+
+    #[test]
+    fn build_chunk_calculator_above_minimum() {
+        // Override of 50K -> available content budget is less than Claude default.
+        // 72K tokens requires more than 1 chunk because the budget is smaller.
+        let calc = build_chunk_calculator(AgentType::Claude, Some(50_000));
+        assert!(calc.calculate_chunk_count(72_000) >= 2);
+    }
+
+    #[test]
+    fn build_chunk_calculator_below_minimum_fallback() {
+        // Override below 10000 -> falls back to Claude default (same as no_override).
+        // 72K tokens fits in 1 chunk with the default budget.
+        let calc = build_chunk_calculator(AgentType::Claude, Some(500));
+        assert_eq!(calc.calculate_chunk_count(72_000), 1);
+    }
+
+    #[test]
+    fn build_chunk_calculator_boundary_10000() {
+        // Exactly 10000 is NOT below the minimum threshold, so it is applied.
+        // Available content for 10K budget is much less than 72K, requiring many chunks.
+        let calc = build_chunk_calculator(AgentType::Claude, Some(10_000));
+        assert!(calc.calculate_chunk_count(72_000) >= 2);
+    }
+
     #[test]
     fn analysis_result_is_partial() {
         let result = AnalysisResult {
