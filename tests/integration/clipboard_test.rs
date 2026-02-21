@@ -426,6 +426,288 @@ mod copy_tests {
         // Just verify it doesn't return FileTooLarge for small files
         assert!(!matches!(result, Err(ClipboardError::FileTooLarge { .. })));
     }
+
+    // =========================================================================
+    // Phase helper behaviour tests (10 new tests)
+    // =========================================================================
+
+    /// file_phase: a tool that returns NotSupported is silently skipped and the
+    /// next tool in the list is tried.
+    #[test]
+    fn file_phase_skips_not_supported_tries_next() {
+        let not_supported = MockTool::new(CopyMethod::OsaScript)
+            .can_files(true)
+            .file_result(Err(CopyToolError::NotSupported));
+        let fallback = MockTool::new(CopyMethod::Xclip)
+            .can_files(true)
+            .file_result(Ok(()));
+
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "data").unwrap();
+
+        let copy = Copy::with_tools(vec![Box::new(not_supported), Box::new(fallback)]);
+        let result = copy.file(temp.path()).unwrap();
+
+        assert!(
+            matches!(
+                result,
+                CopyResult::FileCopied {
+                    tool: CopyMethod::Xclip
+                }
+            ),
+            "Expected Xclip to be used after OsaScript returned NotSupported"
+        );
+    }
+
+    /// file_phase: a tool that returns NotFound is silently skipped and the
+    /// next tool in the list is tried.
+    #[test]
+    fn file_phase_skips_not_found_tries_next() {
+        let not_found = MockTool::new(CopyMethod::OsaScript)
+            .can_files(true)
+            .file_result(Err(CopyToolError::NotFound));
+        let fallback = MockTool::new(CopyMethod::Xclip)
+            .can_files(true)
+            .file_result(Ok(()));
+
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "data").unwrap();
+
+        let copy = Copy::with_tools(vec![Box::new(not_found), Box::new(fallback)]);
+        let result = copy.file(temp.path()).unwrap();
+
+        assert!(
+            matches!(
+                result,
+                CopyResult::FileCopied {
+                    tool: CopyMethod::Xclip
+                }
+            ),
+            "Expected Xclip to be used after OsaScript returned NotFound"
+        );
+    }
+
+    /// file_phase: when no tools are supplied the orchestrator falls straight
+    /// through to content copy; with no content tools either it returns
+    /// NoToolAvailable.
+    #[test]
+    fn file_with_empty_tools_returns_no_tool_available() {
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "hello").unwrap();
+
+        let copy = Copy::with_tools(vec![]);
+        let result = copy.file(temp.path());
+
+        assert!(
+            matches!(result, Err(ClipboardError::NoToolAvailable)),
+            "Expected NoToolAvailable with empty tool list"
+        );
+    }
+
+    /// file_phase: when the first file-capable tool fails with Failed, the
+    /// second file-capable tool is tried and succeeds.
+    #[test]
+    fn file_phase_tries_second_tool_when_first_fails() {
+        let first = MockTool::new(CopyMethod::OsaScript)
+            .can_files(true)
+            .file_result(Err(CopyToolError::Failed("first broke".to_string())));
+        let second = MockTool::new(CopyMethod::Xclip)
+            .can_files(true)
+            .file_result(Ok(()));
+
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "data").unwrap();
+
+        let copy = Copy::with_tools(vec![Box::new(first), Box::new(second)]);
+        let result = copy.file(temp.path()).unwrap();
+
+        assert!(
+            matches!(
+                result,
+                CopyResult::FileCopied {
+                    tool: CopyMethod::Xclip
+                }
+            ),
+            "Expected second tool (Xclip) to succeed after first (OsaScript) failed"
+        );
+    }
+
+    /// text_phase: a tool that returns NotSupported from try_copy_text is
+    /// silently skipped and the next tool is used.
+    #[test]
+    fn text_phase_skips_not_supported_tries_next() {
+        // Both tools cannot copy files so we go straight to text phase.
+        let not_supported = MockTool::new(CopyMethod::OsaScript)
+            .can_files(false)
+            .text_result(Err(CopyToolError::NotSupported));
+        let fallback = MockTool::new(CopyMethod::Pbcopy)
+            .can_files(false)
+            .text_result(Ok(()));
+
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "hello").unwrap();
+
+        let copy = Copy::with_tools(vec![Box::new(not_supported), Box::new(fallback)]);
+        let result = copy.file(temp.path()).unwrap();
+
+        assert!(
+            matches!(
+                result,
+                CopyResult::ContentCopied {
+                    tool: CopyMethod::Pbcopy,
+                    ..
+                }
+            ),
+            "Expected Pbcopy to be used after OsaScript returned NotSupported for text"
+        );
+    }
+
+    /// text_phase: a tool that returns NotFound from try_copy_text is silently
+    /// skipped and the next tool is used.
+    #[test]
+    fn text_phase_skips_not_found_tries_next() {
+        let not_found = MockTool::new(CopyMethod::Xsel)
+            .can_files(false)
+            .text_result(Err(CopyToolError::NotFound));
+        let fallback = MockTool::new(CopyMethod::Pbcopy)
+            .can_files(false)
+            .text_result(Ok(()));
+
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "hi").unwrap();
+
+        let copy = Copy::with_tools(vec![Box::new(not_found), Box::new(fallback)]);
+        let result = copy.file(temp.path()).unwrap();
+
+        assert!(
+            matches!(
+                result,
+                CopyResult::ContentCopied {
+                    tool: CopyMethod::Pbcopy,
+                    ..
+                }
+            ),
+            "Expected Pbcopy to be used after Xsel returned NotFound for text"
+        );
+    }
+
+    /// text_phase: when the first text-copy tool fails with Failed, the second
+    /// is tried and succeeds.
+    #[test]
+    fn text_phase_tries_second_tool_when_first_fails() {
+        let first = MockTool::new(CopyMethod::Xsel)
+            .can_files(false)
+            .text_result(Err(CopyToolError::Failed("xsel broke".to_string())));
+        let second = MockTool::new(CopyMethod::WlCopy)
+            .can_files(false)
+            .text_result(Ok(()));
+
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "content").unwrap();
+
+        let copy = Copy::with_tools(vec![Box::new(first), Box::new(second)]);
+        let result = copy.file(temp.path()).unwrap();
+
+        assert!(
+            matches!(
+                result,
+                CopyResult::ContentCopied {
+                    tool: CopyMethod::WlCopy,
+                    ..
+                }
+            ),
+            "Expected WlCopy to succeed after Xsel failed for text"
+        );
+    }
+
+    /// cross_phase: when only a file-phase error exists (text phase had no
+    /// eligible tools) the final error is still NoToolAvailable.
+    #[test]
+    fn cross_phase_error_file_error_used_when_text_has_none() {
+        // Tool can copy files (will fail), but is unavailable for text phase
+        // because is_available will return false after we model it this way.
+        // Easiest: one file-capable tool that fails, then no text tool.
+        let file_only = MockTool::new(CopyMethod::OsaScript)
+            .can_files(true)
+            .file_result(Err(CopyToolError::Failed("file broke".to_string())))
+            .available(false); // unavailable for text phase (is_available gate)
+
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "data").unwrap();
+
+        // We need a second available tool for the file phase to actually record
+        // the failure.  Use one that IS available but fails file AND text.
+        let failing = MockTool::new(CopyMethod::Xclip)
+            .can_files(true)
+            .file_result(Err(CopyToolError::Failed("xclip file broke".to_string())))
+            .text_result(Err(CopyToolError::NotSupported)); // skipped in text phase
+
+        let copy = Copy::with_tools(vec![Box::new(file_only), Box::new(failing)]);
+        let result = copy.file(temp.path());
+
+        // Both phases exhausted → NoToolAvailable
+        assert!(
+            matches!(result, Err(ClipboardError::NoToolAvailable)),
+            "Expected NoToolAvailable when file phase fails and text phase has no tool"
+        );
+    }
+
+    /// all_tools_fail: when every tool returns Failed for both file and text,
+    /// the orchestrator returns NoToolAvailable (text error takes precedence in
+    /// the or() merge).
+    #[test]
+    fn all_tools_fail_text_error_takes_precedence() {
+        let tool1 = MockTool::new(CopyMethod::Xclip)
+            .can_files(true)
+            .file_result(Err(CopyToolError::Failed("xclip file".to_string())))
+            .text_result(Err(CopyToolError::Failed("xclip text".to_string())));
+        let tool2 = MockTool::new(CopyMethod::Xsel)
+            .can_files(false)
+            .text_result(Err(CopyToolError::Failed("xsel text".to_string())));
+
+        let temp = NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), "data").unwrap();
+
+        let copy = Copy::with_tools(vec![Box::new(tool1), Box::new(tool2)]);
+        let result = copy.file(temp.path());
+
+        assert!(
+            matches!(result, Err(ClipboardError::NoToolAvailable)),
+            "Expected NoToolAvailable when all tools fail"
+        );
+    }
+
+    /// file_too_large: when file copy fails and the file exceeds MAX_CONTENT_SIZE,
+    /// FileTooLarge error includes human-readable size and limit values.
+    #[test]
+    fn file_too_large_displays_size_and_limit() {
+        // MAX_CONTENT_SIZE is 10 MB (10 * 1024 * 1024 bytes).
+        const MAX_CONTENT_SIZE: u64 = 10 * 1024 * 1024;
+
+        // Write a file that is exactly one byte over the limit.
+        let temp = NamedTempFile::new().unwrap();
+        let oversized = vec![b'x'; (MAX_CONTENT_SIZE + 1) as usize];
+        std::fs::write(temp.path(), &oversized).unwrap();
+
+        // Use a tool that cannot copy files so we always go to the size check.
+        let no_file = MockTool::new(CopyMethod::Pbcopy).can_files(false);
+
+        let copy = Copy::with_tools(vec![Box::new(no_file)]);
+        let result = copy.file(temp.path());
+
+        match result {
+            Err(ClipboardError::FileTooLarge { size_mb, max_mb }) => {
+                // size_mb should be just over 10.0, max_mb should be 10
+                assert!(
+                    size_mb > 10.0,
+                    "size_mb should exceed 10.0, got {}",
+                    size_mb
+                );
+                assert_eq!(max_mb, 10, "max_mb should be 10, got {}", max_mb);
+            }
+            other => panic!("Expected FileTooLarge, got {:?}", other),
+        }
+    }
 }
 
 // =============================================================================
