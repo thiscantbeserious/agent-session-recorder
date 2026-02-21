@@ -21,7 +21,7 @@ mod result;
 pub mod tool;
 pub mod tools;
 
-pub use error::ClipboardError;
+pub use error::{ClipboardError, MAX_CONTENT_SIZE};
 pub use result::{CopyMethod, CopyResult};
 
 use copy::Copy;

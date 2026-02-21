@@ -160,7 +160,7 @@ mod copy_tests {
     use super::*;
     use agr::clipboard::copy::Copy;
     use agr::clipboard::tool::{CopyTool, CopyToolError};
-    use agr::clipboard::{ClipboardError, CopyMethod, CopyResult};
+    use agr::clipboard::{ClipboardError, CopyMethod, CopyResult, MAX_CONTENT_SIZE};
     use std::sync::atomic::AtomicBool;
     use tempfile::NamedTempFile;
 
@@ -407,24 +407,6 @@ mod copy_tests {
                 tool: CopyMethod::OsaScript
             }
         ));
-    }
-
-    #[test]
-    fn file_returns_file_too_large_when_content_fallback_exceeds_limit() {
-        // Create a tool that fails file copy, forcing content fallback
-        let failing = MockTool::new(CopyMethod::OsaScript)
-            .file_result(Err(CopyToolError::Failed("test".into())));
-
-        // Create a large temp file (we can't actually create 10MB+ in tests,
-        // but we can verify the error type exists and is properly constructed)
-        let temp = NamedTempFile::new().unwrap();
-        std::fs::write(temp.path(), "small content").unwrap();
-
-        let copy = Copy::with_tools(vec![Box::new(failing)]);
-        // This should succeed since file is small
-        let result = copy.file(temp.path());
-        // Just verify it doesn't return FileTooLarge for small files
-        assert!(!matches!(result, Err(ClipboardError::FileTooLarge { .. })));
     }
 
     // =========================================================================
@@ -681,9 +663,6 @@ mod copy_tests {
     /// FileTooLarge error includes human-readable size and limit values.
     #[test]
     fn file_too_large_displays_size_and_limit() {
-        // MAX_CONTENT_SIZE is 10 MB (10 * 1024 * 1024 bytes).
-        const MAX_CONTENT_SIZE: u64 = 10 * 1024 * 1024;
-
         // Write a file that is exactly one byte over the limit.
         let temp = NamedTempFile::new().unwrap();
         let oversized = vec![b'x'; (MAX_CONTENT_SIZE + 1) as usize];
