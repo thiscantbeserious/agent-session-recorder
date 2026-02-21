@@ -2018,4 +2018,225 @@ mod tests {
         // reject paste events in all these modes.
         assert_eq!(Mode::Normal, Mode::Normal);
     }
+
+    // ── footer_text_for_mode ──────────────────────────────────────────────
+
+    #[test]
+    fn footer_text_normal_mode() {
+        let text = footer_text_for_mode(Mode::Normal, &None);
+        assert!(text.contains("navigate"));
+        assert!(text.contains("play"));
+        assert!(text.contains("quit"));
+    }
+
+    #[test]
+    fn footer_text_search_mode() {
+        let text = footer_text_for_mode(Mode::Search, &None);
+        assert!(text.contains("Esc"));
+        assert!(text.contains("search"));
+    }
+
+    #[test]
+    fn footer_text_confirm_delete_mode() {
+        let text = footer_text_for_mode(Mode::ConfirmDelete, &None);
+        assert!(text.contains("confirm delete"));
+    }
+
+    #[test]
+    fn footer_text_confirm_delete_final_mode() {
+        let text = footer_text_for_mode(Mode::ConfirmDeleteFinal, &None);
+        assert!(text.contains("confirm"));
+        assert!(text.contains("Esc"));
+    }
+
+    #[test]
+    fn footer_text_confirm_unlock_mode() {
+        let text = footer_text_for_mode(Mode::ConfirmUnlock, &None);
+        assert!(text.contains("force unlock"));
+    }
+
+    #[test]
+    fn footer_text_rename_input_mode() {
+        let text = footer_text_for_mode(Mode::RenameInput, &None);
+        assert!(text.contains("confirm"));
+        assert!(text.contains("Esc"));
+    }
+
+    #[test]
+    fn footer_text_optimize_result_mode() {
+        let text = footer_text_for_mode(Mode::OptimizeResult, &None);
+        assert!(text.contains("dismiss"));
+    }
+
+    #[test]
+    fn footer_text_import_none_state() {
+        // Import mode with no state yields empty string
+        let text = footer_text_for_mode(Mode::Import, &None);
+        assert_eq!(text, "");
+    }
+
+    #[test]
+    fn footer_text_import_agent_input_phase() {
+        let agents: Vec<String> = vec![];
+        let mut state = import::ImportState::new("/tmp/test.cast", &agents);
+        state.phase = import::ImportPhase::AgentInput;
+        let opt = Some(state);
+        let text = footer_text_for_mode(Mode::Import, &opt);
+        assert!(text.contains("Enter"));
+        assert!(text.contains("Tab"));
+    }
+
+    #[test]
+    fn footer_text_import_importing_phase() {
+        let agents: Vec<String> = vec![];
+        let mut state = import::ImportState::new("/tmp/test.cast", &agents);
+        state.phase = import::ImportPhase::Importing;
+        let opt = Some(state);
+        let text = footer_text_for_mode(Mode::Import, &opt);
+        assert!(text.contains("Importing"));
+    }
+
+    #[test]
+    fn footer_text_import_done_phase() {
+        let agents: Vec<String> = vec![];
+        let mut state = import::ImportState::new("/tmp/test.cast", &agents);
+        state.phase = import::ImportPhase::Done;
+        let opt = Some(state);
+        let text = footer_text_for_mode(Mode::Import, &opt);
+        assert!(text.contains("dismiss"));
+    }
+
+    // ── build_menu_item_label ─────────────────────────────────────────────
+
+    #[test]
+    fn menu_item_label_normal_item_with_shortcut() {
+        // Play has shortcut "p"
+        let label = build_menu_item_label(&ContextMenuItem::Play, true);
+        assert!(label.contains("Play"));
+        assert!(label.contains("(p)"));
+        assert!(!label.contains("no backup"));
+    }
+
+    #[test]
+    fn menu_item_label_restore_with_backup() {
+        let label = build_menu_item_label(&ContextMenuItem::Restore, true);
+        assert!(label.contains("Restore"));
+        assert!(!label.contains("no backup"));
+    }
+
+    #[test]
+    fn menu_item_label_restore_no_backup() {
+        let label = build_menu_item_label(&ContextMenuItem::Restore, false);
+        assert!(label.contains("Restore"));
+        assert!(label.contains("no backup"));
+    }
+
+    #[test]
+    fn menu_item_label_copy_item() {
+        let label = build_menu_item_label(&ContextMenuItem::Copy, true);
+        assert!(label.contains("Copy to clipboard"));
+        assert!(label.contains("(c)"));
+    }
+
+    // ── menu_item_style ───────────────────────────────────────────────────
+
+    #[test]
+    fn menu_item_style_selected_uses_highlight() {
+        let theme = crate::theme::Theme::claude_code();
+        let style = menu_item_style(true, false, &theme);
+        let expected = theme.highlight_style();
+        assert_eq!(style, expected);
+    }
+
+    #[test]
+    fn menu_item_style_disabled_uses_secondary_color() {
+        let theme = crate::theme::Theme::claude_code();
+        let style = menu_item_style(false, true, &theme);
+        assert_eq!(style.fg, Some(theme.text_secondary));
+    }
+
+    #[test]
+    fn menu_item_style_normal_uses_primary_color() {
+        let theme = crate::theme::Theme::claude_code();
+        let style = menu_item_style(false, false, &theme);
+        assert_eq!(style.fg, Some(theme.text_primary));
+    }
+
+    #[test]
+    fn menu_item_style_selected_takes_precedence_over_disabled() {
+        // selected=true, disabled=true → still highlight (selected wins)
+        let theme = crate::theme::Theme::claude_code();
+        let style = menu_item_style(true, true, &theme);
+        let expected = theme.highlight_style();
+        assert_eq!(style, expected);
+    }
+
+    // ── build_rename_status_spans ─────────────────────────────────────────
+
+    #[test]
+    fn rename_spans_selected_all_wraps_in_brackets() {
+        let hl = ratatui::style::Style::default();
+        let blink =
+            ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        build_rename_status_spans(&mut spans, "hello", 0, true, hl, blink);
+        // Expect 3 spans: "[", "hello", "]" — all with blink style
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content, "[");
+        assert_eq!(spans[1].content, "hello");
+        assert_eq!(spans[2].content, "]");
+        assert_eq!(spans[0].style, blink);
+    }
+
+    #[test]
+    fn rename_spans_cursor_at_start_no_before_span() {
+        let hl = ratatui::style::Style::default();
+        let blink =
+            ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        // cursor=0, selected_all=false → only "|" + "hello"
+        build_rename_status_spans(&mut spans, "hello", 0, false, hl, blink);
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].content, "|");
+        assert_eq!(spans[1].content, "hello");
+    }
+
+    #[test]
+    fn rename_spans_cursor_at_end_no_after_span() {
+        let hl = ratatui::style::Style::default();
+        let blink =
+            ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        // cursor at end → "hello" + "|"
+        build_rename_status_spans(&mut spans, "hello", 5, false, hl, blink);
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].content, "hello");
+        assert_eq!(spans[1].content, "|");
+    }
+
+    #[test]
+    fn rename_spans_cursor_in_middle_three_spans() {
+        let hl = ratatui::style::Style::default();
+        let blink =
+            ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        // cursor=2 in "hello" → "he" + "|" + "llo"
+        build_rename_status_spans(&mut spans, "hello", 2, false, hl, blink);
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content, "he");
+        assert_eq!(spans[1].content, "|");
+        assert_eq!(spans[2].content, "llo");
+    }
+
+    #[test]
+    fn rename_spans_empty_input_cursor_only() {
+        let hl = ratatui::style::Style::default();
+        let blink =
+            ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        // empty input → only "|"
+        build_rename_status_spans(&mut spans, "", 0, false, hl, blink);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].content, "|");
+    }
 }
