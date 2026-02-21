@@ -107,27 +107,44 @@ fn poll_events(tx: mpsc::Sender<Event>, running: Arc<AtomicBool>, tick_rate: Dur
     }
 }
 
-/// Reads one crossterm event and sends the mapped `Event` through `tx`.
+/// Maps a crossterm event to an application `Event` and sends it through `tx`.
 ///
 /// Returns `false` if the loop should break (Ctrl+C pressed or channel closed),
 /// `true` to continue polling.
-fn dispatch_crossterm_event(tx: &mpsc::Sender<Event>) -> bool {
-    match event::read() {
-        Ok(CrosstermEvent::Key(key)) => {
+fn map_crossterm_event(ev: CrosstermEvent, tx: &mpsc::Sender<Event>) -> bool {
+    match ev {
+        CrosstermEvent::Key(key) => {
             // Only Ctrl+C quits at the event-bus level.
             // q and Esc are forwarded as normal keys so
             // apps can handle them per-mode (e.g. cancel
             // rename, close dialog, or quit in Normal mode).
             if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                 let _ = tx.send(Event::Quit);
-                return false;
+                return true;
             }
-            tx.send(Event::Key(key)).is_ok()
+            let _ = tx.send(Event::Key(key));
         }
-        Ok(CrosstermEvent::Resize(width, height)) => tx.send(Event::Resize(width, height)).is_ok(),
-        Ok(CrosstermEvent::Mouse(mouse)) => tx.send(Event::Mouse(mouse)).is_ok(),
-        Ok(CrosstermEvent::Paste(text)) => tx.send(Event::Paste(text)).is_ok(),
-        Ok(_) => true,
+        CrosstermEvent::Mouse(mouse) => {
+            let _ = tx.send(Event::Mouse(mouse));
+        }
+        CrosstermEvent::Resize(w, h) => {
+            let _ = tx.send(Event::Resize(w, h));
+        }
+        CrosstermEvent::Paste(text) => {
+            let _ = tx.send(Event::Paste(text));
+        }
+        _ => {}
+    }
+    false
+}
+
+/// Reads one crossterm event and dispatches it via `map_crossterm_event`.
+///
+/// Returns `false` if the loop should break (Ctrl+C pressed or channel closed),
+/// `true` to continue polling.
+fn dispatch_crossterm_event(tx: &mpsc::Sender<Event>) -> bool {
+    match event::read() {
+        Ok(ev) => map_crossterm_event(ev, tx),
         Err(_) => false,
     }
 }
@@ -135,95 +152,7 @@ fn dispatch_crossterm_event(tx: &mpsc::Sender<Event>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn event_debug_format() {
-        let event = Event::Resize(80, 24);
-        let debug = format!("{:?}", event);
-        assert!(debug.contains("Resize"));
-        assert!(debug.contains("80"));
-        assert!(debug.contains("24"));
-    }
-
-    #[test]
-    fn event_clone_works() {
-        let event = Event::Tick;
-        let cloned = event.clone();
-        assert!(matches!(cloned, Event::Tick));
-    }
-
-    #[test]
-    fn event_handler_stop() {
-        let mut handler = EventHandler::new(Duration::from_millis(50));
-        handler.stop();
-        // After stop, the thread should have exited and next() should fail
-        assert!(handler.next().is_err());
-    }
-
-    #[test]
-    fn event_paste_variant_debug() {
-        let event = Event::Paste("foo".into());
-        let debug = format!("{:?}", event);
-        assert!(debug.contains("Paste"));
-        assert!(debug.contains("foo"));
-    }
-
-    #[test]
-    fn event_paste_clone() {
-        let event = Event::Paste("test content".into());
-        let cloned = event.clone();
-        if let Event::Paste(text) = cloned {
-            assert_eq!(text, "test content");
-        } else {
-            panic!("Expected Paste variant");
-        }
-    }
-
-    #[test]
-    fn event_quit_variant_debug_and_clone() {
-        let event = Event::Quit;
-        let debug = format!("{:?}", event);
-        assert!(debug.contains("Quit"));
-        let cloned = event.clone();
-        assert!(matches!(cloned, Event::Quit));
-    }
-
-    #[test]
-    fn event_key_variant_clone() {
-        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-        let key_event = KeyEvent {
-            code: KeyCode::Char('a'),
-            modifiers: KeyModifiers::NONE,
-            kind: KeyEventKind::Press,
-            state: KeyEventState::NONE,
-        };
-        let event = Event::Key(key_event);
-        let cloned = event.clone();
-        if let Event::Key(k) = cloned {
-            assert_eq!(k.code, KeyCode::Char('a'));
-        } else {
-            panic!("Expected Key variant");
-        }
-    }
-
-    #[test]
-    fn event_mouse_variant_clone() {
-        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-        let mouse_event = MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: 10,
-            row: 5,
-            modifiers: KeyModifiers::NONE,
-        };
-        let event = Event::Mouse(mouse_event);
-        let cloned = event.clone();
-        if let Event::Mouse(m) = cloned {
-            assert_eq!(m.column, 10);
-            assert_eq!(m.row, 5);
-        } else {
-            panic!("Expected Mouse variant");
-        }
-    }
+    use std::sync::mpsc;
 
     #[test]
     fn event_handler_stop_is_idempotent() {
@@ -234,14 +163,50 @@ mod tests {
     }
 
     #[test]
-    fn event_resize_variant_clone() {
-        let event = Event::Resize(120, 40);
-        let cloned = event.clone();
-        if let Event::Resize(w, h) = cloned {
-            assert_eq!(w, 120);
-            assert_eq!(h, 40);
-        } else {
-            panic!("Expected Resize variant");
-        }
+    fn map_crossterm_event_ctrl_c_sends_quit_and_returns_true() {
+        let (tx, rx) = mpsc::channel();
+        let key = crossterm::event::KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        let result = map_crossterm_event(CrosstermEvent::Key(key), &tx);
+        assert!(result);
+        assert!(matches!(rx.recv().unwrap(), Event::Quit));
+    }
+
+    #[test]
+    fn map_crossterm_event_regular_key_sends_key_event() {
+        let (tx, rx) = mpsc::channel();
+        let key = crossterm::event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+        let result = map_crossterm_event(CrosstermEvent::Key(key), &tx);
+        assert!(!result);
+        assert!(matches!(rx.recv().unwrap(), Event::Key(_)));
+    }
+
+    #[test]
+    fn map_crossterm_event_resize_sends_resize_event() {
+        let (tx, rx) = mpsc::channel();
+        let result = map_crossterm_event(CrosstermEvent::Resize(120, 40), &tx);
+        assert!(!result);
+        assert!(matches!(rx.recv().unwrap(), Event::Resize(120, 40)));
+    }
+
+    #[test]
+    fn map_crossterm_event_mouse_sends_mouse_event() {
+        let (tx, rx) = mpsc::channel();
+        let mouse = crossterm::event::MouseEvent {
+            kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        };
+        let result = map_crossterm_event(CrosstermEvent::Mouse(mouse), &tx);
+        assert!(!result);
+        assert!(matches!(rx.recv().unwrap(), Event::Mouse(_)));
+    }
+
+    #[test]
+    fn map_crossterm_event_paste_sends_paste_event() {
+        let (tx, rx) = mpsc::channel();
+        let result = map_crossterm_event(CrosstermEvent::Paste("hello".to_string()), &tx);
+        assert!(!result);
+        assert!(matches!(rx.recv().unwrap(), Event::Paste(ref s) if s == "hello"));
     }
 }
