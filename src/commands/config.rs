@@ -448,3 +448,148 @@ fn atomic_write(path: &Path, content: &str) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ---- handle_section_header_line ----
+
+    #[test]
+    fn handle_section_header_with_additions_queues_pending_header() {
+        let mut current_section = String::new();
+        let mut section_has_additions = false;
+        let mut pending: Option<String> = None;
+
+        handle_section_header_line(
+            "[analysis]",
+            "analysis",
+            &["analysis.workers".to_string()],
+            false,
+            &mut current_section,
+            &mut section_has_additions,
+            &mut pending,
+        );
+
+        assert_eq!(current_section, "analysis");
+        assert!(section_has_additions);
+        assert_eq!(pending, Some("[analysis]".to_string()));
+    }
+
+    #[test]
+    fn handle_section_header_no_additions_clears_pending() {
+        let mut current_section = "old".to_string();
+        let mut section_has_additions = true;
+        let mut pending: Option<String> = Some("[old]".to_string());
+
+        handle_section_header_line(
+            "[recording]",
+            "recording",
+            &["analysis.workers".to_string()],
+            false,
+            &mut current_section,
+            &mut section_has_additions,
+            &mut pending,
+        );
+
+        assert_eq!(current_section, "recording");
+        assert!(!section_has_additions);
+        assert_eq!(pending, None);
+    }
+
+    #[test]
+    fn handle_section_header_new_file_always_queues() {
+        let mut current_section = String::new();
+        let mut section_has_additions = false;
+        let mut pending: Option<String> = None;
+
+        handle_section_header_line(
+            "[shell]",
+            "shell",
+            &[],  // no additions
+            true, // is_new_file = true
+            &mut current_section,
+            &mut section_has_additions,
+            &mut pending,
+        );
+
+        // new file => pending header is set even without additions
+        assert_eq!(pending, Some("[shell]".to_string()));
+    }
+
+    #[test]
+    fn handle_section_header_always_updates_current_section() {
+        let mut current_section = "old_section".to_string();
+        let mut section_has_additions = false;
+        let mut pending: Option<String> = None;
+
+        handle_section_header_line(
+            "[storage]",
+            "storage",
+            &[],
+            false,
+            &mut current_section,
+            &mut section_has_additions,
+            &mut pending,
+        );
+
+        assert_eq!(current_section, "storage");
+    }
+
+    #[test]
+    fn handle_section_header_prefix_no_false_positive() {
+        // "anal" is a prefix of "analysis" but should NOT match "analysis.workers"
+        let mut current_section = String::new();
+        let mut section_has_additions = false;
+        let mut pending: Option<String> = None;
+
+        handle_section_header_line(
+            "[anal]",
+            "anal",
+            &["analysis.workers".to_string()],
+            false,
+            &mut current_section,
+            &mut section_has_additions,
+            &mut pending,
+        );
+
+        // "anal.workers" is not an entry in added_fields, so no additions
+        assert!(!section_has_additions);
+        assert_eq!(pending, None);
+    }
+
+    // ---- parse_simple_section_header ----
+
+    #[test]
+    fn parse_simple_section_header_valid() {
+        assert_eq!(parse_simple_section_header("[analysis]"), Some("analysis"));
+    }
+
+    #[test]
+    fn parse_simple_section_header_array_of_tables_returns_none() {
+        assert_eq!(parse_simple_section_header("[[agents]]"), None);
+    }
+
+    #[test]
+    fn parse_simple_section_header_dotted_returns_none() {
+        assert_eq!(parse_simple_section_header("[a.b.c]"), None);
+    }
+
+    #[test]
+    fn parse_simple_section_header_not_a_section_returns_none() {
+        assert_eq!(parse_simple_section_header("workers = 4"), None);
+    }
+
+    #[test]
+    fn parse_simple_section_header_empty_brackets_returns_none() {
+        assert_eq!(parse_simple_section_header("[]"), None);
+    }
+
+    #[test]
+    fn parse_simple_section_header_trims_whitespace() {
+        assert_eq!(
+            parse_simple_section_header("[ recording ]"),
+            Some("recording")
+        );
+    }
+}
