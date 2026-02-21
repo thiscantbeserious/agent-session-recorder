@@ -178,4 +178,70 @@ mod tests {
             panic!("Expected Paste variant");
         }
     }
+
+    #[test]
+    fn event_quit_variant_debug_and_clone() {
+        let event = Event::Quit;
+        let debug = format!("{:?}", event);
+        assert!(debug.contains("Quit"));
+        let cloned = event.clone();
+        assert!(matches!(cloned, Event::Quit));
+    }
+
+    #[test]
+    fn event_key_variant_clone() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        let key_event = KeyEvent {
+            code: KeyCode::Char('a'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        };
+        let event = Event::Key(key_event);
+        let cloned = event.clone();
+        if let Event::Key(k) = cloned {
+            assert_eq!(k.code, KeyCode::Char('a'));
+        } else {
+            panic!("Expected Key variant");
+        }
+    }
+
+    #[test]
+    fn event_mouse_variant_clone() {
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+        let mouse_event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        };
+        let event = Event::Mouse(mouse_event);
+        let cloned = event.clone();
+        if let Event::Mouse(m) = cloned {
+            assert_eq!(m.column, 10);
+            assert_eq!(m.row, 5);
+        } else {
+            panic!("Expected Mouse variant");
+        }
+    }
+
+    #[test]
+    fn event_handler_stop_is_idempotent() {
+        let mut handler = EventHandler::new(Duration::from_millis(50));
+        handler.stop();
+        // Calling stop() a second time should not panic
+        handler.stop();
+    }
+
+    #[test]
+    fn event_resize_variant_clone() {
+        let event = Event::Resize(120, 40);
+        let cloned = event.clone();
+        if let Event::Resize(w, h) = cloned {
+            assert_eq!(w, 120);
+            assert_eq!(h, 40);
+        } else {
+            panic!("Expected Resize variant");
+        }
+    }
 }
