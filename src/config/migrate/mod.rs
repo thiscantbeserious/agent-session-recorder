@@ -716,6 +716,196 @@ extra_args = ["--model", "gpt-5.2-codex"]
         assert!(result2.removed_fields.is_empty());
     }
 
+    // -----------------------------------------------------------------------
+    // collect_section_blocks
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn collect_section_blocks_empty_headers() {
+        let headers: Vec<(usize, String)> = vec![];
+        let lines: Vec<&str> = vec!["key = 1"];
+        let blocks = collect_section_blocks(&headers, &lines);
+        assert!(blocks.is_empty());
+    }
+
+    #[test]
+    fn collect_section_blocks_single_section() {
+        let lines = vec!["[shell]", "auto_wrap = true"];
+        let headers = vec![(0usize, "shell".to_string())];
+        let blocks = collect_section_blocks(&headers, &lines);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].0, "shell");
+        assert!(blocks[0].1.contains("auto_wrap = true"));
+    }
+
+    #[test]
+    fn collect_section_blocks_merges_non_consecutive_same_group() {
+        // [agents] then [shell] then [agents.claude] — the two agents blocks merge
+        let lines = vec![
+            "[agents]",
+            "enabled = []",
+            "[shell]",
+            "auto_wrap = true",
+            "[agents.claude]",
+            "extra_args = []",
+        ];
+        let headers = vec![
+            (0usize, "agents".to_string()),
+            (2usize, "shell".to_string()),
+            (4usize, "agents".to_string()),
+        ];
+        let blocks = collect_section_blocks(&headers, &lines);
+        // shell and agents are two unique groups
+        assert_eq!(blocks.len(), 2);
+        let agents_block = blocks.iter().find(|(g, _)| g == "agents").unwrap();
+        assert!(agents_block.1.contains("[agents]"));
+        assert!(agents_block.1.contains("[agents.claude]"));
+    }
+
+    // -----------------------------------------------------------------------
+    // sort_blocks_by_order
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn sort_blocks_by_order_canonical_order() {
+        let blocks = vec![
+            ("recording".to_string(), "r".to_string()),
+            ("shell".to_string(), "s".to_string()),
+            ("analysis".to_string(), "a".to_string()),
+        ];
+        let sorted = sort_blocks_by_order(&blocks);
+        assert_eq!(sorted[0].0, "shell");
+        assert_eq!(sorted[1].0, "recording");
+        assert_eq!(sorted[2].0, "analysis");
+    }
+
+    #[test]
+    fn sort_blocks_by_order_unknown_appended_after_known() {
+        let blocks = vec![
+            ("my_custom".to_string(), "c".to_string()),
+            ("shell".to_string(), "s".to_string()),
+        ];
+        let sorted = sort_blocks_by_order(&blocks);
+        assert_eq!(sorted[0].0, "shell");
+        assert_eq!(sorted[1].0, "my_custom");
+    }
+
+    #[test]
+    fn sort_blocks_by_order_only_unknowns_preserved_in_original_order() {
+        let blocks = vec![
+            ("zzz".to_string(), "z".to_string()),
+            ("aaa".to_string(), "a".to_string()),
+        ];
+        let sorted = sort_blocks_by_order(&blocks);
+        assert_eq!(sorted[0].0, "zzz");
+        assert_eq!(sorted[1].0, "aaa");
+    }
+
+    #[test]
+    fn sort_blocks_by_order_empty_input() {
+        let blocks: Vec<(String, String)> = vec![];
+        let sorted = sort_blocks_by_order(&blocks);
+        assert!(sorted.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // reassemble_toml
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn reassemble_toml_no_preamble() {
+        let blocks = vec![
+            ("shell".to_string(), "[shell]\nauto_wrap = true".to_string()),
+            (
+                "storage".to_string(),
+                "[storage]\ndirectory = \"~/r\"".to_string(),
+            ),
+        ];
+        let refs: Vec<&(String, String)> = blocks.iter().collect();
+        let result = reassemble_toml("", &refs);
+        // No leading blank line
+        assert!(result.starts_with("[shell]"));
+        // Blank line between blocks
+        assert!(result.contains("\n\n[storage]"));
+        // Trailing newline
+        assert!(result.ends_with('\n'));
+    }
+
+    #[test]
+    fn reassemble_toml_with_preamble() {
+        let preamble = "config_version = 2";
+        let blocks = vec![("shell".to_string(), "[shell]\nauto_wrap = true".to_string())];
+        let refs: Vec<&(String, String)> = blocks.iter().collect();
+        let result = reassemble_toml(preamble, &refs);
+        assert!(result.starts_with("config_version = 2"));
+        assert!(result.contains("\n\n[shell]"));
+        assert!(result.ends_with('\n'));
+    }
+
+    #[test]
+    fn reassemble_toml_multiple_blocks_single_blank_line_between_each() {
+        let blocks = vec![
+            ("shell".to_string(), "[shell]\nauto_wrap = true".to_string()),
+            (
+                "storage".to_string(),
+                "[storage]\ndirectory = \"~/r\"".to_string(),
+            ),
+            (
+                "recording".to_string(),
+                "[recording]\nauto_analyze = false".to_string(),
+            ),
+        ];
+        let refs: Vec<&(String, String)> = blocks.iter().collect();
+        let result = reassemble_toml("", &refs);
+        // Count occurrences of triple newline (should be zero — only double)
+        assert!(!result.contains("\n\n\n"));
+        assert_eq!(result.matches("\n\n").count(), 2);
+    }
+
+    #[test]
+    fn reassemble_toml_always_trailing_newline() {
+        let blocks = vec![("shell".to_string(), "[shell]\nauto_wrap = true".to_string())];
+        let refs: Vec<&(String, String)> = blocks.iter().collect();
+        let result = reassemble_toml("", &refs);
+        assert!(result.ends_with('\n'));
+    }
+
+    // -----------------------------------------------------------------------
+    // ensure_blank_line_separator
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn ensure_blank_line_separator_already_double_newline_unchanged() {
+        let mut s = "hello\n\n".to_string();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "hello\n\n");
+    }
+
+    #[test]
+    fn ensure_blank_line_separator_single_newline_gets_extra() {
+        let mut s = "hello\n".to_string();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "hello\n\n");
+    }
+
+    #[test]
+    fn ensure_blank_line_separator_no_newline_appends_double() {
+        let mut s = "hello".to_string();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "hello\n\n");
+    }
+
+    #[test]
+    fn ensure_blank_line_separator_empty_string_appends_double() {
+        let mut s = String::new();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "\n\n");
+    }
+
+    // -----------------------------------------------------------------------
+    // (existing integration tests follow)
+    // -----------------------------------------------------------------------
+
     #[test]
     fn misordered_sections_detected_as_change() {
         let input = r#"config_version = 1

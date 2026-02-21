@@ -495,4 +495,93 @@ mod tests {
             vec!["shell", "storage", "recording", "analysis", "agents"]
         );
     }
+
+    // -----------------------------------------------------------------------
+    // collect_present_fields
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn collect_present_fields_empty_input() {
+        let lines: Vec<String> = vec![];
+        let present = collect_present_fields(&lines);
+        assert!(present.is_empty());
+    }
+
+    #[test]
+    fn collect_present_fields_active_field() {
+        let lines = vec!["[shell]".to_string(), "auto_wrap = true".to_string()];
+        let present = collect_present_fields(&lines);
+        let shell_fields = present
+            .get("shell")
+            .expect("shell section should be present");
+        assert!(shell_fields.contains(&"auto_wrap".to_string()));
+    }
+
+    #[test]
+    fn collect_present_fields_commented_template_counts_as_present() {
+        // A commented-out template like `# agent = auto-detect` should be
+        // treated as present so it is not duplicated on re-insertion.
+        let lines = vec![
+            "[analysis]".to_string(),
+            "# agent = auto-detect".to_string(),
+        ];
+        let present = collect_present_fields(&lines);
+        let fields = present.get("analysis").expect("analysis section missing");
+        assert!(fields.contains(&"agent".to_string()));
+    }
+
+    #[test]
+    fn collect_present_fields_array_of_tables_does_not_change_section() {
+        // [[custom_array]] lines must not be treated as a section header.
+        // Fields following them should remain in the last normal [section].
+        let lines = vec![
+            "[storage]".to_string(),
+            "directory = \"~/r\"".to_string(),
+            "[[custom_array]]".to_string(),
+            "name = \"first\"".to_string(),
+        ];
+        let present = collect_present_fields(&lines);
+        // `directory` belongs to `storage`
+        let storage = present.get("storage").expect("storage section missing");
+        assert!(storage.contains(&"directory".to_string()));
+        // `name` should be associated with `storage` still (array of tables skipped)
+        // It ends up in whatever section was current — the guard means [[...]] is ignored
+        // What matters: no entry with key "custom_array" as a section
+        assert!(!present.contains_key("custom_array"));
+    }
+
+    #[test]
+    fn collect_present_fields_multi_section() {
+        let lines = vec![
+            "[shell]".to_string(),
+            "auto_wrap = true".to_string(),
+            "[storage]".to_string(),
+            "directory = \"~/recordings\"".to_string(),
+            "size_threshold_gb = 5.0".to_string(),
+        ];
+        let present = collect_present_fields(&lines);
+        assert!(present
+            .get("shell")
+            .unwrap()
+            .contains(&"auto_wrap".to_string()));
+        let storage = present.get("storage").unwrap();
+        assert!(storage.contains(&"directory".to_string()));
+        assert!(storage.contains(&"size_threshold_gb".to_string()));
+    }
+
+    // -----------------------------------------------------------------------
+    // insert_optional_field_templates — idempotency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn insert_optional_field_templates_idempotent() {
+        // Running the function twice should produce the same output as once.
+        let input = "[shell]\nauto_wrap = true\n\n[storage]\ndirectory = \"~/r\"\nsize_threshold_gb = 5.0\nage_threshold_days = 30\n";
+        let once = insert_optional_field_templates(input);
+        let twice = insert_optional_field_templates(&once);
+        assert_eq!(
+            once, twice,
+            "insert_optional_field_templates must be idempotent"
+        );
+    }
 }
