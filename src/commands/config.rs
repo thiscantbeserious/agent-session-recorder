@@ -336,7 +336,11 @@ fn print_field_line(
         None => return,
     };
     let key = trimmed[..eq_pos].trim();
-    let full_path = format!("{}.{}", current_section, key);
+    let full_path = if current_section.is_empty() {
+        key.to_string()
+    } else {
+        format!("{}.{}", current_section, key)
+    };
     let is_added = added_field_set.contains(full_path.as_str());
 
     if is_new_file || is_added {

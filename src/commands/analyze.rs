@@ -48,6 +48,9 @@ pub fn handle(
 ) -> Result<()> {
     let config = Config::load()?;
 
+    // Resolve effective timeout once: CLI > config > default
+    let effective_timeout_secs = timeout.or(config.analysis.timeout).unwrap_or(120);
+
     // Resolve agent: CLI override > config > default
     let resolved_agent = match agent_override {
         Some(name) => name.to_string(),
@@ -133,7 +136,7 @@ pub fn handle(
         result.total_duration,
         effective_curate,
         &filepath,
-        timeout,
+        effective_timeout_secs,
     )?;
 
     println!(
@@ -147,7 +150,7 @@ pub fn handle(
         &result.markers,
         result.total_duration,
         &filepath,
-        timeout,
+        effective_timeout_secs,
     )?;
 
     if wait {
@@ -267,7 +270,7 @@ fn handle_curation(
     total_duration: f64,
     effective_curate: bool,
     filepath: &Path,
-    timeout: Option<u64>,
+    effective_timeout_secs: u64,
 ) -> Result<usize> {
     if markers.len() <= CURATION_THRESHOLD {
         return Ok(markers.len());
@@ -279,7 +282,7 @@ fn handle_curation(
         return Ok(markers.len());
     }
 
-    let timeout_duration = Duration::from_secs(timeout.unwrap_or(120));
+    let timeout_duration = Duration::from_secs(effective_timeout_secs);
     match service.curate_markers(markers, total_duration, timeout_duration) {
         Ok(curated) => {
             MarkerManager::clear_markers(filepath)?;
@@ -325,7 +328,7 @@ fn handle_rename_suggestion(
     markers: &[ValidatedMarker],
     total_duration: f64,
     filepath: &Path,
-    timeout: Option<u64>,
+    effective_timeout_secs: u64,
 ) -> Result<()> {
     if markers.is_empty() {
         return Ok(());
@@ -336,7 +339,7 @@ fn handle_rename_suggestion(
         .and_then(|s| s.to_str())
         .unwrap_or("")
         .to_string();
-    let timeout_duration = Duration::from_secs(timeout.unwrap_or(120));
+    let timeout_duration = Duration::from_secs(effective_timeout_secs);
 
     let Some(suggested) =
         service.suggest_rename(markers, total_duration, timeout_duration, &current_filename)
