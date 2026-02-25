@@ -68,7 +68,7 @@ impl EventHandler {
     /// This must be called before spawning subprocesses that read from stdin,
     /// otherwise the event thread will race the subprocess for input.
     pub fn stop(&mut self) {
-        self.running.store(false, Ordering::Relaxed);
+        self.running.store(false, Ordering::Release);
         if let Some(handle) = self.handle.take() {
             // Thread will exit within one tick_rate cycle (250ms)
             let _ = handle.join();
@@ -82,11 +82,11 @@ impl EventHandler {
 /// through `tx` and returns when the running flag is set to false or a channel
 /// error occurs.
 fn poll_events(tx: mpsc::Sender<Event>, running: Arc<AtomicBool>, tick_rate: Duration) {
-    while running.load(Ordering::Relaxed) {
+    while running.load(Ordering::Acquire) {
         match event::poll(tick_rate) {
             Ok(true) => {
                 // Check stop flag before blocking read
-                if !running.load(Ordering::Relaxed) {
+                if !running.load(Ordering::Acquire) {
                     break;
                 }
                 if !dispatch_crossterm_event(&tx) {
