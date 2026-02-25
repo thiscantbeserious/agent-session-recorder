@@ -185,13 +185,7 @@ impl CleanupApp {
     /// Supports: * (any chars), ? (single char), agent/pattern syntax
     fn select_by_glob(&mut self, pattern: &str) -> usize {
         // Parse agent/pattern syntax (e.g., "claude/*.cast" or "*2024*")
-        let (agent_filter, file_pattern) = if let Some(slash_pos) = pattern.find('/') {
-            let agent = &pattern[..slash_pos];
-            let pat = &pattern[slash_pos + 1..];
-            (Some(agent), pat)
-        } else {
-            (None, pattern)
-        };
+        let (agent_filter, file_pattern) = parse_glob_pattern(pattern);
 
         // Collect matching items that aren't already selected
         let items_to_select: Vec<(usize, String, String, bool, bool)> = self
@@ -218,12 +212,7 @@ impl CleanupApp {
             if is_locked {
                 continue;
             }
-            let matches = if let Some(agent_pat) = agent_filter {
-                glob_match(&agent, agent_pat) && glob_match(&name, file_pattern)
-            } else {
-                glob_match(&name, file_pattern)
-            };
-            if matches && !is_selected {
+            if matches_glob_pattern(&agent, &name, agent_filter, file_pattern) && !is_selected {
                 // Navigate to this item and select it
                 self.shared.explorer.home();
                 for _ in 0..vis_idx {
@@ -678,6 +667,36 @@ pub fn footer_text_for_mode(mode: Mode, selected_count: usize) -> &'static str {
     }
 }
 
+/// Parse an optional `agent/file_pattern` glob syntax into its two components.
+///
+/// Returns `(Some(agent_pattern), file_pattern)` when a `/` separator is present,
+/// or `(None, pattern)` for a bare file pattern.
+fn parse_glob_pattern(pattern: &str) -> (Option<&str>, &str) {
+    if let Some(slash_pos) = pattern.find('/') {
+        (Some(&pattern[..slash_pos]), &pattern[slash_pos + 1..])
+    } else {
+        (None, pattern)
+    }
+}
+
+/// Return whether an item's agent/name matches the parsed glob filter.
+///
+/// When `agent_filter` is `Some`, both the agent and name must match their
+/// respective patterns. When `None`, only the name is matched against
+/// `file_pattern`.
+fn matches_glob_pattern(
+    agent: &str,
+    name: &str,
+    agent_filter: Option<&str>,
+    file_pattern: &str,
+) -> bool {
+    if let Some(agent_pat) = agent_filter {
+        glob_match(agent, agent_pat) && glob_match(name, file_pattern)
+    } else {
+        glob_match(name, file_pattern)
+    }
+}
+
 /// Simple glob pattern matching.
 /// Supports * (match any) and ? (match single char).
 fn glob_match(text: &str, pattern: &str) -> bool {
@@ -708,12 +727,12 @@ fn glob_match_recursive(text: &str, pattern: &str) -> bool {
 
                 // Try matching rest of pattern at each position
                 let rest_text: String = text_chars.collect();
-                for i in 0..=rest_text.len() {
+                for (i, _) in rest_text.char_indices() {
                     if glob_match_recursive(&rest_text[i..], &rest_pattern) {
                         return true;
                     }
                 }
-                return false;
+                return glob_match_recursive("", &rest_pattern);
             }
             '?' => {
                 // Match any single character
@@ -818,5 +837,142 @@ mod tests {
         ));
         assert!(glob_match("claude_session.cast", "*_session.cast"));
         assert!(!glob_match("test.txt", "*.cast"));
+    }
+
+    // parse_glob_pattern tests
+
+    #[test]
+    fn parse_glob_bare_pattern() {
+        let (agent, name) = parse_glob_pattern("foo");
+        assert_eq!(agent, None);
+        assert_eq!(name, "foo");
+    }
+
+    #[test]
+    fn parse_glob_slash_split() {
+        let (agent, name) = parse_glob_pattern("agent/name");
+        assert_eq!(agent, Some("agent"));
+        assert_eq!(name, "name");
+    }
+
+    #[test]
+    fn parse_glob_multiple_slashes() {
+        // Only the first slash is used as the separator
+        let (agent, name) = parse_glob_pattern("a/b/c");
+        assert_eq!(agent, Some("a"));
+        assert_eq!(name, "b/c");
+    }
+
+    #[test]
+    fn parse_glob_empty() {
+        let (agent, name) = parse_glob_pattern("");
+        assert_eq!(agent, None);
+        assert_eq!(name, "");
+    }
+
+    #[test]
+    fn parse_glob_leading_slash() {
+        let (agent, name) = parse_glob_pattern("/name");
+        assert_eq!(agent, Some(""));
+        assert_eq!(name, "name");
+    }
+
+    #[test]
+    fn parse_glob_trailing_slash() {
+        let (agent, name) = parse_glob_pattern("agent/");
+        assert_eq!(agent, Some("agent"));
+        assert_eq!(name, "");
+    }
+
+    // matches_glob_pattern tests
+
+    #[test]
+    fn matches_no_agent_filter() {
+        // None agent_filter: any agent is accepted, only name is matched
+        assert!(matches_glob_pattern("any-agent", "session.cast", None, "*"));
+        assert!(matches_glob_pattern("claude", "hello.cast", None, "*.cast"));
+        assert!(!matches_glob_pattern("claude", "hello.txt", None, "*.cast"));
+    }
+
+    #[test]
+    fn matches_both_agent_and_name() {
+        assert!(matches_glob_pattern(
+            "claude",
+            "session.cast",
+            Some("claude"),
+            "*.cast"
+        ));
+    }
+
+    #[test]
+    fn matches_agent_only() {
+        // Agent matches but name does not → false
+        assert!(!matches_glob_pattern(
+            "claude",
+            "session.txt",
+            Some("claude"),
+            "*.cast"
+        ));
+    }
+
+    #[test]
+    fn matches_name_only() {
+        // Name matches but agent does not → false
+        assert!(!matches_glob_pattern(
+            "gpt",
+            "session.cast",
+            Some("claude"),
+            "*.cast"
+        ));
+    }
+
+    #[test]
+    fn matches_agent_glob_with_star() {
+        // "*" agent pattern must match any agent string
+        assert!(matches_glob_pattern(
+            "claude",
+            "session.cast",
+            Some("*"),
+            "*.cast"
+        ));
+        assert!(matches_glob_pattern(
+            "gpt-4",
+            "notes.cast",
+            Some("*"),
+            "notes.cast"
+        ));
+    }
+
+    // glob_match edge-case tests
+
+    #[test]
+    fn glob_match_empty_empty() {
+        // Both empty: pattern is satisfied
+        assert!(glob_match("", ""));
+    }
+
+    #[test]
+    fn glob_match_empty_pattern() {
+        // Non-empty text against empty pattern: no match
+        assert!(!glob_match("text", ""));
+    }
+
+    #[test]
+    fn glob_match_empty_text() {
+        // Non-wildcard pattern against empty text: no match
+        assert!(!glob_match("", "pattern"));
+    }
+
+    #[test]
+    fn glob_match_star_matches_empty() {
+        // "*" alone must match the empty string
+        assert!(glob_match("", "*"));
+    }
+
+    #[test]
+    fn glob_match_multibyte_utf8() {
+        assert!(glob_match("café.cast", "*.cast"));
+        assert!(glob_match("über.cast", "?ber.cast"));
+        assert!(glob_match("日本語.cast", "*.cast"));
     }
 }
