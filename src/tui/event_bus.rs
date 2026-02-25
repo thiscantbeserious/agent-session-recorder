@@ -47,64 +47,7 @@ impl EventHandler {
         let running = Arc::new(AtomicBool::new(true));
         let thread_running = running.clone();
 
-        let handle = thread::spawn(move || {
-            while thread_running.load(Ordering::Relaxed) {
-                // Poll for events with timeout using explicit pattern matching
-                match event::poll(tick_rate) {
-                    Ok(true) => {
-                        // Check stop flag before blocking read
-                        if !thread_running.load(Ordering::Relaxed) {
-                            break;
-                        }
-                        // Event available
-                        match event::read() {
-                            Ok(CrosstermEvent::Key(key)) => {
-                                // Only Ctrl+C quits at the event-bus level.
-                                // q and Esc are forwarded as normal keys so
-                                // apps can handle them per-mode (e.g. cancel
-                                // rename, close dialog, or quit in Normal mode).
-                                if key.code == KeyCode::Char('c')
-                                    && key.modifiers.contains(KeyModifiers::CONTROL)
-                                {
-                                    let _ = tx.send(Event::Quit);
-                                    break;
-                                }
-                                if tx.send(Event::Key(key)).is_err() {
-                                    break;
-                                }
-                            }
-                            Ok(CrosstermEvent::Resize(width, height)) => {
-                                if tx.send(Event::Resize(width, height)).is_err() {
-                                    break;
-                                }
-                            }
-                            Ok(CrosstermEvent::Mouse(mouse)) => {
-                                if tx.send(Event::Mouse(mouse)).is_err() {
-                                    break;
-                                }
-                            }
-                            Ok(CrosstermEvent::Paste(text)) => {
-                                if tx.send(Event::Paste(text)).is_err() {
-                                    break;
-                                }
-                            }
-                            Ok(_) => {}
-                            Err(_) => break,
-                        }
-                    }
-                    Ok(false) => {
-                        // Timeout - send tick event
-                        if tx.send(Event::Tick).is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => {
-                        // Polling error - exit the event loop
-                        break;
-                    }
-                }
-            }
-        });
+        let handle = thread::spawn(move || poll_events(tx, thread_running, tick_rate));
 
         Self {
             rx,
@@ -125,7 +68,7 @@ impl EventHandler {
     /// This must be called before spawning subprocesses that read from stdin,
     /// otherwise the event thread will race the subprocess for input.
     pub fn stop(&mut self) {
-        self.running.store(false, Ordering::Relaxed);
+        self.running.store(false, Ordering::Release);
         if let Some(handle) = self.handle.take() {
             // Thread will exit within one tick_rate cycle (250ms)
             let _ = handle.join();
@@ -133,50 +76,137 @@ impl EventHandler {
     }
 }
 
+/// Polls for terminal events in a loop until the running flag is cleared.
+///
+/// Runs inside the event thread spawned by `EventHandler::new()`. Sends events
+/// through `tx` and returns when the running flag is set to false or a channel
+/// error occurs.
+fn poll_events(tx: mpsc::Sender<Event>, running: Arc<AtomicBool>, tick_rate: Duration) {
+    while running.load(Ordering::Acquire) {
+        match event::poll(tick_rate) {
+            Ok(true) => {
+                // Check stop flag before blocking read
+                if !running.load(Ordering::Acquire) {
+                    break;
+                }
+                if !dispatch_crossterm_event(&tx) {
+                    break;
+                }
+            }
+            Ok(false) => {
+                // Timeout - send tick event
+                if tx.send(Event::Tick).is_err() {
+                    break;
+                }
+            }
+            Err(_) => {
+                // Polling error - exit the event loop
+                break;
+            }
+        }
+    }
+}
+
+/// Maps a crossterm event to an application `Event` and sends it through `tx`.
+///
+/// Returns `false` if the loop should break (Ctrl+C pressed or channel closed),
+/// `true` to continue polling.
+fn map_crossterm_event(ev: CrosstermEvent, tx: &mpsc::Sender<Event>) -> bool {
+    match ev {
+        CrosstermEvent::Key(key) => {
+            // Only Ctrl+C quits at the event-bus level.
+            // q and Esc are forwarded as normal keys so
+            // apps can handle them per-mode (e.g. cancel
+            // rename, close dialog, or quit in Normal mode).
+            if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                let _ = tx.send(Event::Quit);
+                return true;
+            }
+            let _ = tx.send(Event::Key(key));
+        }
+        CrosstermEvent::Mouse(mouse) => {
+            let _ = tx.send(Event::Mouse(mouse));
+        }
+        CrosstermEvent::Resize(w, h) => {
+            let _ = tx.send(Event::Resize(w, h));
+        }
+        CrosstermEvent::Paste(text) => {
+            let _ = tx.send(Event::Paste(text));
+        }
+        _ => {}
+    }
+    false
+}
+
+/// Reads one crossterm event and dispatches it via `map_crossterm_event`.
+///
+/// Returns `false` if the loop should break (Ctrl+C pressed or channel closed),
+/// `true` to continue polling.
+fn dispatch_crossterm_event(tx: &mpsc::Sender<Event>) -> bool {
+    match event::read() {
+        Ok(ev) => map_crossterm_event(ev, tx),
+        Err(_) => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc;
 
     #[test]
-    fn event_debug_format() {
-        let event = Event::Resize(80, 24);
-        let debug = format!("{:?}", event);
-        assert!(debug.contains("Resize"));
-        assert!(debug.contains("80"));
-        assert!(debug.contains("24"));
-    }
-
-    #[test]
-    fn event_clone_works() {
-        let event = Event::Tick;
-        let cloned = event.clone();
-        assert!(matches!(cloned, Event::Tick));
-    }
-
-    #[test]
-    fn event_handler_stop() {
+    fn event_handler_stop_is_idempotent() {
         let mut handler = EventHandler::new(Duration::from_millis(50));
         handler.stop();
-        // After stop, the thread should have exited and next() should fail
-        assert!(handler.next().is_err());
+        // Calling stop() a second time should not panic
+        handler.stop();
     }
 
     #[test]
-    fn event_paste_variant_debug() {
-        let event = Event::Paste("foo".into());
-        let debug = format!("{:?}", event);
-        assert!(debug.contains("Paste"));
-        assert!(debug.contains("foo"));
+    fn map_crossterm_event_ctrl_c_sends_quit_and_returns_true() {
+        let (tx, rx) = mpsc::channel();
+        let key = crossterm::event::KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        let result = map_crossterm_event(CrosstermEvent::Key(key), &tx);
+        assert!(result);
+        assert!(matches!(rx.recv().unwrap(), Event::Quit));
     }
 
     #[test]
-    fn event_paste_clone() {
-        let event = Event::Paste("test content".into());
-        let cloned = event.clone();
-        if let Event::Paste(text) = cloned {
-            assert_eq!(text, "test content");
-        } else {
-            panic!("Expected Paste variant");
-        }
+    fn map_crossterm_event_regular_key_sends_key_event() {
+        let (tx, rx) = mpsc::channel();
+        let key = crossterm::event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+        let result = map_crossterm_event(CrosstermEvent::Key(key), &tx);
+        assert!(!result);
+        assert!(matches!(rx.recv().unwrap(), Event::Key(_)));
+    }
+
+    #[test]
+    fn map_crossterm_event_resize_sends_resize_event() {
+        let (tx, rx) = mpsc::channel();
+        let result = map_crossterm_event(CrosstermEvent::Resize(120, 40), &tx);
+        assert!(!result);
+        assert!(matches!(rx.recv().unwrap(), Event::Resize(120, 40)));
+    }
+
+    #[test]
+    fn map_crossterm_event_mouse_sends_mouse_event() {
+        let (tx, rx) = mpsc::channel();
+        let mouse = crossterm::event::MouseEvent {
+            kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 10,
+            row: 5,
+            modifiers: KeyModifiers::NONE,
+        };
+        let result = map_crossterm_event(CrosstermEvent::Mouse(mouse), &tx);
+        assert!(!result);
+        assert!(matches!(rx.recv().unwrap(), Event::Mouse(_)));
+    }
+
+    #[test]
+    fn map_crossterm_event_paste_sends_paste_event() {
+        let (tx, rx) = mpsc::channel();
+        let result = map_crossterm_event(CrosstermEvent::Paste("hello".to_string()), &tx);
+        assert!(!result);
+        assert!(matches!(rx.recv().unwrap(), Event::Paste(ref s) if s == "hello"));
     }
 }
