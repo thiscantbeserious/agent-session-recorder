@@ -51,7 +51,7 @@ test_debug_output() {
     local compressed=$(cargo run --quiet -- completions --shell-init zsh 2>/dev/null | wc -l)
     local debug=$(cargo run --quiet -- completions --shell-init zsh --debug 2>/dev/null | wc -l)
 
-    if [ "$debug" -gt "$compressed" ]; then
+    if [[ "$debug" -gt "$compressed" ]]; then
         echo "PASS: debug output ($debug lines) > compressed ($compressed lines)"
     else
         echo "FAIL: debug should produce more lines than compressed"
@@ -67,14 +67,14 @@ test_line_counts() {
     echo "Zsh: $zsh_lines lines"
     echo "Bash: $bash_lines lines"
 
-    if [ "$zsh_lines" -le 15 ]; then
+    if [[ "$zsh_lines" -le 15 ]]; then
         echo "PASS: zsh within 15 line target"
     else
         echo "FAIL: zsh exceeds 15 lines"
         exit 1
     fi
 
-    if [ "$bash_lines" -le 15 ]; then
+    if [[ "$bash_lines" -le 15 ]]; then
         echo "PASS: bash within 15 line target"
     else
         echo "FAIL: bash exceeds 15 lines"

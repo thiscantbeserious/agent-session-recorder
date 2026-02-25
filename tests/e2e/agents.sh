@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Check prerequisites when running standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     check_prerequisites || exit 1
     section "AGR Agent Configuration Tests"
     echo "Test directory: $TEST_DIR"
@@ -88,7 +88,7 @@ else
 fi
 
 # Print summary when running standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     print_summary
     exit $?
 fi

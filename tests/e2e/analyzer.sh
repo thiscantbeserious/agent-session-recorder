@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Check prerequisites when running standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     check_prerequisites || exit 1
     section "AGR Analyzer Configuration Tests"
     echo "Test directory: $TEST_DIR"
@@ -69,7 +69,7 @@ agent = "definitely-not-a-real-agent-12345"
 TOMLEOF
 # Config::load() validates agent names — commands should fail gracefully
 OUTPUT=$($AGR config show 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
-if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qiE "Unknown agent"; then
+if [[ "$EXIT_CODE" -ne 0 ]] && echo "$OUTPUT" | /usr/bin/grep -qiE "Unknown agent"; then
     pass "Config validation rejects unknown agent name"
 else
     fail "Config should reject unknown agent (exit=$EXIT_CODE): $OUTPUT"
@@ -130,7 +130,7 @@ for AGENT in claude codex gemini; do
     fi
 done
 
-if [ -n "$AVAILABLE_AGENT" ]; then
+if [[ -n "$AVAILABLE_AGENT" ]]; then
     echo "  Using available agent: $AVAILABLE_AGENT"
     # Set up config with auto_analyze enabled
     reset_config
@@ -171,7 +171,7 @@ $AGR record echo -- "quick test" </dev/null 2>&1
 END_TIME=$(date +%s)
 ELAPSED=$((END_TIME - START_TIME))
 # Should complete in under 5 seconds (no analysis overhead)
-if [ "$ELAPSED" -lt 5 ]; then
+if [[ "$ELAPSED" -lt 5 ]]; then
     pass "Recording with auto_analyze=false completes quickly"
 else
     fail "Recording took too long ($ELAPSED seconds), possible unintended analysis"
@@ -197,7 +197,7 @@ fi
 test_header "agr analyze nonexistent.cast fails gracefully"
 reset_config
 OUTPUT=$($AGR analyze /nonexistent/path/to/file.cast 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
-if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qiE "not found|no such file"; then
+if [[ "$EXIT_CODE" -ne 0 ]] && echo "$OUTPUT" | /usr/bin/grep -qiE "not found|no such file"; then
     pass "agr analyze fails gracefully with nonexistent file"
 else
     fail "agr analyze should fail with nonexistent file (exit=$EXIT_CODE): $OUTPUT"
@@ -209,9 +209,9 @@ reset_config
 # First create a valid cast file
 $AGR record echo -- "test" </dev/null 2>&1
 CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
-if [ -f "$CAST_FILE" ]; then
+if [[ -f "$CAST_FILE" ]]; then
     OUTPUT=$($AGR analyze "$CAST_FILE" --agent definitely-not-a-real-agent-12345 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
-    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "Unknown agent"; then
+    if [[ "$EXIT_CODE" -ne 0 ]] && echo "$OUTPUT" | /usr/bin/grep -qi "Unknown agent"; then
         pass "agr analyze fails gracefully with unknown agent"
     else
         fail "agr analyze should fail with missing agent (exit=$EXIT_CODE): $OUTPUT"
@@ -233,10 +233,10 @@ TOMLEOF
 # Create a valid cast file if not already present
 $AGR record echo -- "test default agent" </dev/null 2>&1
 CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
-if [ -f "$CAST_FILE" ]; then
+if [[ -f "$CAST_FILE" ]]; then
     # Fake claude is in PATH, so this should succeed with the configured agent
     OUTPUT=$($AGR analyze "$CAST_FILE" 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
-    if [ "$EXIT_CODE" -eq 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "marker"; then
+    if [[ "$EXIT_CODE" -eq 0 ]] && echo "$OUTPUT" | /usr/bin/grep -qi "marker"; then
         pass "agr analyze uses config's analysis agent (claude)"
     else
         fail "agr analyze should use config's analysis agent (exit=$EXIT_CODE): $OUTPUT"
@@ -256,10 +256,10 @@ auto_analyze = false
 agent = "claude"
 TOMLEOF
 CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
-if [ -f "$CAST_FILE" ]; then
+if [[ -f "$CAST_FILE" ]]; then
     OUTPUT=$($AGR analyze "$CAST_FILE" --agent override-agent-test 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
     # Should fail because override-agent-test is not a supported agent
-    if [ "$EXIT_CODE" -ne 0 ] && echo "$OUTPUT" | /usr/bin/grep -qi "Unknown agent"; then
+    if [[ "$EXIT_CODE" -ne 0 ]] && echo "$OUTPUT" | /usr/bin/grep -qi "Unknown agent"; then
         pass "agr analyze --agent successfully overrides config with unknown agent"
     else
         fail "agr analyze --agent should override config (exit=$EXIT_CODE): $OUTPUT"
@@ -272,7 +272,7 @@ fi
 reset_config
 
 # Print summary when running standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     print_summary
     exit $?
 fi

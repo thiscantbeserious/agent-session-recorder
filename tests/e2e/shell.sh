@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Check prerequisites when running standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     check_prerequisites || exit 1
     section "AGR Shell Integration Tests"
     echo "Test directory: $TEST_DIR"
@@ -47,7 +47,7 @@ fi
 
 # Test: Config.toml created during shell install
 test_header "Config.toml created during shell install"
-if [ -f "$HOME/.config/agr/config.toml" ]; then
+if [[ -f "$HOME/.config/agr/config.toml" ]]; then
     pass "Shell install created config.toml"
 else
     fail "Shell install did not create config.toml"
@@ -161,7 +161,7 @@ test_agr_sh() {
 
         # Source the shell RC file which now contains the embedded AGR script
         RC_FILE="$HOME/$SHELL_RC"
-        if [ -f "$RC_FILE" ]; then
+        if [[ -f "$RC_FILE" ]]; then
             # Use bash to source and run test
             bash -c "source '$RC_FILE'; $test_script"
             return $?
@@ -226,7 +226,7 @@ for AGENT in claude codex gemini; do
     if test_agr_sh "declare -f $AGENT 2>/dev/null | grep -q '_AGR_WRAPPER'"; then
         pass "Wrapper created for default agent: $AGENT"
         # Remember the first agent with a wrapper for later tests
-        if [ -z "$WRAPPER_AGENT_FOUND" ]; then
+        if [[ -z "$WRAPPER_AGENT_FOUND" ]]; then
             WRAPPER_AGENT_FOUND="$AGENT"
         fi
     else
@@ -242,7 +242,7 @@ done
 
 # Test: Wrapper function structure is self-contained (uses first available agent)
 test_header "Wrapper function is self-contained (survives shell snapshots)"
-if [ -n "$WRAPPER_AGENT_FOUND" ]; then
+if [[ -n "$WRAPPER_AGENT_FOUND" ]]; then
     # The wrapper should contain all logic inline, not call external helper functions
     WRAPPER_DEF=$(test_agr_sh "declare -f $WRAPPER_AGENT_FOUND 2>/dev/null")
     # Check for key components that make wrapper self-contained
@@ -302,7 +302,7 @@ run_with_timeout 30 bash -c "
     source \"\$HOME/$SHELL_RC\" && mock-agent test-arg
 " </dev/null
 AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
-if [ "$AFTER_COUNT" -gt "$BEFORE_COUNT" ]; then
+if [[ "$AFTER_COUNT" -gt "$BEFORE_COUNT" ]]; then
     pass "Wrapper invoked agr record and created recording"
 else
     fail "Wrapper did not create recording (before=$BEFORE_COUNT, after=$AFTER_COUNT)"
@@ -319,7 +319,7 @@ BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null 
     bash -c "source '$HOME/$SHELL_RC' && mock-agent skip-test" </dev/null 2>/dev/null
 )
 AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
-if [ "$AFTER_COUNT" -eq "$BEFORE_COUNT" ]; then
+if [[ "$AFTER_COUNT" -eq "$BEFORE_COUNT" ]]; then
     pass "Wrapper skipped recording when ASCIINEMA_REC is set"
 else
     fail "Wrapper recorded even when ASCIINEMA_REC was set"
@@ -337,7 +337,7 @@ BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null 
     bash -c "source '$HOME/$SHELL_RC' && mock-agent nowrap-test" </dev/null 2>/dev/null
 )
 AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
-if [ "$AFTER_COUNT" -eq "$BEFORE_COUNT" ]; then
+if [[ "$AFTER_COUNT" -eq "$BEFORE_COUNT" ]]; then
     pass "Wrapper respects no_wrap list (no recording created)"
 else
     fail "Wrapper ignored no_wrap list and created recording"
@@ -378,7 +378,7 @@ $AGR agents remove test-wrapper-agent 2>/dev/null || true
 $AGR agents remove mock-agent 2>/dev/null || true
 
 # Print summary when running standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     print_summary
     exit $?
 fi

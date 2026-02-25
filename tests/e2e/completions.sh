@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Check prerequisites when running standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     check_prerequisites || exit 1
     section "AGR Completions Tests"
     echo "Test directory: $TEST_DIR"
@@ -160,7 +160,7 @@ touch "$BASH_COMP_PATH" "$ZSH_COMP_PATH"
 $AGR shell uninstall 2>&1
 
 # Old completion files should be removed, and RC file should not contain AGR markers
-if [ ! -f "$BASH_COMP_PATH" ] && [ ! -f "$ZSH_COMP_PATH" ] && ! /usr/bin/grep -q "AGR" "$HOME/.zshrc"; then
+if [[ ! -f "$BASH_COMP_PATH" ]] && [[ ! -f "$ZSH_COMP_PATH" ]] && ! /usr/bin/grep -q "AGR" "$HOME/.zshrc"; then
     pass "shell uninstall cleans up old files and RC markers"
 else
     fail "shell uninstall did not clean up properly"
@@ -190,7 +190,7 @@ fi
 $AGR shell uninstall 2>/dev/null || true
 
 # Print summary when running standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     print_summary
     exit $?
 fi
