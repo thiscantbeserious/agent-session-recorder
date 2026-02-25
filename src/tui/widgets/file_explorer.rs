@@ -1102,6 +1102,8 @@ impl Widget for FileExplorerWidget<'_> {
 ///
 /// Handles both `selected_all` mode (entire text highlighted) and normal edit mode
 /// with a block cursor rendered at the byte position `cursor` within `input`.
+///
+/// `cursor` is clamped to a valid UTF-8 boundary to prevent panics on caller error.
 fn build_rename_item_spans<'a>(
     input: &'a str,
     cursor: usize,
@@ -1110,6 +1112,19 @@ fn build_rename_item_spans<'a>(
     size_str: &str,
     theme: &crate::theme::Theme,
 ) -> Vec<Span<'a>> {
+    // Clamp cursor to valid UTF-8 boundary to prevent panic on caller error
+    let cursor = cursor.min(input.len());
+    let cursor = if input.is_char_boundary(cursor) {
+        cursor
+    } else {
+        input
+            .char_indices()
+            .map(|(idx, _)| idx)
+            .take_while(|&idx| idx < cursor)
+            .last()
+            .unwrap_or(0)
+    };
+
     let cursor_style = theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
     let mut spans: Vec<Span<'a>> = vec![];
 
@@ -1852,6 +1867,32 @@ mod tests {
         assert!(spans.iter().any(|s| s.content == "é"));
         // after is "llo"
         assert!(spans.iter().any(|s| s.content == "llo"));
+    }
+
+    /// cursor beyond end of string: clamped to end, no panic.
+    #[test]
+    fn rename_spans_cursor_beyond_end_does_not_panic() {
+        let theme = test_theme();
+        let input = "hi";
+        // cursor=999 is way beyond the end; must be clamped to len()=2
+        let spans = build_rename_item_spans(input, 999, false, "ag", "0 B", &theme);
+        // Should behave like cursor-at-end: "hi" before, "." cursor block, "cast" suffix
+        assert!(spans.iter().any(|s| s.content == "hi"));
+        assert!(spans.iter().any(|s| s.content == "."));
+        assert!(spans.iter().any(|s| s.content == "cast"));
+    }
+
+    /// cursor inside a multi-byte UTF-8 char (not on a boundary): snapped back
+    /// to the preceding valid boundary, no panic.
+    #[test]
+    fn rename_spans_cursor_mid_multibyte_snaps_to_boundary() {
+        let theme = test_theme();
+        // 'é' occupies bytes 1..3; passing cursor=2 (middle of 'é') must not panic
+        let input = "héllo";
+        let spans = build_rename_item_spans(input, 2, false, "ag", "0 B", &theme);
+        // Snapped back to byte 1 (start of 'é'), so "h" is before and "é" is the cursor char
+        assert!(spans.iter().any(|s| s.content == "h"));
+        assert!(spans.iter().any(|s| s.content == "é"));
     }
 
     // -------------------------------------------------------------------------
