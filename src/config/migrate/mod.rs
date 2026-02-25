@@ -242,15 +242,15 @@ fn reassemble_toml(preamble: &str, sorted_blocks: &[&(String, String)]) -> Strin
     result
 }
 
-/// Append the separator needed so that `result` ends with exactly two newlines.
+/// Enforce the blank-line separator invariant: `result` ends with exactly two newlines.
+///
+/// Trims any excess trailing newlines down to one, then appends one more so the
+/// result always ends with `\n\n` (one blank line before the next block).
 fn ensure_blank_line_separator(result: &mut String) {
-    if !result.ends_with("\n\n") {
-        if result.ends_with('\n') {
-            result.push('\n');
-        } else {
-            result.push_str("\n\n");
-        }
-    }
+    let trimmed = result.trim_end_matches('\n');
+    let new_len = trimmed.len();
+    result.truncate(new_len);
+    result.push_str("\n\n");
 }
 
 /// Extract section name from a TOML header line like `[section]` or `[section.sub]`.
@@ -900,6 +900,45 @@ extra_args = ["--model", "gpt-5.2-codex"]
         let mut s = String::new();
         ensure_blank_line_separator(&mut s);
         assert_eq!(s, "\n\n");
+    }
+
+    #[test]
+    fn ensure_blank_line_separator_triple_newline_collapses_to_double() {
+        let mut s = "hello\n\n\n".to_string();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "hello\n\n");
+    }
+
+    #[test]
+    fn ensure_blank_line_separator_many_newlines_collapses_to_double() {
+        let mut s = "hello\n\n\n\n".to_string();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "hello\n\n");
+    }
+
+    #[test]
+    fn reassemble_toml_block_with_trailing_newlines_produces_single_blank_line() {
+        // If block text itself ends with extra newlines, the output must not have triple newlines
+        let blocks = vec![
+            (
+                "shell".to_string(),
+                "[shell]\nauto_wrap = true\n\n".to_string(),
+            ),
+            (
+                "storage".to_string(),
+                "[storage]\ndirectory = \"~/r\"".to_string(),
+            ),
+        ];
+        let refs: Vec<&(String, String)> = blocks.iter().collect();
+        let result = reassemble_toml("", &refs);
+        assert!(
+            !result.contains("\n\n\n"),
+            "must not contain triple newline"
+        );
+        assert!(
+            result.contains("\n\n[storage]"),
+            "must have single blank line between blocks"
+        );
     }
 
     // -----------------------------------------------------------------------
