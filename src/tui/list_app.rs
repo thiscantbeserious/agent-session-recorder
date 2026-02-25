@@ -18,11 +18,13 @@ use ratatui::{
 
 use super::app::layout::build_explorer_layout;
 use super::app::list_view::{render_explorer_list, render_explorer_list_with_rename};
-use super::app::modals;
+use super::app::modals::{
+    self, help_close_hint, help_section_header, help_shortcut_line, help_title_line,
+    render_help_paragraph,
+};
 use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
-use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
+use super::app::{classify_confirm_key, App, ConfirmAction, SharedMode, SharedState, TuiApp};
 use super::import;
-use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::{FileExplorer, FileItem};
 use crate::asciicast::{apply_transforms, TransformResult};
 use crate::config::Config;
@@ -223,62 +225,43 @@ impl ListApp {
     /// (`/`, `f`, `?`) are handled by `handle_shared_key`. This only
     /// handles app-specific keys: Enter, shortcuts, and Esc.
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Guard: keys that require an unlocked session
+        let needs_unlock = matches!(
+            key.code,
+            KeyCode::Enter
+                | KeyCode::Char('p')
+                | KeyCode::Char('t')
+                | KeyCode::Char('a')
+                | KeyCode::Char('r')
+                | KeyCode::Char('d')
+        );
+        if needs_unlock && self.redirect_if_locked() {
+            return Ok(());
+        }
+
         match key.code {
-            // Actions
             KeyCode::Enter => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
                 if self.shared.explorer.selected_item().is_some() {
                     self.context_menu_idx = 0;
                     self.mode = Mode::ContextMenu;
                 }
             }
-
-            // Direct shortcuts (bypass context menu)
-            KeyCode::Char('p') => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
-                self.play_session()?;
-            }
+            KeyCode::Char('p') => self.play_session()?,
             KeyCode::Char('c') => self.copy_to_clipboard()?,
-            KeyCode::Char('t') => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
-                self.optimize_session()?;
-            }
-            KeyCode::Char('a') => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
-                self.analyze_session()?;
-            }
-            KeyCode::Char('r') => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
-                self.enter_rename_mode();
-            }
+            KeyCode::Char('t') => self.optimize_session()?,
+            KeyCode::Char('a') => self.analyze_session()?,
+            KeyCode::Char('r') => self.enter_rename_mode(),
             KeyCode::Char('d') => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
                 if self.shared.explorer.selected_item().is_some() {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
-            // Clear filters
             KeyCode::Esc => {
                 self.shared.explorer.clear_filters();
                 self.shared.search_input.clear();
                 self.shared.agent_filter_idx = 0;
             }
-
-            // Quit
             KeyCode::Char('q') => self.app.quit(),
-
             _ => {}
         }
         Ok(())
@@ -286,29 +269,23 @@ impl ListApp {
 
     /// Handle keys in confirm delete mode (first confirmation).
     fn handle_confirm_delete_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                self.mode = Mode::ConfirmDeleteFinal;
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+        match classify_confirm_key(&key) {
+            ConfirmAction::Confirmed => self.mode = Mode::ConfirmDeleteFinal,
+            ConfirmAction::Cancelled => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
 
     /// Handle keys in final delete confirmation ("Are you sure?").
     fn handle_confirm_delete_final_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
+        match classify_confirm_key(&key) {
+            ConfirmAction::Confirmed => {
                 self.delete_session()?;
                 self.mode = Mode::Normal;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+            ConfirmAction::Cancelled => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
@@ -407,14 +384,10 @@ impl ListApp {
 
     /// Handle keys in confirm unlock mode (first confirmation).
     fn handle_confirm_unlock_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                self.mode = Mode::ConfirmUnlockFinal;
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+        match classify_confirm_key(&key) {
+            ConfirmAction::Confirmed => self.mode = Mode::ConfirmUnlockFinal,
+            ConfirmAction::Cancelled => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
@@ -431,15 +404,13 @@ impl ListApp {
 
     /// Handle keys in final unlock confirmation ("Are you sure?").
     fn handle_confirm_unlock_final_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
+        match classify_confirm_key(&key) {
+            ConfirmAction::Confirmed => {
                 self.remove_selected_lock();
                 self.mode = Mode::Normal;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+            ConfirmAction::Cancelled => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
@@ -947,126 +918,36 @@ impl ListApp {
     /// Render the help modal overlay.
     /// Public for snapshot testing.
     pub fn render_help_modal(frame: &mut Frame, area: Rect) {
-        let theme = current_theme();
-
-        // Center the modal
-        let modal_width = 60.min(area.width.saturating_sub(4));
-        let modal_height = 31.min(area.height.saturating_sub(2));
-        let x = (area.width - modal_width) / 2;
-        let y = (area.height - modal_height) / 2;
-        let modal_area = Rect::new(x, y, modal_width, modal_height);
-
-        // Clear the area behind the modal
-        frame.render_widget(Clear, modal_area);
-
+        let accent = current_theme().accent;
         let help_text = vec![
-            Line::from(Span::styled(
-                "Keyboard Shortcuts",
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            )),
+            help_title_line("Keyboard Shortcuts", accent),
             Line::from(""),
-            // Navigation section
-            Line::from(Span::styled(
-                "Navigation",
-                Style::default().fg(theme.text_secondary),
-            )),
-            Line::from(vec![
-                Span::styled("  ↑/↓ j/k", Style::default().fg(theme.accent)),
-                Span::raw("    Navigate"),
-            ]),
-            Line::from(vec![
-                Span::styled("  PgUp/Dn", Style::default().fg(theme.accent)),
-                Span::raw("    Page up/down"),
-            ]),
-            Line::from(vec![
-                Span::styled("  Home/End", Style::default().fg(theme.accent)),
-                Span::raw("   First/last"),
-            ]),
+            help_section_header("Navigation"),
+            help_shortcut_line("  ↑/↓ j/k", "    Navigate", accent),
+            help_shortcut_line("  PgUp/Dn", "    Page up/down", accent),
+            help_shortcut_line("  Home/End", "   First/last", accent),
             Line::from(""),
-            // Actions section
-            Line::from(Span::styled(
-                "Actions",
-                Style::default().fg(theme.text_secondary),
-            )),
-            Line::from(vec![
-                Span::styled("  Enter", Style::default().fg(theme.accent)),
-                Span::raw("       Context menu"),
-            ]),
-            Line::from(vec![
-                Span::styled("  p", Style::default().fg(theme.accent)),
-                Span::raw("           Play session"),
-            ]),
-            Line::from(vec![
-                Span::styled("  c", Style::default().fg(theme.accent)),
-                Span::raw("           Copy to clipboard"),
-            ]),
-            Line::from(vec![
-                Span::styled("  r", Style::default().fg(theme.accent)),
-                Span::raw("           Rename session"),
-            ]),
-            Line::from(vec![
-                Span::styled("  t", Style::default().fg(theme.accent)),
-                Span::raw("           Optimize (removes silence)"),
-            ]),
-            Line::from(vec![
-                Span::styled("  a", Style::default().fg(theme.accent)),
-                Span::raw("           Analyze session"),
-            ]),
-            Line::from(vec![
-                Span::styled("  d", Style::default().fg(theme.accent)),
-                Span::raw("           Delete session"),
-            ]),
-            Line::from(vec![
-                Span::styled("  Paste", Style::default().fg(theme.accent)),
-                Span::raw("       Import .cast file(s)"),
-            ]),
+            help_section_header("Actions"),
+            help_shortcut_line("  Enter", "       Context menu", accent),
+            help_shortcut_line("  p", "           Play session", accent),
+            help_shortcut_line("  c", "           Copy to clipboard", accent),
+            help_shortcut_line("  r", "           Rename session", accent),
+            help_shortcut_line("  t", "           Optimize (removes silence)", accent),
+            help_shortcut_line("  a", "           Analyze session", accent),
+            help_shortcut_line("  d", "           Delete session", accent),
+            help_shortcut_line("  Paste", "       Import .cast file(s)", accent),
             Line::from(""),
-            // Filter section
-            Line::from(Span::styled(
-                "Filtering",
-                Style::default().fg(theme.text_secondary),
-            )),
-            Line::from(vec![
-                Span::styled("  /", Style::default().fg(theme.accent)),
-                Span::raw("           Search by filename"),
-            ]),
-            Line::from(vec![
-                Span::styled("  f", Style::default().fg(theme.accent)),
-                Span::raw("           Filter by agent"),
-            ]),
-            Line::from(vec![
-                Span::styled("  Esc", Style::default().fg(theme.accent)),
-                Span::raw("         Clear filters"),
-            ]),
+            help_section_header("Filtering"),
+            help_shortcut_line("  /", "           Search by filename", accent),
+            help_shortcut_line("  f", "           Filter by agent", accent),
+            help_shortcut_line("  Esc", "         Clear filters", accent),
             Line::from(""),
-            // Other section
-            Line::from(vec![
-                Span::styled("  ?", Style::default().fg(theme.accent)),
-                Span::raw("           This help"),
-            ]),
-            Line::from(vec![
-                Span::styled("  q", Style::default().fg(theme.accent)),
-                Span::raw("           Quit"),
-            ]),
+            help_shortcut_line("  ?", "           This help", accent),
+            help_shortcut_line("  q", "           Quit", accent),
             Line::from(""),
-            Line::from(Span::styled(
-                "Press any key to close",
-                Style::default().fg(theme.text_secondary),
-            )),
+            help_close_hint(),
         ];
-
-        let help = Paragraph::new(help_text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.accent))
-                    .title(" Help "),
-            )
-            .wrap(Wrap { trim: false });
-
-        frame.render_widget(help, modal_area);
+        render_help_paragraph(frame, area, "Help", help_text, 60, 31);
     }
 
     /// Render the context menu modal overlay.
@@ -1426,20 +1307,15 @@ impl TuiApp for ListApp {
         Ok(())
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
-        // Try shared key handling first (navigation, search, agent filter, help)
-        if let Some(shared_mode) = self.mode.to_shared() {
-            match handle_shared_key(&shared_mode, key, &mut self.shared) {
-                KeyResult::Consumed => return Ok(()),
-                KeyResult::EnterMode(m) => {
-                    self.mode = Mode::from_shared(m);
-                    return Ok(());
-                }
-                KeyResult::NotConsumed => {}
-            }
-        }
+    fn current_shared_mode(&self) -> Option<SharedMode> {
+        self.mode.to_shared()
+    }
 
-        // Handle app-specific modes
+    fn set_mode_from_shared(&mut self, mode: SharedMode) {
+        self.mode = Mode::from_shared(mode);
+    }
+
+    fn handle_app_key(&mut self, key: KeyEvent) -> Result<()> {
         match self.mode {
             Mode::Normal => self.handle_normal_key(key)?,
             Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
@@ -1456,15 +1332,9 @@ impl TuiApp for ListApp {
     }
 
     fn draw(&mut self) -> Result<()> {
-        // Get terminal size for page calculations
+        // Prepare draw: update page size, poll cache, prefetch adjacent previews
         let (_, height) = self.app.size()?;
-        self.shared
-            .explorer
-            .set_page_size((height.saturating_sub(6)) as usize);
-
-        // Poll cache for completed loads and request prefetch
-        self.shared.preview_cache.poll();
-        prefetch_adjacent_previews(&self.shared.explorer, &mut self.shared.preview_cache);
+        self.shared.prepare_draw(height);
 
         // Extract shared fields into local variables before closure
         let explorer = &mut self.shared.explorer;
@@ -1583,6 +1453,17 @@ fn menu_item_style(is_selected: bool, is_disabled: bool, theme: &crate::theme::T
     }
 }
 
+/// Return the confirm-dialog prompt prefix for a mode, or None if the mode is not a confirm mode.
+fn confirm_prompt_for_mode(mode: Mode) -> Option<&'static str> {
+    match mode {
+        Mode::ConfirmDelete => Some("🗑  Delete? "),
+        Mode::ConfirmUnlock => Some("🔓 Force unlock? "),
+        Mode::ConfirmDeleteFinal => Some("🗑  Are you sure? "),
+        Mode::ConfirmUnlockFinal => Some("🔓 Are you sure? "),
+        _ => None,
+    }
+}
+
 /// Render the status line for the current mode.
 ///
 /// Free function (not a method) because `self.app.draw` holds a mutable borrow of `app`
@@ -1603,6 +1484,12 @@ fn render_status_line_for_mode(
     explorer: &mut FileExplorer,
     selected_name: &str,
 ) {
+    // Guard: all confirm-dialog modes share the same "(y/n) — name" pattern
+    if let Some(prompt) = confirm_prompt_for_mode(mode) {
+        render_input_line(frame, area, prompt, &format!("(y/n) — {}", selected_name));
+        return;
+    }
+
     match mode {
         Mode::Search => {
             let value = format!("{}_", search_input);
@@ -1634,38 +1521,6 @@ fn render_status_line_for_mode(
                 blink,
             );
             frame.render_widget(Paragraph::new(Line::from(spans)), area);
-        }
-        Mode::ConfirmDelete => {
-            render_input_line(
-                frame,
-                area,
-                "🗑  Delete? ",
-                &format!("(y/n) — {}", selected_name),
-            );
-        }
-        Mode::ConfirmUnlock => {
-            render_input_line(
-                frame,
-                area,
-                "🔓 Force unlock? ",
-                &format!("(y/n) — {}", selected_name),
-            );
-        }
-        Mode::ConfirmDeleteFinal => {
-            render_input_line(
-                frame,
-                area,
-                "🗑  Are you sure? ",
-                &format!("(y/n) — {}", selected_name),
-            );
-        }
-        Mode::ConfirmUnlockFinal => {
-            render_input_line(
-                frame,
-                area,
-                "🔓 Are you sure? ",
-                &format!("(y/n) — {}", selected_name),
-            );
         }
         Mode::ContextMenu | Mode::OptimizeResult => {
             render_status_line(frame, area, selected_name);

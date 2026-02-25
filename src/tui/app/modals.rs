@@ -211,6 +211,66 @@ pub fn render_confirm_unlock_modal(
     frame.render_widget(confirm, modal_area);
 }
 
+/// Build a styled title line for a help modal.
+pub fn help_title_line(title: &str, accent: ratatui::style::Color) -> Line<'static> {
+    Line::from(Span::styled(
+        title.to_string(),
+        Style::default().fg(accent).add_modifier(Modifier::BOLD),
+    ))
+}
+
+/// Build the "Press any key to close" hint line.
+pub fn help_close_hint() -> Line<'static> {
+    let theme = current_theme();
+    Line::from(Span::styled(
+        "Press any key to close".to_string(),
+        Style::default().fg(theme.text_secondary),
+    ))
+}
+
+/// Build a shortcut line: styled key + raw description.
+pub fn help_shortcut_line(
+    key: &str,
+    description: &str,
+    accent: ratatui::style::Color,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(key.to_string(), Style::default().fg(accent)),
+        Span::raw(description.to_string()),
+    ])
+}
+
+/// Build a section header line (bold text).
+pub fn help_section_header(text: &str) -> Line<'static> {
+    Line::from(vec![Span::styled(
+        text.to_string(),
+        Style::default().add_modifier(Modifier::BOLD),
+    )])
+}
+
+/// Render a help modal with the given title, lines, width, and height.
+pub fn render_help_paragraph(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    lines: Vec<Line<'_>>,
+    width: u16,
+    height: u16,
+) {
+    let theme = current_theme();
+    let modal_area = center_modal(area, width, height);
+    frame.render_widget(Clear, modal_area);
+    let help = ratatui::widgets::Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.accent))
+                .title(format!(" {} ", title)),
+        )
+        .wrap(ratatui::widgets::Wrap { trim: false });
+    frame.render_widget(help, modal_area);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
