@@ -7,20 +7,16 @@ use std::time::Duration;
 
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
-use ratatui::{
-    layout::Rect,
-    style::{Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
-};
+use ratatui::{layout::Rect, text::Line, Frame};
 
 use super::app::layout::build_explorer_layout;
 use super::app::list_view::render_explorer_list;
-use super::app::modals;
+use super::app::modals::{
+    self, help_close_hint, help_section_header, help_shortcut_line, help_title_line,
+    render_help_paragraph,
+};
 use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
-use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
-use super::widgets::preview::prefetch_adjacent_previews;
+use super::app::{classify_confirm_key, App, ConfirmAction, SharedMode, SharedState, TuiApp};
 use super::widgets::FileItem;
 use crate::config::Config;
 use crate::theme::current_theme;
@@ -249,29 +245,23 @@ impl CleanupApp {
 
     /// Handle keys in confirm delete mode (first confirmation).
     fn handle_confirm_delete_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                self.mode = Mode::ConfirmDeleteFinal;
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+        match classify_confirm_key(&key) {
+            ConfirmAction::Confirmed => self.mode = Mode::ConfirmDeleteFinal,
+            ConfirmAction::Cancelled => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
 
     /// Handle keys in final delete confirmation ("Are you sure?").
     fn handle_confirm_delete_final_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
+        match classify_confirm_key(&key) {
+            ConfirmAction::Confirmed => {
                 self.delete_selected()?;
                 self.mode = Mode::Normal;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+            ConfirmAction::Cancelled => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
@@ -328,101 +318,43 @@ impl CleanupApp {
     /// Render the help modal overlay.
     fn render_help_modal(frame: &mut Frame, area: Rect) {
         let theme = current_theme();
-
-        // Center the modal
-        let modal_width = 65.min(area.width.saturating_sub(4));
-        let modal_height = 20.min(area.height.saturating_sub(4));
-        let x = (area.width - modal_width) / 2;
-        let y = (area.height - modal_height) / 2;
-        let modal_area = Rect::new(x, y, modal_width, modal_height);
-
-        // Clear the area behind the modal
-        frame.render_widget(Clear, modal_area);
-
+        let accent = theme.accent;
         let help_text = vec![
-            Line::from(Span::styled(
-                "Cleanup Keyboard Shortcuts",
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            )),
+            help_title_line("Cleanup Keyboard Shortcuts", accent),
             Line::from(""),
-            Line::from(vec![Span::styled(
-                "Navigation",
-                Style::default().add_modifier(Modifier::BOLD),
-            )]),
-            Line::from(vec![
-                Span::styled("  up/down, j/k", Style::default().fg(theme.accent)),
-                Span::raw("   Move cursor"),
-            ]),
-            Line::from(vec![
-                Span::styled("  PgUp/PgDn", Style::default().fg(theme.accent)),
-                Span::raw("      Page up/down"),
-            ]),
-            Line::from(vec![
-                Span::styled("  Home/End", Style::default().fg(theme.accent)),
-                Span::raw("       Go to first/last"),
-            ]),
+            help_section_header("Navigation"),
+            help_shortcut_line("  up/down, j/k", "   Move cursor", accent),
+            help_shortcut_line("  PgUp/PgDn", "      Page up/down", accent),
+            help_shortcut_line("  Home/End", "       Go to first/last", accent),
             Line::from(""),
-            Line::from(vec![Span::styled(
-                "Selection",
-                Style::default().add_modifier(Modifier::BOLD),
-            )]),
-            Line::from(vec![
-                Span::styled("  Space", Style::default().fg(theme.accent)),
-                Span::raw("          Toggle select current item"),
-            ]),
-            Line::from(vec![
-                Span::styled("  a", Style::default().fg(theme.accent)),
-                Span::raw("              Select all / Deselect all"),
-            ]),
-            Line::from(vec![
-                Span::styled("  g", Style::default().fg(theme.accent)),
-                Span::raw("              Glob select (e.g., *2024*, claude/*.cast)"),
-            ]),
+            help_section_header("Selection"),
+            help_shortcut_line("  Space", "          Toggle select current item", accent),
+            help_shortcut_line("  a", "              Select all / Deselect all", accent),
+            help_shortcut_line(
+                "  g",
+                "              Glob select (e.g., *2024*, claude/*.cast)",
+                accent,
+            ),
             Line::from(""),
-            Line::from(vec![Span::styled(
-                "Filtering",
-                Style::default().add_modifier(Modifier::BOLD),
-            )]),
-            Line::from(vec![
-                Span::styled("  /", Style::default().fg(theme.accent)),
-                Span::raw("              Search by filename"),
-            ]),
-            Line::from(vec![
-                Span::styled("  f", Style::default().fg(theme.accent)),
-                Span::raw("              Filter by agent"),
-            ]),
+            help_section_header("Filtering"),
+            help_shortcut_line("  /", "              Search by filename", accent),
+            help_shortcut_line("  f", "              Filter by agent", accent),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("  Enter", Style::default().fg(theme.error)),
-                Span::raw("          Delete selected (with confirmation)"),
-            ]),
-            Line::from(vec![
-                Span::styled("  Esc", Style::default().fg(theme.accent)),
-                Span::raw("            Clear selection / Clear filters"),
-            ]),
-            Line::from(vec![
-                Span::styled("  q", Style::default().fg(theme.accent)),
-                Span::raw("              Quit without deleting"),
-            ]),
+            help_shortcut_line(
+                "  Enter",
+                "          Delete selected (with confirmation)",
+                theme.error,
+            ),
+            help_shortcut_line(
+                "  Esc",
+                "            Clear selection / Clear filters",
+                accent,
+            ),
+            help_shortcut_line("  q", "              Quit without deleting", accent),
             Line::from(""),
-            Line::from(Span::styled(
-                "Press any key to close",
-                Style::default().fg(theme.text_secondary),
-            )),
+            help_close_hint(),
         ];
-
-        let help = Paragraph::new(help_text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.accent))
-                    .title(" Help "),
-            )
-            .wrap(Wrap { trim: false });
-
-        frame.render_widget(help, modal_area);
+        render_help_paragraph(frame, area, "Help", help_text, 65, 20);
     }
 
     /// Render the status line for the current mode.
@@ -536,20 +468,15 @@ impl TuiApp for CleanupApp {
         Ok(())
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
-        // Try shared key handling first (navigation, search, agent filter, help)
-        if let Some(shared_mode) = self.mode.to_shared() {
-            match handle_shared_key(&shared_mode, key, &mut self.shared) {
-                KeyResult::Consumed => return Ok(()),
-                KeyResult::EnterMode(m) => {
-                    self.mode = Mode::from_shared(m);
-                    return Ok(());
-                }
-                KeyResult::NotConsumed => {}
-            }
-        }
+    fn current_shared_mode(&self) -> Option<SharedMode> {
+        self.mode.to_shared()
+    }
 
-        // Handle app-specific modes
+    fn set_mode_from_shared(&mut self, mode: SharedMode) {
+        self.mode = Mode::from_shared(mode);
+    }
+
+    fn handle_app_key(&mut self, key: KeyEvent) -> Result<()> {
         match self.mode {
             Mode::Normal => self.handle_normal_key(key)?,
             Mode::GlobSelect => self.handle_glob_key(key)?,
@@ -561,15 +488,9 @@ impl TuiApp for CleanupApp {
     }
 
     fn draw(&mut self) -> Result<()> {
-        // Get terminal size for page calculations
+        // Prepare draw: update page size, poll cache, prefetch adjacent previews
         let (_, height) = self.app.size()?;
-        self.shared
-            .explorer
-            .set_page_size((height.saturating_sub(6)) as usize);
-
-        // Poll cache for completed loads and request prefetch
-        self.shared.preview_cache.poll();
-        prefetch_adjacent_previews(&self.shared.explorer, &mut self.shared.preview_cache);
+        self.shared.prepare_draw(height);
 
         // Extract shared fields into local variables before closure
         let explorer = &mut self.shared.explorer;

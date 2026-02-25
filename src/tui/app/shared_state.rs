@@ -118,6 +118,19 @@ impl SharedState {
         self.update_available_agents();
     }
 
+    /// Pre-draw setup: update page size, poll preview cache, prefetch adjacent previews.
+    ///
+    /// Call at the start of each app's `draw()` before extracting fields into locals.
+    pub fn prepare_draw(&mut self, terminal_height: u16) {
+        self.explorer
+            .set_page_size((terminal_height.saturating_sub(6)) as usize);
+        self.preview_cache.poll();
+        crate::tui::widgets::preview::prefetch_adjacent_previews(
+            &self.explorer,
+            &mut self.preview_cache,
+        );
+    }
+
     /// Rebuild the available agents list from the current explorer items.
     ///
     /// Called after merging fresh items so new agents appear in the filter.

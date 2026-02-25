@@ -11,7 +11,9 @@ pub mod shared_state;
 pub mod status_footer;
 
 // Re-exports for convenient access
-pub use keybindings::{handle_shared_key, KeyResult, SharedMode};
+pub use keybindings::{
+    classify_confirm_key, handle_shared_key, ConfirmAction, KeyResult, SharedMode,
+};
 pub use shared_state::SharedState;
 
 use std::io::{self, Stdout};
@@ -227,9 +229,10 @@ impl Drop for App {
 
 /// Trait for TUI explorer applications.
 ///
-/// Provides a shared event loop (`run`) and requires each app to implement
-/// its own key handling and drawing logic. Shared key handling and state
-/// are delegated to `SharedState` and `handle_shared_key()`.
+/// Provides a shared event loop (`run`) and a default `handle_key()` that
+/// dispatches shared modes first then falls through to `handle_app_key()`.
+/// Shared key handling and state are delegated to `SharedState` and
+/// `handle_shared_key()`.
 pub trait TuiApp {
     /// Access the terminal lifecycle manager.
     fn app(&mut self) -> &mut App;
@@ -237,8 +240,34 @@ pub trait TuiApp {
     /// Access the shared state (explorer, search, agent filter, etc.).
     fn shared_state(&mut self) -> &mut SharedState;
 
-    /// Handle a key event. Called from the default `run()` event loop.
-    fn handle_key(&mut self, key: KeyEvent) -> Result<()>;
+    /// Convert the app's current mode to a `SharedMode` for shared key dispatch.
+    ///
+    /// Return `None` for app-specific modes that bypass shared handling entirely.
+    fn current_shared_mode(&self) -> Option<SharedMode>;
+
+    /// Set the app's mode from a `SharedMode` transition returned by `handle_shared_key`.
+    fn set_mode_from_shared(&mut self, mode: SharedMode);
+
+    /// Handle app-specific key events after shared dispatch returns `NotConsumed`.
+    fn handle_app_key(&mut self, key: KeyEvent) -> Result<()>;
+
+    /// Handle a key event with shared dispatch.
+    ///
+    /// Tries shared key handling first (navigation, search, agent filter, help).
+    /// Falls through to `handle_app_key()` for app-specific modes.
+    fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
+        if let Some(shared_mode) = self.current_shared_mode() {
+            match handle_shared_key(&shared_mode, key, self.shared_state()) {
+                KeyResult::Consumed => return Ok(()),
+                KeyResult::EnterMode(m) => {
+                    self.set_mode_from_shared(m);
+                    return Ok(());
+                }
+                KeyResult::NotConsumed => {}
+            }
+        }
+        self.handle_app_key(key)
+    }
 
     /// Handle a mouse event. Default implementation provides scroll and click-to-select.
     /// Override in apps that need checkbox toggle on click (e.g. cleanup).
