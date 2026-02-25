@@ -5,15 +5,52 @@
 
 use ratatui::{
     layout::{Alignment, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use crate::theme::current_theme;
+
+/// Build a help shortcut line: styled key on the left, raw description on the right.
+///
+/// Used in help modals across both list_app and cleanup_app to avoid repeated
+/// `Line::from(vec![Span::styled(...), Span::raw(...)])` patterns.
+pub fn help_shortcut_line<'a>(key: &'a str, desc: &'a str, accent: Color) -> Line<'a> {
+    Line::from(vec![
+        Span::styled(key, Style::default().fg(accent)),
+        Span::raw(desc),
+    ])
+}
+
+/// Build a section header line for help modals.
+///
+/// Used to render bold section titles (e.g., "Navigation", "Actions") in help modals.
+pub fn help_section_header<'a>(title: &'a str, color: Color) -> Line<'a> {
+    Line::from(Span::styled(
+        title,
+        Style::default().fg(color).add_modifier(Modifier::BOLD),
+    ))
+}
+
+/// Render the help paragraph inside an already-computed modal area.
+///
+/// Applies the standard " Help " block with accent border and soft-wrap.
+pub fn render_help_paragraph(frame: &mut Frame, area: Rect, lines: Vec<Line<'_>>) {
+    let theme = crate::theme::current_theme();
+    let help = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.accent))
+                .title(" Help "),
+        )
+        .wrap(Wrap { trim: false });
+    frame.render_widget(help, area);
+}
 
 /// Result of clicking inside a confirm modal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

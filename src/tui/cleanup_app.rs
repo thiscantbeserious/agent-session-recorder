@@ -11,15 +11,19 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::Clear,
     Frame,
 };
 
 use super::app::layout::build_explorer_layout;
 use super::app::list_view::render_explorer_list;
 use super::app::modals;
+use super::app::modals::{help_section_header, help_shortcut_line, render_help_paragraph};
 use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
-use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
+use super::app::{
+    handle_confirm_key, handle_shared_key, App, ConfirmAction, KeyResult, SharedMode, SharedState,
+    TuiApp,
+};
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
 use crate::config::Config;
@@ -249,29 +253,23 @@ impl CleanupApp {
 
     /// Handle keys in confirm delete mode (first confirmation).
     fn handle_confirm_delete_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                self.mode = Mode::ConfirmDeleteFinal;
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+        match handle_confirm_key(&key) {
+            ConfirmAction::Confirm => self.mode = Mode::ConfirmDeleteFinal,
+            ConfirmAction::Cancel => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
 
     /// Handle keys in final delete confirmation ("Are you sure?").
     fn handle_confirm_delete_final_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
+        match handle_confirm_key(&key) {
+            ConfirmAction::Confirm => {
                 self.delete_selected()?;
                 self.mode = Mode::Normal;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+            ConfirmAction::Cancel => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
@@ -328,101 +326,55 @@ impl CleanupApp {
     /// Render the help modal overlay.
     fn render_help_modal(frame: &mut Frame, area: Rect) {
         let theme = current_theme();
-
-        // Center the modal
         let modal_width = 65.min(area.width.saturating_sub(4));
         let modal_height = 20.min(area.height.saturating_sub(4));
         let x = (area.width - modal_width) / 2;
         let y = (area.height - modal_height) / 2;
         let modal_area = Rect::new(x, y, modal_width, modal_height);
-
-        // Clear the area behind the modal
         frame.render_widget(Clear, modal_area);
 
+        let a = theme.accent;
+        let e = theme.error;
+        let s = theme.text_secondary;
         let help_text = vec![
             Line::from(Span::styled(
                 "Cleanup Keyboard Shortcuts",
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(a).add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from(vec![Span::styled(
-                "Navigation",
-                Style::default().add_modifier(Modifier::BOLD),
-            )]),
-            Line::from(vec![
-                Span::styled("  up/down, j/k", Style::default().fg(theme.accent)),
-                Span::raw("   Move cursor"),
-            ]),
-            Line::from(vec![
-                Span::styled("  PgUp/PgDn", Style::default().fg(theme.accent)),
-                Span::raw("      Page up/down"),
-            ]),
-            Line::from(vec![
-                Span::styled("  Home/End", Style::default().fg(theme.accent)),
-                Span::raw("       Go to first/last"),
-            ]),
+            help_section_header("Navigation", s),
+            help_shortcut_line("  up/down, j/k", "   Move cursor", a),
+            help_shortcut_line("  PgUp/PgDn", "      Page up/down", a),
+            help_shortcut_line("  Home/End", "       Go to first/last", a),
             Line::from(""),
-            Line::from(vec![Span::styled(
-                "Selection",
-                Style::default().add_modifier(Modifier::BOLD),
-            )]),
-            Line::from(vec![
-                Span::styled("  Space", Style::default().fg(theme.accent)),
-                Span::raw("          Toggle select current item"),
-            ]),
-            Line::from(vec![
-                Span::styled("  a", Style::default().fg(theme.accent)),
-                Span::raw("              Select all / Deselect all"),
-            ]),
-            Line::from(vec![
-                Span::styled("  g", Style::default().fg(theme.accent)),
-                Span::raw("              Glob select (e.g., *2024*, claude/*.cast)"),
-            ]),
+            help_section_header("Selection", s),
+            help_shortcut_line("  Space", "          Toggle select current item", a),
+            help_shortcut_line("  a", "              Select all / Deselect all", a),
+            help_shortcut_line(
+                "  g",
+                "              Glob select (e.g., *2024*, claude/*.cast)",
+                a,
+            ),
             Line::from(""),
-            Line::from(vec![Span::styled(
-                "Filtering",
-                Style::default().add_modifier(Modifier::BOLD),
-            )]),
-            Line::from(vec![
-                Span::styled("  /", Style::default().fg(theme.accent)),
-                Span::raw("              Search by filename"),
-            ]),
-            Line::from(vec![
-                Span::styled("  f", Style::default().fg(theme.accent)),
-                Span::raw("              Filter by agent"),
-            ]),
+            help_section_header("Filtering", s),
+            help_shortcut_line("  /", "              Search by filename", a),
+            help_shortcut_line("  f", "              Filter by agent", a),
             Line::from(""),
-            Line::from(vec![
-                Span::styled("  Enter", Style::default().fg(theme.error)),
-                Span::raw("          Delete selected (with confirmation)"),
-            ]),
-            Line::from(vec![
-                Span::styled("  Esc", Style::default().fg(theme.accent)),
-                Span::raw("            Clear selection / Clear filters"),
-            ]),
-            Line::from(vec![
-                Span::styled("  q", Style::default().fg(theme.accent)),
-                Span::raw("              Quit without deleting"),
-            ]),
+            help_shortcut_line(
+                "  Enter",
+                "          Delete selected (with confirmation)",
+                e,
+            ),
+            help_shortcut_line("  Esc", "            Clear selection / Clear filters", a),
+            help_shortcut_line("  q", "              Quit without deleting", a),
             Line::from(""),
             Line::from(Span::styled(
                 "Press any key to close",
-                Style::default().fg(theme.text_secondary),
+                Style::default().fg(s),
             )),
         ];
 
-        let help = Paragraph::new(help_text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.accent))
-                    .title(" Help "),
-            )
-            .wrap(Wrap { trim: false });
-
-        frame.render_widget(help, modal_area);
+        render_help_paragraph(frame, modal_area, help_text);
     }
 
     /// Render the status line for the current mode.

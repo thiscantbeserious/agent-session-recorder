@@ -14,6 +14,7 @@ use ratatui::{
 
 use super::super::app::{
     modals,
+    modals::{help_section_header, help_shortcut_line, render_help_paragraph},
     status_footer::{render_input_line, render_status_line},
 };
 use super::super::widgets::FileExplorer;
@@ -24,125 +25,51 @@ use crate::theme::current_theme;
 /// Public for snapshot testing.
 pub fn render_help_modal(frame: &mut Frame, area: Rect) {
     let theme = current_theme();
-
-    // Center the modal
     let modal_width = 60.min(area.width.saturating_sub(4));
     let modal_height = 31.min(area.height.saturating_sub(2));
     let x = (area.width - modal_width) / 2;
     let y = (area.height - modal_height) / 2;
     let modal_area = Rect::new(x, y, modal_width, modal_height);
-
-    // Clear the area behind the modal
     frame.render_widget(Clear, modal_area);
 
+    let a = theme.accent;
+    let s = theme.text_secondary;
     let help_text = vec![
         Line::from(Span::styled(
             "Keyboard Shortcuts",
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(a).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        // Navigation section
-        Line::from(Span::styled(
-            "Navigation",
-            Style::default().fg(theme.text_secondary),
-        )),
-        Line::from(vec![
-            Span::styled("  ↑/↓ j/k", Style::default().fg(theme.accent)),
-            Span::raw("    Navigate"),
-        ]),
-        Line::from(vec![
-            Span::styled("  PgUp/Dn", Style::default().fg(theme.accent)),
-            Span::raw("    Page up/down"),
-        ]),
-        Line::from(vec![
-            Span::styled("  Home/End", Style::default().fg(theme.accent)),
-            Span::raw("   First/last"),
-        ]),
+        help_section_header("Navigation", s),
+        help_shortcut_line("  ↑/↓ j/k", "    Navigate", a),
+        help_shortcut_line("  PgUp/Dn", "    Page up/down", a),
+        help_shortcut_line("  Home/End", "   First/last", a),
         Line::from(""),
-        // Actions section
-        Line::from(Span::styled(
-            "Actions",
-            Style::default().fg(theme.text_secondary),
-        )),
-        Line::from(vec![
-            Span::styled("  Enter", Style::default().fg(theme.accent)),
-            Span::raw("       Context menu"),
-        ]),
-        Line::from(vec![
-            Span::styled("  p", Style::default().fg(theme.accent)),
-            Span::raw("           Play session"),
-        ]),
-        Line::from(vec![
-            Span::styled("  c", Style::default().fg(theme.accent)),
-            Span::raw("           Copy to clipboard"),
-        ]),
-        Line::from(vec![
-            Span::styled("  r", Style::default().fg(theme.accent)),
-            Span::raw("           Rename session"),
-        ]),
-        Line::from(vec![
-            Span::styled("  t", Style::default().fg(theme.accent)),
-            Span::raw("           Optimize (removes silence)"),
-        ]),
-        Line::from(vec![
-            Span::styled("  a", Style::default().fg(theme.accent)),
-            Span::raw("           Analyze session"),
-        ]),
-        Line::from(vec![
-            Span::styled("  d", Style::default().fg(theme.accent)),
-            Span::raw("           Delete session"),
-        ]),
-        Line::from(vec![
-            Span::styled("  Paste", Style::default().fg(theme.accent)),
-            Span::raw("       Import .cast file(s)"),
-        ]),
+        help_section_header("Actions", s),
+        help_shortcut_line("  Enter", "       Context menu", a),
+        help_shortcut_line("  p", "           Play session", a),
+        help_shortcut_line("  c", "           Copy to clipboard", a),
+        help_shortcut_line("  r", "           Rename session", a),
+        help_shortcut_line("  t", "           Optimize (removes silence)", a),
+        help_shortcut_line("  a", "           Analyze session", a),
+        help_shortcut_line("  d", "           Delete session", a),
+        help_shortcut_line("  Paste", "       Import .cast file(s)", a),
         Line::from(""),
-        // Filter section
-        Line::from(Span::styled(
-            "Filtering",
-            Style::default().fg(theme.text_secondary),
-        )),
-        Line::from(vec![
-            Span::styled("  /", Style::default().fg(theme.accent)),
-            Span::raw("           Search by filename"),
-        ]),
-        Line::from(vec![
-            Span::styled("  f", Style::default().fg(theme.accent)),
-            Span::raw("           Filter by agent"),
-        ]),
-        Line::from(vec![
-            Span::styled("  Esc", Style::default().fg(theme.accent)),
-            Span::raw("         Clear filters"),
-        ]),
+        help_section_header("Filtering", s),
+        help_shortcut_line("  /", "           Search by filename", a),
+        help_shortcut_line("  f", "           Filter by agent", a),
+        help_shortcut_line("  Esc", "         Clear filters", a),
         Line::from(""),
-        // Other section
-        Line::from(vec![
-            Span::styled("  ?", Style::default().fg(theme.accent)),
-            Span::raw("           This help"),
-        ]),
-        Line::from(vec![
-            Span::styled("  q", Style::default().fg(theme.accent)),
-            Span::raw("           Quit"),
-        ]),
+        help_shortcut_line("  ?", "           This help", a),
+        help_shortcut_line("  q", "           Quit", a),
         Line::from(""),
         Line::from(Span::styled(
             "Press any key to close",
-            Style::default().fg(theme.text_secondary),
+            Style::default().fg(s),
         )),
     ];
 
-    let help = Paragraph::new(help_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.accent))
-                .title(" Help "),
-        )
-        .wrap(Wrap { trim: false });
-
-    frame.render_widget(help, modal_area);
+    render_help_paragraph(frame, modal_area, help_text);
 }
 
 /// Render the context menu modal overlay.
@@ -360,6 +287,20 @@ pub(super) fn menu_item_style(
     }
 }
 
+/// Return the confirm-prompt prefix for a mode, if it is a confirm mode.
+///
+/// Consolidates the 4 confirm-mode arms so `render_status_line_for_mode` only
+/// needs a single guard instead of individual match arms.
+fn confirm_prompt(mode: Mode) -> Option<&'static str> {
+    match mode {
+        Mode::ConfirmDelete => Some("🗑  Delete? "),
+        Mode::ConfirmUnlock => Some("🔓 Force unlock? "),
+        Mode::ConfirmDeleteFinal => Some("🗑  Are you sure? "),
+        Mode::ConfirmUnlockFinal => Some("🔓 Are you sure? "),
+        _ => None,
+    }
+}
+
 /// Render the status line for the current mode.
 ///
 /// Free function (not a method) because `self.app.draw` holds a mutable borrow of `app`
@@ -380,6 +321,12 @@ pub(super) fn render_status_line_for_mode(
     explorer: &mut FileExplorer,
     selected_name: &str,
 ) {
+    // Confirm modes share the same rendering pattern — handle before the match.
+    if let Some(prefix) = confirm_prompt(mode) {
+        render_input_line(frame, area, prefix, &format!("(y/n) — {}", selected_name));
+        return;
+    }
+
     match mode {
         Mode::Search => {
             let value = format!("{}_", search_input);
@@ -411,38 +358,6 @@ pub(super) fn render_status_line_for_mode(
                 blink,
             );
             frame.render_widget(Paragraph::new(Line::from(spans)), area);
-        }
-        Mode::ConfirmDelete => {
-            render_input_line(
-                frame,
-                area,
-                "🗑  Delete? ",
-                &format!("(y/n) — {}", selected_name),
-            );
-        }
-        Mode::ConfirmUnlock => {
-            render_input_line(
-                frame,
-                area,
-                "🔓 Force unlock? ",
-                &format!("(y/n) — {}", selected_name),
-            );
-        }
-        Mode::ConfirmDeleteFinal => {
-            render_input_line(
-                frame,
-                area,
-                "🗑  Are you sure? ",
-                &format!("(y/n) — {}", selected_name),
-            );
-        }
-        Mode::ConfirmUnlockFinal => {
-            render_input_line(
-                frame,
-                area,
-                "🔓 Are you sure? ",
-                &format!("(y/n) — {}", selected_name),
-            );
         }
         Mode::ContextMenu | Mode::OptimizeResult => {
             render_status_line(frame, area, selected_name);

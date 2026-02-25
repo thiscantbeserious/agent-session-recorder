@@ -8,6 +8,30 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::shared_state::SharedState;
 
+/// Result of a yes/no confirmation key press.
+///
+/// Used by both list_app and cleanup_app confirm-delete/unlock handlers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfirmAction {
+    /// User pressed 'y' or 'Y'
+    Confirm,
+    /// User pressed 'n', 'N', or Esc
+    Cancel,
+    /// Any other key — ignore
+    Ignored,
+}
+
+/// Map a key event to a `ConfirmAction`.
+///
+/// Shared by both apps so the y/n/Esc mapping is defined once.
+pub fn handle_confirm_key(key: &KeyEvent) -> ConfirmAction {
+    match key.code {
+        KeyCode::Char('y') | KeyCode::Char('Y') => ConfirmAction::Confirm,
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => ConfirmAction::Cancel,
+        _ => ConfirmAction::Ignored,
+    }
+}
+
 /// Modes shared across all TUI explorer applications.
 ///
 /// Each app wraps these in its own `Mode` enum and adds
@@ -555,5 +579,50 @@ mod tests {
         );
         assert_eq!(result, KeyResult::Consumed);
         assert_eq!(state.agent_filter_idx, 1);
+    }
+
+    // --- handle_confirm_key tests ---
+
+    #[test]
+    fn confirm_key_y_returns_confirm() {
+        let result = handle_confirm_key(&key(KeyCode::Char('y')));
+        assert_eq!(result, ConfirmAction::Confirm);
+    }
+
+    #[test]
+    fn confirm_key_uppercase_y_returns_confirm() {
+        let result = handle_confirm_key(&key_with_shift(KeyCode::Char('Y')));
+        assert_eq!(result, ConfirmAction::Confirm);
+    }
+
+    #[test]
+    fn confirm_key_n_returns_cancel() {
+        let result = handle_confirm_key(&key(KeyCode::Char('n')));
+        assert_eq!(result, ConfirmAction::Cancel);
+    }
+
+    #[test]
+    fn confirm_key_uppercase_n_returns_cancel() {
+        let result = handle_confirm_key(&key_with_shift(KeyCode::Char('N')));
+        assert_eq!(result, ConfirmAction::Cancel);
+    }
+
+    #[test]
+    fn confirm_key_esc_returns_cancel() {
+        let result = handle_confirm_key(&key(KeyCode::Esc));
+        assert_eq!(result, ConfirmAction::Cancel);
+    }
+
+    #[test]
+    fn confirm_key_other_returns_ignored() {
+        let result = handle_confirm_key(&key(KeyCode::Char('x')));
+        assert_eq!(result, ConfirmAction::Ignored);
+    }
+
+    #[test]
+    fn confirm_action_equality() {
+        assert_eq!(ConfirmAction::Confirm, ConfirmAction::Confirm);
+        assert_ne!(ConfirmAction::Confirm, ConfirmAction::Cancel);
+        assert_ne!(ConfirmAction::Confirm, ConfirmAction::Ignored);
     }
 }

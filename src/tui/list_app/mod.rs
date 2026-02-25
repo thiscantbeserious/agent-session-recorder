@@ -16,7 +16,10 @@ use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind};
 use super::app::layout::build_explorer_layout;
 use super::app::list_view::{render_explorer_list, render_explorer_list_with_rename};
 use super::app::modals;
-use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
+use super::app::{
+    handle_confirm_key, handle_shared_key, App, ConfirmAction, KeyResult, SharedMode, SharedState,
+    TuiApp,
+};
 use super::import;
 use super::widgets::preview::prefetch_adjacent_previews;
 use super::widgets::FileItem;
@@ -217,62 +220,43 @@ impl ListApp {
     /// (`/`, `f`, `?`) are handled by `handle_shared_key`. This only
     /// handles app-specific keys: Enter, shortcuts, and Esc.
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Guard: lock-sensitive keys redirect to confirm-unlock when item is locked
+        let needs_unlock = matches!(
+            key.code,
+            KeyCode::Enter
+                | KeyCode::Char('p')
+                | KeyCode::Char('t')
+                | KeyCode::Char('a')
+                | KeyCode::Char('r')
+                | KeyCode::Char('d')
+        );
+        if needs_unlock && self.redirect_if_locked() {
+            return Ok(());
+        }
+
         match key.code {
-            // Actions
             KeyCode::Enter => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
                 if self.shared.explorer.selected_item().is_some() {
                     self.context_menu_idx = 0;
                     self.mode = Mode::ContextMenu;
                 }
             }
-
-            // Direct shortcuts (bypass context menu)
-            KeyCode::Char('p') => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
-                self.play_session()?;
-            }
+            KeyCode::Char('p') => self.play_session()?,
             KeyCode::Char('c') => self.copy_to_clipboard()?,
-            KeyCode::Char('t') => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
-                self.optimize_session()?;
-            }
-            KeyCode::Char('a') => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
-                self.analyze_session()?;
-            }
-            KeyCode::Char('r') => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
-                self.enter_rename_mode();
-            }
+            KeyCode::Char('t') => self.optimize_session()?,
+            KeyCode::Char('a') => self.analyze_session()?,
+            KeyCode::Char('r') => self.enter_rename_mode(),
             KeyCode::Char('d') => {
-                if self.redirect_if_locked() {
-                    return Ok(());
-                }
                 if self.shared.explorer.selected_item().is_some() {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
-            // Clear filters
             KeyCode::Esc => {
                 self.shared.explorer.clear_filters();
                 self.shared.search_input.clear();
                 self.shared.agent_filter_idx = 0;
             }
-
-            // Quit
             KeyCode::Char('q') => self.app.quit(),
-
             _ => {}
         }
         Ok(())
@@ -280,29 +264,23 @@ impl ListApp {
 
     /// Handle keys in confirm delete mode (first confirmation).
     fn handle_confirm_delete_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                self.mode = Mode::ConfirmDeleteFinal;
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+        match handle_confirm_key(&key) {
+            ConfirmAction::Confirm => self.mode = Mode::ConfirmDeleteFinal,
+            ConfirmAction::Cancel => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
 
     /// Handle keys in final delete confirmation ("Are you sure?").
     fn handle_confirm_delete_final_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
+        match handle_confirm_key(&key) {
+            ConfirmAction::Confirm => {
                 self.delete_session()?;
                 self.mode = Mode::Normal;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+            ConfirmAction::Cancel => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
@@ -401,14 +379,10 @@ impl ListApp {
 
     /// Handle keys in confirm unlock mode (first confirmation).
     fn handle_confirm_unlock_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                self.mode = Mode::ConfirmUnlockFinal;
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+        match handle_confirm_key(&key) {
+            ConfirmAction::Confirm => self.mode = Mode::ConfirmUnlockFinal,
+            ConfirmAction::Cancel => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
@@ -425,15 +399,13 @@ impl ListApp {
 
     /// Handle keys in final unlock confirmation ("Are you sure?").
     fn handle_confirm_unlock_final_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
+        match handle_confirm_key(&key) {
+            ConfirmAction::Confirm => {
                 self.remove_selected_lock();
                 self.mode = Mode::Normal;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+            ConfirmAction::Cancel => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
