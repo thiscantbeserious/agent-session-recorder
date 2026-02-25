@@ -61,10 +61,12 @@ run_tui_expect() {
         exit [lindex \$result 3]
     " 2>&1) && echo "0" > "$_TUI_EXIT_FILE" || echo "$?" > "$_TUI_EXIT_FILE"
     echo "$output"
+    return 0
 }
 
 tui_exit_code() {
     cat "$_TUI_EXIT_FILE"
+    return 0
 }
 
 # ============================================
