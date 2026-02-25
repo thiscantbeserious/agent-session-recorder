@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 # Check prerequisites when running standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     check_prerequisites || exit 1
     section "AGR Recording Tests"
     echo "Test directory: $TEST_DIR"
@@ -18,7 +18,7 @@ fi
 test_header "Record simple command"
 $AGR record echo -- "hello e2e test" </dev/null
 CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/head -1)
-if [ -f "$CAST_FILE" ]; then
+if [[ -f "$CAST_FILE" ]]; then
     pass "Recording created file"
 else
     fail "Recording did not create file"
@@ -26,7 +26,7 @@ fi
 
 # Test: Verify cast file is valid asciicast v3
 test_header "Verify asciicast v3 format"
-if [ -f "$CAST_FILE" ]; then
+if [[ -f "$CAST_FILE" ]]; then
     HEADER=$(/usr/bin/head -1 "$CAST_FILE")
     if echo "$HEADER" | /usr/bin/grep -q '"version":3'; then
         pass "Cast file has version 3 header"
@@ -39,7 +39,7 @@ fi
 
 # Test: Verify output was captured
 test_header "Verify output captured"
-if [ -f "$CAST_FILE" ]; then
+if [[ -f "$CAST_FILE" ]]; then
     if /usr/bin/grep -q "hello e2e test" "$CAST_FILE"; then
         pass "Output 'hello e2e test' captured in recording"
     else
@@ -72,7 +72,7 @@ fi
 test_header "Record with different agent"
 $AGR record ls -- -la </dev/null
 LS_CAST=$(ls "$HOME/recorded_agent_sessions/ls/"*.cast 2>/dev/null | /usr/bin/head -1)
-if [ -f "$LS_CAST" ]; then
+if [[ -f "$LS_CAST" ]]; then
     pass "Second recording with different agent created"
 else
     fail "Second recording not created"
@@ -82,7 +82,7 @@ fi
 test_header "Record with --name flag"
 $AGR record echo --name "my-custom-session" -- "test with name flag" </dev/null
 NAMED_CAST="$HOME/recorded_agent_sessions/echo/my-custom-session.cast"
-if [ -f "$NAMED_CAST" ]; then
+if [[ -f "$NAMED_CAST" ]]; then
     pass "Recording with --name flag created correct filename"
 else
     fail "Recording with --name flag did not create expected file"
@@ -110,7 +110,7 @@ fi
 
 # Test: Cast file has proper events structure
 test_header "Cast file event structure"
-if [ -f "$CAST_FILE" ]; then
+if [[ -f "$CAST_FILE" ]]; then
     # Check for output event format [time, "o", "data"]
     if /usr/bin/grep -E '^\[.*"o".*\]' "$CAST_FILE" >/dev/null; then
         pass "Cast file has proper output event structure"
@@ -122,7 +122,7 @@ else
 fi
 
 # Print summary when running standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     print_summary
     exit $?
 fi

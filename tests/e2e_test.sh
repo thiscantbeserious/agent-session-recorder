@@ -80,7 +80,7 @@ if grep -q "Error: file exists" "$E2E_LOG" 2>/dev/null; then
     CRITICAL_ERRORS=$((CRITICAL_ERRORS + 1))
 fi
 
-if [ $CRITICAL_ERRORS -gt 0 ]; then
+if [[ $CRITICAL_ERRORS -gt 0 ]]; then
     echo
     echo "Found $CRITICAL_ERRORS critical error(s) that indicate test infrastructure problems."
     FAIL=$((FAIL + CRITICAL_ERRORS))
@@ -93,7 +93,7 @@ echo "Passed: $PASS"
 echo "Failed: $FAIL"
 echo
 
-if [ $FAIL -gt 0 ]; then
+if [[ $FAIL -gt 0 ]]; then
     exit 1
 fi
 echo "All e2e tests passed!"

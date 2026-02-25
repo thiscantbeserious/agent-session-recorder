@@ -3,7 +3,7 @@
 # This file should be sourced by all category test files
 
 # Prevent multiple sourcing
-if [ -n "$_AGR_E2E_COMMON_SOURCED" ]; then
+if [[ -n "$_AGR_E2E_COMMON_SOURCED" ]]; then
     return 0
 fi
 _AGR_E2E_COMMON_SOURCED=1
@@ -26,7 +26,7 @@ fi
 export SHELL_RC
 
 # Test directory setup - create unique per job using PID and random suffix
-if [ -z "$_AGR_TEST_DIR_CREATED" ]; then
+if [[ -z "$_AGR_TEST_DIR_CREATED" ]]; then
     TEST_DIR=$(mktemp -d -t "agr-e2e-$$-XXXXXX")
     ORIGINAL_HOME="$HOME"
     export HOME="$TEST_DIR"
@@ -49,12 +49,12 @@ cleanup() {
 }
 
 # Only set trap if we're the main runner or standalone
-if [ -z "$_AGR_E2E_MAIN_RUNNER" ]; then
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     trap cleanup EXIT
 fi
 
 # Test counters - initialize only if not already set (for main runner aggregation)
-if [ -z "$_AGR_COUNTERS_INITIALIZED" ]; then
+if [[ -z "$_AGR_COUNTERS_INITIALIZED" ]]; then
     PASS=0
     FAIL=0
     _AGR_COUNTERS_INITIALIZED=1
@@ -86,7 +86,7 @@ check_prerequisites() {
         errors=1
     fi
 
-    if [ ! -x "$AGR" ]; then
+    if [[ ! -x "$AGR" ]]; then
         echo "ERROR: AGR binary not found at $AGR"
         echo "Run 'cargo build --release' first"
         errors=1
@@ -173,7 +173,7 @@ print_summary() {
     echo "Failed: $FAIL"
     echo
 
-    if [ $FAIL -gt 0 ]; then
+    if [[ $FAIL -gt 0 ]]; then
         return 1
     fi
     return 0
