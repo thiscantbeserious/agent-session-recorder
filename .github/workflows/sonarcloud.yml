@@ -32,3 +32,35 @@ jobs:
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Zero new issues check
+        if: github.event_name == 'pull_request'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          echo "Waiting for SonarCloud to finish processing..."
+          sleep 10
+
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          RESPONSE=$(curl -s -u "$SONAR_TOKEN:" \
+            "https://sonarcloud.io/api/issues/search?componentKeys=thiscantbeserious_agent-session-recorder&pullRequest=${PR_NUMBER}&issueStatuses=OPEN,CONFIRMED&sinceLeakPeriod=true&ps=1")
+
+          TOTAL=$(echo "$RESPONSE" | jq -r '.total')
+
+          if [ "$TOTAL" = "null" ] || [ -z "$TOTAL" ]; then
+            echo "::error::Failed to query SonarCloud API"
+            echo "Response: $RESPONSE"
+            exit 1
+          fi
+
+          echo "New issues on PR #${PR_NUMBER}: $TOTAL"
+
+          if [ "$TOTAL" -gt 0 ]; then
+            echo ""
+            echo "::error::SonarCloud found $TOTAL new issue(s) on this PR. All new issues must be resolved before merging."
+            echo ""
+            echo "View issues: https://sonarcloud.io/project/issues?id=thiscantbeserious_agent-session-recorder&pullRequest=${PR_NUMBER}&issueStatuses=OPEN,CONFIRMED&sinceLeakPeriod=true"
+            exit 1
+          fi
+
+          echo "No new issues — clean!"
