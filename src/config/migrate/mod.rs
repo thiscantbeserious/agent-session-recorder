@@ -162,12 +162,20 @@ fn sort_toml_text(text: &str) -> String {
         return text.to_string();
     }
 
-    // Preamble: everything before the first section header
     let preamble_end = headers[0].0;
+    let preamble = lines[..preamble_end].join("\n");
 
-    // Build section blocks: group consecutive headers that share a top-level group,
-    // and also merge non-consecutive sections with the same group.
-    // Each block is (group_name, text_content).
+    let blocks = collect_section_blocks(&headers, &lines);
+    let sorted_blocks = sort_blocks_by_order(&blocks);
+
+    reassemble_toml(&preamble, &sorted_blocks)
+}
+
+/// Build section blocks from headers, merging sub-sections into their parent group.
+///
+/// Returns `Vec<(group_name, block_text)>` where non-consecutive sections with
+/// the same top-level group are concatenated into a single block.
+fn collect_section_blocks(headers: &[(usize, String)], lines: &[&str]) -> Vec<(String, String)> {
     let mut blocks: Vec<(String, String)> = Vec::new();
     let mut seen_groups: Vec<String> = Vec::new();
 
@@ -180,7 +188,6 @@ fn sort_toml_text(text: &str) -> String {
 
         let block_text = lines[*start..end].join("\n");
 
-        // Append to existing block for this group, or create a new one
         if let Some(pos) = seen_groups.iter().position(|g| g == group) {
             blocks[pos].1.push('\n');
             blocks[pos].1.push_str(&block_text);
@@ -190,38 +197,41 @@ fn sort_toml_text(text: &str) -> String {
         }
     }
 
-    // Sort blocks: known sections in SECTION_ORDER, then unknowns in original order
-    let mut sorted_blocks: Vec<&(String, String)> = Vec::new();
+    blocks
+}
+
+/// Sort blocks so that known sections appear in `SECTION_ORDER`, unknowns follow in original order.
+fn sort_blocks_by_order(blocks: &[(String, String)]) -> Vec<&(String, String)> {
+    let mut sorted: Vec<&(String, String)> = Vec::new();
     for &section in SECTION_ORDER {
         if let Some(block) = blocks.iter().find(|(g, _)| g == section) {
-            sorted_blocks.push(block);
+            sorted.push(block);
         }
     }
-    for block in &blocks {
+    for block in blocks {
         if !SECTION_ORDER.contains(&block.0.as_str()) {
-            sorted_blocks.push(block);
+            sorted.push(block);
         }
     }
+    sorted
+}
 
-    // Reassemble
-    let preamble = lines[..preamble_end].join("\n");
+/// Reassemble preamble and sorted blocks into a single TOML string.
+///
+/// Ensures exactly one blank line between adjacent blocks and a trailing newline.
+fn reassemble_toml(preamble: &str, sorted_blocks: &[&(String, String)]) -> String {
     let mut result = String::new();
+
     if !preamble.is_empty() {
-        result.push_str(&preamble);
+        result.push_str(preamble);
         if !result.ends_with('\n') {
             result.push('\n');
         }
     }
+
     for (i, block) in sorted_blocks.iter().enumerate() {
         if i > 0 || !preamble.is_empty() {
-            // Ensure blank line between blocks (but don't double up)
-            if !result.ends_with("\n\n") {
-                if result.ends_with('\n') {
-                    result.push('\n');
-                } else {
-                    result.push_str("\n\n");
-                }
-            }
+            ensure_blank_line_separator(&mut result);
         }
         result.push_str(&block.1);
         if !result.ends_with('\n') {
@@ -230,6 +240,17 @@ fn sort_toml_text(text: &str) -> String {
     }
 
     result
+}
+
+/// Enforce the blank-line separator invariant: `result` ends with exactly two newlines.
+///
+/// Trims any excess trailing newlines down to one, then appends one more so the
+/// result always ends with `\n\n` (one blank line before the next block).
+fn ensure_blank_line_separator(result: &mut String) {
+    let trimmed = result.trim_end_matches('\n');
+    let new_len = trimmed.len();
+    result.truncate(new_len);
+    result.push_str("\n\n");
 }
 
 /// Extract section name from a TOML header line like `[section]` or `[section.sub]`.
@@ -694,6 +715,283 @@ extra_args = ["--model", "gpt-5.2-codex"]
         assert_eq!(result2.old_version, CURRENT_VERSION);
         assert!(result2.removed_fields.is_empty());
     }
+
+    // -----------------------------------------------------------------------
+    // collect_section_blocks
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn collect_section_blocks_empty_headers() {
+        let headers: Vec<(usize, String)> = vec![];
+        let lines: Vec<&str> = vec!["key = 1"];
+        let blocks = collect_section_blocks(&headers, &lines);
+        assert!(blocks.is_empty());
+    }
+
+    #[test]
+    fn collect_section_blocks_single_section() {
+        let lines = vec!["[shell]", "auto_wrap = true"];
+        let headers = vec![(0usize, "shell".to_string())];
+        let blocks = collect_section_blocks(&headers, &lines);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].0, "shell");
+        assert!(blocks[0].1.contains("auto_wrap = true"));
+    }
+
+    #[test]
+    fn collect_section_blocks_merges_non_consecutive_same_group() {
+        // [agents] then [shell] then [agents.claude] — the two agents blocks merge
+        let lines = vec![
+            "[agents]",
+            "enabled = []",
+            "[shell]",
+            "auto_wrap = true",
+            "[agents.claude]",
+            "extra_args = []",
+        ];
+        let headers = vec![
+            (0usize, "agents".to_string()),
+            (2usize, "shell".to_string()),
+            (4usize, "agents".to_string()),
+        ];
+        let blocks = collect_section_blocks(&headers, &lines);
+        // shell and agents are two unique groups
+        assert_eq!(blocks.len(), 2);
+        let agents_block = blocks.iter().find(|(g, _)| g == "agents").unwrap();
+        assert!(agents_block.1.contains("[agents]"));
+        assert!(agents_block.1.contains("[agents.claude]"));
+    }
+
+    // -----------------------------------------------------------------------
+    // sort_blocks_by_order
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn sort_blocks_by_order_canonical_order() {
+        let blocks = vec![
+            ("recording".to_string(), "r".to_string()),
+            ("shell".to_string(), "s".to_string()),
+            ("analysis".to_string(), "a".to_string()),
+        ];
+        let sorted = sort_blocks_by_order(&blocks);
+        assert_eq!(sorted[0].0, "shell");
+        assert_eq!(sorted[1].0, "recording");
+        assert_eq!(sorted[2].0, "analysis");
+    }
+
+    #[test]
+    fn sort_blocks_by_order_unknown_appended_after_known() {
+        let blocks = vec![
+            ("my_custom".to_string(), "c".to_string()),
+            ("shell".to_string(), "s".to_string()),
+        ];
+        let sorted = sort_blocks_by_order(&blocks);
+        assert_eq!(sorted[0].0, "shell");
+        assert_eq!(sorted[1].0, "my_custom");
+    }
+
+    #[test]
+    fn sort_blocks_by_order_only_unknowns_preserved_in_original_order() {
+        let blocks = vec![
+            ("zzz".to_string(), "z".to_string()),
+            ("aaa".to_string(), "a".to_string()),
+        ];
+        let sorted = sort_blocks_by_order(&blocks);
+        assert_eq!(sorted[0].0, "zzz");
+        assert_eq!(sorted[1].0, "aaa");
+    }
+
+    #[test]
+    fn sort_blocks_by_order_empty_input() {
+        let blocks: Vec<(String, String)> = vec![];
+        let sorted = sort_blocks_by_order(&blocks);
+        assert!(sorted.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // reassemble_toml
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn reassemble_toml_no_preamble() {
+        let blocks = vec![
+            ("shell".to_string(), "[shell]\nauto_wrap = true".to_string()),
+            (
+                "storage".to_string(),
+                "[storage]\ndirectory = \"~/r\"".to_string(),
+            ),
+        ];
+        let refs: Vec<&(String, String)> = blocks.iter().collect();
+        let result = reassemble_toml("", &refs);
+        // No leading blank line
+        assert!(result.starts_with("[shell]"));
+        // Blank line between blocks
+        assert!(result.contains("\n\n[storage]"));
+        // Trailing newline
+        assert!(result.ends_with('\n'));
+    }
+
+    #[test]
+    fn reassemble_toml_with_preamble() {
+        let preamble = "config_version = 2";
+        let blocks = vec![("shell".to_string(), "[shell]\nauto_wrap = true".to_string())];
+        let refs: Vec<&(String, String)> = blocks.iter().collect();
+        let result = reassemble_toml(preamble, &refs);
+        assert!(result.starts_with("config_version = 2"));
+        assert!(result.contains("\n\n[shell]"));
+        assert!(result.ends_with('\n'));
+    }
+
+    #[test]
+    fn reassemble_toml_multiple_blocks_single_blank_line_between_each() {
+        let blocks = vec![
+            ("shell".to_string(), "[shell]\nauto_wrap = true".to_string()),
+            (
+                "storage".to_string(),
+                "[storage]\ndirectory = \"~/r\"".to_string(),
+            ),
+            (
+                "recording".to_string(),
+                "[recording]\nauto_analyze = false".to_string(),
+            ),
+        ];
+        let refs: Vec<&(String, String)> = blocks.iter().collect();
+        let result = reassemble_toml("", &refs);
+        // Count occurrences of triple newline (should be zero — only double)
+        assert!(!result.contains("\n\n\n"));
+        assert_eq!(result.matches("\n\n").count(), 2);
+    }
+
+    #[test]
+    fn reassemble_toml_always_trailing_newline() {
+        let blocks = vec![("shell".to_string(), "[shell]\nauto_wrap = true".to_string())];
+        let refs: Vec<&(String, String)> = blocks.iter().collect();
+        let result = reassemble_toml("", &refs);
+        assert!(result.ends_with('\n'));
+    }
+
+    // -----------------------------------------------------------------------
+    // ensure_blank_line_separator
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn ensure_blank_line_separator_already_double_newline_unchanged() {
+        let mut s = "hello\n\n".to_string();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "hello\n\n");
+    }
+
+    #[test]
+    fn ensure_blank_line_separator_single_newline_gets_extra() {
+        let mut s = "hello\n".to_string();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "hello\n\n");
+    }
+
+    #[test]
+    fn ensure_blank_line_separator_no_newline_appends_double() {
+        let mut s = "hello".to_string();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "hello\n\n");
+    }
+
+    #[test]
+    fn ensure_blank_line_separator_empty_string_appends_double() {
+        let mut s = String::new();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "\n\n");
+    }
+
+    #[test]
+    fn ensure_blank_line_separator_triple_newline_collapses_to_double() {
+        let mut s = "hello\n\n\n".to_string();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "hello\n\n");
+    }
+
+    #[test]
+    fn ensure_blank_line_separator_many_newlines_collapses_to_double() {
+        let mut s = "hello\n\n\n\n".to_string();
+        ensure_blank_line_separator(&mut s);
+        assert_eq!(s, "hello\n\n");
+    }
+
+    #[test]
+    fn reassemble_toml_block_with_trailing_newlines_produces_single_blank_line() {
+        // If block text itself ends with extra newlines, the output must not have triple newlines
+        let blocks = vec![
+            (
+                "shell".to_string(),
+                "[shell]\nauto_wrap = true\n\n".to_string(),
+            ),
+            (
+                "storage".to_string(),
+                "[storage]\ndirectory = \"~/r\"".to_string(),
+            ),
+        ];
+        let refs: Vec<&(String, String)> = blocks.iter().collect();
+        let result = reassemble_toml("", &refs);
+        assert!(
+            !result.contains("\n\n\n"),
+            "must not contain triple newline"
+        );
+        assert!(
+            result.contains("\n\n[storage]"),
+            "must have single blank line between blocks"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // parse_section_header
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_section_header_valid_section() {
+        assert_eq!(
+            parse_section_header("[recording]"),
+            Some("recording".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_section_header_dotted_section() {
+        assert_eq!(
+            parse_section_header("[agents.claude]"),
+            Some("agents.claude".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_section_header_array_of_tables_returns_none() {
+        assert_eq!(parse_section_header("[[array]]"), None);
+    }
+
+    #[test]
+    fn parse_section_header_not_a_section() {
+        assert_eq!(parse_section_header("key = value"), None);
+    }
+
+    #[test]
+    fn parse_section_header_empty_brackets() {
+        assert_eq!(parse_section_header("[]"), None);
+    }
+
+    #[test]
+    fn parse_section_header_with_whitespace() {
+        assert_eq!(
+            parse_section_header("[ recording ]"),
+            Some("recording".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_section_header_empty_string() {
+        assert_eq!(parse_section_header(""), None);
+    }
+
+    // -----------------------------------------------------------------------
+    // (existing integration tests follow)
+    // -----------------------------------------------------------------------
 
     #[test]
     fn misordered_sections_detected_as_change() {
