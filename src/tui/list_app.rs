@@ -761,13 +761,18 @@ impl ListApp {
         let max_stem_len = filename::MAX_FILENAME_LENGTH.saturating_sub(ext_len);
 
         if self.rename_selected_all {
+            if c.len_utf8() > max_stem_len {
+                return false;
+            }
             self.rename_input.clear();
             self.rename_input.push(c);
             self.rename_cursor = c.len_utf8();
             self.rename_selected_all = false;
-        } else if self.rename_input.len() < max_stem_len {
+        } else if self.rename_input.len().saturating_add(c.len_utf8()) <= max_stem_len {
             self.rename_input.insert(self.rename_cursor, c);
             self.rename_cursor += c.len_utf8();
+        } else {
+            return false;
         }
         true
     }
@@ -1311,6 +1316,7 @@ impl ListApp {
                 let modal_x = (width - modal_width) / 2;
                 let modal_y = (height - modal_height) / 2;
                 let items_start_y = modal_y + 3;
+                let visible_items = modal_height.saturating_sub(4) as usize;
 
                 let cx = mouse.column;
                 let cy = mouse.row;
@@ -1318,11 +1324,13 @@ impl ListApp {
                 if cx >= modal_x
                     && cx < modal_x + modal_width
                     && cy >= items_start_y
-                    && cy < items_start_y + ContextMenuItem::ALL.len() as u16
+                    && cy < items_start_y + visible_items as u16
                 {
                     let idx = (cy - items_start_y) as usize;
-                    self.context_menu_idx = idx;
-                    self.execute_context_menu_action()?;
+                    if idx < ContextMenuItem::ALL.len() {
+                        self.context_menu_idx = idx;
+                        self.execute_context_menu_action()?;
+                    }
                 } else {
                     self.mode = Mode::Normal;
                 }
@@ -1807,7 +1815,8 @@ fn render_modal_overlays(
         Mode::ConfirmUnlock | Mode::ConfirmUnlockFinal => {
             if let Some(item) = explorer.selected_item() {
                 let lock_msg = if let Some(ref info) = item.lock_info {
-                    format!("PID {} since {}", info.pid, &info.started[..19])
+                    let started = info.started.get(..19).unwrap_or(info.started.as_str());
+                    format!("PID {} since {}", info.pid, started)
                 } else {
                     "Unknown lock".to_string()
                 };
