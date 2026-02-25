@@ -120,22 +120,15 @@ fn map_crossterm_event(ev: CrosstermEvent, tx: &mpsc::Sender<Event>) -> bool {
             // rename, close dialog, or quit in Normal mode).
             if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
                 let _ = tx.send(Event::Quit);
-                return true;
+                return false;
             }
-            let _ = tx.send(Event::Key(key));
+            tx.send(Event::Key(key)).is_ok()
         }
-        CrosstermEvent::Mouse(mouse) => {
-            let _ = tx.send(Event::Mouse(mouse));
-        }
-        CrosstermEvent::Resize(w, h) => {
-            let _ = tx.send(Event::Resize(w, h));
-        }
-        CrosstermEvent::Paste(text) => {
-            let _ = tx.send(Event::Paste(text));
-        }
-        _ => {}
+        CrosstermEvent::Mouse(mouse) => tx.send(Event::Mouse(mouse)).is_ok(),
+        CrosstermEvent::Resize(w, h) => tx.send(Event::Resize(w, h)).is_ok(),
+        CrosstermEvent::Paste(text) => tx.send(Event::Paste(text)).is_ok(),
+        _ => true,
     }
-    false
 }
 
 /// Reads one crossterm event and dispatches it via `map_crossterm_event`.
@@ -163,33 +156,36 @@ mod tests {
     }
 
     #[test]
-    fn map_crossterm_event_ctrl_c_sends_quit_and_returns_true() {
+    fn map_crossterm_event_ctrl_c_sends_quit_and_returns_false() {
         let (tx, rx) = mpsc::channel();
         let key = crossterm::event::KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
         let result = map_crossterm_event(CrosstermEvent::Key(key), &tx);
-        assert!(result);
+        assert!(
+            !result,
+            "Ctrl+C should return false to break the event loop"
+        );
         assert!(matches!(rx.recv().unwrap(), Event::Quit));
     }
 
     #[test]
-    fn map_crossterm_event_regular_key_sends_key_event() {
+    fn map_crossterm_event_regular_key_sends_key_and_continues() {
         let (tx, rx) = mpsc::channel();
         let key = crossterm::event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
         let result = map_crossterm_event(CrosstermEvent::Key(key), &tx);
-        assert!(!result);
+        assert!(result, "Regular key should return true to continue polling");
         assert!(matches!(rx.recv().unwrap(), Event::Key(_)));
     }
 
     #[test]
-    fn map_crossterm_event_resize_sends_resize_event() {
+    fn map_crossterm_event_resize_sends_resize_and_continues() {
         let (tx, rx) = mpsc::channel();
         let result = map_crossterm_event(CrosstermEvent::Resize(120, 40), &tx);
-        assert!(!result);
+        assert!(result, "Resize should return true to continue polling");
         assert!(matches!(rx.recv().unwrap(), Event::Resize(120, 40)));
     }
 
     #[test]
-    fn map_crossterm_event_mouse_sends_mouse_event() {
+    fn map_crossterm_event_mouse_sends_mouse_and_continues() {
         let (tx, rx) = mpsc::channel();
         let mouse = crossterm::event::MouseEvent {
             kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
@@ -198,15 +194,24 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         };
         let result = map_crossterm_event(CrosstermEvent::Mouse(mouse), &tx);
-        assert!(!result);
+        assert!(result, "Mouse event should return true to continue polling");
         assert!(matches!(rx.recv().unwrap(), Event::Mouse(_)));
     }
 
     #[test]
-    fn map_crossterm_event_paste_sends_paste_event() {
+    fn map_crossterm_event_paste_sends_paste_and_continues() {
         let (tx, rx) = mpsc::channel();
         let result = map_crossterm_event(CrosstermEvent::Paste("hello".to_string()), &tx);
-        assert!(!result);
+        assert!(result, "Paste should return true to continue polling");
         assert!(matches!(rx.recv().unwrap(), Event::Paste(ref s) if s == "hello"));
+    }
+
+    #[test]
+    fn map_crossterm_event_returns_false_when_channel_closed() {
+        let (tx, rx) = mpsc::channel::<Event>();
+        drop(rx); // Close the receiving end
+        let key = crossterm::event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+        let result = map_crossterm_event(CrosstermEvent::Key(key), &tx);
+        assert!(!result, "Should return false when channel is closed");
     }
 }
