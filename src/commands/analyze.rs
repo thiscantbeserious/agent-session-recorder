@@ -12,11 +12,14 @@
 //! 9. Suggest better filename via LLM based on analysis
 
 use std::io::{self, BufRead, Write};
+use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Result;
 
-use agr::analyzer::{AgentType, AnalyzeOptions, AnalyzerService};
+use agr::analyzer::{
+    AgentAnalysisConfig, AgentType, AnalyzeOptions, AnalyzerService, ValidatedMarker,
+};
 use agr::{Config, MarkerManager};
 
 use agr::asciicast::integrity::check_file_integrity;
@@ -44,6 +47,9 @@ pub fn handle(
     wait: bool,
 ) -> Result<()> {
     let config = Config::load()?;
+
+    // Resolve effective timeout once: CLI > config > default
+    let effective_timeout_secs = timeout.or(config.analysis.timeout).unwrap_or(120);
 
     // Resolve agent: CLI override > config > default
     let resolved_agent = match agent_override {
@@ -76,6 +82,99 @@ pub fn handle(
     let agent_config = config.analysis_agent_config(&resolved_agent);
 
     // Build options with three-tier cascade: CLI > config > defaults
+    let options = build_analyze_options(
+        &config,
+        agent,
+        workers,
+        timeout,
+        no_parallel,
+        debug,
+        output,
+        fast,
+    );
+    let options = apply_agent_config(options, agent_config);
+
+    // Create service
+    let service = AnalyzerService::new(options);
+    let agent_name = &resolved_agent;
+
+    // Check agent is available
+    if !service.is_agent_available() {
+        anyhow::bail!(
+            "Analysis agent '{}' is not installed. Install it or use --agent to specify another.\n\
+             Supported agents: claude, codex, gemini",
+            agent_name
+        );
+    }
+
+    // Check for existing markers and offer to remove them
+    prompt_remove_existing_markers(&filepath)?;
+
+    // Run analysis
+    println!("Analyzing {} with {}...", file, agent);
+    let result = service.analyze(&filepath)?;
+
+    // Report results
+    if result.is_partial() {
+        eprintln!(
+            "Warning: Analysis partially complete. {} of {} chunks succeeded.",
+            result.usage_summary.successful_chunks, result.usage_summary.chunks_processed
+        );
+    }
+
+    // Print markers verbosely
+    println!("\nMarkers found ({}):", result.markers.len());
+    for marker in &result.markers {
+        print_marker(marker.timestamp, &marker.label);
+    }
+
+    // Handle curation if we have many markers
+    let effective_curate = curate || config.analysis.curate.unwrap_or(false);
+    let final_marker_count = handle_curation(
+        &service,
+        &result.markers,
+        result.total_duration,
+        effective_curate,
+        &filepath,
+        effective_timeout_secs,
+    )?;
+
+    println!(
+        "\nAnalysis complete. {} markers in file.",
+        final_marker_count
+    );
+
+    // Suggest a descriptive filename via LLM
+    handle_rename_suggestion(
+        &service,
+        &result.markers,
+        result.total_duration,
+        &filepath,
+        effective_timeout_secs,
+    )?;
+
+    if wait {
+        print!("\nPress Enter to continue...");
+        io::stdout().flush()?;
+        let mut input = String::new();
+        io::stdin().lock().read_line(&mut input)?;
+    }
+
+    Ok(())
+}
+
+/// Build analysis options with three-tier cascade: CLI > config > defaults.
+#[allow(clippy::too_many_arguments)]
+fn build_analyze_options(
+    config: &Config,
+    agent: AgentType,
+    workers: Option<usize>,
+    timeout: Option<u64>,
+    no_parallel: bool,
+    debug: bool,
+    output: Option<String>,
+    fast: bool,
+) -> AnalyzeOptions {
     let mut options = AnalyzeOptions::with_agent(agent);
 
     // Workers: CLI > config > auto-scale (None)
@@ -107,175 +206,163 @@ pub fn handle(
         options = options.fast(true);
     }
 
-    // Pass per-task extra_args and token_budget_override from per-agent config
-    if let Some(ac) = agent_config {
-        let analyze_args = ac.effective_analyze_args();
-        if !analyze_args.is_empty() {
-            options = options.extra_args(analyze_args.to_vec());
-        }
-        let curate_args = ac.effective_curate_args();
-        if !curate_args.is_empty() {
-            options = options.curate_extra_args(curate_args.to_vec());
-        }
-        let rename_args = ac.effective_rename_args();
-        if !rename_args.is_empty() {
-            options = options.rename_extra_args(rename_args.to_vec());
-        }
-        if let Some(budget) = ac.token_budget {
-            options = options.token_budget_override(budget);
-        }
-    }
+    options
+}
 
-    // Create service
-    let service = AnalyzerService::new(options);
-    let agent_name = &resolved_agent;
-
-    // Check agent is available
-    if !service.is_agent_available() {
-        anyhow::bail!(
-            "Analysis agent '{}' is not installed. Install it or use --agent to specify another.\n\
-             Supported agents: claude, codex, gemini",
-            agent_name
-        );
-    }
-
-    // Check for existing markers and offer to remove them
-    let existing_count = MarkerManager::count_markers(&filepath)?;
-    if existing_count > 0 {
-        print!(
-            "File contains {} existing marker(s). Remove them before analysis? [y/N]: ",
-            existing_count
-        );
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().lock().read_line(&mut input)?;
-
-        if input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes") {
-            let removed = MarkerManager::clear_markers(&filepath)?;
-            println!("Removed {} marker(s).", removed);
-        }
-    }
-
-    // Run analysis
-    println!("Analyzing {} with {}...", file, agent);
-    let result = service.analyze(&filepath)?;
-
-    // Report results
-    if result.is_partial() {
-        eprintln!(
-            "Warning: Analysis partially complete. {} of {} chunks succeeded.",
-            result.usage_summary.successful_chunks, result.usage_summary.chunks_processed
-        );
-    }
-
-    // Print markers verbosely
-    println!("\nMarkers found ({}):", result.markers.len());
-    for marker in &result.markers {
-        print_marker(marker.timestamp, &marker.label);
-    }
-
-    // Handle curation if we have many markers
-    // Curate: CLI true wins, else config, else false
-    let effective_curate = curate || config.analysis.curate.unwrap_or(false);
-    let final_marker_count = if result.markers.len() > CURATION_THRESHOLD {
-        let should_curate = if effective_curate {
-            // Auto-curate with --curate flag
-            println!(
-                "\nAuto-curating {} markers to 8-12...",
-                result.markers.len()
-            );
-            true
-        } else {
-            // Prompt user
-            print!(
-                "\nFound {} markers. Curate to 8-12 most significant? [y/N]: ",
-                result.markers.len()
-            );
-            io::stdout().flush()?;
-
-            let mut input = String::new();
-            io::stdin().lock().read_line(&mut input)?;
-            input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes")
-        };
-
-        if should_curate {
-            let timeout_duration = Duration::from_secs(timeout.unwrap_or(120));
-            match service.curate_markers(&result.markers, result.total_duration, timeout_duration) {
-                Ok(curated) => {
-                    // Write curated markers to file (replacing the ones from analyze)
-                    MarkerManager::clear_markers(&filepath)?;
-                    for marker in &curated {
-                        MarkerManager::add_marker(&filepath, marker.timestamp, &marker.label)?;
-                    }
-
-                    println!("\nCurated markers ({}):", curated.len());
-                    for marker in &curated {
-                        print_marker(marker.timestamp, &marker.label);
-                    }
-                    curated.len()
-                }
-                Err(e) => {
-                    eprintln!("Warning: Curation failed ({}), keeping all markers.", e);
-                    result.markers.len()
-                }
-            }
-        } else {
-            result.markers.len()
-        }
-    } else {
-        result.markers.len()
+/// Apply per-agent extra_args and token_budget_override from agent config.
+fn apply_agent_config(
+    mut options: AnalyzeOptions,
+    agent_config: Option<&AgentAnalysisConfig>,
+) -> AnalyzeOptions {
+    let Some(ac) = agent_config else {
+        return options;
     };
 
-    println!(
-        "\nAnalysis complete. {} markers in file.",
-        final_marker_count
-    );
-
-    // Suggest a descriptive filename via LLM
-    if !result.markers.is_empty() {
-        let current_filename = filepath
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
-        let timeout_duration = Duration::from_secs(timeout.unwrap_or(120));
-
-        match service.suggest_rename(
-            &result.markers,
-            result.total_duration,
-            timeout_duration,
-            &current_filename,
-        ) {
-            Some(suggested) => {
-                let suggested_file = format!("{}.cast", suggested);
-                let new_path = filepath.with_file_name(&suggested_file);
-                if new_path != filepath && !new_path.exists() {
-                    print!("\nRename to \"{}\"? [y/N]: ", suggested_file);
-                    io::stdout().flush()?;
-
-                    let mut input = String::new();
-                    io::stdin().lock().read_line(&mut input)?;
-
-                    if input.trim().eq_ignore_ascii_case("y")
-                        || input.trim().eq_ignore_ascii_case("yes")
-                    {
-                        std::fs::rename(&filepath, &new_path)?;
-                        println!("Renamed to: {}", new_path.display());
-                    }
-                }
-            }
-            None => {
-                // Silently skip if rename suggestion fails
-            }
-        }
+    let analyze_args = ac.effective_analyze_args();
+    if !analyze_args.is_empty() {
+        options = options.extra_args(analyze_args.to_vec());
+    }
+    let curate_args = ac.effective_curate_args();
+    if !curate_args.is_empty() {
+        options = options.curate_extra_args(curate_args.to_vec());
+    }
+    let rename_args = ac.effective_rename_args();
+    if !rename_args.is_empty() {
+        options = options.rename_extra_args(rename_args.to_vec());
+    }
+    if let Some(budget) = ac.token_budget {
+        options = options.token_budget_override(budget);
     }
 
-    if wait {
-        print!("\nPress Enter to continue...");
-        io::stdout().flush()?;
-        let mut input = String::new();
-        io::stdin().lock().read_line(&mut input)?;
+    options
+}
+
+/// Check for existing markers and offer to remove them before analysis.
+#[cfg(not(tarpaulin_include))]
+fn prompt_remove_existing_markers(filepath: &Path) -> Result<()> {
+    let existing_count = MarkerManager::count_markers(filepath)?;
+    if existing_count == 0 {
+        return Ok(());
+    }
+
+    print!(
+        "File contains {} existing marker(s). Remove them before analysis? [y/N]: ",
+        existing_count
+    );
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().lock().read_line(&mut input)?;
+
+    if input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes") {
+        let removed = MarkerManager::clear_markers(filepath)?;
+        println!("Removed {} marker(s).", removed);
+    }
+
+    Ok(())
+}
+
+/// Handle the curation flow: prompt if needed, execute, and return final marker count.
+#[cfg(not(tarpaulin_include))]
+fn handle_curation(
+    service: &AnalyzerService,
+    markers: &[ValidatedMarker],
+    total_duration: f64,
+    effective_curate: bool,
+    filepath: &Path,
+    effective_timeout_secs: u64,
+) -> Result<usize> {
+    if markers.len() <= CURATION_THRESHOLD {
+        return Ok(markers.len());
+    }
+
+    let should_curate = prompt_for_curation(markers.len(), effective_curate)?;
+
+    if !should_curate {
+        return Ok(markers.len());
+    }
+
+    let timeout_duration = Duration::from_secs(effective_timeout_secs);
+    match service.curate_markers(markers, total_duration, timeout_duration) {
+        Ok(curated) => {
+            MarkerManager::clear_markers(filepath)?;
+            for marker in &curated {
+                MarkerManager::add_marker(filepath, marker.timestamp, &marker.label)?;
+            }
+            println!("\nCurated markers ({}):", curated.len());
+            for marker in &curated {
+                print_marker(marker.timestamp, &marker.label);
+            }
+            Ok(curated.len())
+        }
+        Err(e) => {
+            eprintln!("Warning: Curation failed ({}), keeping all markers.", e);
+            Ok(markers.len())
+        }
+    }
+}
+
+/// Prompt the user about curation, or auto-curate if flag is set. Returns true if should curate.
+#[cfg(not(tarpaulin_include))]
+fn prompt_for_curation(marker_count: usize, effective_curate: bool) -> Result<bool> {
+    if effective_curate {
+        println!("\nAuto-curating {} markers to 8-12...", marker_count);
+        return Ok(true);
+    }
+
+    print!(
+        "\nFound {} markers. Curate to 8-12 most significant? [y/N]: ",
+        marker_count
+    );
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().lock().read_line(&mut input)?;
+    Ok(input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes"))
+}
+
+/// Suggest a descriptive rename via LLM and prompt user to accept.
+#[cfg(not(tarpaulin_include))]
+fn handle_rename_suggestion(
+    service: &AnalyzerService,
+    markers: &[ValidatedMarker],
+    total_duration: f64,
+    filepath: &Path,
+    effective_timeout_secs: u64,
+) -> Result<()> {
+    if markers.is_empty() {
+        return Ok(());
+    }
+
+    let current_filename = filepath
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let timeout_duration = Duration::from_secs(effective_timeout_secs);
+
+    let Some(suggested) =
+        service.suggest_rename(markers, total_duration, timeout_duration, &current_filename)
+    else {
+        return Ok(());
+    };
+
+    let suggested_file = format!("{}.cast", suggested);
+    let new_path = filepath.with_file_name(&suggested_file);
+
+    if new_path == *filepath || new_path.exists() {
+        return Ok(());
+    }
+
+    print!("\nRename to \"{}\"? [y/N]: ", suggested_file);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().lock().read_line(&mut input)?;
+
+    if input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes") {
+        std::fs::rename(filepath, &new_path)?;
+        println!("Renamed to: {}", new_path.display());
     }
 
     Ok(())
@@ -304,6 +391,9 @@ fn parse_agent_type(name: &str) -> Result<AgentType> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agr::config::{AgentAnalysisConfig, AnalysisConfig};
+
+    // ---- parse_agent_type ----
 
     #[test]
     fn parse_agent_type_claude() {
@@ -324,5 +414,276 @@ mod tests {
     #[test]
     fn parse_agent_type_unknown() {
         assert!(parse_agent_type("unknown").is_err());
+    }
+
+    // ---- helpers ----
+
+    fn default_config() -> Config {
+        Config::default()
+    }
+
+    fn config_with_analysis(analysis: AnalysisConfig) -> Config {
+        Config {
+            analysis,
+            ..Config::default()
+        }
+    }
+
+    // ---- build_analyze_options ----
+
+    #[test]
+    fn build_analyze_options_all_defaults() {
+        let config = default_config();
+        let opts = build_analyze_options(
+            &config,
+            AgentType::Claude,
+            None,
+            None,
+            false,
+            false,
+            None,
+            false,
+        );
+        assert_eq!(opts.agent, AgentType::Claude);
+        assert_eq!(opts.workers, None);
+        assert!(!opts.no_parallel);
+        assert!(!opts.debug);
+        assert_eq!(opts.output_path, None);
+        assert!(!opts.fast);
+    }
+
+    #[test]
+    fn build_analyze_options_cli_workers_wins_over_config() {
+        let mut analysis = AnalysisConfig::default();
+        analysis.workers = Some(2);
+        let config = config_with_analysis(analysis);
+        let opts = build_analyze_options(
+            &config,
+            AgentType::Claude,
+            Some(8),
+            None,
+            false,
+            false,
+            None,
+            false,
+        );
+        assert_eq!(opts.workers, Some(8));
+    }
+
+    #[test]
+    fn build_analyze_options_config_workers_fallback() {
+        let mut analysis = AnalysisConfig::default();
+        analysis.workers = Some(4);
+        let config = config_with_analysis(analysis);
+        let opts = build_analyze_options(
+            &config,
+            AgentType::Claude,
+            None,
+            None,
+            false,
+            false,
+            None,
+            false,
+        );
+        assert_eq!(opts.workers, Some(4));
+    }
+
+    #[test]
+    fn build_analyze_options_cli_timeout_wins_over_config() {
+        let mut analysis = AnalysisConfig::default();
+        analysis.timeout = Some(60);
+        let config = config_with_analysis(analysis);
+        let opts = build_analyze_options(
+            &config,
+            AgentType::Claude,
+            None,
+            Some(300),
+            false,
+            false,
+            None,
+            false,
+        );
+        assert_eq!(opts.timeout_secs, 300);
+    }
+
+    #[test]
+    fn build_analyze_options_config_timeout_fallback() {
+        let mut analysis = AnalysisConfig::default();
+        analysis.timeout = Some(45);
+        let config = config_with_analysis(analysis);
+        let opts = build_analyze_options(
+            &config,
+            AgentType::Claude,
+            None,
+            None,
+            false,
+            false,
+            None,
+            false,
+        );
+        assert_eq!(opts.timeout_secs, 45);
+    }
+
+    #[test]
+    fn build_analyze_options_no_parallel_sets_sequential() {
+        let config = default_config();
+        let opts = build_analyze_options(
+            &config,
+            AgentType::Claude,
+            None,
+            None,
+            true,
+            false,
+            None,
+            false,
+        );
+        assert!(opts.no_parallel);
+    }
+
+    #[test]
+    fn build_analyze_options_config_fast_enables_fast() {
+        let mut analysis = AnalysisConfig::default();
+        analysis.fast = Some(true);
+        let config = config_with_analysis(analysis);
+        let opts = build_analyze_options(
+            &config,
+            AgentType::Claude,
+            None,
+            None,
+            false,
+            false,
+            None,
+            false,
+        );
+        assert!(opts.fast);
+    }
+
+    #[test]
+    fn build_analyze_options_cli_fast_enables_fast() {
+        let config = default_config();
+        let opts = build_analyze_options(
+            &config,
+            AgentType::Claude,
+            None,
+            None,
+            false,
+            false,
+            None,
+            true,
+        );
+        assert!(opts.fast);
+    }
+
+    #[test]
+    fn build_analyze_options_debug_and_output() {
+        let config = default_config();
+        let opts = build_analyze_options(
+            &config,
+            AgentType::Gemini,
+            None,
+            None,
+            false,
+            true,
+            Some("/tmp/out.txt".to_string()),
+            false,
+        );
+        assert!(opts.debug);
+        assert_eq!(opts.output_path, Some("/tmp/out.txt".to_string()));
+        assert_eq!(opts.agent, AgentType::Gemini);
+    }
+
+    // ---- apply_agent_config ----
+
+    #[test]
+    fn apply_agent_config_none_passthrough() {
+        let base = AnalyzeOptions::with_agent(AgentType::Claude).workers(3);
+        let opts = apply_agent_config(base, None);
+        assert_eq!(opts.workers, Some(3));
+        assert!(opts.extra_args.is_empty());
+        assert_eq!(opts.token_budget_override, None);
+    }
+
+    #[test]
+    fn apply_agent_config_global_args_fallback() {
+        let base = AnalyzeOptions::with_agent(AgentType::Claude);
+        let ac = AgentAnalysisConfig {
+            extra_args: vec!["--verbose".to_string()],
+            ..AgentAnalysisConfig::default()
+        };
+        let opts = apply_agent_config(base, Some(&ac));
+        assert_eq!(opts.extra_args, vec!["--verbose"]);
+    }
+
+    #[test]
+    fn apply_agent_config_task_specific_analyze_override() {
+        let base = AnalyzeOptions::with_agent(AgentType::Claude);
+        let ac = AgentAnalysisConfig {
+            extra_args: vec!["--global".to_string()],
+            analyze_extra_args: vec!["--analyze-only".to_string()],
+            ..AgentAnalysisConfig::default()
+        };
+        let opts = apply_agent_config(base, Some(&ac));
+        // analyze_extra_args should win over extra_args for the analysis task
+        assert_eq!(opts.extra_args, vec!["--analyze-only"]);
+    }
+
+    #[test]
+    fn apply_agent_config_curate_args_set() {
+        let base = AnalyzeOptions::with_agent(AgentType::Codex);
+        let ac = AgentAnalysisConfig {
+            curate_extra_args: vec!["--curate-flag".to_string()],
+            ..AgentAnalysisConfig::default()
+        };
+        let opts = apply_agent_config(base, Some(&ac));
+        assert_eq!(opts.curate_extra_args, vec!["--curate-flag"]);
+    }
+
+    #[test]
+    fn apply_agent_config_token_budget_set() {
+        let base = AnalyzeOptions::with_agent(AgentType::Claude);
+        let ac = AgentAnalysisConfig {
+            token_budget: Some(50_000),
+            ..AgentAnalysisConfig::default()
+        };
+        let opts = apply_agent_config(base, Some(&ac));
+        assert_eq!(opts.token_budget_override, Some(50_000));
+    }
+
+    #[test]
+    fn apply_agent_config_all_empty_agent_config() {
+        let base = AnalyzeOptions::with_agent(AgentType::Gemini).timeout(90);
+        let ac = AgentAnalysisConfig::default();
+        let opts = apply_agent_config(base, Some(&ac));
+        // Empty config should not change anything
+        assert!(opts.extra_args.is_empty());
+        assert!(opts.curate_extra_args.is_empty());
+        assert_eq!(opts.token_budget_override, None);
+        assert_eq!(opts.timeout_secs, 90);
+    }
+
+    #[test]
+    fn apply_agent_config_global_args_fallback_into_curate_and_rename() {
+        let base = AnalyzeOptions::with_agent(AgentType::Claude);
+        let ac = AgentAnalysisConfig {
+            extra_args: vec!["--global".to_string()],
+            ..AgentAnalysisConfig::default()
+        };
+        let opts = apply_agent_config(base, Some(&ac));
+        assert_eq!(opts.extra_args, vec!["--global"]);
+        assert_eq!(opts.curate_extra_args, vec!["--global"]);
+        assert_eq!(opts.rename_extra_args, vec!["--global"]);
+    }
+
+    #[test]
+    fn apply_agent_config_rename_args_set() {
+        let base = AnalyzeOptions::with_agent(AgentType::Claude);
+        let ac = AgentAnalysisConfig {
+            rename_extra_args: vec!["--rename-flag".to_string()],
+            ..AgentAnalysisConfig::default()
+        };
+        let opts = apply_agent_config(base, Some(&ac));
+        assert_eq!(opts.rename_extra_args, vec!["--rename-flag"]);
+        // Curate should not be affected
+        assert!(opts.curate_extra_args.is_empty());
     }
 }
