@@ -679,9 +679,7 @@ fn snapshot_file_explorer_preview_without_backup() {
 // Context Menu Modal Snapshots
 // ============================================================================
 
-use agr::tui::list_app::{
-    render_context_menu_modal, render_help_modal, render_optimize_result_modal,
-};
+use agr::tui::list_app::ListApp;
 
 /// Render the context menu modal to a buffer and return as string.
 fn render_context_menu_to_string(selected_idx: usize, backup_exists: bool) -> String {
@@ -695,7 +693,7 @@ fn render_context_menu_to_string(selected_idx: usize, backup_exists: bool) -> St
 
     terminal
         .draw(|frame| {
-            render_context_menu_modal(frame, area, selected_idx, backup_exists);
+            ListApp::render_context_menu_modal(frame, area, selected_idx, backup_exists);
         })
         .unwrap();
 
@@ -768,7 +766,7 @@ fn render_optimize_result_to_string(result_state: &OptimizeResultState) -> Strin
 
     terminal
         .draw(|frame| {
-            render_optimize_result_modal(frame, area, result_state);
+            ListApp::render_optimize_result_modal(frame, area, result_state);
         })
         .unwrap();
 
@@ -844,7 +842,7 @@ fn render_help_modal_to_string() -> String {
 
     terminal
         .draw(|frame| {
-            render_help_modal(frame, area);
+            ListApp::render_help_modal(frame, area);
         })
         .unwrap();
 

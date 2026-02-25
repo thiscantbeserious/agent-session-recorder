@@ -11,9 +11,7 @@ pub mod shared_state;
 pub mod status_footer;
 
 // Re-exports for convenient access
-pub use keybindings::{
-    handle_confirm_key, handle_shared_key, ConfirmAction, KeyResult, SharedMode,
-};
+pub use keybindings::{handle_shared_key, KeyResult, SharedMode};
 pub use shared_state::SharedState;
 
 use std::io::{self, Stdout};
