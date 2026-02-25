@@ -415,6 +415,9 @@ fn build_partial_segment(
         include_end,
         included_tokens,
     );
+    if partial_content.is_empty() {
+        return None;
+    }
 
     Some(AnalysisSegment {
         start_time: partial_start_time,
