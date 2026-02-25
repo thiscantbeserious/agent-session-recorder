@@ -72,7 +72,6 @@ fn render_cell(
         style_to_ansi_bg(&cell.style, output);
         style_to_ansi_attrs(&cell.style, output);
         *current_style = cell.style;
-        *in_highlight_style = false;
     } else if is_highlighted && !*in_highlight_style {
         output.push_str("\x1b[97;42m");
         *in_highlight_style = true;
