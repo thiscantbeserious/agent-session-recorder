@@ -297,71 +297,18 @@ impl ChunkCalculator {
             let segment_start = accumulated_tokens;
             let segment_end = accumulated_tokens + segment.estimated_tokens;
 
-            // Check if segment overlaps with target range
-            if segment_end > start_tokens && segment_start < end_tokens {
-                // Calculate how much of this segment to include
-                let include_start = start_tokens.saturating_sub(segment_start);
-                let include_end = (end_tokens - segment_start).min(segment.estimated_tokens);
-
-                if include_end > include_start {
-                    // Calculate proportional time range within the segment
-                    let segment_duration = segment.end_time - segment.start_time;
-                    let segment_tokens = segment.estimated_tokens.max(1);
-                    let time_per_token = segment_duration / segment_tokens as f64;
-
-                    let partial_start_time =
-                        segment.start_time + (include_start as f64 * time_per_token);
-                    let partial_end_time =
-                        segment.start_time + (include_end as f64 * time_per_token);
-
-                    if start_time.is_none() {
-                        start_time = Some(partial_start_time);
-                    }
-                    end_time = partial_end_time;
-
-                    // Create a partial segment with only the included portion
-                    let included_tokens = include_end - include_start;
-
-                    // Extract partial content if we're not including the whole segment
-                    let partial_content = if include_start == 0
-                        && include_end == segment.estimated_tokens
-                    {
-                        segment.content.clone()
-                    } else if segment.content.is_empty() {
-                        String::new()
-                    } else {
-                        // Estimate character boundaries from token positions
-                        // Use proportional mapping: char_pos = token_pos * (total_chars / total_tokens)
-                        let total_chars = segment.content.chars().count();
-                        let ratio = total_chars as f64 / segment_tokens as f64;
-                        let char_start = ((include_start as f64 * ratio) as usize).min(total_chars);
-                        let char_end = ((include_end as f64 * ratio) as usize).min(total_chars);
-
-                        // Ensure we get at least some content if there are tokens to include
-                        let (char_start, char_end) =
-                            if char_end <= char_start && included_tokens > 0 {
-                                // Fall back to including all content if calculation fails
-                                (0, total_chars)
-                            } else {
-                                (char_start, char_end)
-                            };
-
-                        segment
-                            .content
-                            .chars()
-                            .skip(char_start)
-                            .take(char_end.saturating_sub(char_start))
-                            .collect()
-                    };
-
-                    segments.push(AnalysisSegment {
-                        start_time: partial_start_time,
-                        end_time: partial_end_time,
-                        content: partial_content,
-                        estimated_tokens: included_tokens,
-                        event_range: segment.event_range, // Keep original for reference
-                    });
+            if let Some(partial) = build_partial_segment(
+                segment,
+                segment_start,
+                segment_end,
+                start_tokens,
+                end_tokens,
+            ) {
+                if start_time.is_none() {
+                    start_time = Some(partial.start_time);
                 }
+                end_time = partial.end_time;
+                segments.push(partial);
             }
 
             accumulated_tokens = segment_end;
@@ -391,6 +338,94 @@ impl ChunkCalculator {
         // Ceiling division considering overlap
         ((total_tokens.saturating_sub(overlap)) + step - 1) / step
     }
+}
+
+/// Extract partial content from a segment using proportional token-to-character mapping.
+///
+/// Returns the full content if the whole segment is included, handles empty content,
+/// and falls back to full content if the proportional mapping produces an empty slice.
+fn extract_partial_content(
+    content: &str,
+    estimated_tokens: usize,
+    include_start: usize,
+    include_end: usize,
+    included_tokens: usize,
+) -> String {
+    if include_start == 0 && include_end == estimated_tokens {
+        return content.to_string();
+    }
+    if content.is_empty() {
+        return String::new();
+    }
+
+    let segment_tokens = estimated_tokens.max(1);
+    let total_chars = content.chars().count();
+    let ratio = total_chars as f64 / segment_tokens as f64;
+    let char_start = ((include_start as f64 * ratio) as usize).min(total_chars);
+    let char_end = ((include_end as f64 * ratio) as usize).min(total_chars);
+
+    let (char_start, char_end) = if char_end <= char_start && included_tokens > 0 {
+        // Fall back to including all content if calculation fails
+        (0, total_chars)
+    } else {
+        (char_start, char_end)
+    };
+
+    content
+        .chars()
+        .skip(char_start)
+        .take(char_end.saturating_sub(char_start))
+        .collect()
+}
+
+/// Build a partial `AnalysisSegment` for the portion of `segment` that overlaps
+/// `[start_tokens, end_tokens)`.  Returns `None` if there is no overlap or the
+/// resulting slice is empty.
+fn build_partial_segment(
+    segment: &AnalysisSegment,
+    segment_start: usize,
+    segment_end: usize,
+    start_tokens: usize,
+    end_tokens: usize,
+) -> Option<AnalysisSegment> {
+    // Check if segment overlaps with target range
+    if segment_end <= start_tokens || segment_start >= end_tokens {
+        return None;
+    }
+
+    let include_start = start_tokens.saturating_sub(segment_start);
+    let include_end = (end_tokens - segment_start).min(segment.estimated_tokens);
+
+    if include_end <= include_start {
+        return None;
+    }
+
+    let segment_tokens = segment.estimated_tokens.max(1);
+    let segment_duration = segment.end_time - segment.start_time;
+    let time_per_token = segment_duration / segment_tokens as f64;
+
+    let partial_start_time = segment.start_time + (include_start as f64 * time_per_token);
+    let partial_end_time = segment.start_time + (include_end as f64 * time_per_token);
+    let included_tokens = include_end - include_start;
+
+    let partial_content = extract_partial_content(
+        &segment.content,
+        segment.estimated_tokens,
+        include_start,
+        include_end,
+        included_tokens,
+    );
+    if partial_content.is_empty() {
+        return None;
+    }
+
+    Some(AnalysisSegment {
+        start_time: partial_start_time,
+        end_time: partial_end_time,
+        content: partial_content,
+        estimated_tokens: included_tokens,
+        event_range: segment.event_range,
+    })
 }
 
 #[cfg(test)]
@@ -793,6 +828,118 @@ mod tests {
                 chunks[i - 1].time_range.start
             );
         }
+    }
+
+    // ============================================
+    // extract_partial_content Tests
+    // ============================================
+
+    #[test]
+    fn extract_partial_content_full_range_returns_full() {
+        // include_start == 0 and include_end == estimated_tokens => short-circuit, full content
+        let result = extract_partial_content("hello world", 4, 0, 4, 4);
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn extract_partial_content_empty_content() {
+        let result = extract_partial_content("", 10, 2, 8, 6);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn extract_partial_content_fallback_when_collapsed() {
+        // When proportional mapping collapses char_end <= char_start but included_tokens > 0,
+        // the function falls back to returning all content.
+        // Force this by using a large include_start that equals include_end at the same char.
+        let content = "ab"; // 2 chars, 10 tokens
+                            // include_start=5, include_end=5 => char_start == char_end, included_tokens=0
+                            // With included_tokens == 0 the fallback does NOT fire; result is "".
+        let result = extract_partial_content(content, 10, 5, 5, 0);
+        assert_eq!(result, "");
+        // Now with included_tokens > 0 the fallback fires and returns full content.
+        let result2 = extract_partial_content(content, 10, 5, 5, 1);
+        assert_eq!(result2, content);
+    }
+
+    #[test]
+    fn extract_partial_content_unicode() {
+        // "日本語" is 3 chars, 6 tokens; take first 3 tokens (half = first 1.5 chars, floor=1)
+        let content = "日本語";
+        let result = extract_partial_content(content, 6, 0, 3, 3);
+        // char_end = floor(3 * 3/6) = floor(1.5) = 1
+        assert_eq!(result, "日");
+    }
+
+    #[test]
+    fn extract_partial_content_zero_tokens_denominator() {
+        // estimated_tokens == 0: the function uses max(1) so ratio = chars / 1
+        let content = "abc";
+        // With estimated_tokens=0, include_start=0, include_end=0 => full range short-circuit
+        let result = extract_partial_content(content, 0, 0, 0, 0);
+        assert_eq!(result, content);
+    }
+
+    // ============================================
+    // build_partial_segment Tests
+    // ============================================
+
+    fn make_segment(start: f64, end: f64, content: &str, tokens: usize) -> AnalysisSegment {
+        AnalysisSegment {
+            start_time: start,
+            end_time: end,
+            content: content.to_string(),
+            estimated_tokens: tokens,
+            event_range: (0, 1),
+        }
+    }
+
+    #[test]
+    fn build_partial_segment_no_overlap_before() {
+        // segment occupies [10, 20), range is [0, 10) => no overlap
+        let seg = make_segment(0.0, 10.0, "hello", 10);
+        let result = build_partial_segment(&seg, 10, 20, 0, 10);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_partial_segment_no_overlap_past_range() {
+        // segment occupies [20, 30), range is [0, 20) => no overlap
+        let seg = make_segment(0.0, 10.0, "hello", 10);
+        let result = build_partial_segment(&seg, 20, 30, 0, 20);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_partial_segment_collapsed_include_range() {
+        // include_end <= include_start triggers None
+        // segment [0,10), range [5,5) => include_start=5, include_end=min(5-0,10)=5 => None
+        let seg = make_segment(0.0, 10.0, "hello", 10);
+        let result = build_partial_segment(&seg, 0, 10, 5, 5);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn build_partial_segment_full_in_range() {
+        // segment [0,10) fully inside range [0,20) => full partial (all tokens)
+        let seg = make_segment(1.0, 3.0, "hello world", 10);
+        let result = build_partial_segment(&seg, 0, 10, 0, 20).unwrap();
+        assert_eq!(result.estimated_tokens, 10);
+        assert_eq!(result.content, "hello world"); // full short-circuit
+        assert!((result.start_time - 1.0).abs() < 0.001);
+        assert!((result.end_time - 3.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn build_partial_segment_zero_tokens_segment() {
+        // estimated_tokens == 0 should use max(1) internally, no panic
+        let seg = make_segment(0.0, 2.0, "x", 0);
+        // segment [0,1) inside range [0,10) => include_start=0, include_end=min(10,max(0,1))
+        // estimated_tokens.max(1)=1, so include_end=1 but segment.estimated_tokens=0 =>
+        // include_end = (10 - 0).min(0) = 0, include_start=0 => None
+        let result = build_partial_segment(&seg, 0, 1, 0, 10);
+        // With estimated_tokens=0, include_end = min(10, 0) = 0, == include_start -> None
+        assert!(result.is_none());
     }
 
     /// Test that chunks don't have inflated token counts when splitting large segments.

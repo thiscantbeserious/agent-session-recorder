@@ -174,19 +174,7 @@ impl ContentExtractor {
     /// total recording duration while preventing segment time ranges from
     /// clustering at the end.
     fn redistribute_time(events: &mut [Event], max_gap: f64) {
-        let mut excess = 0.0;
-        let mut normal_output_count = 0usize;
-
-        // First pass: measure excess
-        for event in events.iter() {
-            if event.is_output() {
-                if event.time > max_gap {
-                    excess += event.time - max_gap;
-                } else {
-                    normal_output_count += 1;
-                }
-            }
-        }
+        let (excess, normal_output_count) = measure_excess_time(events, max_gap);
 
         if excess <= 0.0 {
             return;
@@ -286,6 +274,27 @@ impl Default for ContentExtractor {
     }
 }
 
+/// First pass of time redistribution: compute total excess time above `max_gap`
+/// and the count of normal-duration output events.
+///
+/// Returns `(excess, normal_output_count)`.
+fn measure_excess_time(events: &[Event], max_gap: f64) -> (f64, usize) {
+    let mut excess = 0.0;
+    let mut normal_output_count = 0usize;
+
+    for event in events.iter() {
+        if event.is_output() {
+            if event.time > max_gap {
+                excess += event.time - max_gap;
+            } else {
+                normal_output_count += 1;
+            }
+        }
+    }
+
+    (excess, normal_output_count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,5 +353,75 @@ mod tests {
         // Token estimate should be reasonable (chars/3 * 0.70)
         assert!(content.total_tokens > 0);
         assert!(content.total_tokens < 100);
+    }
+
+    // ============================================
+    // measure_excess_time Tests
+    // ============================================
+
+    #[test]
+    fn measure_excess_time_empty_slice() {
+        let events: Vec<Event> = vec![];
+        let (excess, count) = measure_excess_time(&events, 2.0);
+        assert_eq!(excess, 0.0);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn measure_excess_time_all_below_max() {
+        let events = vec![
+            Event::output(1.0, "a"),
+            Event::output(1.5, "b"),
+            Event::output(2.0, "c"), // exactly at max, not above
+        ];
+        let (excess, count) = measure_excess_time(&events, 2.0);
+        assert_eq!(excess, 0.0);
+        assert_eq!(count, 3);
+    }
+
+    #[test]
+    fn measure_excess_time_all_above_max() {
+        let events = vec![
+            Event::output(5.0, "a"), // 3.0 excess
+            Event::output(4.0, "b"), // 2.0 excess
+        ];
+        let (excess, count) = measure_excess_time(&events, 2.0);
+        assert!((excess - 5.0).abs() < 0.001);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn measure_excess_time_mixed() {
+        let events = vec![
+            Event::output(1.0, "a"),  // normal
+            Event::output(5.0, "b"),  // 3.0 excess over max=2.0
+            Event::output(0.5, "c"),  // normal
+            Event::output(10.0, "d"), // 8.0 excess
+        ];
+        let (excess, count) = measure_excess_time(&events, 2.0);
+        assert!((excess - 11.0).abs() < 0.001);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn measure_excess_time_non_output_ignored() {
+        // Markers and other non-output events must not affect the counts
+        let events = vec![
+            Event::output(1.0, "a"),
+            Event::marker(100.0, "big marker gap"), // ignored
+            Event::output(1.0, "b"),
+        ];
+        let (excess, count) = measure_excess_time(&events, 2.0);
+        assert_eq!(excess, 0.0);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn measure_excess_time_exactly_at_max() {
+        // An event whose time == max_gap is NOT above max_gap, so no excess
+        let events = vec![Event::output(2.0, "a")];
+        let (excess, count) = measure_excess_time(&events, 2.0);
+        assert_eq!(excess, 0.0);
+        assert_eq!(count, 1);
     }
 }

@@ -4,8 +4,6 @@
 //! handling ANSI escape sequences (CSI, OSC), control characters, and
 //! visual-only Unicode characters.
 
-use std::collections::HashSet;
-
 use crate::asciicast::{Event, Transform};
 
 use super::super::config::ExtractionConfig;
@@ -39,83 +37,95 @@ pub struct ContentCleaner {
     buffer: String,
     /// State machine for ANSI sequence detection
     ansi_state: AnsiParseState,
-    /// Characters to strip (visual-only, no semantic meaning)
-    strip_chars: HashSet<char>,
-    /// Characters with semantic meaning (never strip)
-    semantic_chars: HashSet<char>,
+    /// Strip box drawing (U+2500–U+257F) and block elements (U+2580–U+259F)
+    strip_box_drawing: bool,
+    /// Strip spinner animation characters
+    strip_spinner_chars: bool,
+    /// Strip progress bar block characters
+    strip_progress_blocks: bool,
     /// Statistics tracking
     ansi_stripped: usize,
     control_stripped: usize,
 }
 
+/// Returns true for characters with semantic meaning that must never be stripped.
+#[inline]
+const fn is_semantic_char(c: char) -> bool {
+    matches!(
+        c,
+        '\u{2713}' // ✓ Check mark
+        | '\u{2714}' // ✔ Heavy check mark
+        | '\u{2715}' // ✕ Multiplication X
+        | '\u{26A0}' // ⚠ Warning sign
+        | '\u{2139}' // ℹ Information source
+        | '\u{2610}' // ☐ Ballot box
+        | '\u{2611}' // ☑ Ballot box with check
+    )
+}
+
+/// Box drawing characters (U+2500–U+257F) and block elements (U+2580–U+259F).
+#[inline]
+const fn is_box_drawing(c: char) -> bool {
+    matches!(c, '\u{2500}'..='\u{257F}' | '\u{2580}'..='\u{259F}')
+}
+
+/// Spinner animation characters (visual-only, no semantic meaning).
+#[inline]
+const fn is_spinner_char(c: char) -> bool {
+    matches!(
+        c,
+        // Claude spinners
+        '\u{273B}'   // ✻
+        | '\u{2733}' // ✳
+        | '\u{2722}' // ✢
+        | '\u{2736}' // ✶
+        | '\u{273D}' // ✽
+        // Gemini braille spinner frames
+        | '\u{280B}' // ⠋
+        | '\u{2819}' // ⠙
+        | '\u{2839}' // ⠹
+        | '\u{2838}' // ⠸
+        | '\u{283C}' // ⠼
+        | '\u{2834}' // ⠴
+        | '\u{2826}' // ⠦
+        | '\u{2827}' // ⠧
+        | '\u{2807}' // ⠇
+        | '\u{280F}' // ⠏
+        // Visual-only bullets and list markers
+        | '\u{2022}' // •
+        | '\u{203A}' // ›
+        | '\u{25E6}' // ◦
+        | '\u{22EE}' // ⋮
+    )
+}
+
+/// Progress bar block and indicator characters.
+#[inline]
+const fn is_progress_block(c: char) -> bool {
+    matches!(
+        c,
+        // Block fill characters
+        '\u{2588}'   // █ Full block
+        | '\u{2591}' // ░ Light shade
+        | '\u{2592}' // ▒ Medium shade
+        | '\u{2593}' // ▓ Dark shade
+        // Progress indicators
+        | '\u{25BC}' // ▼ Down triangle
+        | '\u{25B2}' // ▲ Up triangle
+        | '\u{25CF}' // ● Filled circle
+        | '\u{25CB}' // ○ Empty circle
+    )
+}
+
 impl ContentCleaner {
     /// Create a new content cleaner with the given configuration.
     pub fn new(config: &ExtractionConfig) -> Self {
-        let mut strip_chars = HashSet::new();
-        let mut semantic_chars = HashSet::new();
-
-        // Semantic chars - NEVER strip (help LLM identify outcomes)
-        for c in [
-            '\u{2713}', // ✓ Check mark
-            '\u{2714}', // ✔ Heavy check mark
-            '\u{2715}', // ✕ Multiplication X
-            '\u{26A0}', // ⚠ Warning sign
-            '\u{2139}', // ℹ Information source
-            '\u{2610}', // ☐ Ballot box
-            '\u{2611}', // ☑ Ballot box with check
-        ] {
-            semantic_chars.insert(c);
-        }
-
-        // Box drawing characters (U+2500-U+257F)
-        if config.strip_box_drawing {
-            for c in '\u{2500}'..='\u{257F}' {
-                if !semantic_chars.contains(&c) {
-                    strip_chars.insert(c);
-                }
-            }
-            // Also block elements used in box drawing (U+2580-U+259F)
-            for c in '\u{2580}'..='\u{259F}' {
-                if !semantic_chars.contains(&c) {
-                    strip_chars.insert(c);
-                }
-            }
-        }
-
-        // Spinner characters (visual animation only)
-        if config.strip_spinner_chars {
-            // Claude spinners
-            for c in ['\u{273B}', '\u{2733}', '\u{2722}', '\u{2736}', '\u{273D}'] {
-                strip_chars.insert(c); // ✻ ✳ ✢ ✶ ✽
-            }
-            // Gemini braille spinner
-            for c in [
-                '\u{280B}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283C}', '\u{2834}', '\u{2826}',
-                '\u{2827}', '\u{2807}', '\u{280F}',
-            ] {
-                strip_chars.insert(c); // ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
-            }
-            // Visual-only bullets
-            for c in ['\u{2022}', '\u{203A}', '\u{25E6}', '\u{22EE}'] {
-                strip_chars.insert(c); // • › ◦ ⋮
-            }
-        }
-
-        // Progress bar blocks
-        if config.strip_progress_blocks {
-            for c in [
-                '\u{2588}', '\u{2591}', '\u{2592}', '\u{2593}', // █ ░ ▒ ▓
-                '\u{25BC}', '\u{25B2}', '\u{25CF}', '\u{25CB}', // ▼ ▲ ● ○
-            ] {
-                strip_chars.insert(c);
-            }
-        }
-
         Self {
             buffer: String::with_capacity(4096),
             ansi_state: AnsiParseState::Normal,
-            strip_chars,
-            semantic_chars,
+            strip_box_drawing: config.strip_box_drawing,
+            strip_spinner_chars: config.strip_spinner_chars,
+            strip_progress_blocks: config.strip_progress_blocks,
             ansi_stripped: 0,
             control_stripped: 0,
         }
@@ -212,18 +222,27 @@ impl ContentCleaner {
         }
 
         // Semantic chars are always kept
-        if self.semantic_chars.contains(&c) {
+        if is_semantic_char(c) {
             self.buffer.push(c);
             return;
         }
 
-        // Strip configured characters
-        if self.strip_chars.contains(&c) {
+        // Strip configured visual-only characters
+        if self.is_strip_char(c) {
             return;
         }
 
         // Keep everything else
         self.buffer.push(c);
+    }
+
+    /// Check if a character is a visual-only character that should be stripped
+    /// according to the current config flags.
+    #[inline]
+    fn is_strip_char(&self, c: char) -> bool {
+        (self.strip_box_drawing && is_box_drawing(c))
+            || (self.strip_spinner_chars && is_spinner_char(c))
+            || (self.strip_progress_blocks && is_progress_block(c))
     }
 
     /// Get the count of ANSI sequences stripped.
@@ -388,5 +407,122 @@ mod tests {
         let input = "hello\x1b[";
         let output = cleaner.clean(input);
         assert_eq!(output, "hello");
+    }
+
+    // ============================================
+    // is_semantic_char Tests
+    // ============================================
+
+    #[test]
+    fn is_semantic_char_all_7() {
+        assert!(is_semantic_char('\u{2713}')); // ✓
+        assert!(is_semantic_char('\u{2714}')); // ✔
+        assert!(is_semantic_char('\u{2715}')); // ✕
+        assert!(is_semantic_char('\u{26A0}')); // ⚠
+        assert!(is_semantic_char('\u{2139}')); // ℹ
+        assert!(is_semantic_char('\u{2610}')); // ☐
+        assert!(is_semantic_char('\u{2611}')); // ☑
+                                               // Non-semantic chars return false
+        assert!(!is_semantic_char('A'));
+        assert!(!is_semantic_char('\u{2500}')); // ─ box drawing
+    }
+
+    #[test]
+    fn semantic_chars_not_in_box_range() {
+        for c in '\u{2500}'..='\u{257F}' {
+            assert!(
+                !is_semantic_char(c),
+                "Box-drawing char U+{:04X} should not be semantic",
+                c as u32
+            );
+        }
+    }
+
+    // ============================================
+    // Character stripping via clean() Tests
+    // ============================================
+
+    #[test]
+    fn strip_nothing_when_all_flags_false() {
+        let mut config = ExtractionConfig::default();
+        config.strip_box_drawing = false;
+        config.strip_spinner_chars = false;
+        config.strip_progress_blocks = false;
+        let mut cleaner = ContentCleaner::new(&config);
+
+        // Box drawing, spinner, and progress chars should all pass through
+        let output = cleaner.clean("\u{2500}\u{273B}\u{2588}text");
+        assert_eq!(output, "\u{2500}\u{273B}\u{2588}text");
+    }
+
+    #[test]
+    fn strip_only_box_when_flag_set() {
+        let mut config = ExtractionConfig::default();
+        config.strip_box_drawing = true;
+        config.strip_spinner_chars = false;
+        config.strip_progress_blocks = false;
+        let mut cleaner = ContentCleaner::new(&config);
+
+        // Box drawing stripped
+        assert_eq!(cleaner.clean("\u{2500}text"), "text");
+        // Block elements (U+2580-U+259F) also stripped by box_drawing flag
+        assert_eq!(cleaner.clean("\u{2588}text"), "text");
+        // Spinner chars preserved
+        assert!(cleaner.clean("\u{273B}text").contains('\u{273B}'));
+        // Progress-only chars preserved
+        assert!(cleaner.clean("\u{25BC}text").contains('\u{25BC}'));
+    }
+
+    #[test]
+    fn strip_only_spinner_when_flag_set() {
+        let mut config = ExtractionConfig::default();
+        config.strip_box_drawing = false;
+        config.strip_spinner_chars = true;
+        config.strip_progress_blocks = false;
+        let mut cleaner = ContentCleaner::new(&config);
+
+        // Spinner chars stripped
+        assert_eq!(cleaner.clean("\u{273B}text"), "text");
+        assert_eq!(cleaner.clean("\u{280B}text"), "text");
+        // Box drawing preserved
+        assert!(cleaner.clean("\u{2500}text").contains('\u{2500}'));
+        // Block elements preserved (only stripped by box_drawing flag)
+        assert!(cleaner.clean("\u{2588}text").contains('\u{2588}'));
+    }
+
+    #[test]
+    fn strip_only_progress_when_flag_set() {
+        let mut config = ExtractionConfig::default();
+        config.strip_box_drawing = false;
+        config.strip_spinner_chars = false;
+        config.strip_progress_blocks = true;
+        let mut cleaner = ContentCleaner::new(&config);
+
+        // Progress blocks stripped
+        assert_eq!(cleaner.clean("\u{2588}text"), "text");
+        assert_eq!(cleaner.clean("\u{2591}text"), "text");
+        // Spinner chars preserved
+        assert!(cleaner.clean("\u{273B}text").contains('\u{273B}'));
+        // Box drawing preserved
+        assert!(cleaner.clean("\u{2500}text").contains('\u{2500}'));
+    }
+
+    #[test]
+    fn semantic_chars_never_stripped() {
+        let config = ExtractionConfig::default(); // all strip flags true
+        let mut cleaner = ContentCleaner::new(&config);
+
+        let semantic = [
+            '\u{2713}', '\u{2714}', '\u{2715}', '\u{26A0}', '\u{2139}', '\u{2610}', '\u{2611}',
+        ];
+        for c in semantic {
+            let input = format!("before{}after", c);
+            let output = cleaner.clean(&input);
+            assert!(
+                output.contains(c),
+                "Semantic char U+{:04X} was incorrectly stripped",
+                c as u32
+            );
+        }
     }
 }

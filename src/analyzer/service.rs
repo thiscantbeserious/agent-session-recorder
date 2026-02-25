@@ -422,22 +422,8 @@ impl AnalyzerService {
         }
 
         // 4. Calculate chunks (Stage 2)
-        let calculator = if let Some(budget_tokens) = self.options.token_budget_override {
-            if budget_tokens < 10000 {
-                eprintln!(
-                    "Warning: token_budget {} is below minimum (10000). Using default budget.",
-                    budget_tokens
-                );
-                ChunkCalculator::for_agent(self.options.agent)
-            } else {
-                // Use overridden token budget from per-agent config
-                let mut budget = self.options.agent.token_budget();
-                budget.max_input_tokens = budget_tokens;
-                ChunkCalculator::new(budget, ChunkConfig::default())
-            }
-        } else {
-            ChunkCalculator::for_agent(self.options.agent)
-        };
+        let calculator =
+            build_chunk_calculator(self.options.agent, self.options.token_budget_override);
         let chunks = calculator.calculate_chunks(&content);
 
         // 5. Execute analysis (Stage 3+4)
@@ -637,6 +623,37 @@ impl AnalyzerService {
 
         Some(result)
     }
+}
+
+/// Build a `ChunkCalculator` from the given agent and optional budget override.
+///
+/// The override is accepted only when `available_for_content()` on the resulting
+/// budget exceeds `ChunkConfig::default().min_overlap_tokens`, guaranteeing that
+/// chunking can make forward progress.  When the override leaves too little room,
+/// a warning is printed and the default agent budget is used instead.
+fn build_chunk_calculator(
+    agent: AgentType,
+    token_budget_override: Option<usize>,
+) -> ChunkCalculator {
+    if let Some(budget_tokens) = token_budget_override {
+        let mut budget = agent.token_budget();
+        budget.max_input_tokens = budget_tokens;
+
+        let available = budget.available_for_content();
+        let min_overlap = ChunkConfig::default().min_overlap_tokens;
+        if available <= min_overlap {
+            eprintln!(
+                "Warning: token_budget {} leaves {} usable content tokens, \
+                 which is too small for chunking (min {}). Using default budget.",
+                budget_tokens,
+                available,
+                min_overlap + 1
+            );
+            return ChunkCalculator::for_agent(agent);
+        }
+        return ChunkCalculator::new(budget, ChunkConfig::default());
+    }
+    ChunkCalculator::for_agent(agent)
 }
 
 #[cfg(test)]
@@ -1067,6 +1084,44 @@ mod tests {
         assert!(result.is_success());
         assert!(!result.is_partial());
         assert_eq!(result.markers_added(), 5);
+    }
+
+    // ============================================
+    // build_chunk_calculator Tests
+    // ============================================
+
+    #[test]
+    fn build_chunk_calculator_no_override() {
+        // No override -> uses Claude default (72K available).
+        // 72K tokens exactly fits in 1 chunk.
+        let calc = build_chunk_calculator(AgentType::Claude, None);
+        assert_eq!(calc.calculate_chunk_count(72_000), 1);
+    }
+
+    #[test]
+    fn build_chunk_calculator_above_minimum() {
+        // Override of 50K -> available content budget is less than Claude default.
+        // 72K tokens requires more than 1 chunk because the budget is smaller.
+        let calc = build_chunk_calculator(AgentType::Claude, Some(50_000));
+        assert!(calc.calculate_chunk_count(72_000) >= 2);
+    }
+
+    #[test]
+    fn build_chunk_calculator_below_minimum_fallback() {
+        // Override below 10000 -> falls back to Claude default (same as no_override).
+        // 72K tokens fits in 1 chunk with the default budget.
+        let calc = build_chunk_calculator(AgentType::Claude, Some(500));
+        assert_eq!(calc.calculate_chunk_count(72_000), 1);
+    }
+
+    #[test]
+    fn build_chunk_calculator_boundary_10000() {
+        // Exactly 10000 leaves 0 usable content tokens for Claude
+        // (reserved_for_prompt=2000 + reserved_for_output=8000 = 10000, so usable=0).
+        // available_for_content() == 0 <= min_overlap_tokens (500), so it falls back
+        // to the default budget — same as no_override (72K fits in 1 chunk).
+        let calc = build_chunk_calculator(AgentType::Claude, Some(10_000));
+        assert_eq!(calc.calculate_chunk_count(72_000), 1);
     }
 
     #[test]

@@ -305,28 +305,16 @@ pub struct AnalysisResponse {
     pub markers: Vec<RawMarker>,
 }
 
-/// Claude CLI wrapper format when using `--output-format json`.
+/// Extract JSON from a raw agent response.
 ///
-/// Claude wraps the actual response in a metadata envelope:
-/// - Without schema: `{"type":"result","result":"...","is_error":false,...}`
-/// - With schema: `{"type":"result","result":"","structured_output":{...},"is_error":false,...}`
-#[derive(Debug, Deserialize)]
-struct ClaudeWrapper {
-    #[serde(rename = "type")]
-    response_type: Option<String>,
-    result: Option<String>,
-    is_error: Option<bool>,
-    /// When using --json-schema, structured output appears here instead of result
-    structured_output: Option<serde_json::Value>,
-}
-
-/// Extract JSON from a potentially wrapped text response.
+/// Handles multiple generic response formats:
+/// 1. Direct JSON object
+/// 2. JSON embedded in text
+/// 3. JSON in markdown code blocks
 ///
-/// Handles multiple response formats:
-/// 1. Claude CLI wrapper (`{"type":"result","result":"..."}`)
-/// 2. Direct JSON object
-/// 3. JSON embedded in text
-/// 4. JSON in markdown code blocks
+/// Backend-specific envelope formats (e.g. Claude CLI wrapper) should be
+/// unwrapped by the backend's `parse_response` implementation before calling
+/// this function.
 ///
 /// # Arguments
 ///
@@ -336,43 +324,11 @@ struct ClaudeWrapper {
 ///
 /// The parsed `AnalysisResponse` containing markers.
 pub fn extract_json(response: &str) -> BackendResult<AnalysisResponse> {
-    let trimmed = response.trim();
-
-    // Try Claude CLI wrapper format first
-    // Without schema: {"type":"result","result":"```json\n{...}\n```",...}
-    // With schema: {"type":"result","result":"","structured_output":{...},...}
-    if let Ok(wrapper) = serde_json::from_str::<ClaudeWrapper>(trimmed) {
-        if wrapper.response_type.as_deref() == Some("result") {
-            // Check for error response
-            if wrapper.is_error == Some(true) {
-                return Err(BackendError::JsonExtraction {
-                    response: wrapper
-                        .result
-                        .unwrap_or_else(|| "Claude returned an error".to_string()),
-                });
-            }
-
-            // Check for structured_output first (when using --json-schema)
-            if let Some(structured) = wrapper.structured_output {
-                // Parse the structured output directly
-                return serde_json::from_value(structured).map_err(BackendError::JsonParse);
-            }
-
-            // Fall back to result field (without --json-schema)
-            if let Some(inner) = wrapper.result {
-                if !inner.is_empty() {
-                    return extract_json_inner(&inner);
-                }
-            }
-        }
-    }
-
-    // Fall back to standard extraction
-    extract_json_inner(trimmed)
+    extract_json_inner(response.trim())
 }
 
 /// Inner JSON extraction logic (handles direct JSON, text-embedded, code blocks).
-fn extract_json_inner(response: &str) -> BackendResult<AnalysisResponse> {
+pub(super) fn extract_json_inner(response: &str) -> BackendResult<AnalysisResponse> {
     let trimmed = response.trim();
 
     // Try direct parse first
@@ -679,51 +635,6 @@ Done."#;
         let response = "This is not JSON at all";
         let result = extract_json(response);
         assert!(matches!(result, Err(BackendError::JsonExtraction { .. })));
-    }
-
-    #[test]
-    fn extract_json_claude_wrapper_with_code_block() {
-        // This is the actual format Claude CLI returns with --output-format json
-        let response = r#"{"type":"result","subtype":"success","is_error":false,"result":"```json\n{\"markers\":[{\"timestamp\":10.0,\"label\":\"Test\",\"category\":\"success\"}]}\n```"}"#;
-        let result = extract_json(response).unwrap();
-        assert_eq!(result.markers.len(), 1);
-        assert_eq!(result.markers[0].category, MarkerCategory::Success);
-    }
-
-    #[test]
-    fn extract_json_claude_wrapper_direct_json() {
-        // Claude wrapper with direct JSON (no code blocks)
-        let response = r#"{"type":"result","is_error":false,"result":"{\"markers\":[{\"timestamp\":5.0,\"label\":\"Plan\",\"category\":\"planning\"}]}"}"#;
-        let result = extract_json(response).unwrap();
-        assert_eq!(result.markers.len(), 1);
-        assert_eq!(result.markers[0].category, MarkerCategory::Planning);
-    }
-
-    #[test]
-    fn extract_json_claude_wrapper_structured_output() {
-        // Claude wrapper with structured_output (when using --json-schema)
-        let response = r#"{"type":"result","subtype":"success","is_error":false,"result":"","structured_output":{"markers":[{"timestamp":10.0,"label":"Schema output","category":"success"}]}}"#;
-        let result = extract_json(response).unwrap();
-        assert_eq!(result.markers.len(), 1);
-        assert_eq!(result.markers[0].label, "Schema output");
-        assert_eq!(result.markers[0].category, MarkerCategory::Success);
-    }
-
-    #[test]
-    fn extract_json_claude_wrapper_error() {
-        // Claude wrapper with is_error: true
-        let response =
-            r#"{"type":"result","is_error":true,"result":"Failed to analyze: content too large"}"#;
-        let result = extract_json(response);
-        assert!(matches!(result, Err(BackendError::JsonExtraction { .. })));
-    }
-
-    #[test]
-    fn extract_json_claude_wrapper_empty_markers() {
-        let response =
-            r#"{"type":"result","is_error":false,"result":"```json\n{\"markers\":[]}\n```"}"#;
-        let result = extract_json(response).unwrap();
-        assert!(result.markers.is_empty());
     }
 
     #[test]
