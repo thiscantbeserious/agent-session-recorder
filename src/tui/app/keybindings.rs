@@ -193,6 +193,26 @@ fn handle_normal_navigation(key: KeyEvent, state: &mut SharedState) -> KeyResult
     }
 }
 
+/// Action to take when the user responds in a confirm (y/n) dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfirmAction {
+    /// Confirmed (y/Y)
+    Confirmed,
+    /// Cancelled (n/N/Esc)
+    Cancelled,
+    /// No action needed (other key)
+    Ignored,
+}
+
+/// Classify a key event in a confirm (y/n) dialog.
+pub fn classify_confirm_key(key: &KeyEvent) -> ConfirmAction {
+    match key.code {
+        KeyCode::Char('y') | KeyCode::Char('Y') => ConfirmAction::Confirmed,
+        KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => ConfirmAction::Cancelled,
+        _ => ConfirmAction::Ignored,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

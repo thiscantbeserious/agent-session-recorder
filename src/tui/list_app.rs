@@ -18,12 +18,14 @@ use ratatui::{
 
 use super::app::layout::build_explorer_layout;
 use super::app::list_view::{render_explorer_list, render_explorer_list_with_rename};
-use super::app::modals;
+use super::app::modals::{
+    self, help_close_hint, help_section_header, help_shortcut_line, help_title_line,
+    render_help_paragraph,
+};
 use super::app::status_footer::{render_footer_text, render_input_line, render_status_line};
-use super::app::{handle_shared_key, App, KeyResult, SharedMode, SharedState, TuiApp};
+use super::app::{classify_confirm_key, App, ConfirmAction, SharedMode, SharedState, TuiApp};
 use super::import;
-use super::widgets::preview::prefetch_adjacent_previews;
-use super::widgets::FileItem;
+use super::widgets::{FileExplorer, FileItem};
 use crate::asciicast::{apply_transforms, TransformResult};
 use crate::config::Config;
 use crate::files::backup::{backup_path_for, create_backup, has_backup, restore_from_backup};
@@ -205,74 +207,61 @@ impl ListApp {
         }
     }
 
+    /// If the selected item is locked, set mode to `ConfirmUnlock` and return `true`.
+    ///
+    /// Returns `false` when the item is not locked, so the caller can proceed normally.
+    fn redirect_if_locked(&mut self) -> bool {
+        if self.is_selected_locked() {
+            self.mode = Mode::ConfirmUnlock;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Handle keys in normal mode (app-specific only).
     ///
     /// Navigation (up/down/pgup/pgdn/home/end) and mode transitions
     /// (`/`, `f`, `?`) are handled by `handle_shared_key`. This only
     /// handles app-specific keys: Enter, shortcuts, and Esc.
     fn handle_normal_key(&mut self, key: KeyEvent) -> Result<()> {
+        // Guard: keys that require an unlocked session
+        let needs_unlock = matches!(
+            key.code,
+            KeyCode::Enter
+                | KeyCode::Char('p')
+                | KeyCode::Char('t')
+                | KeyCode::Char('a')
+                | KeyCode::Char('r')
+                | KeyCode::Char('d')
+        );
+        if needs_unlock && self.redirect_if_locked() {
+            return Ok(());
+        }
+
         match key.code {
-            // Actions
             KeyCode::Enter => {
-                if self.is_selected_locked() {
-                    self.mode = Mode::ConfirmUnlock;
-                    return Ok(());
-                }
                 if self.shared.explorer.selected_item().is_some() {
                     self.context_menu_idx = 0;
                     self.mode = Mode::ContextMenu;
                 }
             }
-
-            // Direct shortcuts (bypass context menu)
-            KeyCode::Char('p') => {
-                if self.is_selected_locked() {
-                    self.mode = Mode::ConfirmUnlock;
-                    return Ok(());
-                }
-                self.play_session()?;
-            }
+            KeyCode::Char('p') => self.play_session()?,
             KeyCode::Char('c') => self.copy_to_clipboard()?,
-            KeyCode::Char('t') => {
-                if self.is_selected_locked() {
-                    self.mode = Mode::ConfirmUnlock;
-                    return Ok(());
-                }
-                self.optimize_session()?;
-            }
-            KeyCode::Char('a') => {
-                if self.is_selected_locked() {
-                    self.mode = Mode::ConfirmUnlock;
-                    return Ok(());
-                }
-                self.analyze_session()?;
-            }
-            KeyCode::Char('r') => {
-                if self.is_selected_locked() {
-                    self.mode = Mode::ConfirmUnlock;
-                    return Ok(());
-                }
-                self.enter_rename_mode();
-            }
+            KeyCode::Char('t') => self.optimize_session()?,
+            KeyCode::Char('a') => self.analyze_session()?,
+            KeyCode::Char('r') => self.enter_rename_mode(),
             KeyCode::Char('d') => {
-                if self.is_selected_locked() {
-                    self.mode = Mode::ConfirmUnlock;
-                    return Ok(());
-                }
                 if self.shared.explorer.selected_item().is_some() {
                     self.mode = Mode::ConfirmDelete;
                 }
             }
-            // Clear filters
             KeyCode::Esc => {
                 self.shared.explorer.clear_filters();
                 self.shared.search_input.clear();
                 self.shared.agent_filter_idx = 0;
             }
-
-            // Quit
             KeyCode::Char('q') => self.app.quit(),
-
             _ => {}
         }
         Ok(())
@@ -280,29 +269,23 @@ impl ListApp {
 
     /// Handle keys in confirm delete mode (first confirmation).
     fn handle_confirm_delete_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                self.mode = Mode::ConfirmDeleteFinal;
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+        match classify_confirm_key(&key) {
+            ConfirmAction::Confirmed => self.mode = Mode::ConfirmDeleteFinal,
+            ConfirmAction::Cancelled => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
 
     /// Handle keys in final delete confirmation ("Are you sure?").
     fn handle_confirm_delete_final_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
+        match classify_confirm_key(&key) {
+            ConfirmAction::Confirmed => {
                 self.delete_session()?;
                 self.mode = Mode::Normal;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+            ConfirmAction::Cancelled => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
@@ -401,14 +384,10 @@ impl ListApp {
 
     /// Handle keys in confirm unlock mode (first confirmation).
     fn handle_confirm_unlock_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
-                self.mode = Mode::ConfirmUnlockFinal;
-            }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+        match classify_confirm_key(&key) {
+            ConfirmAction::Confirmed => self.mode = Mode::ConfirmUnlockFinal,
+            ConfirmAction::Cancelled => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
@@ -425,15 +404,13 @@ impl ListApp {
 
     /// Handle keys in final unlock confirmation ("Are you sure?").
     fn handle_confirm_unlock_final_key(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('y') | KeyCode::Char('Y') => {
+        match classify_confirm_key(&key) {
+            ConfirmAction::Confirmed => {
                 self.remove_selected_lock();
                 self.mode = Mode::Normal;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
-                self.mode = Mode::Normal;
-            }
-            _ => {}
+            ConfirmAction::Cancelled => self.mode = Mode::Normal,
+            ConfirmAction::Ignored => {}
         }
         Ok(())
     }
@@ -700,6 +677,77 @@ impl ListApp {
         }
     }
 
+    /// Delete the character before the cursor (Backspace key).
+    ///
+    /// Clears entire input if all-selected; otherwise removes character at char boundary.
+    fn handle_rename_backspace(&mut self) {
+        if self.rename_selected_all {
+            self.rename_input.clear();
+            self.rename_cursor = 0;
+            self.rename_selected_all = false;
+        } else if self.rename_cursor > 0 {
+            let prev = self.rename_input[..self.rename_cursor]
+                .char_indices()
+                .next_back()
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            self.rename_input.remove(prev);
+            self.rename_cursor = prev;
+        }
+    }
+
+    /// Delete the character at the cursor (Delete key).
+    ///
+    /// Clears entire input if all-selected; otherwise removes char at cursor position.
+    fn handle_rename_delete(&mut self) {
+        if self.rename_selected_all {
+            self.rename_input.clear();
+            self.rename_cursor = 0;
+            self.rename_selected_all = false;
+        } else if self.rename_cursor < self.rename_input.len() {
+            self.rename_input.remove(self.rename_cursor);
+            // cursor stays — next char slides into position
+        }
+    }
+
+    /// Insert a character at the cursor position, respecting max-length limits.
+    ///
+    /// Validates the char, computes the extension-aware stem limit, then either
+    /// replaces the whole input (when all-selected) or inserts at cursor.
+    fn handle_rename_char_input(&mut self, c: char) -> bool {
+        if !filename::is_valid_filename_char(c) {
+            return false;
+        }
+        let ext_len = self
+            .shared
+            .explorer
+            .selected_item()
+            .map(|item| {
+                std::path::Path::new(&item.path)
+                    .extension()
+                    .map(|e| e.len() + 1) // +1 for the dot
+                    .unwrap_or(0)
+            })
+            .unwrap_or(0);
+        let max_stem_len = filename::MAX_FILENAME_LENGTH.saturating_sub(ext_len);
+
+        if self.rename_selected_all {
+            if c.len_utf8() > max_stem_len {
+                return false;
+            }
+            self.rename_input.clear();
+            self.rename_input.push(c);
+            self.rename_cursor = c.len_utf8();
+            self.rename_selected_all = false;
+        } else if self.rename_input.len().saturating_add(c.len_utf8()) <= max_stem_len {
+            self.rename_input.insert(self.rename_cursor, c);
+            self.rename_cursor += c.len_utf8();
+        } else {
+            return false;
+        }
+        true
+    }
+
     /// Handle keys in rename input mode.
     fn handle_rename_input_key(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
@@ -713,32 +761,8 @@ impl ListApp {
                 }
                 // On error, stay in RenameInput so user can correct
             }
-            KeyCode::Backspace => {
-                if self.rename_selected_all {
-                    self.rename_input.clear();
-                    self.rename_cursor = 0;
-                    self.rename_selected_all = false;
-                } else if self.rename_cursor > 0 {
-                    // Find previous char boundary
-                    let prev = self.rename_input[..self.rename_cursor]
-                        .char_indices()
-                        .next_back()
-                        .map(|(i, _)| i)
-                        .unwrap_or(0);
-                    self.rename_input.remove(prev);
-                    self.rename_cursor = prev;
-                }
-            }
-            KeyCode::Delete => {
-                if self.rename_selected_all {
-                    self.rename_input.clear();
-                    self.rename_cursor = 0;
-                    self.rename_selected_all = false;
-                } else if self.rename_cursor < self.rename_input.len() {
-                    self.rename_input.remove(self.rename_cursor);
-                    // cursor stays — next char slides into position
-                }
-            }
+            KeyCode::Backspace => self.handle_rename_backspace(),
+            KeyCode::Delete => self.handle_rename_delete(),
             KeyCode::Left => {
                 self.rename_selected_all = false;
                 if self.rename_cursor > 0 {
@@ -768,32 +792,7 @@ impl ListApp {
                 self.rename_cursor = self.rename_input.len();
             }
             KeyCode::Char(c) => {
-                if !filename::is_valid_filename_char(c) {
-                    return Ok(());
-                }
-                // Compute max stem length: MAX_FILENAME_LENGTH minus extension length
-                let ext_len = self
-                    .shared
-                    .explorer
-                    .selected_item()
-                    .map(|item| {
-                        std::path::Path::new(&item.path)
-                            .extension()
-                            .map(|e| e.len() + 1) // +1 for the dot
-                            .unwrap_or(0)
-                    })
-                    .unwrap_or(0);
-                let max_stem_len = filename::MAX_FILENAME_LENGTH.saturating_sub(ext_len);
-
-                if self.rename_selected_all {
-                    self.rename_input.clear();
-                    self.rename_input.push(c);
-                    self.rename_cursor = c.len_utf8();
-                    self.rename_selected_all = false;
-                } else if self.rename_input.len() < max_stem_len {
-                    self.rename_input.insert(self.rename_cursor, c);
-                    self.rename_cursor += c.len_utf8();
-                }
+                self.handle_rename_char_input(c);
             }
             _ => {}
         }
@@ -919,126 +918,36 @@ impl ListApp {
     /// Render the help modal overlay.
     /// Public for snapshot testing.
     pub fn render_help_modal(frame: &mut Frame, area: Rect) {
-        let theme = current_theme();
-
-        // Center the modal
-        let modal_width = 60.min(area.width.saturating_sub(4));
-        let modal_height = 31.min(area.height.saturating_sub(2));
-        let x = (area.width - modal_width) / 2;
-        let y = (area.height - modal_height) / 2;
-        let modal_area = Rect::new(x, y, modal_width, modal_height);
-
-        // Clear the area behind the modal
-        frame.render_widget(Clear, modal_area);
-
+        let accent = current_theme().accent;
         let help_text = vec![
-            Line::from(Span::styled(
-                "Keyboard Shortcuts",
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            )),
+            help_title_line("Keyboard Shortcuts", accent),
             Line::from(""),
-            // Navigation section
-            Line::from(Span::styled(
-                "Navigation",
-                Style::default().fg(theme.text_secondary),
-            )),
-            Line::from(vec![
-                Span::styled("  ↑/↓ j/k", Style::default().fg(theme.accent)),
-                Span::raw("    Navigate"),
-            ]),
-            Line::from(vec![
-                Span::styled("  PgUp/Dn", Style::default().fg(theme.accent)),
-                Span::raw("    Page up/down"),
-            ]),
-            Line::from(vec![
-                Span::styled("  Home/End", Style::default().fg(theme.accent)),
-                Span::raw("   First/last"),
-            ]),
+            help_section_header("Navigation"),
+            help_shortcut_line("  ↑/↓ j/k", "    Navigate", accent),
+            help_shortcut_line("  PgUp/Dn", "    Page up/down", accent),
+            help_shortcut_line("  Home/End", "   First/last", accent),
             Line::from(""),
-            // Actions section
-            Line::from(Span::styled(
-                "Actions",
-                Style::default().fg(theme.text_secondary),
-            )),
-            Line::from(vec![
-                Span::styled("  Enter", Style::default().fg(theme.accent)),
-                Span::raw("       Context menu"),
-            ]),
-            Line::from(vec![
-                Span::styled("  p", Style::default().fg(theme.accent)),
-                Span::raw("           Play session"),
-            ]),
-            Line::from(vec![
-                Span::styled("  c", Style::default().fg(theme.accent)),
-                Span::raw("           Copy to clipboard"),
-            ]),
-            Line::from(vec![
-                Span::styled("  r", Style::default().fg(theme.accent)),
-                Span::raw("           Rename session"),
-            ]),
-            Line::from(vec![
-                Span::styled("  t", Style::default().fg(theme.accent)),
-                Span::raw("           Optimize (removes silence)"),
-            ]),
-            Line::from(vec![
-                Span::styled("  a", Style::default().fg(theme.accent)),
-                Span::raw("           Analyze session"),
-            ]),
-            Line::from(vec![
-                Span::styled("  d", Style::default().fg(theme.accent)),
-                Span::raw("           Delete session"),
-            ]),
-            Line::from(vec![
-                Span::styled("  Paste", Style::default().fg(theme.accent)),
-                Span::raw("       Import .cast file(s)"),
-            ]),
+            help_section_header("Actions"),
+            help_shortcut_line("  Enter", "       Context menu", accent),
+            help_shortcut_line("  p", "           Play session", accent),
+            help_shortcut_line("  c", "           Copy to clipboard", accent),
+            help_shortcut_line("  r", "           Rename session", accent),
+            help_shortcut_line("  t", "           Optimize (removes silence)", accent),
+            help_shortcut_line("  a", "           Analyze session", accent),
+            help_shortcut_line("  d", "           Delete session", accent),
+            help_shortcut_line("  Paste", "       Import .cast file(s)", accent),
             Line::from(""),
-            // Filter section
-            Line::from(Span::styled(
-                "Filtering",
-                Style::default().fg(theme.text_secondary),
-            )),
-            Line::from(vec![
-                Span::styled("  /", Style::default().fg(theme.accent)),
-                Span::raw("           Search by filename"),
-            ]),
-            Line::from(vec![
-                Span::styled("  f", Style::default().fg(theme.accent)),
-                Span::raw("           Filter by agent"),
-            ]),
-            Line::from(vec![
-                Span::styled("  Esc", Style::default().fg(theme.accent)),
-                Span::raw("         Clear filters"),
-            ]),
+            help_section_header("Filtering"),
+            help_shortcut_line("  /", "           Search by filename", accent),
+            help_shortcut_line("  f", "           Filter by agent", accent),
+            help_shortcut_line("  Esc", "         Clear filters", accent),
             Line::from(""),
-            // Other section
-            Line::from(vec![
-                Span::styled("  ?", Style::default().fg(theme.accent)),
-                Span::raw("           This help"),
-            ]),
-            Line::from(vec![
-                Span::styled("  q", Style::default().fg(theme.accent)),
-                Span::raw("           Quit"),
-            ]),
+            help_shortcut_line("  ?", "           This help", accent),
+            help_shortcut_line("  q", "           Quit", accent),
             Line::from(""),
-            Line::from(Span::styled(
-                "Press any key to close",
-                Style::default().fg(theme.text_secondary),
-            )),
+            help_close_hint(),
         ];
-
-        let help = Paragraph::new(help_text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme.accent))
-                    .title(" Help "),
-            )
-            .wrap(Wrap { trim: false });
-
-        frame.render_widget(help, modal_area);
+        render_help_paragraph(frame, area, "Help", help_text, 60, 31);
     }
 
     /// Render the context menu modal overlay.
@@ -1079,26 +988,8 @@ impl ListApp {
             let is_restore = matches!(item, ContextMenuItem::Restore);
             let is_disabled = is_restore && !backup_exists;
 
-            // Build the label with shortcut hint
-            let label = if is_restore && !backup_exists {
-                if item.has_shortcut() {
-                    format!("  {} ({}) - no backup", item.label(), item.shortcut())
-                } else {
-                    format!("  {} - no backup", item.label())
-                }
-            } else if item.has_shortcut() {
-                format!("  {} ({})", item.label(), item.shortcut())
-            } else {
-                format!("  {}", item.label())
-            };
-
-            let style = if is_selected {
-                theme.highlight_style()
-            } else if is_disabled {
-                Style::default().fg(theme.text_secondary)
-            } else {
-                Style::default().fg(theme.text_primary)
-            };
+            let label = build_menu_item_label(item, backup_exists);
+            let style = menu_item_style(is_selected, is_disabled, &theme);
 
             // Add selection indicator
             let prefix = if is_selected { "> " } else { "  " };
@@ -1242,6 +1133,132 @@ impl ListApp {
     }
 }
 
+/// Mouse handler methods extracted from `handle_mouse` for complexity reduction.
+impl ListApp {
+    /// Handle mouse events in Normal mode.
+    ///
+    /// Scroll navigates the list; left-click selects and opens context menu or confirm-unlock.
+    fn handle_normal_mouse(&mut self, mouse: MouseEvent, height: u16) -> Result<()> {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                self.shared.explorer.up();
+            }
+            MouseEventKind::ScrollDown => {
+                self.shared.explorer.down();
+            }
+            MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                let explorer_height = height.saturating_sub(2);
+                let click_row = mouse.row;
+                if click_row >= 1 && click_row < explorer_height.saturating_sub(1) {
+                    let item_offset = (click_row - 1) as usize;
+                    let scroll_offset = self.shared.explorer.scroll_offset();
+                    let visible_idx = scroll_offset + item_offset;
+                    if self.shared.explorer.select_index(visible_idx) {
+                        if self.is_selected_locked() {
+                            self.mode = Mode::ConfirmUnlock;
+                        } else {
+                            self.context_menu_idx = 0;
+                            self.mode = Mode::ContextMenu;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle mouse events in ContextMenu mode.
+    ///
+    /// Scroll navigates the menu; left-click either selects an item or dismisses.
+    fn handle_context_menu_mouse(
+        &mut self,
+        mouse: MouseEvent,
+        width: u16,
+        height: u16,
+    ) -> Result<()> {
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                if self.context_menu_idx > 0 {
+                    self.context_menu_idx -= 1;
+                } else {
+                    self.context_menu_idx = ContextMenuItem::ALL.len() - 1;
+                }
+            }
+            MouseEventKind::ScrollDown => {
+                self.context_menu_idx = (self.context_menu_idx + 1) % ContextMenuItem::ALL.len();
+            }
+            MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+                // modal_height = items + 4 (border + title + blank + footer)
+                // Items start at row y+3 (border=1, title=1, blank=1)
+                let modal_width = 40.min(width.saturating_sub(4));
+                let modal_height =
+                    (ContextMenuItem::ALL.len() as u16 + 4).min(height.saturating_sub(4));
+                let modal_x = (width - modal_width) / 2;
+                let modal_y = (height - modal_height) / 2;
+                let items_start_y = modal_y + 3;
+                let visible_items = modal_height.saturating_sub(4) as usize;
+
+                let cx = mouse.column;
+                let cy = mouse.row;
+
+                if cx >= modal_x
+                    && cx < modal_x + modal_width
+                    && cy >= items_start_y
+                    && cy < items_start_y + visible_items as u16
+                {
+                    let idx = (cy - items_start_y) as usize;
+                    if idx < ContextMenuItem::ALL.len() {
+                        self.context_menu_idx = idx;
+                        self.execute_context_menu_action()?;
+                    }
+                } else {
+                    self.mode = Mode::Normal;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    /// Handle mouse events in confirm-modal modes (ConfirmDelete/Unlock and Final variants).
+    ///
+    /// Merges the two first/final confirm arms into one parameterized by current mode.
+    fn handle_confirm_modal_mouse(
+        &mut self,
+        mouse: MouseEvent,
+        width: u16,
+        height: u16,
+    ) -> Result<()> {
+        let is_first = matches!(self.mode, Mode::ConfirmDelete | Mode::ConfirmUnlock);
+        let modal_w = match self.mode {
+            Mode::ConfirmDelete | Mode::ConfirmDeleteFinal => 50,
+            _ => 55,
+        };
+        match modals::handle_confirm_click(&mouse, width, height, modal_w, 8, 6) {
+            modals::ConfirmClick::Yes => {
+                if is_first {
+                    self.mode = if self.mode == Mode::ConfirmDelete {
+                        Mode::ConfirmDeleteFinal
+                    } else {
+                        Mode::ConfirmUnlockFinal
+                    };
+                } else {
+                    if self.mode == Mode::ConfirmDeleteFinal {
+                        self.delete_session()?;
+                    } else {
+                        self.remove_selected_lock();
+                    }
+                    self.mode = Mode::Normal;
+                }
+            }
+            modals::ConfirmClick::No => self.mode = Mode::Normal,
+            modals::ConfirmClick::Ignored => {}
+        }
+        Ok(())
+    }
+}
+
 impl TuiApp for ListApp {
     fn app(&mut self) -> &mut App {
         &mut self.app
@@ -1255,116 +1272,12 @@ impl TuiApp for ListApp {
         let (width, height) = self.app.size()?;
 
         match self.mode {
-            Mode::Normal => {
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => {
-                        self.shared.explorer.up();
-                    }
-                    MouseEventKind::ScrollDown => {
-                        self.shared.explorer.down();
-                    }
-                    MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
-                        // Click selects the item and opens the context menu
-                        let explorer_height = height.saturating_sub(2);
-                        let click_row = mouse.row;
-                        if click_row >= 1 && click_row < explorer_height.saturating_sub(1) {
-                            let item_offset = (click_row - 1) as usize;
-                            let scroll_offset = self.shared.explorer.scroll_offset();
-                            let visible_idx = scroll_offset + item_offset;
-                            if self.shared.explorer.select_index(visible_idx) {
-                                if self.is_selected_locked() {
-                                    self.mode = Mode::ConfirmUnlock;
-                                } else {
-                                    self.context_menu_idx = 0;
-                                    self.mode = Mode::ContextMenu;
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Mode::ContextMenu => {
-                match mouse.kind {
-                    MouseEventKind::ScrollUp => {
-                        if self.context_menu_idx > 0 {
-                            self.context_menu_idx -= 1;
-                        } else {
-                            self.context_menu_idx = ContextMenuItem::ALL.len() - 1;
-                        }
-                    }
-                    MouseEventKind::ScrollDown => {
-                        self.context_menu_idx =
-                            (self.context_menu_idx + 1) % ContextMenuItem::ALL.len();
-                    }
-                    MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
-                        // Map click to menu item. Modal is centered:
-                        // modal_height = items + 4 (border + title + blank + footer)
-                        // Items start at row y+3 (border=1, title=1, blank=1)
-                        let modal_width = 40.min(width.saturating_sub(4));
-                        let modal_height =
-                            (ContextMenuItem::ALL.len() as u16 + 4).min(height.saturating_sub(4));
-                        let modal_x = (width - modal_width) / 2;
-                        let modal_y = (height - modal_height) / 2;
-                        let items_start_y = modal_y + 3; // border + title + blank
-
-                        let cx = mouse.column;
-                        let cy = mouse.row;
-
-                        if cx >= modal_x
-                            && cx < modal_x + modal_width
-                            && cy >= items_start_y
-                            && cy < items_start_y + ContextMenuItem::ALL.len() as u16
-                        {
-                            let idx = (cy - items_start_y) as usize;
-                            self.context_menu_idx = idx;
-                            self.execute_context_menu_action()?;
-                        } else {
-                            // Click outside modal closes it
-                            self.mode = Mode::Normal;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Mode::ConfirmDelete | Mode::ConfirmUnlock => {
-                let modal_w = if self.mode == Mode::ConfirmDelete {
-                    50
-                } else {
-                    55
-                };
-                // 8-tall modal: button row at offset 6 (border + 5 content lines)
-                match modals::handle_confirm_click(&mouse, width, height, modal_w, 8, 6) {
-                    modals::ConfirmClick::Yes => {
-                        self.mode = if self.mode == Mode::ConfirmDelete {
-                            Mode::ConfirmDeleteFinal
-                        } else {
-                            Mode::ConfirmUnlockFinal
-                        };
-                    }
-                    modals::ConfirmClick::No => self.mode = Mode::Normal,
-                    modals::ConfirmClick::Ignored => {}
-                }
-            }
-            Mode::ConfirmDeleteFinal | Mode::ConfirmUnlockFinal => {
-                let modal_w = if self.mode == Mode::ConfirmDeleteFinal {
-                    50
-                } else {
-                    55
-                };
-                match modals::handle_confirm_click(&mouse, width, height, modal_w, 8, 6) {
-                    modals::ConfirmClick::Yes => {
-                        if self.mode == Mode::ConfirmDeleteFinal {
-                            self.delete_session()?;
-                        } else {
-                            self.remove_selected_lock();
-                        }
-                        self.mode = Mode::Normal;
-                    }
-                    modals::ConfirmClick::No => self.mode = Mode::Normal,
-                    modals::ConfirmClick::Ignored => {}
-                }
-            }
+            Mode::Normal => self.handle_normal_mouse(mouse, height)?,
+            Mode::ContextMenu => self.handle_context_menu_mouse(mouse, width, height)?,
+            Mode::ConfirmDelete
+            | Mode::ConfirmUnlock
+            | Mode::ConfirmDeleteFinal
+            | Mode::ConfirmUnlockFinal => self.handle_confirm_modal_mouse(mouse, width, height)?,
             // Other modal modes: click outside dismisses
             _ => {
                 if let MouseEventKind::Down(crossterm::event::MouseButton::Left) = mouse.kind {
@@ -1394,20 +1307,15 @@ impl TuiApp for ListApp {
         Ok(())
     }
 
-    fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
-        // Try shared key handling first (navigation, search, agent filter, help)
-        if let Some(shared_mode) = self.mode.to_shared() {
-            match handle_shared_key(&shared_mode, key, &mut self.shared) {
-                KeyResult::Consumed => return Ok(()),
-                KeyResult::EnterMode(m) => {
-                    self.mode = Mode::from_shared(m);
-                    return Ok(());
-                }
-                KeyResult::NotConsumed => {}
-            }
-        }
+    fn current_shared_mode(&self) -> Option<SharedMode> {
+        self.mode.to_shared()
+    }
 
-        // Handle app-specific modes
+    fn set_mode_from_shared(&mut self, mode: SharedMode) {
+        self.mode = Mode::from_shared(mode);
+    }
+
+    fn handle_app_key(&mut self, key: KeyEvent) -> Result<()> {
         match self.mode {
             Mode::Normal => self.handle_normal_key(key)?,
             Mode::ConfirmDelete => self.handle_confirm_delete_key(key)?,
@@ -1424,15 +1332,9 @@ impl TuiApp for ListApp {
     }
 
     fn draw(&mut self) -> Result<()> {
-        // Get terminal size for page calculations
+        // Prepare draw: update page size, poll cache, prefetch adjacent previews
         let (_, height) = self.app.size()?;
-        self.shared
-            .explorer
-            .set_page_size((height.saturating_sub(6)) as usize);
-
-        // Poll cache for completed loads and request prefetch
-        self.shared.preview_cache.poll();
-        prefetch_adjacent_previews(&self.shared.explorer, &mut self.shared.preview_cache);
+        self.shared.prepare_draw(height);
 
         // Extract shared fields into local variables before closure
         let explorer = &mut self.shared.explorer;
@@ -1474,181 +1376,315 @@ impl TuiApp for ListApp {
 
             // Render file explorer (no checkboxes in list view - it's single-select)
             if mode == Mode::RenameInput {
-                render_explorer_list_with_rename(frame, chunks[0], explorer, preview, false, backup_exists, Some((rename_input, rename_cursor, rename_selected_all)));
+                render_explorer_list_with_rename(
+                    frame,
+                    chunks[0],
+                    explorer,
+                    preview,
+                    false,
+                    backup_exists,
+                    Some((rename_input, rename_cursor, rename_selected_all)),
+                );
             } else {
                 render_explorer_list(frame, chunks[0], explorer, preview, false, backup_exists);
             }
 
-            // Render status line — input modes highlight only the input
-            // value and always take priority over status_message.
-            match mode {
-                Mode::Search => {
-                    let value = format!("{}_", search_input);
-                    render_input_line(frame, chunks[1], "Search: ", &value);
-                }
-                Mode::AgentFilter => {
-                    let agent = &available_agents[agent_filter_idx];
-                    render_input_line(
-                        frame,
-                        chunks[1],
-                        "Filter by agent: ",
-                        &format!("{} (←/→ to change, Enter to apply)", agent),
-                    );
-                }
-                Mode::RenameInput => {
-                    let theme = current_theme();
-                    let hl = theme.highlight_style();
-                    let blink = hl.add_modifier(Modifier::SLOW_BLINK);
-                    let mut spans = vec![
-                        Span::styled("Rename: ", Style::default().fg(theme.text_secondary)),
-                    ];
-                    if rename_selected_all {
-                        spans.push(Span::styled("[", blink));
-                        spans.push(Span::styled(rename_input.as_str(), blink));
-                        spans.push(Span::styled("]", blink));
-                    } else {
-                        let before = &rename_input[..rename_cursor];
-                        let after = &rename_input[rename_cursor..];
-                        if !before.is_empty() {
-                            spans.push(Span::styled(before, hl));
-                        }
-                        spans.push(Span::styled("|", blink));
-                        if !after.is_empty() {
-                            spans.push(Span::styled(after, hl));
-                        }
-                    }
-                    frame.render_widget(Paragraph::new(Line::from(spans)), chunks[1]);
-                }
-                Mode::ConfirmDelete => {
-                    render_input_line(frame, chunks[1], "🗑  Delete? ", &format!("(y/n) — {}", selected_name));
-                }
-                Mode::ConfirmUnlock => {
-                    render_input_line(frame, chunks[1], "🔓 Force unlock? ", &format!("(y/n) — {}", selected_name));
-                }
-                Mode::ConfirmDeleteFinal => {
-                    render_input_line(frame, chunks[1], "🗑  Are you sure? ", &format!("(y/n) — {}", selected_name));
-                }
-                Mode::ConfirmUnlockFinal => {
-                    render_input_line(frame, chunks[1], "🔓 Are you sure? ", &format!("(y/n) — {}", selected_name));
-                }
-                Mode::ContextMenu | Mode::OptimizeResult => {
-                    render_status_line(frame, chunks[1], &selected_name);
-                }
-                Mode::Import => {
-                    if let Some(ref state) = import_state {
-                        let text = match state.phase {
-                            import::ImportPhase::AgentInput => {
-                                format!("Import: select agent for {} file(s)", state.file_count())
-                            }
-                            import::ImportPhase::Importing => {
-                                format!("Importing {} file(s)...", state.file_count())
-                            }
-                            import::ImportPhase::Done => {
-                                let success_count = state.results.iter().filter(|r| r.outcome.is_ok()).count();
-                                let total_count = state.results.len();
-                                format!("Imported {}/{} files", success_count, total_count)
-                            }
-                        };
-                        render_status_line(frame, chunks[1], &text);
-                    }
-                }
-                _ => {
-                    let text = if let Some(msg) = &status {
-                        msg.clone()
-                    } else {
-                        match mode {
-                            Mode::Normal => {
-                                let mut parts = vec![];
-                                if let Some(search) = explorer.search_filter() {
-                                    parts.push(format!("search: \"{}\"", search));
-                                }
-                                if let Some(agent) = explorer.agent_filter() {
-                                    parts.push(format!("agent: {}", agent));
-                                }
-                                if parts.is_empty() {
-                                    format!("{} sessions", explorer.len())
-                                } else {
-                                    format!("{} sessions ({})", explorer.len(), parts.join(", "))
-                                }
-                            }
-                            _ => String::new(),
-                        }
-                    };
-                    render_status_line(frame, chunks[1], &text);
-                }
-            }
+            render_status_line_for_mode(
+                frame,
+                chunks[1],
+                mode,
+                search_input,
+                available_agents,
+                agent_filter_idx,
+                rename_input,
+                rename_cursor,
+                rename_selected_all,
+                import_state,
+                &status,
+                explorer,
+                &selected_name,
+            );
 
-            // Render footer with keybindings
-            let footer_text = match mode {
-                Mode::Search => "Esc: cancel | Enter: apply search | Backspace: delete char",
-                Mode::AgentFilter => "←/→: change agent | Enter: apply | Esc: cancel",
-                Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
-                Mode::ConfirmDeleteFinal => "y: confirm | n/Esc: cancel",
-                Mode::ConfirmUnlock => "y: force unlock | n/Esc: cancel",
-                Mode::ConfirmUnlockFinal => "y: confirm | n/Esc: cancel",
-                Mode::Help => "Press any key to close help",
-                Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
-                Mode::RenameInput => "Enter: confirm | Esc: cancel | Backspace: delete char",
-                Mode::OptimizeResult => "Enter/Esc: dismiss",
-                Mode::Import => {
-                    if let Some(ref state) = import_state {
-                        match state.phase {
-                            import::ImportPhase::AgentInput => "Enter: confirm | Esc: cancel | Tab: complete | Up/Down: select",
-                            import::ImportPhase::Importing => "Importing...",
-                            import::ImportPhase::Done => "Enter/Esc: dismiss",
-                        }
-                    } else {
-                        ""
-                    }
-                }
-                Mode::Normal => {
-                    "↑↓: navigate | Enter: menu | p: play | c: copy | r: rename | t: optimize | a: analyze | d: delete | ?: help | q: quit"
-                }
-            };
+            let footer_text = footer_text_for_mode(mode, import_state);
             render_footer_text(frame, chunks[2], footer_text);
 
-            // Render modal overlays
-            match mode {
-                Mode::Help => Self::render_help_modal(frame, area),
-                Mode::ConfirmDelete => {
-                    if let Some(item) = explorer.selected_item() {
-                        modals::render_confirm_delete_modal(frame, area, 1, item.size, false);
-                    }
-                }
-                Mode::ConfirmDeleteFinal => {
-                    if let Some(item) = explorer.selected_item() {
-                        modals::render_confirm_delete_modal(frame, area, 1, item.size, true);
-                    }
-                }
-                Mode::ContextMenu => {
-                    Self::render_context_menu_modal(frame, area, context_menu_idx, backup_exists);
-                }
-                Mode::OptimizeResult => {
-                    if let Some(ref result_state) = optimize_result {
-                        Self::render_optimize_result_modal(frame, area, result_state);
-                    }
-                }
-                Mode::ConfirmUnlock | Mode::ConfirmUnlockFinal => {
-                    if let Some(item) = explorer.selected_item() {
-                        let lock_msg = if let Some(ref info) = item.lock_info {
-                            format!("PID {} since {}", info.pid, &info.started[..19])
-                        } else {
-                            "Unknown lock".to_string()
-                        };
-                        let final_confirm = mode == Mode::ConfirmUnlockFinal;
-                        modals::render_confirm_unlock_modal(frame, area, &lock_msg, final_confirm);
-                    }
-                }
-                Mode::Import => {
-                    if let Some(ref state) = import_state {
-                        import::render(state, frame, area);
-                    }
-                }
-                _ => {}
-            }
+            render_modal_overlays(
+                frame,
+                area,
+                mode,
+                explorer,
+                context_menu_idx,
+                backup_exists,
+                &optimize_result,
+                import_state,
+            );
         })?;
 
         Ok(())
+    }
+}
+
+/// Build the display label for a context menu item.
+///
+/// Appends shortcut hint and, for Restore when no backup exists, a "no backup" warning.
+fn build_menu_item_label(item: &ContextMenuItem, backup_exists: bool) -> String {
+    let is_restore = matches!(item, ContextMenuItem::Restore);
+    if is_restore && !backup_exists {
+        if item.has_shortcut() {
+            format!("  {} ({}) - no backup", item.label(), item.shortcut())
+        } else {
+            format!("  {} - no backup", item.label())
+        }
+    } else if item.has_shortcut() {
+        format!("  {} ({})", item.label(), item.shortcut())
+    } else {
+        format!("  {}", item.label())
+    }
+}
+
+/// Return the style for a context menu item based on selection and disabled state.
+fn menu_item_style(is_selected: bool, is_disabled: bool, theme: &crate::theme::Theme) -> Style {
+    if is_selected {
+        theme.highlight_style()
+    } else if is_disabled {
+        Style::default().fg(theme.text_secondary)
+    } else {
+        Style::default().fg(theme.text_primary)
+    }
+}
+
+/// Return the confirm-dialog prompt prefix for a mode, or None if the mode is not a confirm mode.
+fn confirm_prompt_for_mode(mode: Mode) -> Option<&'static str> {
+    match mode {
+        Mode::ConfirmDelete => Some("🗑  Delete? "),
+        Mode::ConfirmUnlock => Some("🔓 Force unlock? "),
+        Mode::ConfirmDeleteFinal => Some("🗑  Are you sure? "),
+        Mode::ConfirmUnlockFinal => Some("🔓 Are you sure? "),
+        _ => None,
+    }
+}
+
+/// Render the status line for the current mode.
+///
+/// Free function (not a method) because `self.app.draw` holds a mutable borrow of `app`
+/// and all required fields are passed as explicit parameters.
+#[allow(clippy::too_many_arguments)]
+fn render_status_line_for_mode(
+    frame: &mut Frame,
+    area: Rect,
+    mode: Mode,
+    search_input: &str,
+    available_agents: &[String],
+    agent_filter_idx: usize,
+    rename_input: &str,
+    rename_cursor: usize,
+    rename_selected_all: bool,
+    import_state: &Option<import::ImportState>,
+    status: &Option<String>,
+    explorer: &mut FileExplorer,
+    selected_name: &str,
+) {
+    // Guard: all confirm-dialog modes share the same "(y/n) — name" pattern
+    if let Some(prompt) = confirm_prompt_for_mode(mode) {
+        render_input_line(frame, area, prompt, &format!("(y/n) — {}", selected_name));
+        return;
+    }
+
+    match mode {
+        Mode::Search => {
+            let value = format!("{}_", search_input);
+            render_input_line(frame, area, "Search: ", &value);
+        }
+        Mode::AgentFilter => {
+            let agent = &available_agents[agent_filter_idx];
+            render_input_line(
+                frame,
+                area,
+                "Filter by agent: ",
+                &format!("{} (←/→ to change, Enter to apply)", agent),
+            );
+        }
+        Mode::RenameInput => {
+            let theme = current_theme();
+            let hl = theme.highlight_style();
+            let blink = hl.add_modifier(Modifier::SLOW_BLINK);
+            let mut spans = vec![Span::styled(
+                "Rename: ",
+                Style::default().fg(theme.text_secondary),
+            )];
+            build_rename_status_spans(
+                &mut spans,
+                rename_input,
+                rename_cursor,
+                rename_selected_all,
+                hl,
+                blink,
+            );
+            frame.render_widget(Paragraph::new(Line::from(spans)), area);
+        }
+        Mode::ContextMenu | Mode::OptimizeResult => {
+            render_status_line(frame, area, selected_name);
+        }
+        Mode::Import => {
+            if let Some(ref state) = import_state {
+                let text = match state.phase {
+                    import::ImportPhase::AgentInput => {
+                        format!("Import: select agent for {} file(s)", state.file_count())
+                    }
+                    import::ImportPhase::Importing => {
+                        format!("Importing {} file(s)...", state.file_count())
+                    }
+                    import::ImportPhase::Done => {
+                        let success_count =
+                            state.results.iter().filter(|r| r.outcome.is_ok()).count();
+                        let total_count = state.results.len();
+                        format!("Imported {}/{} files", success_count, total_count)
+                    }
+                };
+                render_status_line(frame, area, &text);
+            }
+        }
+        _ => {
+            let text = if let Some(msg) = status {
+                msg.clone()
+            } else {
+                match mode {
+                    Mode::Normal => {
+                        let mut parts = vec![];
+                        if let Some(search) = explorer.search_filter() {
+                            parts.push(format!("search: \"{}\"", search));
+                        }
+                        if let Some(agent) = explorer.agent_filter() {
+                            parts.push(format!("agent: {}", agent));
+                        }
+                        if parts.is_empty() {
+                            format!("{} sessions", explorer.len())
+                        } else {
+                            format!("{} sessions ({})", explorer.len(), parts.join(", "))
+                        }
+                    }
+                    _ => String::new(),
+                }
+            };
+            render_status_line(frame, area, &text);
+        }
+    }
+}
+
+/// Build the rename cursor spans for the status line.
+///
+/// Populates `spans` with the styled before/cursor/after segments.
+fn build_rename_status_spans<'a>(
+    spans: &mut Vec<Span<'a>>,
+    rename_input: &'a str,
+    rename_cursor: usize,
+    rename_selected_all: bool,
+    hl: Style,
+    blink: Style,
+) {
+    if rename_selected_all {
+        spans.push(Span::styled("[", blink));
+        spans.push(Span::styled(rename_input, blink));
+        spans.push(Span::styled("]", blink));
+    } else {
+        let before = &rename_input[..rename_cursor];
+        let after = &rename_input[rename_cursor..];
+        if !before.is_empty() {
+            spans.push(Span::styled(before, hl));
+        }
+        spans.push(Span::styled("|", blink));
+        if !after.is_empty() {
+            spans.push(Span::styled(after, hl));
+        }
+    }
+}
+
+/// Return the footer hint text for the current mode.
+///
+/// Free function — does not need `self`; import_state is only needed for `Mode::Import`.
+fn footer_text_for_mode(mode: Mode, import_state: &Option<import::ImportState>) -> &str {
+    match mode {
+        Mode::Search => "Esc: cancel | Enter: apply search | Backspace: delete char",
+        Mode::AgentFilter => "←/→: change agent | Enter: apply | Esc: cancel",
+        Mode::ConfirmDelete => "y: confirm delete | n/Esc: cancel",
+        Mode::ConfirmDeleteFinal => "y: confirm | n/Esc: cancel",
+        Mode::ConfirmUnlock => "y: force unlock | n/Esc: cancel",
+        Mode::ConfirmUnlockFinal => "y: confirm | n/Esc: cancel",
+        Mode::Help => "Press any key to close help",
+        Mode::ContextMenu => "↑↓: navigate | Enter: select | Esc: cancel",
+        Mode::RenameInput => "Enter: confirm | Esc: cancel | Backspace: delete char",
+        Mode::OptimizeResult => "Enter/Esc: dismiss",
+        Mode::Import => {
+            if let Some(ref state) = import_state {
+                match state.phase {
+                    import::ImportPhase::AgentInput => {
+                        "Enter: confirm | Esc: cancel | Tab: complete | Up/Down: select"
+                    }
+                    import::ImportPhase::Importing => "Importing...",
+                    import::ImportPhase::Done => "Enter/Esc: dismiss",
+                }
+            } else {
+                ""
+            }
+        }
+        Mode::Normal => {
+            "↑↓: navigate | Enter: menu | p: play | c: copy | r: rename | t: optimize | a: analyze | d: delete | ?: help | q: quit"
+        }
+    }
+}
+
+/// Render all modal overlays for the current mode.
+///
+/// Free function — does not need `self`; all required state is passed as parameters.
+#[allow(clippy::too_many_arguments)]
+fn render_modal_overlays(
+    frame: &mut Frame,
+    area: Rect,
+    mode: Mode,
+    explorer: &mut FileExplorer,
+    context_menu_idx: usize,
+    backup_exists: bool,
+    optimize_result: &Option<OptimizeResultState>,
+    import_state: &Option<import::ImportState>,
+) {
+    match mode {
+        Mode::Help => ListApp::render_help_modal(frame, area),
+        Mode::ConfirmDelete => {
+            if let Some(item) = explorer.selected_item() {
+                modals::render_confirm_delete_modal(frame, area, 1, item.size, false);
+            }
+        }
+        Mode::ConfirmDeleteFinal => {
+            if let Some(item) = explorer.selected_item() {
+                modals::render_confirm_delete_modal(frame, area, 1, item.size, true);
+            }
+        }
+        Mode::ContextMenu => {
+            ListApp::render_context_menu_modal(frame, area, context_menu_idx, backup_exists);
+        }
+        Mode::OptimizeResult => {
+            if let Some(ref result_state) = optimize_result {
+                ListApp::render_optimize_result_modal(frame, area, result_state);
+            }
+        }
+        Mode::ConfirmUnlock | Mode::ConfirmUnlockFinal => {
+            if let Some(item) = explorer.selected_item() {
+                let lock_msg = if let Some(ref info) = item.lock_info {
+                    let started = info.started.get(..19).unwrap_or(info.started.as_str());
+                    format!("PID {} since {}", info.pid, started)
+                } else {
+                    "Unknown lock".to_string()
+                };
+                let final_confirm = mode == Mode::ConfirmUnlockFinal;
+                modals::render_confirm_unlock_modal(frame, area, &lock_msg, final_confirm);
+            }
+        }
+        Mode::Import => {
+            if let Some(ref state) = import_state {
+                import::render(state, frame, area);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -1659,7 +1695,7 @@ impl TuiApp for ListApp {
 /// - 3661.0 -> "1h 1m 1s"
 /// - 30.0 -> "30s"
 fn format_duration(seconds: f64) -> String {
-    let total_secs = seconds.round() as u64;
+    let total_secs = seconds.max(0.0).round() as u64;
     let hours = total_secs / 3600;
     let minutes = (total_secs % 3600) / 60;
     let secs = total_secs % 60;
@@ -1845,5 +1881,251 @@ mod tests {
         // The mode guard check `if self.mode != Mode::Normal` will correctly
         // reject paste events in all these modes.
         assert_eq!(Mode::Normal, Mode::Normal);
+    }
+
+    // ── footer_text_for_mode ──────────────────────────────────────────────
+
+    #[test]
+    fn footer_text_normal_mode() {
+        let text = footer_text_for_mode(Mode::Normal, &None);
+        assert!(text.contains("navigate"));
+        assert!(text.contains("play"));
+        assert!(text.contains("quit"));
+    }
+
+    #[test]
+    fn footer_text_search_mode() {
+        let text = footer_text_for_mode(Mode::Search, &None);
+        assert!(text.contains("Esc"));
+        assert!(text.contains("search"));
+    }
+
+    #[test]
+    fn footer_text_confirm_delete_mode() {
+        let text = footer_text_for_mode(Mode::ConfirmDelete, &None);
+        assert!(text.contains("confirm delete"));
+    }
+
+    #[test]
+    fn footer_text_confirm_delete_final_mode() {
+        let text = footer_text_for_mode(Mode::ConfirmDeleteFinal, &None);
+        assert!(text.contains("confirm"));
+        assert!(text.contains("Esc"));
+    }
+
+    #[test]
+    fn footer_text_confirm_unlock_mode() {
+        let text = footer_text_for_mode(Mode::ConfirmUnlock, &None);
+        assert!(text.contains("force unlock"));
+    }
+
+    #[test]
+    fn footer_text_rename_input_mode() {
+        let text = footer_text_for_mode(Mode::RenameInput, &None);
+        assert!(text.contains("confirm"));
+        assert!(text.contains("Esc"));
+    }
+
+    #[test]
+    fn footer_text_optimize_result_mode() {
+        let text = footer_text_for_mode(Mode::OptimizeResult, &None);
+        assert!(text.contains("dismiss"));
+    }
+
+    #[test]
+    fn footer_text_import_none_state() {
+        // Import mode with no state yields empty string
+        let text = footer_text_for_mode(Mode::Import, &None);
+        assert_eq!(text, "");
+    }
+
+    #[test]
+    fn footer_text_import_agent_input_phase() {
+        let agents: Vec<String> = vec![];
+        let mut state = import::ImportState::new("/tmp/test.cast", &agents);
+        state.phase = import::ImportPhase::AgentInput;
+        let opt = Some(state);
+        let text = footer_text_for_mode(Mode::Import, &opt);
+        assert!(text.contains("Enter"));
+        assert!(text.contains("Tab"));
+    }
+
+    #[test]
+    fn footer_text_import_importing_phase() {
+        let agents: Vec<String> = vec![];
+        let mut state = import::ImportState::new("/tmp/test.cast", &agents);
+        state.phase = import::ImportPhase::Importing;
+        let opt = Some(state);
+        let text = footer_text_for_mode(Mode::Import, &opt);
+        assert!(text.contains("Importing"));
+    }
+
+    #[test]
+    fn footer_text_import_done_phase() {
+        let agents: Vec<String> = vec![];
+        let mut state = import::ImportState::new("/tmp/test.cast", &agents);
+        state.phase = import::ImportPhase::Done;
+        let opt = Some(state);
+        let text = footer_text_for_mode(Mode::Import, &opt);
+        assert!(text.contains("dismiss"));
+    }
+
+    // ── build_menu_item_label ─────────────────────────────────────────────
+
+    #[test]
+    fn menu_item_label_normal_item_with_shortcut() {
+        // Play has shortcut "p"
+        let label = build_menu_item_label(&ContextMenuItem::Play, true);
+        assert!(label.contains("Play"));
+        assert!(label.contains("(p)"));
+        assert!(!label.contains("no backup"));
+    }
+
+    #[test]
+    fn menu_item_label_restore_with_backup() {
+        let label = build_menu_item_label(&ContextMenuItem::Restore, true);
+        assert!(label.contains("Restore"));
+        assert!(!label.contains("no backup"));
+    }
+
+    #[test]
+    fn menu_item_label_restore_no_backup() {
+        let label = build_menu_item_label(&ContextMenuItem::Restore, false);
+        assert!(label.contains("Restore"));
+        assert!(label.contains("no backup"));
+    }
+
+    #[test]
+    fn menu_item_label_copy_item() {
+        let label = build_menu_item_label(&ContextMenuItem::Copy, true);
+        assert!(label.contains("Copy to clipboard"));
+        assert!(label.contains("(c)"));
+    }
+
+    // ── menu_item_style ───────────────────────────────────────────────────
+
+    #[test]
+    fn menu_item_style_selected_uses_highlight() {
+        let theme = crate::theme::Theme::claude_code();
+        let style = menu_item_style(true, false, &theme);
+        let expected = theme.highlight_style();
+        assert_eq!(style, expected);
+    }
+
+    #[test]
+    fn menu_item_style_disabled_uses_secondary_color() {
+        let theme = crate::theme::Theme::claude_code();
+        let style = menu_item_style(false, true, &theme);
+        assert_eq!(style.fg, Some(theme.text_secondary));
+    }
+
+    #[test]
+    fn menu_item_style_normal_uses_primary_color() {
+        let theme = crate::theme::Theme::claude_code();
+        let style = menu_item_style(false, false, &theme);
+        assert_eq!(style.fg, Some(theme.text_primary));
+    }
+
+    #[test]
+    fn menu_item_style_selected_takes_precedence_over_disabled() {
+        // selected=true, disabled=true → still highlight (selected wins)
+        let theme = crate::theme::Theme::claude_code();
+        let style = menu_item_style(true, true, &theme);
+        let expected = theme.highlight_style();
+        assert_eq!(style, expected);
+    }
+
+    // ── build_rename_status_spans ─────────────────────────────────────────
+
+    #[test]
+    fn rename_spans_selected_all_wraps_in_brackets() {
+        let hl = ratatui::style::Style::default();
+        let blink =
+            ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        build_rename_status_spans(&mut spans, "hello", 0, true, hl, blink);
+        // Expect 3 spans: "[", "hello", "]" — all with blink style
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content, "[");
+        assert_eq!(spans[1].content, "hello");
+        assert_eq!(spans[2].content, "]");
+        assert_eq!(spans[0].style, blink);
+    }
+
+    #[test]
+    fn rename_spans_cursor_at_start_no_before_span() {
+        let hl = ratatui::style::Style::default();
+        let blink =
+            ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        // cursor=0, selected_all=false → only "|" + "hello"
+        build_rename_status_spans(&mut spans, "hello", 0, false, hl, blink);
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].content, "|");
+        assert_eq!(spans[1].content, "hello");
+    }
+
+    #[test]
+    fn rename_spans_cursor_at_end_no_after_span() {
+        let hl = ratatui::style::Style::default();
+        let blink =
+            ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        // cursor at end → "hello" + "|"
+        build_rename_status_spans(&mut spans, "hello", 5, false, hl, blink);
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].content, "hello");
+        assert_eq!(spans[1].content, "|");
+    }
+
+    #[test]
+    fn rename_spans_cursor_in_middle_three_spans() {
+        let hl = ratatui::style::Style::default();
+        let blink =
+            ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        // cursor=2 in "hello" → "he" + "|" + "llo"
+        build_rename_status_spans(&mut spans, "hello", 2, false, hl, blink);
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content, "he");
+        assert_eq!(spans[1].content, "|");
+        assert_eq!(spans[2].content, "llo");
+    }
+
+    #[test]
+    fn rename_spans_empty_input_cursor_only() {
+        let hl = ratatui::style::Style::default();
+        let blink =
+            ratatui::style::Style::default().add_modifier(ratatui::style::Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        // empty input → only "|"
+        build_rename_status_spans(&mut spans, "", 0, false, hl, blink);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].content, "|");
+    }
+
+    #[test]
+    fn format_duration_negative_input_clamps_to_zero() {
+        assert_eq!(format_duration(-5.0), "0s");
+    }
+
+    #[test]
+    fn format_duration_nan_clamps_to_zero() {
+        assert_eq!(format_duration(f64::NAN), "0s");
+    }
+
+    #[test]
+    fn rename_spans_multibyte_cursor_at_char_boundary() {
+        let theme = crate::theme::Theme::claude_code();
+        let hl = theme.highlight_style();
+        let blink = Style::default().add_modifier(Modifier::SLOW_BLINK);
+        let mut spans = vec![];
+        // é is 2 bytes in UTF-8
+        let input = "\u{00e9}llo"; // 4 bytes total
+        build_rename_status_spans(&mut spans, input, 2, false, hl, blink);
+        assert_eq!(spans.len(), 3);
+        assert_eq!(spans[0].content, "\u{00e9}");
+        assert_eq!(spans[1].content, "|");
+        assert_eq!(spans[2].content, "llo");
     }
 }
