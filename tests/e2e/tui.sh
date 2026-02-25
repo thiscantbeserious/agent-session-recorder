@@ -40,7 +40,12 @@ fi
 # Usage: run_tui_expect <command> <expect_send_script> [timeout_seconds]
 #
 # Returns the exit code of the spawned process via a temp file (to work with set -e).
-_TUI_EXIT_FILE=$(mktemp)
+# Create temp file inside TEST_DIR so the main runner's cleanup handles it;
+# standalone trap also removes it on early exit.
+_TUI_EXIT_FILE="$TEST_DIR/.tui_exit_code"
+if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
+    trap 'rm -f "$_TUI_EXIT_FILE"' EXIT
+fi
 run_tui_expect() {
     local cmd="$1"
     local send_script="$2"
