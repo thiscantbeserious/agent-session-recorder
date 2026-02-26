@@ -51,7 +51,19 @@ fn v0_to_v1_hidden_auxiliary_files(storage_dir: &Path, result: &mut MigrateResul
         }
     };
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                result.files_failed += 1;
+                result.warnings.push(format!(
+                    "Failed to read entry in {}: {}",
+                    storage_dir.display(),
+                    e
+                ));
+                continue;
+            }
+        };
         let agent_dir = entry.path();
         if !agent_dir.is_dir() {
             continue;
@@ -76,7 +88,19 @@ fn migrate_agent_dir(agent_dir: &Path, result: &mut MigrateResult) {
         }
     };
 
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                result.files_failed += 1;
+                result.warnings.push(format!(
+                    "Failed to read entry in {}: {}",
+                    agent_dir.display(),
+                    e
+                ));
+                continue;
+            }
+        };
         let path = entry.path();
         if !path.is_file() {
             continue;

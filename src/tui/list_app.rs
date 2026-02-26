@@ -502,17 +502,16 @@ impl ListApp {
             let path = item.path.clone();
             let name = item.name.clone();
 
-            // Delete the file
+            let cast_path = std::path::Path::new(&path);
+            let had_backup = has_backup(cast_path);
+
+            // Always attempt auxiliary cleanup, even if cast file removal fails
+            remove_auxiliary_files(cast_path);
+
+            // Delete the cast file
             if let Err(e) = std::fs::remove_file(&path) {
                 self.shared.status_message = Some(format!("Failed to delete: {}", e));
             } else {
-                // Check for backup before removal (sweep ensures hidden format)
-                let cast_path = std::path::Path::new(&path);
-                let had_backup = has_backup(cast_path);
-
-                // Remove auxiliary files in both old and new formats (lock + backup)
-                remove_auxiliary_files(cast_path);
-
                 // Remove from explorer to keep UI in sync
                 self.shared.explorer.remove_item(&path);
 
