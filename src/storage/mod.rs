@@ -328,7 +328,7 @@ impl StorageManager {
     /// to the hidden dot-prefix format before any storage operation.
     pub fn new(config: Config) -> Self {
         let storage_dir = config.storage_directory();
-        let result = migrate::migrate_hidden_files(&storage_dir);
+        let result = migrate::execute(&storage_dir);
         if result.files_renamed > 0 || result.files_failed > 0 {
             eprintln!(
                 "Storage migration: {} file(s) renamed to hidden format{}",

@@ -1,39 +1,47 @@
-//! Storage migration for hidden lock and backup files.
+//! Storage migrations for the agent session recorder.
 //!
-//! Scans agent directories and renames old-format files (e.g. `session.cast.lock`)
-//! to hidden format (e.g. `.session.cast.lock`). Idempotent: does nothing when
-//! all files are already in hidden format.
+//! Migrations run on every `StorageManager::new()` call. Each is idempotent:
+//! when there is nothing to do, the cost is one `read_dir` per agent directory.
+//! No version file is needed — idempotency is the version check.
 
 use std::fs;
 use std::path::Path;
 
-/// Result of a migration sweep.
+/// Result of running all storage migrations.
 #[derive(Debug, Default)]
-pub struct StorageMigrateResult {
+pub struct MigrateResult {
     pub files_renamed: usize,
     pub files_skipped: usize,
     pub files_failed: usize,
     pub warnings: Vec<String>,
 }
 
-/// Scan agent directories under `storage_dir` and rename old-format auxiliary files.
-///
-/// Old-format files have names matching `*.cast.lock` or `*.cast.bak` that do NOT
-/// start with a dot. Each is renamed to its hidden equivalent (dot-prefixed).
-/// If the target already exists, the old file is left in place (skipped).
+/// Run all storage migrations in declaration order. Each is idempotent.
 ///
 /// Called during `StorageManager::new()` to ensure files are migrated before any
 /// storage operation.
-pub fn migrate_hidden_files(storage_dir: &Path) -> StorageMigrateResult {
-    let mut result = StorageMigrateResult::default();
-
+pub fn execute(storage_dir: &Path) -> MigrateResult {
+    let mut result = MigrateResult::default();
     if !storage_dir.exists() {
         return result;
     }
 
+    v1_hidden_auxiliary_files(storage_dir, &mut result);
+    // Future migrations go here in order:
+    // v2_something(storage_dir, &mut result);
+
+    result
+}
+
+/// V1: Rename old-format auxiliary files to hidden dot-prefixed format.
+///
+/// Scans agent directories for files matching `*.cast.lock` or `*.cast.bak`
+/// whose filename does not start with a dot, and renames them to the hidden
+/// equivalent (dot-prefixed).
+fn v1_hidden_auxiliary_files(storage_dir: &Path, result: &mut MigrateResult) {
     let entries = match fs::read_dir(storage_dir) {
         Ok(e) => e,
-        Err(_) => return result,
+        Err(_) => return,
     };
 
     for entry in entries.flatten() {
@@ -41,16 +49,14 @@ pub fn migrate_hidden_files(storage_dir: &Path) -> StorageMigrateResult {
         if !agent_dir.is_dir() {
             continue;
         }
-        migrate_agent_dir(&agent_dir, &mut result);
+        migrate_agent_dir(&agent_dir, result);
     }
-
-    result
 }
 
 /// Migrate auxiliary files within a single agent directory.
 ///
 /// Renames old-format lock/backup files (no dot prefix) to hidden format (dot prefix).
-fn migrate_agent_dir(agent_dir: &Path, result: &mut StorageMigrateResult) {
+fn migrate_agent_dir(agent_dir: &Path, result: &mut MigrateResult) {
     let entries = match fs::read_dir(agent_dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -85,12 +91,7 @@ fn is_old_format_auxiliary(filename: &str) -> bool {
 }
 
 /// Attempt to rename `path` to its hidden equivalent inside `agent_dir`.
-fn rename_to_hidden(
-    path: &Path,
-    agent_dir: &Path,
-    filename: &str,
-    result: &mut StorageMigrateResult,
-) {
+fn rename_to_hidden(path: &Path, agent_dir: &Path, filename: &str, result: &mut MigrateResult) {
     let hidden_name = format!(".{}", filename);
     let target = agent_dir.join(&hidden_name);
 

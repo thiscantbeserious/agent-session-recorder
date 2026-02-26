@@ -1,7 +1,7 @@
 //! Tests for the storage migration sweep that renames old-format auxiliary files
 //! to hidden format.
 
-use agr::storage::migrate::migrate_hidden_files;
+use agr::storage::migrate::execute;
 use std::fs;
 use tempfile::TempDir;
 
@@ -31,7 +31,7 @@ fn migrate_renames_old_format_lock_files() {
     let agent_dir = make_agent_dir(&storage, "claude");
     touch(&agent_dir, "session.cast.lock");
 
-    let result = migrate_hidden_files(storage.path());
+    let result = execute(storage.path());
 
     assert_eq!(result.files_renamed, 1);
     assert_eq!(result.files_failed, 0);
@@ -45,7 +45,7 @@ fn migrate_renames_old_format_backup_files() {
     let agent_dir = make_agent_dir(&storage, "claude");
     touch(&agent_dir, "session.cast.bak");
 
-    let result = migrate_hidden_files(storage.path());
+    let result = execute(storage.path());
 
     assert_eq!(result.files_renamed, 1);
     assert_eq!(result.files_failed, 0);
@@ -59,7 +59,7 @@ fn migrate_skips_already_hidden_files() {
     let agent_dir = make_agent_dir(&storage, "claude");
     touch(&agent_dir, ".session.cast.lock");
 
-    let result = migrate_hidden_files(storage.path());
+    let result = execute(storage.path());
 
     assert_eq!(result.files_renamed, 0);
     assert_eq!(result.files_skipped, 0);
@@ -75,7 +75,7 @@ fn migrate_skips_when_target_exists() {
     touch(&agent_dir, "session.cast.lock");
     touch(&agent_dir, ".session.cast.lock");
 
-    let result = migrate_hidden_files(storage.path());
+    let result = execute(storage.path());
 
     assert_eq!(result.files_renamed, 0);
     assert_eq!(result.files_skipped, 1);
@@ -91,11 +91,11 @@ fn migrate_is_idempotent() {
     touch(&agent_dir, "session.cast.lock");
 
     // First run migrates
-    let first = migrate_hidden_files(storage.path());
+    let first = execute(storage.path());
     assert_eq!(first.files_renamed, 1);
 
     // Second run does nothing
-    let second = migrate_hidden_files(storage.path());
+    let second = execute(storage.path());
     assert_eq!(second.files_renamed, 0);
     assert_eq!(second.files_failed, 0);
     assert_eq!(second.files_skipped, 0);
@@ -107,7 +107,7 @@ fn migrate_handles_empty_storage_directory() {
     // Create an agent directory that is empty
     make_agent_dir(&storage, "claude");
 
-    let result = migrate_hidden_files(storage.path());
+    let result = execute(storage.path());
 
     assert_eq!(result.files_renamed, 0);
     assert_eq!(result.files_failed, 0);
@@ -119,7 +119,7 @@ fn migrate_handles_nonexistent_storage_directory() {
     let storage = TempDir::new().unwrap();
     let nonexistent = storage.path().join("does_not_exist");
 
-    let result = migrate_hidden_files(&nonexistent);
+    let result = execute(&nonexistent);
 
     assert_eq!(result.files_renamed, 0);
     assert_eq!(result.files_failed, 0);
