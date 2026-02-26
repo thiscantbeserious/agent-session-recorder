@@ -108,7 +108,7 @@ pub fn apply_transforms(path: &Path) -> Result<TransformResult> {
 mod tests {
     use super::*;
     use crate::asciicast::{Event, Header};
-    use crate::files::backup::{has_backup, restore_from_backup};
+    use crate::files::backup::{backup_path_for, has_backup, restore_from_backup};
     use std::io::Write;
     use tempfile::TempDir;
 
@@ -167,14 +167,22 @@ mod tests {
     fn backup_path_appends_bak_extension() {
         let path = Path::new("/some/path/recording.cast");
         let backup = backup_path_for(path);
-        assert_eq!(backup, PathBuf::from("/some/path/recording.cast.bak"));
+        assert_eq!(backup, PathBuf::from("/some/path/.recording.cast.bak"));
     }
 
     #[test]
     fn backup_path_handles_relative_path() {
         let path = Path::new("recording.cast");
         let backup = backup_path_for(path);
-        assert_eq!(backup, PathBuf::from("recording.cast.bak"));
+        assert_eq!(backup, PathBuf::from(".recording.cast.bak"));
+    }
+
+    #[test]
+    fn backup_path_already_dotted_filename() {
+        let path = Path::new("/dir/.hidden.cast");
+        let backup = backup_path_for(path);
+        // No double dot — already hidden
+        assert_eq!(backup, PathBuf::from("/dir/.hidden.cast.bak"));
     }
 
     // ========================================================================
@@ -627,5 +635,19 @@ mod tests {
             original_bytes, final_bytes,
             "Round-trip did not preserve original file"
         );
+    }
+
+    // ========================================================================
+    // Dual-format has_backup tests (Stage 3)
+    // ========================================================================
+
+    #[test]
+    fn has_backup_finds_new_format() {
+        let dir = TempDir::new().unwrap();
+        let path = create_test_cast_file(&dir, "test.cast", vec![Event::output(0.1, "hello")]);
+        let hidden_backup = backup_path_for(&path);
+        fs::copy(&path, &hidden_backup).unwrap();
+
+        assert!(has_backup(&path));
     }
 }

@@ -113,3 +113,6 @@ mod player_loop_test;
 
 #[path = "integration/cleanup_draw_test.rs"]
 mod cleanup_draw_test;
+
+#[path = "integration/migrate_test.rs"]
+mod migrate_test;

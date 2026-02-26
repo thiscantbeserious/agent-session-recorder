@@ -43,12 +43,12 @@ AGR is a lightweight CLI tool that automatically records your terminal sessions 
 
 ### Prerequisites
 
-- **asciinema v3+** is required (v2 won't work)
+**asciinema v3+** is required (v2 won't work)
 
-  ```bash
-  cargo install asciinema
-  asciinema --version  # must be 3.x
-  ```
+```bash
+cargo install asciinema
+asciinema --version  # must be 3.x
+```
 
 ### From Source
 

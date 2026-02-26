@@ -8,10 +8,23 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-/// Get the backup path for a given file.
+/// Get the hidden backup path for a given file.
 ///
-/// The backup path is the original path with `.bak` appended.
+/// The backup path is the parent directory joined with a dot-prefixed filename
+/// plus `.bak` extension (e.g. `dir/.session.cast.bak`). This ensures the
+/// backup is hidden from standard directory listings.
+/// If the filename already starts with a dot, no extra dot is added.
 pub fn backup_path_for(path: &Path) -> PathBuf {
+    crate::files::hidden_auxiliary_path(path, ".bak")
+}
+
+/// Get the legacy (non-hidden) backup path for a given file.
+///
+/// Produces the old-format path with `.bak` appended directly to the cast path
+/// (e.g. `session.cast.bak`). Used only for backward-compatibility fallbacks
+/// and migration; new code should always use `backup_path_for()`.
+#[doc(hidden)]
+pub fn old_backup_path_for(path: &Path) -> PathBuf {
     let mut backup = path.as_os_str().to_owned();
     backup.push(".bak");
     PathBuf::from(backup)
@@ -41,7 +54,6 @@ pub fn create_backup(path: &Path) -> Result<bool> {
 /// Deletes the backup file after successful restore.
 pub fn restore_from_backup(path: &Path) -> Result<()> {
     let backup = backup_path_for(path);
-
     if !backup.exists() {
         anyhow::bail!("No backup exists for: {}", path.display());
     }

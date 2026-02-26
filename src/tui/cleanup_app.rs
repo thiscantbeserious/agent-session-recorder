@@ -19,6 +19,7 @@ use super::app::status_footer::{render_footer_text, render_input_line, render_st
 use super::app::{classify_confirm_key, App, ConfirmAction, SharedMode, SharedState, TuiApp};
 use super::widgets::FileItem;
 use crate::config::Config;
+use crate::files::remove_auxiliary_files;
 use crate::theme::current_theme;
 
 /// UI mode for the cleanup application
@@ -266,13 +267,15 @@ impl CleanupApp {
         let paths: Vec<String> = selected_items.iter().map(|i| i.path.clone()).collect();
         let count = paths.len();
 
-        // Delete files
+        // Delete files and their auxiliary lock/backup files (both formats)
         let mut deleted = 0;
         let mut total_freed: u64 = 0;
         for path in &paths {
             if let Ok(metadata) = std::fs::metadata(path) {
                 total_freed += metadata.len();
             }
+            // Always attempt auxiliary cleanup, even if cast file removal fails
+            remove_auxiliary_files(std::path::Path::new(path));
             if std::fs::remove_file(path).is_ok() {
                 deleted += 1;
             }

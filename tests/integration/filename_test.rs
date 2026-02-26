@@ -2233,14 +2233,15 @@ fn rename_file_preserves_extension() {
 fn rename_file_renames_backup_too() {
     let dir = TempDir::new().unwrap();
     let file = dir.path().join("session.cast");
-    let backup = dir.path().join("session.cast.bak");
+    // Create hidden-format backup (new format)
+    let backup = dir.path().join(".session.cast.bak");
     std::fs::write(&file, "main").unwrap();
     std::fs::write(&backup, "backup").unwrap();
 
     let result = filename::rename_file(&file, "renamed").unwrap();
     assert_eq!(result, dir.path().join("renamed.cast"));
 
-    let new_backup = dir.path().join("renamed.cast.bak");
+    let new_backup = dir.path().join(".renamed.cast.bak");
     assert!(new_backup.exists());
     assert!(!backup.exists());
     assert_eq!(std::fs::read_to_string(&new_backup).unwrap(), "backup");
