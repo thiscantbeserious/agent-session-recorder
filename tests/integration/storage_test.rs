@@ -951,8 +951,8 @@ fn stats_oldest_session_is_actually_oldest() {
     // Create the "old" session first
     create_test_session(temp.path(), "claude", "old.cast", "old");
 
-    // Sleep briefly so filesystem mtime differs
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    // Sleep to ensure distinguishable mtime on filesystems with 1s granularity
+    std::thread::sleep(std::time::Duration::from_millis(1100));
 
     // Create the "new" session second (guaranteed newer mtime)
     create_test_session(temp.path(), "claude", "new.cast", "new");
