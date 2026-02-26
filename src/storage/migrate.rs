@@ -41,7 +41,14 @@ pub fn execute(storage_dir: &Path) -> MigrateResult {
 fn v0_to_v1_hidden_auxiliary_files(storage_dir: &Path, result: &mut MigrateResult) {
     let entries = match fs::read_dir(storage_dir) {
         Ok(e) => e,
-        Err(_) => return,
+        Err(e) => {
+            result.warnings.push(format!(
+                "Failed to read storage directory {}: {}",
+                storage_dir.display(),
+                e
+            ));
+            return;
+        }
     };
 
     for entry in entries.flatten() {
@@ -59,7 +66,14 @@ fn v0_to_v1_hidden_auxiliary_files(storage_dir: &Path, result: &mut MigrateResul
 fn migrate_agent_dir(agent_dir: &Path, result: &mut MigrateResult) {
     let entries = match fs::read_dir(agent_dir) {
         Ok(e) => e,
-        Err(_) => return,
+        Err(e) => {
+            result.warnings.push(format!(
+                "Failed to read agent directory {}: {}",
+                agent_dir.display(),
+                e
+            ));
+            return;
+        }
     };
 
     for entry in entries.flatten() {

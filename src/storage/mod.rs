@@ -510,11 +510,12 @@ impl StorageManager {
         let mut freed_size = 0u64;
 
         for session in sessions {
+            // Always attempt auxiliary cleanup, even if the cast file is already gone
+            remove_auxiliary_files(&session.path);
             if session.path.exists() {
                 fs::remove_file(&session.path)
                     .with_context(|| format!("Failed to delete: {:?}", session.path))?;
                 freed_size += session.size;
-                remove_auxiliary_files(&session.path);
             }
         }
 
@@ -754,8 +755,8 @@ mod tests {
         assert_eq!(sessions[0].filename, "session.cast");
 
         // Verify .bak files still exist on disk (possibly migrated to hidden format) but aren't listed.
-        // The startup sweep in StorageManager::new() renames old-format .cast.bak to .cast.bak,
-        // so check either location.
+        // The startup sweep in StorageManager::new() renames old-format `session.cast.bak` to
+        // hidden `.session.cast.bak`, so check either location.
         let hidden_bak = agent_dir.join(".session.cast.bak");
         assert!(bak_file.exists() || hidden_bak.exists());
         assert!(other_bak.exists());

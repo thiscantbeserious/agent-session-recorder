@@ -274,9 +274,10 @@ impl CleanupApp {
             if let Ok(metadata) = std::fs::metadata(path) {
                 total_freed += metadata.len();
             }
+            // Always attempt auxiliary cleanup, even if cast file removal fails
+            remove_auxiliary_files(std::path::Path::new(path));
             if std::fs::remove_file(path).is_ok() {
                 deleted += 1;
-                remove_auxiliary_files(std::path::Path::new(path));
             }
         }
 
