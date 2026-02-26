@@ -1,13 +1,32 @@
 use std::path::Path;
 
 use agr::files::lock;
+use agr::files::lock::old_lock_path_for;
 use tempfile::TempDir;
 
 #[test]
 fn lock_path_for_appends_lock_extension() {
     let path = Path::new("/tmp/sessions/recording.cast");
     let lock_path = lock::lock_path_for(path);
-    assert_eq!(lock_path, Path::new("/tmp/sessions/recording.cast.lock"));
+    assert_eq!(lock_path, Path::new("/tmp/sessions/.recording.cast.lock"));
+}
+
+#[test]
+fn lock_path_for_hidden_path_structure() {
+    // Dot should be on the filename, not on the directory
+    let path = Path::new("/dir/session.cast");
+    let lock_path = lock::lock_path_for(path);
+    assert_eq!(lock_path, Path::new("/dir/.session.cast.lock"));
+    // Parent must remain /dir, not /.dir
+    assert_eq!(lock_path.parent().unwrap(), Path::new("/dir"));
+}
+
+#[test]
+fn lock_path_for_no_parent_directory() {
+    // Edge case: cast file with no parent directory component
+    let path = Path::new("session.cast");
+    let lock_path = lock::lock_path_for(path);
+    assert_eq!(lock_path, Path::new(".session.cast.lock"));
 }
 
 #[test]
@@ -83,6 +102,83 @@ fn check_not_locked_cleans_stale_lock_and_succeeds() {
     assert!(lock_path.exists());
     assert!(lock::check_not_locked(&cast_path).is_ok());
     assert!(!lock_path.exists());
+}
+
+// --- dual-format: check_not_locked ---
+
+#[test]
+fn check_not_locked_cleans_old_format_stale_lock() {
+    let dir = TempDir::new().unwrap();
+    let cast_path = dir.path().join("stale_old.cast");
+    let old_path = old_lock_path_for(&cast_path);
+    std::fs::write(
+        &old_path,
+        r#"{"pid":999999999,"started":"2025-01-01T00:00:00Z"}"#,
+    )
+    .unwrap();
+    assert!(old_path.exists());
+    assert!(lock::check_not_locked(&cast_path).is_ok());
+    assert!(
+        !old_path.exists(),
+        "stale old-format lock should be removed"
+    );
+}
+
+#[test]
+fn check_not_locked_errors_on_old_format_active_lock() {
+    let dir = TempDir::new().unwrap();
+    let cast_path = dir.path().join("active_old.cast");
+    let old_path = old_lock_path_for(&cast_path);
+    let info = serde_json::json!({"pid": std::process::id(), "started": "2025-01-01T00:00:00Z"});
+    std::fs::write(&old_path, info.to_string()).unwrap();
+    let result = lock::check_not_locked(&cast_path);
+    assert!(result.is_err(), "active old-format lock should fail check");
+}
+
+// --- dual-format: read_lock ---
+
+#[test]
+fn read_lock_finds_new_format() {
+    let dir = TempDir::new().unwrap();
+    let cast_path = dir.path().join("newformat.cast");
+    lock::create_lock(&cast_path).unwrap();
+    let result = lock::read_lock(&cast_path);
+    assert!(
+        result.is_some(),
+        "read_lock should find new hidden-format lock"
+    );
+    assert_eq!(result.unwrap().pid, std::process::id());
+}
+
+#[test]
+fn read_lock_falls_back_to_old_format() {
+    let dir = TempDir::new().unwrap();
+    let cast_path = dir.path().join("oldformat.cast");
+    let old_path = old_lock_path_for(&cast_path);
+    let info = serde_json::json!({"pid": std::process::id(), "started": "2025-01-01T00:00:00Z"});
+    std::fs::write(&old_path, info.to_string()).unwrap();
+    let result = lock::read_lock(&cast_path);
+    assert!(
+        result.is_some(),
+        "read_lock should fall back to old-format lock"
+    );
+    assert_eq!(result.unwrap().pid, std::process::id());
+}
+
+// --- dual-format: remove_lock ---
+
+#[test]
+fn remove_lock_removes_both_formats() {
+    let dir = TempDir::new().unwrap();
+    let cast_path = dir.path().join("both.cast");
+    let new_path = lock::lock_path_for(&cast_path);
+    let old_path = old_lock_path_for(&cast_path);
+    let info = serde_json::json!({"pid": std::process::id(), "started": "2025-01-01T00:00:00Z"});
+    std::fs::write(&new_path, info.to_string()).unwrap();
+    std::fs::write(&old_path, info.to_string()).unwrap();
+    lock::remove_lock(&cast_path);
+    assert!(!new_path.exists(), "new-format lock should be removed");
+    assert!(!old_path.exists(), "old-format lock should be removed");
 }
 
 #[cfg(unix)]

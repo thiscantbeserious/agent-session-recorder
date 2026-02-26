@@ -16,10 +16,29 @@ pub struct LockInfo {
     pub started: String,
 }
 
-/// Get the lock file path for a given cast file.
+/// Get the hidden lock file path for a given cast file.
 ///
-/// The lock path is the original path with `.lock` appended.
+/// Prepends a dot to the filename component so the lock file is hidden in directory listings.
+/// Given `dir/session.cast`, produces `dir/.session.cast.lock`.
+/// Edge case: if the filename already starts with a dot (e.g. `.hidden.cast`),
+/// the result will have two dots (e.g. `..hidden.cast.lock`), which is valid on Unix.
 pub fn lock_path_for(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    let filename = path.file_name().unwrap_or_default();
+    let hidden_name = format!(".{}.lock", filename.to_string_lossy());
+    if parent.as_os_str().is_empty() {
+        PathBuf::from(hidden_name)
+    } else {
+        parent.join(hidden_name)
+    }
+}
+
+/// Get the legacy (visible) lock file path for a given cast file.
+///
+/// Appends `.lock` without a dot prefix, producing the old format `session.cast.lock`.
+/// Used for dual-format compatibility checks and migration. Intended to be removed
+/// in a future cleanup pass once old-format files are no longer in use.
+pub fn old_lock_path_for(path: &Path) -> PathBuf {
     let mut lock = path.as_os_str().to_owned();
     lock.push(".lock");
     PathBuf::from(lock)
@@ -39,12 +58,11 @@ pub fn create_lock(path: &Path) -> Result<()> {
         .with_context(|| format!("Failed to write lock file: {}", lock_path.display()))
 }
 
-/// Read lock info if the lock file exists and the owning PID is still alive.
+/// Read lock info from a specific lock file path if the owning PID is still alive.
 ///
 /// Returns `None` if the lock file is missing, malformed, or the PID is dead.
-pub fn read_lock(path: &Path) -> Option<LockInfo> {
-    let lock_path = lock_path_for(path);
-    let contents = fs::read_to_string(&lock_path).ok()?;
+fn read_lock_at_path(lock_path: &Path) -> Option<LockInfo> {
+    let contents = fs::read_to_string(lock_path).ok()?;
     let info: LockInfo = serde_json::from_str(&contents).ok()?;
     if !is_pid_alive(info.pid) {
         return None;
@@ -52,27 +70,57 @@ pub fn read_lock(path: &Path) -> Option<LockInfo> {
     Some(info)
 }
 
+/// Read lock info if the lock file exists and the owning PID is still alive.
+///
+/// Checks the new hidden format first, then falls back to the old visible format.
+/// Returns `None` if no live lock is found in either format.
+pub fn read_lock(path: &Path) -> Option<LockInfo> {
+    read_lock_at_path(&lock_path_for(path)).or_else(|| read_lock_at_path(&old_lock_path_for(path)))
+}
+
 /// Remove the lock file for the given cast file path (best-effort).
 ///
-/// Silently ignores errors if the lock file does not exist or cannot be removed.
+/// Removes both the new hidden-format and old visible-format lock files.
+/// Silently ignores errors if files do not exist or cannot be removed.
 pub fn remove_lock(path: &Path) {
-    let lock_path = lock_path_for(path);
-    let _ = fs::remove_file(&lock_path);
+    let _ = fs::remove_file(lock_path_for(path));
+    let _ = fs::remove_file(old_lock_path_for(path));
+}
+
+/// Check a single lock file path and handle stale or active locks.
+///
+/// If the lock is stale (dead PID or malformed), removes it and returns `Ok(())`.
+/// If the lock is active (live PID), returns an error.
+/// If no lock file exists, returns `Ok(())`.
+fn check_lock_at_path(lock_path: &Path, cast_path: &Path) -> Result<()> {
+    let contents = match fs::read_to_string(lock_path) {
+        Ok(c) => c,
+        Err(_) => return Ok(()),
+    };
+    let info: LockInfo = match serde_json::from_str(&contents) {
+        Ok(i) => i,
+        Err(_) => {
+            let _ = fs::remove_file(lock_path);
+            return Ok(());
+        }
+    };
+    if is_pid_alive(info.pid) {
+        anyhow::bail!(
+            "File is locked by an active recording: {}",
+            cast_path.display()
+        );
+    }
+    let _ = fs::remove_file(lock_path);
+    Ok(())
 }
 
 /// Verify that the given cast file is not actively locked by a live process.
 ///
-/// Returns `Ok(())` if unlocked or the lock is stale. Auto-cleans stale lock files.
-/// Bails if an active lock exists.
+/// Checks both the new hidden format and the old visible format. Auto-cleans stale
+/// lock files in either format. Bails if an active lock exists in either format.
 pub fn check_not_locked(path: &Path) -> Result<()> {
-    if read_lock(path).is_some() {
-        anyhow::bail!("File is locked by an active recording: {}", path.display());
-    }
-    // If read_lock returned None but the lock file still exists, it is stale
-    let lock_path = lock_path_for(path);
-    if lock_path.exists() {
-        let _ = fs::remove_file(&lock_path);
-    }
+    check_lock_at_path(&lock_path_for(path), path)?;
+    check_lock_at_path(&old_lock_path_for(path), path)?;
     Ok(())
 }
 

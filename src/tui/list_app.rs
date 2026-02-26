@@ -31,6 +31,7 @@ use crate::config::Config;
 use crate::files::backup::{backup_path_for, create_backup, has_backup, restore_from_backup};
 use crate::files::filename;
 use crate::files::lock;
+use crate::files::remove_auxiliary_files;
 use crate::theme::current_theme;
 
 /// UI mode for the list application
@@ -506,8 +507,12 @@ impl ListApp {
                 self.shared.status_message = Some(format!("Failed to delete: {}", e));
             } else {
                 // Also delete backup if it exists (remove_file returns Err if not found)
-                let backup = backup_path_for(std::path::Path::new(&path));
+                let cast_path = std::path::Path::new(&path);
+                let backup = backup_path_for(cast_path);
                 let backup_deleted = std::fs::remove_file(&backup).is_ok();
+
+                // Remove auxiliary files in both old and new formats (lock + old-format backup)
+                remove_auxiliary_files(cast_path);
 
                 // Remove from explorer to keep UI in sync
                 self.shared.explorer.remove_item(&path);

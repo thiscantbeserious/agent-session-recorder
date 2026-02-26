@@ -2233,16 +2233,38 @@ fn rename_file_preserves_extension() {
 fn rename_file_renames_backup_too() {
     let dir = TempDir::new().unwrap();
     let file = dir.path().join("session.cast");
-    let backup = dir.path().join("session.cast.bak");
+    // Create hidden-format backup (new format)
+    let backup = dir.path().join(".session.cast.bak");
     std::fs::write(&file, "main").unwrap();
     std::fs::write(&backup, "backup").unwrap();
 
     let result = filename::rename_file(&file, "renamed").unwrap();
     assert_eq!(result, dir.path().join("renamed.cast"));
 
-    let new_backup = dir.path().join("renamed.cast.bak");
+    let new_backup = dir.path().join(".renamed.cast.bak");
     assert!(new_backup.exists());
     assert!(!backup.exists());
+    assert_eq!(std::fs::read_to_string(&new_backup).unwrap(), "backup");
+}
+
+#[test]
+fn rename_file_migrates_old_format_backup_on_rename() {
+    use agr::files::backup::old_backup_path_for;
+
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("session.cast");
+    // Create old-format backup (legacy)
+    let old_backup = old_backup_path_for(&file);
+    std::fs::write(&file, "main").unwrap();
+    std::fs::write(&old_backup, "backup").unwrap();
+
+    let result = filename::rename_file(&file, "renamed").unwrap();
+    assert_eq!(result, dir.path().join("renamed.cast"));
+
+    // Backup should be renamed to new hidden format at the new path
+    let new_backup = dir.path().join(".renamed.cast.bak");
+    assert!(new_backup.exists(), "backup should be at new hidden path");
+    assert!(!old_backup.exists(), "old-format backup should be gone");
     assert_eq!(std::fs::read_to_string(&new_backup).unwrap(), "backup");
 }
 

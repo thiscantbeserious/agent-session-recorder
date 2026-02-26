@@ -652,6 +652,65 @@ fn list_cast_files_short_sorted_by_mtime_descending() {
 }
 
 // ========================================================================
+// Auxiliary file cleanup tests (Stage 4)
+// ========================================================================
+
+#[test]
+fn delete_sessions_removes_auxiliary_files_both_formats() {
+    use agr::files::backup::{backup_path_for, old_backup_path_for};
+    use agr::files::lock::{lock_path_for, old_lock_path_for};
+
+    let temp = TempDir::new().unwrap();
+    let config = create_test_config(&temp);
+    let manager = StorageManager::new(config);
+
+    // Create the .cast file
+    let cast_path = create_test_session(temp.path(), "claude", "session.cast", "content");
+
+    // Create all 4 auxiliary files
+    let new_lock = lock_path_for(&cast_path);
+    let old_lock = old_lock_path_for(&cast_path);
+    let new_backup = backup_path_for(&cast_path);
+    let old_backup = old_backup_path_for(&cast_path);
+
+    fs::write(&new_lock, "new lock").unwrap();
+    fs::write(&old_lock, "old lock").unwrap();
+    fs::write(&new_backup, "new backup").unwrap();
+    fs::write(&old_backup, "old backup").unwrap();
+
+    // Verify all files exist before deletion
+    assert!(cast_path.exists(), "cast file should exist before delete");
+    assert!(
+        new_lock.exists(),
+        "new-format lock should exist before delete"
+    );
+    assert!(
+        old_lock.exists(),
+        "old-format lock should exist before delete"
+    );
+    assert!(
+        new_backup.exists(),
+        "new-format backup should exist before delete"
+    );
+    assert!(
+        old_backup.exists(),
+        "old-format backup should exist before delete"
+    );
+
+    // Delete the session
+    let sessions = manager.list_sessions(None).unwrap();
+    assert_eq!(sessions.len(), 1);
+    manager.delete_sessions(&sessions).unwrap();
+
+    // Verify all files are gone
+    assert!(!cast_path.exists(), "cast file should be removed");
+    assert!(!new_lock.exists(), "new-format lock should be removed");
+    assert!(!old_lock.exists(), "old-format lock should be removed");
+    assert!(!new_backup.exists(), "new-format backup should be removed");
+    assert!(!old_backup.exists(), "old-format backup should be removed");
+}
+
+// ========================================================================
 // Import functionality tests (Stage 2)
 // ========================================================================
 

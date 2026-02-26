@@ -6,6 +6,8 @@
 //! - Managing agent directories and session metadata
 //! - Computing storage statistics
 
+pub mod migrate;
+
 use anyhow::{Context, Result};
 use chrono::{DateTime, Datelike, Local};
 use humansize::{format_size, BINARY};
@@ -15,6 +17,7 @@ use std::io::BufRead;
 use std::path::{Path, PathBuf};
 
 use crate::config::Config;
+use crate::files::remove_auxiliary_files;
 
 /// Errors that can occur during cast file import
 #[derive(Debug, Clone)]
@@ -319,8 +322,19 @@ pub struct StorageManager {
 }
 
 impl StorageManager {
-    /// Create a new storage manager with the given config
+    /// Create a new storage manager with the given config.
+    ///
+    /// Runs a migration sweep to rename old-format auxiliary files (lock/backup)
+    /// to the hidden dot-prefix format before any storage operation.
     pub fn new(config: Config) -> Self {
+        let storage_dir = config.storage_directory();
+        let result = migrate::migrate_hidden_files(&storage_dir);
+        if result.files_renamed > 0 {
+            eprintln!(
+                "Migrated {} auxiliary file(s) to hidden format",
+                result.files_renamed
+            );
+        }
         Self { config }
     }
 
@@ -480,7 +494,10 @@ impl StorageManager {
         0.0
     }
 
-    /// Delete sessions by path
+    /// Delete sessions by path.
+    ///
+    /// Removes the `.cast` file and all associated auxiliary files (lock and backup,
+    /// both hidden and legacy formats) as best-effort cleanup.
     pub fn delete_sessions(&self, sessions: &[SessionInfo]) -> Result<u64> {
         let mut freed_size = 0u64;
 
@@ -489,6 +506,7 @@ impl StorageManager {
                 fs::remove_file(&session.path)
                     .with_context(|| format!("Failed to delete: {:?}", session.path))?;
                 freed_size += session.size;
+                remove_auxiliary_files(&session.path);
             }
         }
 
@@ -727,8 +745,11 @@ mod tests {
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].filename, "session.cast");
 
-        // Verify .bak files still exist on disk but aren't listed
-        assert!(bak_file.exists());
+        // Verify .bak files still exist on disk (possibly migrated to hidden format) but aren't listed.
+        // The startup sweep in StorageManager::new() renames old-format .cast.bak to .cast.bak,
+        // so check either location.
+        let hidden_bak = agent_dir.join(".session.cast.bak");
+        assert!(bak_file.exists() || hidden_bak.exists());
         assert!(other_bak.exists());
     }
 

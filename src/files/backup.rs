@@ -8,21 +8,44 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
-/// Get the backup path for a given file.
+/// Get the hidden backup path for a given file.
 ///
-/// The backup path is the original path with `.bak` appended.
+/// The backup path is the parent directory joined with a dot-prefixed filename
+/// plus `.bak` extension (e.g. `dir/.session.cast.bak`). This ensures the
+/// backup is hidden from standard directory listings.
 pub fn backup_path_for(path: &Path) -> PathBuf {
+    let parent = path.parent().unwrap_or_else(|| Path::new(""));
+    let filename = path.file_name().unwrap_or_default();
+    let hidden_name = format!(".{}.bak", filename.to_string_lossy());
+    if parent.as_os_str().is_empty() {
+        PathBuf::from(hidden_name)
+    } else {
+        parent.join(hidden_name)
+    }
+}
+
+/// Get the legacy (non-hidden) backup path for a given file.
+///
+/// Produces the old-format path with `.bak` appended directly to the cast path
+/// (e.g. `session.cast.bak`). Used only for backward-compatibility fallbacks
+/// and migration; new code should always use `backup_path_for()`.
+pub fn old_backup_path_for(path: &Path) -> PathBuf {
     let mut backup = path.as_os_str().to_owned();
     backup.push(".bak");
     PathBuf::from(backup)
 }
 
 /// Check if a backup exists for the given file.
+///
+/// Checks the new hidden-format path first, then falls back to the old format.
 pub fn has_backup(path: &Path) -> bool {
-    backup_path_for(path).exists()
+    backup_path_for(path).exists() || old_backup_path_for(path).exists()
 }
 
 /// Create a backup of the given file if one doesn't already exist.
+///
+/// Creates the backup at the new hidden-format path. After a successful copy,
+/// does a best-effort removal of any old-format orphan backup.
 ///
 /// Returns `Ok(true)` if a new backup was created, `Ok(false)` if one already existed.
 pub fn create_backup(path: &Path) -> Result<bool> {
@@ -32,19 +55,28 @@ pub fn create_backup(path: &Path) -> Result<bool> {
     }
     fs::copy(path, &backup)
         .with_context(|| format!("Failed to create backup: {}", backup.display()))?;
+    // Best-effort cleanup of old-format backup orphan
+    let _ = fs::remove_file(old_backup_path_for(path));
     Ok(true)
 }
 
 /// Restore a file from its backup.
 ///
+/// Checks the new hidden-format path first, then falls back to the old format.
 /// Uses an atomic temp+rename pattern for crash safety.
 /// Deletes the backup file after successful restore.
 pub fn restore_from_backup(path: &Path) -> Result<()> {
     let backup = backup_path_for(path);
-
-    if !backup.exists() {
-        anyhow::bail!("No backup exists for: {}", path.display());
-    }
+    let backup = if backup.exists() {
+        backup
+    } else {
+        let old = old_backup_path_for(path);
+        if old.exists() {
+            old
+        } else {
+            anyhow::bail!("No backup exists for: {}", path.display());
+        }
+    };
 
     // Use atomic temp+rename pattern for crash safety
     let temp_path = path.with_extension("cast.tmp");
