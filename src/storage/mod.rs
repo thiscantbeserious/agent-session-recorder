@@ -469,37 +469,11 @@ impl StorageManager {
 
     /// Calculate what percentage of disk the storage uses
     fn calculate_disk_percentage(&self, total_size: u64) -> f64 {
-        // Get total disk size using df command (works on macOS and Linux)
         let storage_dir = self.storage_dir();
         let path_str = storage_dir.to_string_lossy();
-
-        // Try to get disk info using df command
-        if let Ok(output) = std::process::Command::new("df")
-            .arg("-k") // Use 1K blocks for consistent parsing
-            .arg(&*path_str)
-            .output()
-        {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                // Parse df output - second line contains the data
-                // Format: Filesystem 1K-blocks Used Available Use% Mounted
-                if let Some(line) = stdout.lines().nth(1) {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    // parts[1] is total blocks in KB
-                    if parts.len() >= 2 {
-                        if let Ok(total_kb) = parts[1].parse::<u64>() {
-                            let total_bytes = total_kb * 1024;
-                            if total_bytes > 0 {
-                                return (total_size as f64 / total_bytes as f64) * 100.0;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Fallback: return 0.0 if we can't determine disk size
-        0.0
+        query_disk_total_bytes(&path_str)
+            .map(|total_bytes| (total_size as f64 / total_bytes as f64) * 100.0)
+            .unwrap_or(0.0)
     }
 
     /// Delete sessions by path.
@@ -682,6 +656,28 @@ impl StorageManager {
 
         Ok(target)
     }
+}
+
+/// Query total disk bytes for the given path using `df -k`.
+///
+/// Returns `None` if the command fails or the output cannot be parsed.
+fn query_disk_total_bytes(path: &str) -> Option<u64> {
+    let output = std::process::Command::new("df")
+        .arg("-k")
+        .arg(path)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Parse df output — second line, second column is total 1K-blocks
+    let line = stdout.lines().nth(1)?;
+    let total_kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    if total_kb == 0 {
+        return None;
+    }
+    Some(total_kb * 1024)
 }
 
 #[cfg(test)]
