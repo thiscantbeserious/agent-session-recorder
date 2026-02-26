@@ -23,10 +23,17 @@ fn lock_path_for_hidden_path_structure() {
 
 #[test]
 fn lock_path_for_no_parent_directory() {
-    // Edge case: cast file with no parent directory component
     let path = Path::new("session.cast");
     let lock_path = lock::lock_path_for(path);
     assert_eq!(lock_path, Path::new(".session.cast.lock"));
+}
+
+#[test]
+fn lock_path_for_already_dotted_filename() {
+    let path = Path::new("/dir/.hidden.cast");
+    let lock_path = lock::lock_path_for(path);
+    // No double dot — already hidden
+    assert_eq!(lock_path, Path::new("/dir/.hidden.cast.lock"));
 }
 
 #[test]

@@ -177,6 +177,14 @@ mod tests {
         assert_eq!(backup, PathBuf::from(".recording.cast.bak"));
     }
 
+    #[test]
+    fn backup_path_already_dotted_filename() {
+        let path = Path::new("/dir/.hidden.cast");
+        let backup = backup_path_for(path);
+        // No double dot — already hidden
+        assert_eq!(backup, PathBuf::from("/dir/.hidden.cast.bak"));
+    }
+
     // ========================================================================
     // has_backup tests
     // ========================================================================

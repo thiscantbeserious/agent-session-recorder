@@ -20,12 +20,15 @@ pub struct LockInfo {
 ///
 /// Prepends a dot to the filename component so the lock file is hidden in directory listings.
 /// Given `dir/session.cast`, produces `dir/.session.cast.lock`.
-/// Edge case: if the filename already starts with a dot (e.g. `.hidden.cast`),
-/// the result will have two dots (e.g. `..hidden.cast.lock`), which is valid on Unix.
+/// If the filename already starts with a dot, no extra dot is added.
 pub fn lock_path_for(path: &Path) -> PathBuf {
     let parent = path.parent().unwrap_or_else(|| Path::new(""));
-    let filename = path.file_name().unwrap_or_default();
-    let hidden_name = format!(".{}.lock", filename.to_string_lossy());
+    let filename = filename_to_string(path);
+    let hidden_name = if filename.starts_with('.') {
+        format!("{}.lock", filename)
+    } else {
+        format!(".{}.lock", filename)
+    };
     if parent.as_os_str().is_empty() {
         PathBuf::from(hidden_name)
     } else {
@@ -166,4 +169,12 @@ pub(crate) fn is_pid_alive(pid: u32) -> bool {
 #[cfg(not(unix))]
 pub(crate) fn is_pid_alive(_pid: u32) -> bool {
     false
+}
+
+/// Extract the filename from a path as a string.
+fn filename_to_string(path: &Path) -> String {
+    path.file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned()
 }
