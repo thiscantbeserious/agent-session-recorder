@@ -942,3 +942,28 @@ fn resolve_filename_conflict_with_existing() {
     let third = manager.import_cast_file(&source, "claude").unwrap();
     assert!(third.to_string_lossy().contains("conflict-2.cast"));
 }
+
+#[test]
+fn stats_oldest_session_is_actually_oldest() {
+    let temp = TempDir::new().unwrap();
+    let config = create_test_config(&temp);
+
+    // Create the "old" session first
+    create_test_session(temp.path(), "claude", "old.cast", "old");
+
+    // Sleep briefly so filesystem mtime differs
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Create the "new" session second (guaranteed newer mtime)
+    create_test_session(temp.path(), "claude", "new.cast", "new");
+
+    let manager = StorageManager::new(config);
+    let stats = manager.get_stats().unwrap();
+    let oldest = stats.oldest_session.expect("should have oldest session");
+
+    assert_eq!(
+        oldest.filename, "old.cast",
+        "oldest should be old.cast, got {}",
+        oldest.filename
+    );
+}

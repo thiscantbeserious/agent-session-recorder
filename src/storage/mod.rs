@@ -453,7 +453,7 @@ impl StorageManager {
             *sessions_by_agent.entry(session.agent.clone()).or_insert(0) += 1;
         }
 
-        let oldest_session = sessions.first().cloned();
+        let oldest_session = sessions.last().cloned();
 
         // Calculate disk percentage (simplified - uses available space)
         let disk_percentage = self.calculate_disk_percentage(total_size);
