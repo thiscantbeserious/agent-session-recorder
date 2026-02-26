@@ -36,16 +36,11 @@ pub fn old_backup_path_for(path: &Path) -> PathBuf {
 }
 
 /// Check if a backup exists for the given file.
-///
-/// Checks the new hidden-format path first, then falls back to the old format.
 pub fn has_backup(path: &Path) -> bool {
-    backup_path_for(path).exists() || old_backup_path_for(path).exists()
+    backup_path_for(path).exists()
 }
 
 /// Create a backup of the given file if one doesn't already exist.
-///
-/// Creates the backup at the new hidden-format path. After a successful copy,
-/// does a best-effort removal of any old-format orphan backup.
 ///
 /// Returns `Ok(true)` if a new backup was created, `Ok(false)` if one already existed.
 pub fn create_backup(path: &Path) -> Result<bool> {
@@ -55,28 +50,18 @@ pub fn create_backup(path: &Path) -> Result<bool> {
     }
     fs::copy(path, &backup)
         .with_context(|| format!("Failed to create backup: {}", backup.display()))?;
-    // Best-effort cleanup of old-format backup orphan
-    let _ = fs::remove_file(old_backup_path_for(path));
     Ok(true)
 }
 
 /// Restore a file from its backup.
 ///
-/// Checks the new hidden-format path first, then falls back to the old format.
 /// Uses an atomic temp+rename pattern for crash safety.
 /// Deletes the backup file after successful restore.
 pub fn restore_from_backup(path: &Path) -> Result<()> {
     let backup = backup_path_for(path);
-    let backup = if backup.exists() {
-        backup
-    } else {
-        let old = old_backup_path_for(path);
-        if old.exists() {
-            old
-        } else {
-            anyhow::bail!("No backup exists for: {}", path.display());
-        }
-    };
+    if !backup.exists() {
+        anyhow::bail!("No backup exists for: {}", path.display());
+    }
 
     // Use atomic temp+rename pattern for crash safety
     let temp_path = path.with_extension("cast.tmp");

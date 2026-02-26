@@ -108,9 +108,7 @@ pub fn apply_transforms(path: &Path) -> Result<TransformResult> {
 mod tests {
     use super::*;
     use crate::asciicast::{Event, Header};
-    use crate::files::backup::{
-        create_backup, has_backup, old_backup_path_for, restore_from_backup,
-    };
+    use crate::files::backup::{backup_path_for, has_backup, restore_from_backup};
     use std::io::Write;
     use tempfile::TempDir;
 
@@ -643,68 +641,5 @@ mod tests {
         fs::copy(&path, &hidden_backup).unwrap();
 
         assert!(has_backup(&path));
-    }
-
-    #[test]
-    fn has_backup_falls_back_to_old_format() {
-        let dir = TempDir::new().unwrap();
-        let path = create_test_cast_file(&dir, "test.cast", vec![Event::output(0.1, "hello")]);
-        let old_backup = old_backup_path_for(&path);
-        fs::copy(&path, &old_backup).unwrap();
-
-        assert!(has_backup(&path));
-    }
-
-    // ========================================================================
-    // restore_from_backup old-format fallback test (Stage 3)
-    // ========================================================================
-
-    #[test]
-    fn restore_from_backup_falls_back_to_old_format() {
-        let dir = TempDir::new().unwrap();
-        let path = create_test_cast_file(
-            &dir,
-            "test.cast",
-            vec![Event::output(0.1, "hello"), Event::output(10.0, "world")],
-        );
-        let original_bytes = fs::read(&path).unwrap();
-
-        // Create only an old-format backup
-        let old_backup = old_backup_path_for(&path);
-        fs::copy(&path, &old_backup).unwrap();
-
-        // Modify the cast file to simulate a transform
-        fs::write(&path, b"modified content").unwrap();
-
-        // Restore should fall back to old-format backup
-        restore_from_backup(&path).unwrap();
-
-        let restored_bytes = fs::read(&path).unwrap();
-        assert_eq!(original_bytes, restored_bytes);
-        // Old-format backup should be removed after restore
-        assert!(!old_backup.exists());
-    }
-
-    // ========================================================================
-    // create_backup old-format orphan cleanup test (Stage 3)
-    // ========================================================================
-
-    #[test]
-    fn create_backup_cleans_old_format_orphan() {
-        let dir = TempDir::new().unwrap();
-        let path = create_test_cast_file(&dir, "test.cast", vec![Event::output(0.1, "hello")]);
-
-        // Create an old-format backup orphan
-        let old_backup = old_backup_path_for(&path);
-        fs::copy(&path, &old_backup).unwrap();
-        assert!(old_backup.exists());
-
-        // create_backup should create new-format and remove old-format orphan
-        let created = create_backup(&path).unwrap();
-        assert!(created);
-
-        let new_backup = backup_path_for(&path);
-        assert!(new_backup.exists(), "new-format backup should exist");
-        assert!(!old_backup.exists(), "old-format orphan should be removed");
     }
 }

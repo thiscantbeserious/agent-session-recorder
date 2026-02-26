@@ -104,37 +104,6 @@ fn check_not_locked_cleans_stale_lock_and_succeeds() {
     assert!(!lock_path.exists());
 }
 
-// --- dual-format: check_not_locked ---
-
-#[test]
-fn check_not_locked_cleans_old_format_stale_lock() {
-    let dir = TempDir::new().unwrap();
-    let cast_path = dir.path().join("stale_old.cast");
-    let old_path = old_lock_path_for(&cast_path);
-    std::fs::write(
-        &old_path,
-        r#"{"pid":999999999,"started":"2025-01-01T00:00:00Z"}"#,
-    )
-    .unwrap();
-    assert!(old_path.exists());
-    assert!(lock::check_not_locked(&cast_path).is_ok());
-    assert!(
-        !old_path.exists(),
-        "stale old-format lock should be removed"
-    );
-}
-
-#[test]
-fn check_not_locked_errors_on_old_format_active_lock() {
-    let dir = TempDir::new().unwrap();
-    let cast_path = dir.path().join("active_old.cast");
-    let old_path = old_lock_path_for(&cast_path);
-    let info = serde_json::json!({"pid": std::process::id(), "started": "2025-01-01T00:00:00Z"});
-    std::fs::write(&old_path, info.to_string()).unwrap();
-    let result = lock::check_not_locked(&cast_path);
-    assert!(result.is_err(), "active old-format lock should fail check");
-}
-
 // --- dual-format: read_lock ---
 
 #[test]
@@ -146,21 +115,6 @@ fn read_lock_finds_new_format() {
     assert!(
         result.is_some(),
         "read_lock should find new hidden-format lock"
-    );
-    assert_eq!(result.unwrap().pid, std::process::id());
-}
-
-#[test]
-fn read_lock_falls_back_to_old_format() {
-    let dir = TempDir::new().unwrap();
-    let cast_path = dir.path().join("oldformat.cast");
-    let old_path = old_lock_path_for(&cast_path);
-    let info = serde_json::json!({"pid": std::process::id(), "started": "2025-01-01T00:00:00Z"});
-    std::fs::write(&old_path, info.to_string()).unwrap();
-    let result = lock::read_lock(&cast_path);
-    assert!(
-        result.is_some(),
-        "read_lock should fall back to old-format lock"
     );
     assert_eq!(result.unwrap().pid, std::process::id());
 }

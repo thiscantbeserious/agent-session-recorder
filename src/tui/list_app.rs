@@ -28,7 +28,7 @@ use super::import;
 use super::widgets::{FileExplorer, FileItem};
 use crate::asciicast::{apply_transforms, TransformResult};
 use crate::config::Config;
-use crate::files::backup::{backup_path_for, create_backup, has_backup, restore_from_backup};
+use crate::files::backup::{create_backup, has_backup, restore_from_backup};
 use crate::files::filename;
 use crate::files::lock;
 use crate::files::remove_auxiliary_files;
@@ -506,19 +506,18 @@ impl ListApp {
             if let Err(e) = std::fs::remove_file(&path) {
                 self.shared.status_message = Some(format!("Failed to delete: {}", e));
             } else {
-                // Also delete backup if it exists (remove_file returns Err if not found)
+                // Check for backup before removal (covers both old and new format)
                 let cast_path = std::path::Path::new(&path);
-                let backup = backup_path_for(cast_path);
-                let backup_deleted = std::fs::remove_file(&backup).is_ok();
+                let had_backup = has_backup(cast_path);
 
-                // Remove auxiliary files in both old and new formats (lock + old-format backup)
+                // Remove auxiliary files in both old and new formats (lock + backup)
                 remove_auxiliary_files(cast_path);
 
                 // Remove from explorer to keep UI in sync
                 self.shared.explorer.remove_item(&path);
 
                 // Update status message
-                self.shared.status_message = Some(if backup_deleted {
+                self.shared.status_message = Some(if had_backup {
                     format!("Deleted: {} (and backup)", name)
                 } else {
                     format!("Deleted: {}", name)

@@ -58,24 +58,17 @@ pub fn create_lock(path: &Path) -> Result<()> {
         .with_context(|| format!("Failed to write lock file: {}", lock_path.display()))
 }
 
-/// Read lock info from a specific lock file path if the owning PID is still alive.
+/// Read lock info if the lock file exists and the owning PID is still alive.
 ///
 /// Returns `None` if the lock file is missing, malformed, or the PID is dead.
-fn read_lock_at_path(lock_path: &Path) -> Option<LockInfo> {
-    let contents = fs::read_to_string(lock_path).ok()?;
+pub fn read_lock(path: &Path) -> Option<LockInfo> {
+    let lock_path = lock_path_for(path);
+    let contents = fs::read_to_string(&lock_path).ok()?;
     let info: LockInfo = serde_json::from_str(&contents).ok()?;
     if !is_pid_alive(info.pid) {
         return None;
     }
     Some(info)
-}
-
-/// Read lock info if the lock file exists and the owning PID is still alive.
-///
-/// Checks the new hidden format first, then falls back to the old visible format.
-/// Returns `None` if no live lock is found in either format.
-pub fn read_lock(path: &Path) -> Option<LockInfo> {
-    read_lock_at_path(&lock_path_for(path)).or_else(|| read_lock_at_path(&old_lock_path_for(path)))
 }
 
 /// Remove the lock file for the given cast file path (best-effort).
@@ -87,40 +80,26 @@ pub fn remove_lock(path: &Path) {
     let _ = fs::remove_file(old_lock_path_for(path));
 }
 
-/// Check a single lock file path and handle stale or active locks.
+/// Verify that the given cast file is not actively locked by a live process.
 ///
-/// If the lock is stale (dead PID or malformed), removes it and returns `Ok(())`.
-/// If the lock is active (live PID), returns an error.
-/// If no lock file exists, returns `Ok(())`.
-fn check_lock_at_path(lock_path: &Path, cast_path: &Path) -> Result<()> {
-    let contents = match fs::read_to_string(lock_path) {
+/// Auto-cleans stale lock files (dead PID or malformed). Bails if an active lock exists.
+pub fn check_not_locked(path: &Path) -> Result<()> {
+    let lock_path = lock_path_for(path);
+    let contents = match fs::read_to_string(&lock_path) {
         Ok(c) => c,
         Err(_) => return Ok(()),
     };
     let info: LockInfo = match serde_json::from_str(&contents) {
         Ok(i) => i,
         Err(_) => {
-            let _ = fs::remove_file(lock_path);
+            let _ = fs::remove_file(&lock_path);
             return Ok(());
         }
     };
     if is_pid_alive(info.pid) {
-        anyhow::bail!(
-            "File is locked by an active recording: {}",
-            cast_path.display()
-        );
+        anyhow::bail!("File is locked by an active recording: {}", path.display());
     }
-    let _ = fs::remove_file(lock_path);
-    Ok(())
-}
-
-/// Verify that the given cast file is not actively locked by a live process.
-///
-/// Checks both the new hidden format and the old visible format. Auto-cleans stale
-/// lock files in either format. Bails if an active lock exists in either format.
-pub fn check_not_locked(path: &Path) -> Result<()> {
-    check_lock_at_path(&lock_path_for(path), path)?;
-    check_lock_at_path(&old_lock_path_for(path), path)?;
+    let _ = fs::remove_file(&lock_path);
     Ok(())
 }
 

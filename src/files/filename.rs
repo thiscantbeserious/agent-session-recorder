@@ -307,18 +307,10 @@ pub fn rename_file(
 
     std::fs::rename(old_path, &new_path).map_err(RenameError::IoError)?;
 
-    use crate::files::backup::old_backup_path_for;
     let old_backup = backup_path_for(old_path);
     if old_backup.exists() {
         let new_backup = backup_path_for(&new_path);
         let _ = std::fs::rename(&old_backup, &new_backup);
-    } else {
-        // Fallback: migrate old-format backup to new hidden format at rename time
-        let old_format_backup = old_backup_path_for(old_path);
-        if old_format_backup.exists() {
-            let new_backup = backup_path_for(&new_path);
-            let _ = std::fs::rename(&old_format_backup, &new_backup);
-        }
     }
 
     Ok(new_path)

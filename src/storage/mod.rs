@@ -329,11 +329,19 @@ impl StorageManager {
     pub fn new(config: Config) -> Self {
         let storage_dir = config.storage_directory();
         let result = migrate::migrate_hidden_files(&storage_dir);
-        if result.files_renamed > 0 {
+        if result.files_renamed > 0 || result.files_failed > 0 {
             eprintln!(
-                "Migrated {} auxiliary file(s) to hidden format",
-                result.files_renamed
+                "Storage migration: {} file(s) renamed to hidden format{}",
+                result.files_renamed,
+                if result.files_failed > 0 {
+                    format!(", {} failed", result.files_failed)
+                } else {
+                    String::new()
+                }
             );
+            for warning in &result.warnings {
+                eprintln!("  warning: {}", warning);
+            }
         }
         Self { config }
     }
