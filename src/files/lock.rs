@@ -82,6 +82,8 @@ pub fn remove_lock(path: &Path) {
 
 /// Verify that the given cast file is not actively locked by a live process.
 ///
+/// Only checks the hidden-format lock path. Old-format locks are migrated by the
+/// startup sweep in `StorageManager::new()`, which runs before any storage operation.
 /// Auto-cleans stale lock files (dead PID or malformed). Bails if an active lock exists.
 pub fn check_not_locked(path: &Path) -> Result<()> {
     let lock_path = lock_path_for(path);
