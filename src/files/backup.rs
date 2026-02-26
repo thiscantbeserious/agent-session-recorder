@@ -15,18 +15,7 @@ use anyhow::{Context, Result};
 /// backup is hidden from standard directory listings.
 /// If the filename already starts with a dot, no extra dot is added.
 pub fn backup_path_for(path: &Path) -> PathBuf {
-    let parent = path.parent().unwrap_or_else(|| Path::new(""));
-    let filename = filename_to_string(path);
-    let hidden_name = if filename.starts_with('.') {
-        format!("{}.bak", filename)
-    } else {
-        format!(".{}.bak", filename)
-    };
-    if parent.as_os_str().is_empty() {
-        PathBuf::from(hidden_name)
-    } else {
-        parent.join(hidden_name)
-    }
+    crate::files::hidden_auxiliary_path(path, ".bak")
 }
 
 /// Get the legacy (non-hidden) backup path for a given file.
@@ -34,6 +23,7 @@ pub fn backup_path_for(path: &Path) -> PathBuf {
 /// Produces the old-format path with `.bak` appended directly to the cast path
 /// (e.g. `session.cast.bak`). Used only for backward-compatibility fallbacks
 /// and migration; new code should always use `backup_path_for()`.
+#[doc(hidden)]
 pub fn old_backup_path_for(path: &Path) -> PathBuf {
     let mut backup = path.as_os_str().to_owned();
     backup.push(".bak");
@@ -85,12 +75,4 @@ pub fn restore_from_backup(path: &Path) -> Result<()> {
     let _ = fs::remove_file(&backup);
 
     Ok(())
-}
-
-/// Extract the filename from a path as a string.
-fn filename_to_string(path: &Path) -> String {
-    path.file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned()
 }

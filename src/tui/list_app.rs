@@ -506,7 +506,7 @@ impl ListApp {
             if let Err(e) = std::fs::remove_file(&path) {
                 self.shared.status_message = Some(format!("Failed to delete: {}", e));
             } else {
-                // Check for backup before removal (covers both old and new format)
+                // Check for backup before removal (sweep ensures hidden format)
                 let cast_path = std::path::Path::new(&path);
                 let had_backup = has_backup(cast_path);
 

@@ -111,6 +111,42 @@ fn check_not_locked_cleans_stale_lock_and_succeeds() {
     assert!(!lock_path.exists());
 }
 
+// --- dual-format: check_not_locked ---
+
+#[test]
+fn check_not_locked_cleans_old_format_stale_lock() {
+    let dir = TempDir::new().unwrap();
+    let cast_path = dir.path().join("stale_old.cast");
+    let old_path = old_lock_path_for(&cast_path);
+    std::fs::write(
+        &old_path,
+        r#"{"pid":999999999,"started":"2025-01-01T00:00:00Z"}"#,
+    )
+    .unwrap();
+    assert!(old_path.exists());
+    assert!(lock::check_not_locked(&cast_path).is_ok());
+    assert!(
+        !old_path.exists(),
+        "stale old-format lock should be removed"
+    );
+}
+
+#[test]
+fn check_not_locked_errors_on_old_format_active_lock() {
+    let dir = TempDir::new().unwrap();
+    let cast_path = dir.path().join("active_old.cast");
+    let old_path = old_lock_path_for(&cast_path);
+    let info = serde_json::json!({"pid": std::process::id(), "started": "2025-01-01T00:00:00Z"});
+    std::fs::write(&old_path, info.to_string()).unwrap();
+    let result = lock::check_not_locked(&cast_path);
+    assert!(
+        result.is_err(),
+        "active old-format lock should cause an error"
+    );
+    let err_msg = result.unwrap_err().to_string();
+    assert!(err_msg.contains("locked") || err_msg.contains("recording"));
+}
+
 // --- dual-format: read_lock ---
 
 #[test]

@@ -22,18 +22,7 @@ pub struct LockInfo {
 /// Given `dir/session.cast`, produces `dir/.session.cast.lock`.
 /// If the filename already starts with a dot, no extra dot is added.
 pub fn lock_path_for(path: &Path) -> PathBuf {
-    let parent = path.parent().unwrap_or_else(|| Path::new(""));
-    let filename = filename_to_string(path);
-    let hidden_name = if filename.starts_with('.') {
-        format!("{}.lock", filename)
-    } else {
-        format!(".{}.lock", filename)
-    };
-    if parent.as_os_str().is_empty() {
-        PathBuf::from(hidden_name)
-    } else {
-        parent.join(hidden_name)
-    }
+    crate::files::hidden_auxiliary_path(path, ".lock")
 }
 
 /// Get the legacy (visible) lock file path for a given cast file.
@@ -41,6 +30,7 @@ pub fn lock_path_for(path: &Path) -> PathBuf {
 /// Appends `.lock` without a dot prefix, producing the old format `session.cast.lock`.
 /// Used for dual-format compatibility checks and migration. Intended to be removed
 /// in a future cleanup pass once old-format files are no longer in use.
+#[doc(hidden)]
 pub fn old_lock_path_for(path: &Path) -> PathBuf {
     let mut lock = path.as_os_str().to_owned();
     lock.push(".lock");
@@ -85,26 +75,40 @@ pub fn remove_lock(path: &Path) {
 
 /// Verify that the given cast file is not actively locked by a live process.
 ///
-/// Only checks the hidden-format lock path. Old-format locks are migrated by the
-/// startup sweep in `StorageManager::new()`, which runs before any storage operation.
-/// Auto-cleans stale lock files (dead PID or malformed). Bails if an active lock exists.
+/// Checks both hidden-format (`.session.cast.lock`) and old-format (`session.cast.lock`)
+/// lock paths defensively, so absolute-path commands that bypass the startup sweep still
+/// detect active old-format locks. Auto-cleans stale lock files (dead PID or malformed).
+/// Bails if an active lock exists in either format.
 pub fn check_not_locked(path: &Path) -> Result<()> {
-    let lock_path = lock_path_for(path);
-    let contents = match fs::read_to_string(&lock_path) {
+    check_single_lock(&lock_path_for(path), path)?;
+    // Defensive: also check old format in case sweep hasn't run (e.g. absolute-path commands)
+    check_single_lock(&old_lock_path_for(path), path)?;
+    Ok(())
+}
+
+/// Check a single lock file path and clean it up if stale.
+///
+/// Returns `Ok(())` if the file does not exist or is stale (removes it).
+/// Returns an error if the lock is held by an active process.
+fn check_single_lock(lock_path: &Path, cast_path: &Path) -> Result<()> {
+    let contents = match fs::read_to_string(lock_path) {
         Ok(c) => c,
         Err(_) => return Ok(()),
     };
     let info: LockInfo = match serde_json::from_str(&contents) {
         Ok(i) => i,
         Err(_) => {
-            let _ = fs::remove_file(&lock_path);
+            let _ = fs::remove_file(lock_path);
             return Ok(());
         }
     };
     if is_pid_alive(info.pid) {
-        anyhow::bail!("File is locked by an active recording: {}", path.display());
+        anyhow::bail!(
+            "File is locked by an active recording: {}",
+            cast_path.display()
+        );
     }
-    let _ = fs::remove_file(&lock_path);
+    let _ = fs::remove_file(lock_path);
     Ok(())
 }
 
@@ -169,12 +173,4 @@ pub(crate) fn is_pid_alive(pid: u32) -> bool {
 #[cfg(not(unix))]
 pub(crate) fn is_pid_alive(_pid: u32) -> bool {
     false
-}
-
-/// Extract the filename from a path as a string.
-fn filename_to_string(path: &Path) -> String {
-    path.file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned()
 }

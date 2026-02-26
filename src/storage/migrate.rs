@@ -26,19 +26,19 @@ pub fn execute(storage_dir: &Path) -> MigrateResult {
         return result;
     }
 
-    v1_hidden_auxiliary_files(storage_dir, &mut result);
-    // Future migrations go here in order:
-    // v2_something(storage_dir, &mut result);
+    v0_to_v1_hidden_auxiliary_files(storage_dir, &mut result);
+    // Future migrations go here in declaration order:
+    // v1_to_v2_something(storage_dir, &mut result);
 
     result
 }
 
-/// V1: Rename old-format auxiliary files to hidden dot-prefixed format.
+/// v0→v1: Rename old-format auxiliary files to hidden dot-prefixed format.
 ///
 /// Scans agent directories for files matching `*.cast.lock` or `*.cast.bak`
 /// whose filename does not start with a dot, and renames them to the hidden
 /// equivalent (dot-prefixed).
-fn v1_hidden_auxiliary_files(storage_dir: &Path, result: &mut MigrateResult) {
+fn v0_to_v1_hidden_auxiliary_files(storage_dir: &Path, result: &mut MigrateResult) {
     let entries = match fs::read_dir(storage_dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -105,6 +105,9 @@ fn rename_to_hidden(path: &Path, agent_dir: &Path, filename: &str, result: &mut 
         return;
     }
 
+    // Note: TOCTOU gap between exists() and rename() is acceptable here.
+    // Concurrent processes would race on the same source→target rename,
+    // and fs::rename is atomic on POSIX. Worst case: harmless error.
     match fs::rename(path, &target) {
         Ok(()) => result.files_renamed += 1,
         Err(e) => {
