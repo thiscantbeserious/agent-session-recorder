@@ -319,3 +319,22 @@ mod warning_sink {
         assert_eq!(mine, 1, "{seen:?}");
     }
 }
+
+#[test]
+fn trailing_garbage_after_last_gzip_member_is_an_error_with_path() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("t.cast.gz");
+    write_bytes(&path, b"{\"version\":3}\n");
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes.extend_from_slice(b"not gzip at all");
+    std::fs::write(&path, bytes).unwrap();
+
+    let mut out = String::new();
+    let result = codec::open_reader(&path).and_then(|mut r| Ok(r.read_to_string(&mut out)?));
+
+    let message = result.as_ref().err().map(|e| format!("{e:#}"));
+    assert!(
+        message.as_deref().is_some_and(|m| m.contains("t.cast.gz")),
+        "{result:?} / {out:?}"
+    );
+}

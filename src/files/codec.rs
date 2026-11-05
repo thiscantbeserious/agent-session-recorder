@@ -283,6 +283,7 @@ fn size_from_trailer(path: &Path, on_disk: u64) -> Result<UncompressedSize> {
 }
 
 /// Uncompressed size: plain file length, gzip `AG` header subfield, else the gzip trailer.
+/// Limit: a foreign multi-member gzip reports only the last member's ISIZE (trailer read).
 // ponytail: foreign gzip files over 4GiB whose wrapped ISIZE still exceeds the on-disk size
 // show a wrong number, rewriting through `atomic_write` fixes them.
 pub fn uncompressed_size(path: &Path) -> Result<UncompressedSize> {
