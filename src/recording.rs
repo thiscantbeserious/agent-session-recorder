@@ -5,10 +5,13 @@
 //! 2. It performs complex process spawning and signal handling
 //! 3. It is thoroughly tested via e2e tests in tests/e2e_test.sh
 
+mod finalize;
+pub use finalize::finalize_recording;
+
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 
 use crate::analyzer::{AgentType, AnalyzeOptions, AnalyzerService};
 use crate::config::Config;
@@ -111,103 +114,90 @@ impl Recorder {
         args: &[String],
     ) -> Result<()> {
         Self::check_asciinema()?;
-
-        // Ensure agent directory exists
         let agent_dir = self.storage.ensure_agent_dir(agent)?;
-
-        // Generate filename - use provided name or template-based
-        let base_filename = match session_name {
-            Some(name) => Self::sanitize_filename(name),
-            None => self.generate_filename(),
-        };
-
-        // Resolve same-second collisions (append a..z suffix)
-        let filename =
-            filename::resolve_collision(&agent_dir, &base_filename).ok_or_else(|| {
-                anyhow::anyhow!("All collision suffixes exhausted for {}", base_filename)
-            })?;
+        let filename = self.unique_filename(&agent_dir, session_name)?;
         let filepath = agent_dir.join(&filename);
-
-        // Lock the file before recording starts
         lock::create_lock(&filepath)?;
-
-        // Build the command to run
-        let command = if args.is_empty() {
-            agent.to_string()
-        } else {
-            format!("{} {}", agent, args.join(" "))
-        };
-
-        // Set up signal handlers for clean shutdown (SIGINT + SIGHUP)
         self.guard.register_signal_handlers();
+        Self::print_start(agent, &filename);
+        let status = self.run_asciinema(agent, args, &filepath)?;
+        println!();
+        theme::print_done_banner();
+        let final_path = self.finish(&filepath, &agent_dir, &filename, status);
+        self.maybe_auto_analyze(&final_path);
+        self.show_storage_warning()
+    }
 
+    fn print_start(agent: &str, filename: &str) {
         theme::print_start_banner();
         theme::print_box_line(&format!("  ⏺ {}/{}", agent, filename));
         theme::print_box_bottom();
         println!();
+    }
 
-        // Spawn asciinema rec (spawn + poll so we can react to signals)
-        let mut child = match Command::new("asciinema")
-            .arg("rec")
-            .arg("--quiet")
-            .arg(&filepath)
-            .arg("--title")
-            .arg(format!("{} session", agent))
-            .arg("-c")
-            .arg(&command)
-            .stdin(Stdio::inherit())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
+    /// Provided or template-based filename, with same-second collisions resolved.
+    fn unique_filename(&self, agent_dir: &Path, session_name: Option<&str>) -> Result<String> {
+        let base_filename = match session_name {
+            Some(name) => Self::sanitize_filename(name),
+            None => self.generate_filename(),
+        };
+        filename::resolve_collision(agent_dir, &base_filename).ok_or_else(|| {
+            anyhow::anyhow!("All collision suffixes exhausted for {}", base_filename)
+        })
+    }
+
+    fn asciinema_command(agent: &str, args: &[String], filepath: &Path) -> Command {
+        let command = [agent].into_iter().chain(args.iter().map(String::as_str));
+        let mut cmd = Command::new("asciinema");
+        cmd.args(["rec", "--quiet"]).arg(filepath);
+        cmd.arg("--title").arg(format!("{} session", agent));
+        cmd.arg("-c").arg(command.collect::<Vec<_>>().join(" "));
+        cmd.stdin(Stdio::inherit()).stdout(Stdio::inherit());
+        cmd.stderr(Stdio::inherit());
+        cmd
+    }
+
+    /// Spawn `asciinema rec` and wait (poll, so signals are handled). Removes the lock on error.
+    fn run_asciinema(&self, agent: &str, args: &[String], filepath: &Path) -> Result<ExitStatus> {
+        let mut child = Self::asciinema_command(agent, args, filepath)
             .spawn()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                lock::remove_lock(&filepath);
-                return Err(anyhow::Error::new(e).context("Failed to start asciinema"));
-            }
-        };
+            .map_err(|e| {
+                lock::remove_lock(filepath);
+                anyhow::Error::new(e).context("Failed to start asciinema")
+            })?;
+        self.guard.wait_or_kill(&mut child).inspect_err(|_| {
+            lock::remove_lock(filepath);
+        })
+    }
 
-        let status = match self.guard.wait_or_kill(&mut child) {
-            Ok(s) => s,
-            Err(e) => {
-                lock::remove_lock(&filepath);
-                return Err(e);
-            }
-        };
-
-        println!();
-        theme::print_done_banner();
-
+    /// Remove the lock, recover a moved file, compress it and print the final line.
+    fn finish(
+        &self,
+        filepath: &Path,
+        agent_dir: &Path,
+        filename: &str,
+        status: ExitStatus,
+    ) -> PathBuf {
         // Capture file identity for recovery if file gets moved
-        let inode = Self::capture_inode(&filepath);
-        let header = Self::read_header_line(&filepath);
+        let inode = Self::capture_inode(filepath);
+        let header = Self::read_header_line(filepath);
+        lock::remove_lock(filepath);
+        let actual_path = Self::resolve_actual_path(filepath, inode, &header, agent_dir);
+        let final_path = finalize_recording(&actual_path, &self.config);
+        let failed = !status.success() && !self.guard.is_interrupted();
+        Self::print_stop(&final_path, filename, failed);
+        final_path
+    }
 
-        // Recording is done - remove lock after capturing identity
-        lock::remove_lock(&filepath);
-
-        // Resolve actual path (file may have been moved during recording)
-        let actual_path = Self::resolve_actual_path(&filepath, inode, &header, &agent_dir);
-        let display_name = actual_path
-            .file_name()
-            .and_then(std::ffi::OsStr::to_str)
-            .unwrap_or(&filename);
-
-        // Display final filename
-        if !status.success() && !self.guard.is_interrupted() {
-            theme::print_box_line(&format!("  \u{23f9} {} (error)", display_name));
-        } else {
-            theme::print_box_line(&format!("  \u{23f9} {}", display_name));
-        }
+    fn print_stop(final_path: &Path, filename: &str, failed: bool) {
+        let name = final_path.file_name().and_then(std::ffi::OsStr::to_str);
+        let suffix = if failed { " (error)" } else { "" };
+        theme::print_box_line(&format!(
+            "  \u{23f9} {}{}",
+            name.unwrap_or(filename),
+            suffix
+        ));
         theme::print_box_bottom();
-        let final_filepath = actual_path;
-
-        // Run auto-analyze if enabled
-        self.maybe_auto_analyze(&final_filepath);
-
-        // Show storage warning if threshold exceeded
-        self.show_storage_warning()?;
-
-        Ok(())
     }
 
     /// Capture the inode of a file for later recovery if it gets renamed.

@@ -208,7 +208,7 @@ test_header "agr analyze with missing agent fails gracefully"
 reset_config
 # First create a valid cast file
 $AGR record echo -- "test" </dev/null 2>&1
-CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
+CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast.gz 2>/dev/null | /usr/bin/tail -1)
 if [[ -f "$CAST_FILE" ]]; then
     OUTPUT=$($AGR analyze "$CAST_FILE" --agent definitely-not-a-real-agent-12345 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
     if [[ "$EXIT_CODE" -ne 0 ]] && echo "$OUTPUT" | /usr/bin/grep -qi "Unknown agent"; then
@@ -232,7 +232,7 @@ agent = "claude"
 TOMLEOF
 # Create a valid cast file if not already present
 $AGR record echo -- "test default agent" </dev/null 2>&1
-CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
+CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast.gz 2>/dev/null | /usr/bin/tail -1)
 if [[ -f "$CAST_FILE" ]]; then
     # Fake claude is in PATH, so this should succeed with the configured agent
     OUTPUT=$($AGR analyze "$CAST_FILE" 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
@@ -255,7 +255,7 @@ auto_analyze = false
 [analysis]
 agent = "claude"
 TOMLEOF
-CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/tail -1)
+CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast.gz 2>/dev/null | /usr/bin/tail -1)
 if [[ -f "$CAST_FILE" ]]; then
     OUTPUT=$($AGR analyze "$CAST_FILE" --agent override-agent-test 2>&1) && EXIT_CODE=0 || EXIT_CODE=$?
     # Should fail because override-agent-test is not a supported agent
