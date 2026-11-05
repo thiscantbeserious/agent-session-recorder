@@ -89,6 +89,9 @@ mod resize_stress_test;
 #[path = "integration/clipboard_test.rs"]
 mod clipboard_test;
 
+#[path = "integration/clipboard_gzip_test.rs"]
+mod clipboard_gzip_test;
+
 #[path = "integration/copy_test.rs"]
 mod copy_test;
 

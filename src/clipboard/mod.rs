@@ -17,6 +17,7 @@
 
 pub mod copy;
 mod error;
+pub mod plain_copy;
 mod result;
 pub mod tool;
 pub mod tools;
