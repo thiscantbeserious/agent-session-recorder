@@ -178,9 +178,10 @@ fn ensure_inside(storage_dir: &Path, target: &Path) -> Result<(), ImportError> {
     )))
 }
 
-/// Copy when formats match, else transcode to the target format.
+/// Plain to plain is copied, everything else goes through our writer so `.cast.gz`
+/// always carries the exact-size header and is deterministic, even from foreign gzip.
 fn store(source: &Path, target: &Path) -> Result<(), ImportError> {
-    let result = if codec::is_gzip_path(source) == codec::is_gzip_path(target) {
+    let result = if !codec::is_gzip_path(source) && !codec::is_gzip_path(target) {
         fs::copy(source, target)
             .map(drop)
             .map_err(anyhow::Error::from)

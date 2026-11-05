@@ -93,3 +93,25 @@ fn wrong_extension_message_mentions_gz() {
         "{err}"
     );
 }
+
+#[test]
+fn import_foreign_gz_is_rewritten_with_size_subfield() {
+    use std::io::Write;
+    let temp = TempDir::new().unwrap();
+    let src = temp.path().join("foreign.cast.gz");
+    let mut enc = flate2::GzBuilder::new().mtime(12345).write(
+        fs::File::create(&src).unwrap(),
+        flate2::Compression::default(),
+    );
+    enc.write_all(CAST.as_bytes()).unwrap();
+    enc.finish().unwrap();
+
+    let out = import_ok(&import_manager(&temp, Compression::Gzip), &src);
+
+    let bytes = fs::read(&out).unwrap();
+    assert_eq!(bytes[3] & 0x04, 0x04, "FEXTRA flag missing");
+    assert_eq!(&bytes[4..8], &[0; 4], "mtime must be zero");
+    let size = u64::from_le_bytes(bytes[16..24].try_into().unwrap());
+    assert_eq!(size, CAST.len() as u64);
+    assert!(codec::same_content(&src, &out).unwrap());
+}
