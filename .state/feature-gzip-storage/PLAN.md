@@ -303,12 +303,18 @@ Owner: implementer
       `commands/compress.rs`), called at the start of `list`, `status`, `cleanup` handlers.
 
 Files: `src/commands/compress_offer.rs`, `src/commands/mod.rs`, `src/commands/list.rs`,
-       `src/commands/status.rs`, `src/commands/cleanup.rs`, `tests/integration/compress_test.rs`
+       `src/commands/status.rs`, `src/commands/cleanup.rs`, `src/commands/cleanup/`,
+       `src/dispatch.rs`, `tests/integration/cli_offer_test.rs`, `tests/integration.rs`
 Depends on: Stage 4, Stage 8, Stage 11, Stage 25
 
 Considerations:
 - Version is `env!("CARGO_PKG_VERSION")`.
-- TTY check uses `atty` (already a dependency) on stdin and stdout.
+- TTY check uses `std::io::IsTerminal` on stdin and stdout (`atty` was removed in Stage 25).
+- `src/commands/cleanup.rs` is 559 lines: split it by responsibility first (pure move,
+  identical sorted test names and snapshots), since this stage touches it.
+- The offer is called from every entry point that opens list/ls, status, cleanup, also the
+  `ls` alias and the TUI entry, check `src/dispatch.rs`. It runs before the TUI takes the
+  terminal. Every function changed ends within ~20 lines.
 
 ### Stage 13: TUI on compressed sessions
 
