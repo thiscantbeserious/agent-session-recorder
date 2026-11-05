@@ -14,3 +14,6 @@ mod silence_removal_test;
 
 #[path = "performance/transform_cli_test.rs"]
 mod transform_cli_test;
+
+#[path = "performance/gzip_memory_test.rs"]
+mod gzip_memory_test;
