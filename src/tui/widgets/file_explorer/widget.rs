@@ -165,6 +165,7 @@ impl Widget for FileExplorerWidget<'_> {
                 p.format_duration(),
                 p.marker_count,
                 p.styled_preview.clone(),
+                p.uncompressed_size.map(crate::storage::format_uncompressed),
             )
         });
 

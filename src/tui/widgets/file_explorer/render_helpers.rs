@@ -21,6 +21,15 @@ pub(super) type PreviewData = (
     Option<LockInfo>,
 );
 
+/// Session preview values for the panel: duration, markers, terminal snapshot and the
+/// formatted uncompressed size (only for compressed sessions).
+pub(super) type SessionData = (
+    String,
+    usize,
+    Vec<crate::terminal::StyledLine>,
+    Option<String>,
+);
+
 /// Build spans for an item that is currently being renamed.
 ///
 /// Handles both `selected_all` mode (entire text highlighted) and normal edit mode
@@ -138,7 +147,7 @@ pub(super) fn render_preview_panel(
     buf: &mut Buffer,
     area: Rect,
     preview_data: Option<PreviewData>,
-    session_preview_data: Option<(String, usize, Vec<crate::terminal::StyledLine>)>,
+    session_preview_data: Option<SessionData>,
     has_backup: bool,
     theme: &crate::theme::Theme,
 ) {
@@ -168,10 +177,24 @@ pub(super) fn render_preview_panel(
     preview.render(area, buf);
 }
 
+/// One `Label: value` line, label dimmed.
+fn field_line(
+    label: &str,
+    value: String,
+    value_style: Style,
+    theme: &crate::theme::Theme,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(label.to_string(), theme.text_secondary_style()),
+        Span::styled(value, value_style),
+    ])
+}
+
 /// Build the list of text lines shown inside the preview panel.
 ///
-/// Includes file name, agent, size, and conditionally duration, markers,
-/// backup status, lock status, modified time, and a terminal snapshot.
+/// Includes file name, agent, size (plus uncompressed size for compressed sessions),
+/// and conditionally duration, markers, backup status, lock status, modified time,
+/// and a terminal snapshot.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_preview_lines(
     name: String,
@@ -180,50 +203,44 @@ pub(super) fn build_preview_lines(
     modified: chrono::DateTime<chrono::Local>,
     path: String,
     lock_data: Option<LockInfo>,
-    session_preview_data: Option<(String, usize, Vec<crate::terminal::StyledLine>)>,
+    session_preview_data: Option<SessionData>,
     has_backup: bool,
     theme: &crate::theme::Theme,
 ) -> Vec<Line<'static>> {
     let mut lines = vec![
-        Line::from(vec![
-            Span::styled("Name: ", theme.text_secondary_style()),
-            Span::styled(name, theme.text_style()),
-        ]),
-        Line::from(vec![
-            Span::styled("Agent: ", theme.text_secondary_style()),
-            Span::styled(agent, theme.accent_style()),
-        ]),
-        Line::from(vec![
-            Span::styled("Size: ", theme.text_secondary_style()),
-            Span::styled(format_size(size), theme.text_style()),
-        ]),
+        field_line("Name: ", name, theme.text_style(), theme),
+        field_line("Agent: ", agent, theme.accent_style(), theme),
+        field_line("Size: ", format_size(size), theme.text_style(), theme),
     ];
-
-    if let Some((duration, markers, styled_preview)) = session_preview_data {
-        append_session_preview_lines(
-            &mut lines,
-            duration,
-            markers,
-            styled_preview,
-            modified,
-            lock_data,
-            has_backup,
+    let Some((duration, markers, styled_preview, uncompressed)) = session_preview_data else {
+        let time = modified.format("%Y-%m-%d %H:%M").to_string();
+        lines.push(field_line("Modified: ", time, theme.text_style(), theme));
+        lines.push(field_line(
+            "Path: ",
+            path,
+            theme.text_secondary_style(),
             theme,
-        );
-    } else {
-        lines.push(Line::from(vec![
-            Span::styled("Modified: ", theme.text_secondary_style()),
-            Span::styled(
-                modified.format("%Y-%m-%d %H:%M").to_string(),
-                theme.text_style(),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Path: ", theme.text_secondary_style()),
-            Span::styled(path, theme.text_secondary_style()),
-        ]));
+        ));
+        return lines;
+    };
+    if let Some(uncompressed) = uncompressed {
+        lines.push(field_line(
+            "Uncompressed: ",
+            uncompressed,
+            theme.text_style(),
+            theme,
+        ));
     }
-
+    append_session_preview_lines(
+        &mut lines,
+        duration,
+        markers,
+        styled_preview,
+        modified,
+        lock_data,
+        has_backup,
+        theme,
+    );
     lines
 }
 
