@@ -272,14 +272,14 @@ Owner: implementer
 - [ ] GREEN: `Commands::Compress` in `cli.rs`, dispatch in `main.rs`, handler in
       `commands/compress.rs` (preview print, prompt, `compress::run`, report print).
 
-Files: `src/cli.rs`, `src/main.rs`, `src/commands/mod.rs`, `src/commands/compress.rs`,
+Files: `src/cli.rs`, `src/dispatch.rs`, `src/commands/mod.rs`, `src/commands/compress.rs`,
        `src/commands/prompt.rs`, `src/commands/config.rs`,
        `tests/integration/snapshot_cli_test.rs`, `tests/integration/snapshots/`,
        `tests/integration/compress_test.rs`
 Depends on: Stage 9, Stage 21
 
 Considerations:
-- `main.rs` is split in Stage 21 first, add the dispatch arm in the resulting dispatch module.
+- Dispatch lives in `src/dispatch.rs` since Stage 21, add the arm there.
 
 ### Stage 12: Auto-migrate offer and status savings line
 
@@ -319,14 +319,14 @@ Owner: implementer
       newest-session lookup after analyze via `codec::is_session_path`, rename stem via
       `codec::session_stem`, cleanup glob hint mentions `*.cast*`.
 
-Files: `src/tui/widgets/file_explorer.rs`, `src/tui/list_app.rs`, `src/tui/cleanup_app.rs`,
+Files: `src/tui/widgets/file_explorer/`, `src/tui/list_app/`, `src/tui/cleanup_app/`,
        `tests/integration/preview_test.rs`, `tests/integration/file_explorer_test.rs`,
        `tests/integration/snapshot_tui_test.rs`
 Depends on: Stage 1, Stage 7, Stage 8, Stage 21
 
 Considerations:
-- These three files are split in Stage 21 first (pure move). Edit the resulting modules, and
-  update this Files list to the new paths before starting.
+- These three are module directories since Stage 21. Every file and every function touched
+  here ends within ~400 lines / ~20 lines.
 
 ### Stage 14: CLI single-file commands
 
@@ -549,6 +549,26 @@ Files: `src/tui/list_app.rs`, `src/tui/list_app/`, `src/tui/widgets/file_explore
        `src/main.rs`, `src/dispatch.rs`, `src/tui/mod.rs`, `src/tui/widgets/mod.rs`
 Depends on: Stage 19
 
+### Stage 22: Flaky timing assertions in silence removal perf tests (user request, in this MR)
+
+Goal: CI runs `cargo test` including `tests/performance`, and three tests assert wall-clock
+budgets of 1ms/1ms/100ms. `hundred_events_fast` failed once under load during Batch 5
+verification, passes 3/3 alone. Make them deterministic without losing their intent.
+Owner: implementer
+
+- [ ] `single_event_no_overhead`, `hundred_events_fast`, `ten_thousand_events_reasonable_time`
+      in `tests/performance/silence_removal_test.rs`: replace absolute wall-clock budgets with a
+      check that cannot flake on a loaded runner and still catches a regression to quadratic
+      behavior (e.g. compare 10k vs 1k events scaling ratio with a generous bound, measured as
+      the minimum over several runs, or count work done). Keep the correctness assertions.
+- [ ] Prove the new check catches a regression: temporarily make the transform quadratic,
+      capture the failing assertion line, revert.
+- [ ] Run the performance suite 20 times in a row while `cargo build --release` runs in
+      parallel, zero failures.
+
+Files: `tests/performance/silence_removal_test.rs`
+Depends on: Stage 20, Stage 21
+
 ## Dependencies
 
 - Stage 1, Stage 2, Stage 3 are independent foundations.
@@ -556,6 +576,7 @@ Depends on: Stage 19
 - Stage 5 depends on Stage 1, Stage 6 on Stage 1 and Stage 5.
 - Stage 17 depends on Stage 1, Stage 2, Stage 3 (Batch 1 hardening, user request).
 - Stage 20 depends on Stage 4, 5, 7, 15, 19 (Batch 4 review fixes).
+- Stage 22 depends on Stage 20, Stage 21 (flaky timing perf tests).
 - Stage 21 depends on Stage 19 (pure-move split of TUI files and main.rs).
 - Stage 19 depends on Stage 17, Stage 18 (size limit for files this branch touched).
 - Stage 18 depends on Stage 17 (Batch 1 pair review fixes, shares codec and storage tests).
