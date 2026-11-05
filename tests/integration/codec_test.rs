@@ -287,3 +287,35 @@ fn failed_dir_fsync_after_rename_still_returns_ok() {
     assert!(result.is_ok(), "{result:?}");
     assert_eq!(std::fs::read(&path).unwrap(), b"x");
 }
+
+#[cfg(unix)]
+mod warning_sink {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::Mutex;
+
+    static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    fn record(message: &str) {
+        SEEN.lock().unwrap().push(message.to_string());
+    }
+
+    #[test]
+    fn failed_dir_fsync_goes_to_the_installed_sink() {
+        let dir = TempDir::new().unwrap();
+        // write+exec but no read: create and rename work, opening the dir for fsync fails.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o300)).unwrap();
+        codec::set_warning_sink(Some(record));
+
+        let result = codec::atomic_write(&dir.path().join("x.cast"), |w| Ok(w.write_all(b"a")?));
+
+        codec::set_warning_sink(None);
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        result.unwrap();
+        // The sink is process wide, other fsync tests may add their own messages.
+        let dir_name = dir.path().display().to_string();
+        let seen = SEEN.lock().unwrap();
+        let mine = seen.iter().filter(|m| m.contains(&dir_name)).count();
+        assert_eq!(mine, 1, "{seen:?}");
+    }
+}
