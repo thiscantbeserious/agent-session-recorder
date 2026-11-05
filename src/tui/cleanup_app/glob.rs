@@ -86,3 +86,25 @@ fn glob_match_recursive(text: &str, pattern: &str) -> bool {
     // Pattern exhausted, text should be exhausted too
     text_chars.next().is_none()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn star_cast_pattern_matches_gzip_sessions_too() {
+        assert!(matches_glob_pattern(
+            "claude",
+            "x.cast.gz",
+            None,
+            "*.cast.gz"
+        ));
+        assert!(matches_glob_pattern(
+            "claude",
+            "x.cast.gz",
+            Some("claude"),
+            "*.cast*"
+        ));
+        assert!(!matches_glob_pattern("claude", "x.cast.gz", None, "*.cast"));
+    }
+}

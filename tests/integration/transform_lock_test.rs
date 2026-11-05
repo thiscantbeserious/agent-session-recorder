@@ -105,3 +105,25 @@ fn transform_requires_transform_flag() {
         combined
     );
 }
+
+#[test]
+fn remove_silence_on_gzip_equals_the_plain_twin() {
+    use std::io::Read;
+    let temp_dir = TempDir::new().unwrap();
+    let plain = create_cast_file(&temp_dir, "a.cast", sample_cast_with_long_pauses());
+    let gz = temp_dir.path().join("b.cast.gz");
+    agr::files::codec::transcode(&plain, &gz).unwrap();
+
+    for file in [&plain, &gz] {
+        let (_o, e, code) = run_agr(&["optimize", "--remove-silence", file.to_str().unwrap()]);
+        assert_eq!(code, 0, "{e}");
+    }
+
+    let mut out = String::new();
+    agr::files::codec::open_reader(&gz)
+        .unwrap()
+        .read_to_string(&mut out)
+        .unwrap();
+    assert!(std::fs::read(&gz).unwrap().starts_with(&[0x1f, 0x8b]));
+    assert_eq!(out, std::fs::read_to_string(&plain).unwrap());
+}

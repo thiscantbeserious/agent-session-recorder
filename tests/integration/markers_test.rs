@@ -226,3 +226,17 @@ fn add_marker_keeps_gzip_format() {
     let markers = AsciicastFile::parse(&gz).ok().map(|c| c.markers().len());
     assert_eq!(markers, Some(1));
 }
+
+#[test]
+fn clear_markers_keeps_gzip_format() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let gz = dir.path().join("x.cast.gz");
+    let content = super::helpers::load_fixture("sample.cast");
+    agr::files::codec::atomic_write(&gz, |w| Ok(w.write_all(content.as_bytes())?)).unwrap();
+    MarkerManager::add_marker(&gz, 0.55, "gz marker").unwrap();
+
+    assert_eq!(MarkerManager::clear_markers(&gz).unwrap(), 1);
+
+    assert!(std::fs::read(&gz).unwrap().starts_with(&[0x1f, 0x8b]));
+    assert_eq!(MarkerManager::count_markers(&gz).unwrap(), 0);
+}
