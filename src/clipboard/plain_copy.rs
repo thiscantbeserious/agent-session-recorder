@@ -61,7 +61,8 @@ fn other_error(e: anyhow::Error) -> ClipboardError {
 }
 
 /// Ownership decision for the shared temp dir: only our own uid may use it.
-pub fn is_owned_by(dir_uid: u32, my_uid: u32) -> bool {
+#[cfg(unix)]
+pub(crate) fn is_owned_by(dir_uid: u32, my_uid: u32) -> bool {
     dir_uid == my_uid
 }
 
@@ -85,10 +86,23 @@ fn fresh_temp_dir(base: &Path) -> Result<PathBuf, ClipboardError> {
     Ok(dir)
 }
 
+// Windows is out of scope: fixed name, no ownership check, this only keeps the crate compiling.
+// Pre-uid `<tmp>/agr-clipboard` dirs from older builds are left alone (see ADR).
 #[cfg(not(unix))]
 fn fresh_temp_dir(base: &Path) -> Result<PathBuf, ClipboardError> {
     let dir = base.join(TEMP_DIR_PREFIX);
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::is_owned_by;
+
+    #[test]
+    fn temp_dir_owner_must_be_current_user() {
+        assert!(is_owned_by(1000, 1000));
+        assert!(!is_owned_by(0, 1000));
+    }
 }

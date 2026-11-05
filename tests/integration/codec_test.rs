@@ -287,3 +287,54 @@ fn failed_dir_fsync_after_rename_still_returns_ok() {
     assert!(result.is_ok(), "{result:?}");
     assert_eq!(std::fs::read(&path).unwrap(), b"x");
 }
+
+#[cfg(unix)]
+mod warning_sink {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::Mutex;
+
+    static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    fn record(message: &str) {
+        SEEN.lock().unwrap().push(message.to_string());
+    }
+
+    #[test]
+    fn failed_dir_fsync_goes_to_the_installed_sink() {
+        let dir = TempDir::new().unwrap();
+        // write+exec but no read: create and rename work, opening the dir for fsync fails.
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o300)).unwrap();
+        codec::set_warning_sink(Some(record));
+
+        let result = codec::atomic_write(&dir.path().join("x.cast"), |w| Ok(w.write_all(b"a")?));
+
+        codec::set_warning_sink(None);
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        result.unwrap();
+        // The sink is process wide, other fsync tests may add their own messages.
+        let dir_name = dir.path().display().to_string();
+        let seen = SEEN.lock().unwrap();
+        let mine = seen.iter().filter(|m| m.contains(&dir_name)).count();
+        assert_eq!(mine, 1, "{seen:?}");
+    }
+}
+
+#[test]
+fn trailing_garbage_after_last_gzip_member_is_an_error_with_path() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("t.cast.gz");
+    write_bytes(&path, b"{\"version\":3}\n");
+    let mut bytes = std::fs::read(&path).unwrap();
+    bytes.extend_from_slice(b"not gzip at all");
+    std::fs::write(&path, bytes).unwrap();
+
+    let mut out = String::new();
+    let result = codec::open_reader(&path).and_then(|mut r| Ok(r.read_to_string(&mut out)?));
+
+    let message = result.as_ref().err().map(|e| format!("{e:#}"));
+    assert!(
+        message.as_deref().is_some_and(|m| m.contains("t.cast.gz")),
+        "{result:?} / {out:?}"
+    );
+}

@@ -8,6 +8,7 @@ use agr::cli::{
 };
 
 /// Dispatch the parsed command to its handler.
+#[cfg(not(tarpaulin_include))]
 pub fn dispatch(cli: Cli) -> Result<()> {
     match cli.command {
         Commands::Record { agent, name, args } => {

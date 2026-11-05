@@ -7,6 +7,7 @@ use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 pub const SESSION_SUFFIX: &str = ".cast";
 pub const GZIP_SUFFIX: &str = ".cast.gz";
@@ -22,6 +23,22 @@ const FEXTRA: u8 = 0x04;
 pub enum UncompressedSize {
     Exact(u64),
     Over4GiB,
+}
+
+static WARNING_SINK: Mutex<Option<fn(&str)>> = Mutex::new(None);
+
+/// Route non-fatal warnings (failed directory fsync) to `sink`, `None` restores stderr.
+/// A TUI owning the terminal installs one so a stray `eprintln!` cannot corrupt the screen.
+pub fn set_warning_sink(sink: Option<fn(&str)>) {
+    *WARNING_SINK.lock().unwrap_or_else(|e| e.into_inner()) = sink;
+}
+
+fn warn(message: &str) {
+    let sink = *WARNING_SINK.lock().unwrap_or_else(|e| e.into_inner());
+    match sink {
+        Some(sink) => sink(message),
+        None => eprintln!("Warning: {message}"),
+    }
 }
 
 fn file_name(path: &Path) -> &str {
@@ -162,7 +179,7 @@ fn write_target(
         .with_context(|| format!("Failed to rename {} to {}", tmp.display(), path.display()))?;
     // The rename succeeded, so a failed directory fsync only weakens crash safety.
     if let Err(e) = sync_parent(path) {
-        eprintln!("Warning: {:#}", e);
+        warn(&format!("{e:#}"));
     }
     Ok(())
 }
@@ -266,6 +283,7 @@ fn size_from_trailer(path: &Path, on_disk: u64) -> Result<UncompressedSize> {
 }
 
 /// Uncompressed size: plain file length, gzip `AG` header subfield, else the gzip trailer.
+/// Limit: a foreign multi-member gzip reports only the last member's ISIZE (trailer read).
 // ponytail: foreign gzip files over 4GiB whose wrapped ISIZE still exceeds the on-disk size
 // show a wrong number, rewriting through `atomic_write` fixes them.
 pub fn uncompressed_size(path: &Path) -> Result<UncompressedSize> {
