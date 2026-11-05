@@ -106,8 +106,8 @@ After implementation:
 - Clipboard copy is always plain. For a `.cast.gz`, `agr copy` decompresses to a temporary
   plain `.cast` and copies that as the file reference. The text fallback copies the
   decompressed text, with the size limit applied to the decompressed size. Plain `.cast`
-  sessions behave as today. The temporary file is removed afterwards, on success and on
-  failure.
+  sessions behave as today. The temporary file is kept until the next copy (paste happens
+  after agr exits) and removed on failure. See Clipboard criteria.
 
 **Storage tracking**
 - `agr status`, stats and the list/ls TUI show on-disk size (what the disk actually uses).
@@ -200,7 +200,9 @@ After implementation:
 - [ ] The text fallback for a `.cast.gz` copies the decompressed text, and the size limit is
   checked against the decompressed size.
 - [ ] `agr copy` on a plain `.cast` behaves as before.
-- [ ] The decompressed copy lives in `<tmp>/agr-clipboard/`, the folder is cleared before each copy (at most one leftover file, so paste after agr exits still works), and it is removed on failure. (Changed 2026-11-05 by user, see ADR.)
+- [ ] The decompressed copy lives in `<tmp>/agr-clipboard-<uid>/`, the folder is cleared before each copy (at most one leftover file, so paste after agr exits still works), and it is removed on failure. (Changed 2026-11-05 by user, see ADR.)
+- [ ] A `.cast.gz` is handed over as a file reference at any size, like a plain `.cast`. The size limit applies only to the text fallback. (2026-11-05 by user.)
+- [ ] The temp folder is refused if it is a symlink or owned by another user, and created with mode 0700. (2026-11-05 by user.)
 
 **Storage tracking**
 - [ ] `agr status` total size equals the sum of on-disk sizes and does not count the

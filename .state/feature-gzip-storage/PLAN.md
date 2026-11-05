@@ -156,7 +156,7 @@ Owner: implementer
 
 Files: `src/files/backup.rs`, `src/files/filename.rs`, `src/asciicast/transform_ops.rs`,
        `tests/integration/filename_test.rs`
-Depends on: Stage 1, Stage 5
+Depends on: Stage 1, Stage 5, Stage 20
 
 Considerations:
 - `transform_ops` writes through `AsciicastFile::write`, as such its gzip test needs Stage 5.
@@ -205,7 +205,7 @@ Owner: implementer
 
 Files: `src/storage/stats.rs`, `src/commands/status.rs`, `src/commands/list.rs`,
        `src/commands/cleanup.rs`, `tests/integration/storage_stats_test.rs`
-Depends on: Stage 7
+Depends on: Stage 7, Stage 20
 
 Considerations:
 - `commands/cleanup.rs` builds a mock `StorageStats`, add the new field there in the same
@@ -233,7 +233,7 @@ Owner: implementer
 
 Files: `src/storage/compress.rs`, `src/storage/mod.rs`, `tests/integration/compress_test.rs`,
        `tests/integration.rs`
-Depends on: Stage 1, Stage 3, Stage 6, Stage 7
+Depends on: Stage 1, Stage 3, Stage 6, Stage 7, Stage 20
 
 Considerations:
 - No printing in this module, it returns data, commands do the output.
@@ -276,10 +276,10 @@ Files: `src/cli.rs`, `src/main.rs`, `src/commands/mod.rs`, `src/commands/compres
        `src/commands/prompt.rs`, `src/commands/config.rs`,
        `tests/integration/snapshot_cli_test.rs`, `tests/integration/snapshots/`,
        `tests/integration/compress_test.rs`
-Depends on: Stage 9
+Depends on: Stage 9, Stage 21
 
 Considerations:
-- `main.rs` is over the limit, only add the dispatch arm.
+- `main.rs` is split in Stage 21 first, add the dispatch arm in the resulting dispatch module.
 
 ### Stage 12: Auto-migrate offer and status savings line
 
@@ -322,11 +322,11 @@ Owner: implementer
 Files: `src/tui/widgets/file_explorer.rs`, `src/tui/list_app.rs`, `src/tui/cleanup_app.rs`,
        `tests/integration/preview_test.rs`, `tests/integration/file_explorer_test.rs`,
        `tests/integration/snapshot_tui_test.rs`
-Depends on: Stage 1, Stage 7, Stage 8
+Depends on: Stage 1, Stage 7, Stage 8, Stage 21
 
 Considerations:
-- These three files are far over 400 lines. Keep edits to call-site swaps, no new functions
-  over a few lines. Splitting them is a follow-up, not this branch.
+- These three files are split in Stage 21 first (pure move). Edit the resulting modules, and
+  update this Files list to the new paths before starting.
 
 ### Stage 14: CLI single-file commands
 
@@ -346,10 +346,10 @@ Owner: implementer
 Files: `src/commands/play.rs`, `src/commands/analyze.rs`, `src/commands/transform.rs`,
        `src/commands/copy.rs`, `src/commands/marker.rs`, `tests/integration/play_test.rs`,
        `tests/integration/transform_test.rs`
-Depends on: Stage 1, Stage 5, Stage 6, Stage 19
+Depends on: Stage 1, Stage 5, Stage 6, Stage 19, Stage 20
 
 Considerations:
-- `analyze.rs` is over the limit, edits stay at call sites.
+- `analyze.rs` is within the limit since Stage 19 (392 lines), keep it there.
 
 ### Stage 15: Clipboard always plain
 
@@ -499,12 +499,64 @@ Files: `src/config/migrate/mod.rs`, `src/commands/analyze.rs`,
        `tests/integration/cleaner_test.rs`, `tests/integration.rs`
 Depends on: Stage 17, Stage 18
 
+### Stage 20: Batch 4 pair review fixes (user request, in this MR)
+
+Goal: fix every Batch 4 review finding.
+Owner: implementer
+
+- [ ] RED/GREEN: `diagnose` on a truncated `.cast.gz` returns within a timeout (test runs it
+      on a thread with `recv_timeout`), records the decode error once and stops. Confirmed
+      hang today.
+- [ ] RED/GREEN: `repair` and `diagnose` agree on what a bad line is (invalid UTF-8 and JSON
+      errors are bad lines in both, decoder errors are terminal in both).
+- [ ] RED/GREEN: clipboard file reference for a `.cast.gz` above 10MB decompressed succeeds
+      (no up-front size reject), text fallback still enforces the limit on the decompressed
+      size. One size check only, in the text path.
+- [ ] RED/GREEN: temp dir is `<tmp>/agr-clipboard-<uid>` (unix uid via `libc::getuid`),
+      refused when it is a symlink or owned by another uid, created with mode 0700.
+- [ ] RED/GREEN: `resolve_target` returns an error after exhausting collision suffixes
+      instead of overwriting the last candidate.
+- [ ] RED/GREEN: dir fsync failure after a successful rename does not report the write as
+      failed (warn on stderr, return Ok).
+- [ ] RED/GREEN: `open_reader` decodes multi-member gzip (`MultiGzDecoder`), test with two
+      concatenated members, same for `uncompressed_size` trailer fallback (documented limit).
+- [ ] `state.toml` broken file: warn on stderr once when it cannot be parsed.
+- [ ] Every function touched in Batch 4 within ~20 lines and nesting <= 3 (`repair`,
+      `write_gzip`, `read_first_line` and others).
+
+Files: `src/asciicast/integrity.rs`, `src/clipboard/plain_copy.rs`, `src/clipboard/copy.rs`,
+       `src/storage/import.rs`, `src/files/codec.rs`, `src/config/state.rs`,
+       `tests/integration/asciicast_test.rs`, `tests/integration/clipboard_gzip_test.rs`,
+       `tests/integration/storage_import_gzip_test.rs`, `tests/integration/codec_test.rs`,
+       `tests/integration/codec_size_test.rs`, `tests/integration/config_test.rs`
+Depends on: Stage 4, Stage 5, Stage 7, Stage 15, Stage 19
+
+### Stage 21: Split TUI files and main.rs before their gzip changes (user request, in this MR)
+
+Goal: `src/tui/list_app.rs` (2134), `src/tui/widgets/file_explorer.rs` (2109),
+`src/tui/cleanup_app.rs` (981), `src/main.rs` (1034) each split by responsibility into
+modules within ~400 lines. Pure move, no behavior change.
+Owner: implementer
+
+- [ ] Sorted test names identical before and after, snapshot files unchanged, no `.snap.new`.
+- [ ] Public paths used elsewhere keep working via re-exports.
+- [ ] `main.rs` keeps only CLI parsing and dispatch (coding-principles entry point rule).
+- [ ] Functions moved unchanged; functions over ~20 lines in these files are split in this
+      stage where the split is mechanical.
+
+Files: `src/tui/list_app.rs`, `src/tui/list_app/`, `src/tui/widgets/file_explorer.rs`,
+       `src/tui/widgets/file_explorer/`, `src/tui/cleanup_app.rs`, `src/tui/cleanup_app/`,
+       `src/main.rs`, `src/dispatch.rs`, `src/tui/mod.rs`, `src/tui/widgets/mod.rs`
+Depends on: Stage 19
+
 ## Dependencies
 
 - Stage 1, Stage 2, Stage 3 are independent foundations.
 - Stage 4 depends on Stage 2 (shares `config_test.rs`).
 - Stage 5 depends on Stage 1, Stage 6 on Stage 1 and Stage 5.
 - Stage 17 depends on Stage 1, Stage 2, Stage 3 (Batch 1 hardening, user request).
+- Stage 20 depends on Stage 4, 5, 7, 15, 19 (Batch 4 review fixes).
+- Stage 21 depends on Stage 19 (pure-move split of TUI files and main.rs).
 - Stage 19 depends on Stage 17, Stage 18 (size limit for files this branch touched).
 - Stage 18 depends on Stage 17 (Batch 1 pair review fixes, shares codec and storage tests).
 - Stage 7 depends on Stage 1, Stage 2, Stage 3, Stage 17 (17 splits `storage_test.rs`). Stage 8 on Stage 7.

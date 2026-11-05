@@ -62,8 +62,10 @@ parse/write), lock files (live plain only).
 
 `src/storage/mod.rs` is 1012 lines, `file_explorer.rs` 2109, `list_app.rs` 2134,
 `cleanup_app.rs` 981, `main.rs` 1034. New code must not land in any of these. The storage
-module gets split first (Stage 3) because most new storage logic belongs next to it. The TUI
-files only get minimal call-site edits, splitting them is a separate follow-up.
+module gets split first (Stage 3) because most new storage logic belongs next to it.
+(Revised 2026-11-05 by user: no deferral.) Every file this branch touches is brought within
+~400 lines in this MR. The TUI files and `main.rs` get their own pure-move split stage
+(Stage 21) before the stages that change them (11, 13), so the gzip edits land in small files.
 
 ## Options Considered
 
@@ -280,7 +282,9 @@ ends.
 `repair` changes from `read_to_string` to streaming through `open_reader` into `atomic_write`,
 which also lowers its memory today. A truncated or corrupt `.cast.gz` surfaces as an io error
 from the decoder (`GzDecoder` errors on a missing or wrong CRC/ISIZE trailer at EOF), wrapped
-with the file path, never a silent partial parse.
+with the file path, never a silent partial parse. A decoder error is terminal: `diagnose`
+records it once and stops (a gzip stream cannot resume after a decode error, retrying loops
+forever, found in Batch 4 review), `repair` aborts with the error.
 
 ### 7. Clipboard temp file
 
@@ -348,8 +352,8 @@ exact current path. Lives in a new `src/clipboard/plain_copy.rs` so `copy.rs` st
 - **Harder:** `Path::extension()` is no longer safe for sessions, contributors must use
   `codec::is_session_path` and `session_stem`. Writing a `.cast.gz` costs CPU on every marker
   add and transform (fine at our sizes).
-- **Follow-ups:** split `file_explorer.rs`, `list_app.rs`, `cleanup_app.rs`, `main.rs`
-  (already over the limit, only touched minimally here). `agr decompress` (out of scope).
+- **Follow-ups:** `agr decompress` (out of scope). Oversized files this branch touches are
+  split in this MR (Stages 19, 21), not deferred.
   FEXTRA size field if the 64x wrap heuristic ever bites.
 
 ## To verify during implementation
@@ -374,3 +378,4 @@ exact current path. Lives in a new `src/clipboard/plain_copy.rs` so `copy.rs` st
    copy instead (needs user sign-off).
 - 2026-11-05: Accepted by user. Clipboard: decompress to `<tmp>/agr-clipboard/<stem>.cast`, folder cleared before each copy (at most one leftover), removed on failure. Offer state in `~/.config/agr/state.toml`. Offer only on list/ls, status, cleanup with a TTY, never on record.
 - 2026-11-05: Uncompressed size rule revised (pair review found the 64x rule flagged sessions over ~67MB on disk as "4GiB+"). User chose: exact size stored in a gzip FEXTRA subfield by our writer, trailer fallback for foreign files.
+- 2026-11-05: Batch 4 review decisions by user. Clipboard: a `.cast.gz` is handed over as a file reference at any size like a plain `.cast`, the 10MB limit only applies to the text fallback. Temp dir is `<tmp>/agr-clipboard-<uid>`, refused if it is a symlink or not owned by the current user, created 0700. Oversized files touched by this branch are split in this MR.
