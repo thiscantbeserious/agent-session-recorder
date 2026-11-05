@@ -87,6 +87,12 @@ mod snapshot_terminal_test;
 #[path = "integration/transform_test.rs"]
 mod transform_test;
 
+#[path = "integration/transform_roundtrip_test.rs"]
+mod transform_roundtrip_test;
+
+#[path = "integration/transform_lock_test.rs"]
+mod transform_lock_test;
+
 #[path = "integration/transform_ops_test.rs"]
 mod transform_ops_test;
 
