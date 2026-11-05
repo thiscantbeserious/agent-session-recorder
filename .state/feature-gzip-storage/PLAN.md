@@ -304,7 +304,7 @@ Owner: implementer
 
 Files: `src/commands/compress_offer.rs`, `src/commands/mod.rs`, `src/commands/list.rs`,
        `src/commands/status.rs`, `src/commands/cleanup.rs`, `tests/integration/compress_test.rs`
-Depends on: Stage 4, Stage 8, Stage 11
+Depends on: Stage 4, Stage 8, Stage 11, Stage 25
 
 Considerations:
 - Version is `env!("CARGO_PKG_VERSION")`.
@@ -638,6 +638,30 @@ Files: `Cargo.toml`, `.github/workflows/ci.yml`, `src/storage/compress/file.rs`,
        `src/clipboard/plain_copy.rs`
 Depends on: Stage 9, Stage 13, Stage 14, Stage 15
 
+### Stage 25: CLI colour only on a terminal, honour NO_COLOR (found in Stage 11, in this MR)
+
+Goal: pre-existing bug made visible by `agr compress`: every CLI command emits ANSI colour
+codes when stdout is piped or redirected and when `NO_COLOR` is set (verified with
+`NO_COLOR=1 agr status | cat -v`). Colour only when stdout is a terminal and `NO_COLOR` is
+unset or empty (https://no-color.org). The TUI is not affected.
+Owner: implementer
+
+- [ ] RED/GREEN: one decision function in `src/theme/cli.rs` (`colors_enabled(is_tty, no_color)`
+      pure, plus a cached runtime wrapper), every CLI colour helper routes through it.
+- [ ] RED/GREEN: `agr status`, `agr list`, `agr compress` piped (assert_cmd captures stdout,
+      not a tty) contain no `\x1b[`.
+- [ ] Help output (`src/help.rs` already checks `atty`) uses the same decision, `NO_COLOR`
+      respected there too. Colored help snapshots that run without a tty keep passing via an
+      explicit force flag if they rely on colour today (check `cli_help_main_colored`).
+- [ ] Replace remaining `atty` uses with `std::io::IsTerminal` and drop the `atty` dependency
+      if nothing else needs it (unmaintained crate, RUSTSEC-2021-0145).
+
+Files: `src/theme/cli.rs`, `src/theme/mod.rs`, `src/help.rs`, `src/commands/config.rs`,
+       `src/commands/list.rs`, `src/commands/cleanup.rs`, `Cargo.toml`, `Cargo.lock`,
+       `tests/integration/cli_color_test.rs`, `tests/integration.rs`,
+       `tests/integration/snapshot_cli_test.rs`
+Depends on: Stage 11
+
 ## Dependencies
 
 - Stage 1, Stage 2, Stage 3 are independent foundations.
@@ -645,6 +669,7 @@ Depends on: Stage 9, Stage 13, Stage 14, Stage 15
 - Stage 5 depends on Stage 1, Stage 6 on Stage 1 and Stage 5.
 - Stage 17 depends on Stage 1, Stage 2, Stage 3 (Batch 1 hardening, user request).
 - Stage 20 depends on Stage 4, 5, 7, 15, 19 (Batch 4 review fixes).
+- Stage 25 depends on Stage 11 (CLI colour on terminal only, NO_COLOR).
 - Stage 24 depends on Stage 9, 13, 14, 15 (real MSRV enforced in CI).
 - Stage 23 depends on Stage 20, 21, 22 (review fixes, Windows check).
 - Stage 22 depends on Stage 20, Stage 21 (flaky timing perf tests).
