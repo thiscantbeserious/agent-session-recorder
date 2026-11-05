@@ -27,51 +27,62 @@ use agr::asciicast::integrity::check_file_integrity;
 /// Threshold for offering marker curation.
 const CURATION_THRESHOLD: usize = 12;
 
+/// Command line values of `agr analyze`, built once in dispatch.
+pub struct AnalyzeArgs {
+    pub file: String,
+    pub agent: Option<String>,
+    pub workers: Option<usize>,
+    pub timeout: Option<u64>,
+    pub no_parallel: bool,
+    pub curate: bool,
+    pub debug: bool,
+    pub output: Option<String>,
+    pub fast: bool,
+    pub wait: bool,
+}
+
 /// Analyze a recording file using an AI agent.
 ///
 /// Reads the cast file, extracts meaningful content, and uses AI to identify
 /// key engineering moments. Markers are added directly to the file.
 #[cfg(not(tarpaulin_include))]
-#[allow(clippy::too_many_arguments)]
-pub fn handle(
-    file: &str,
-    agent_override: Option<&str>,
-    workers: Option<usize>,
-    timeout: Option<u64>,
-    no_parallel: bool,
-    curate: bool,
-    debug: bool,
-    output: Option<String>,
-    fast: bool,
-    wait: bool,
-) -> Result<()> {
+pub fn handle(args: AnalyzeArgs) -> Result<()> {
     let config = Config::load()?;
-    let timeout_secs = timeout.or(config.analysis.timeout).unwrap_or(120);
-    let resolved_agent =
-        agent_override.map_or_else(|| config.resolve_analysis_agent(), str::to_string);
-    let agent = parse_agent_type(&resolved_agent)?;
-    let filepath = checked_session(file, &config)?;
-    let options = build_analyze_options(
-        &config,
-        agent,
-        workers,
-        timeout,
-        no_parallel,
-        debug,
-        output,
-        fast,
-    );
-    let options = apply_agent_config(options, config.analysis_agent_config(&resolved_agent));
-    let service = AnalyzerService::new(options);
-    ensure_agent_available(&service, &resolved_agent)?;
+    let timeout_secs = args.timeout.or(config.analysis.timeout).unwrap_or(120);
+    let agent_name = args
+        .agent
+        .clone()
+        .unwrap_or_else(|| config.resolve_analysis_agent());
+    let filepath = checked_session(&args.file, &config)?;
+    let service = AnalyzerService::new(options_for(&config, &args, &agent_name)?);
+    ensure_agent_available(&service, &agent_name)?;
     prompt_remove_existing_markers(&filepath)?;
-    println!("Analyzing {} with {}...", file, agent);
-    let curate = curate || config.analysis.curate.unwrap_or(false);
+    println!("Analyzing {} with {}...", args.file, agent_name);
+    let curate = args.curate || config.analysis.curate.unwrap_or(false);
     analyze_and_finish(&service, &filepath, curate, timeout_secs)?;
-    if wait {
+    if args.wait {
         wait_for_enter()?;
     }
     Ok(())
+}
+
+/// Options for the run: CLI > config > defaults, plus per-agent config.
+fn options_for(config: &Config, args: &AnalyzeArgs, agent_name: &str) -> Result<AnalyzeOptions> {
+    let agent = parse_agent_type(agent_name)?;
+    let options = build_analyze_options(
+        config,
+        agent,
+        args.workers,
+        args.timeout,
+        args.no_parallel,
+        args.debug,
+        args.output.clone(),
+        args.fast,
+    );
+    Ok(apply_agent_config(
+        options,
+        config.analysis_agent_config(agent_name),
+    ))
 }
 
 /// Run the analysis, curate, and offer a rename.
