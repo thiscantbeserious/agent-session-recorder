@@ -422,24 +422,24 @@ Depends on: Stage 1, Stage 2, Stage 3
 Goal: fix every Batch 1 pair review finding. Exact uncompressed size per revised ADR.
 Owner: implementer
 
-- [ ] RED/GREEN: `atomic_write` to `.cast.gz` stores the exact uncompressed size in a gzip
+- [x] RED/GREEN: `atomic_write` to `.cast.gz` stores the exact uncompressed size in a gzip
       FEXTRA subfield `AG` (len 8, u64 LE), placeholder then seek-and-patch before sync.
       `zcat`/`GzDecoder` still decode, two writes stay byte-identical.
-- [ ] RED/GREEN: `uncompressed_size` reads the subfield (1GB/100MB-sized synthetic header
+- [x] RED/GREEN: `uncompressed_size` reads the subfield (1GB/100MB-sized synthetic header
       returns `Exact`), falls back to trailer for files without it, `Over4GiB` only when
       ISIZE < on-disk size. Replace `size_from_trailer` rule and its tests, regression test
       for 1GB at 10x returning `Exact`.
-- [ ] RED/GREEN: write-side errors (`File::create`, closure, `finish`, `sync_all`) carry the
+- [x] RED/GREEN: write-side errors (`File::create`, closure, `finish`, `sync_all`) carry the
       path via `with_context`.
-- [ ] Replace the `Option::take` wrapper in `atomic_write` with a direct `FnOnce` pass.
-- [ ] fsync the parent directory after rename (unix), error carries the dir path.
-- [ ] `// ponytail:` comment on the fixed temp path (concurrent writers to the same target).
-- [ ] Remove unused `Write` import and `read_all` helper in `codec_test.rs`.
-- [ ] RED/GREEN: invalid `compression` value error names the config file path (ADR).
-- [ ] Verify Stage 3 moved tests: compare old inline `create_test_config` fixture
+- [x] Replace the `Option::take` wrapper in `atomic_write` with a direct `FnOnce` pass.
+- [x] fsync the parent directory after rename (unix), error carries the dir path.
+- [x] `// ponytail:` comment on the fixed temp path (concurrent writers to the same target).
+- [x] Remove unused `Write` import and `read_all` helper in `codec_test.rs`.
+- [x] RED/GREEN: invalid `compression` value error names the config file path (ADR).
+- [x] Verify Stage 3 moved tests: compare old inline `create_test_config` fixture
       (threshold `Some(5.0)`, agents claude/codex, no_wrap) with the new one, restore the
       original fixture values if any moved test depended on them.
-- [ ] Mutation check for Stage 1, 2 and 18 tests (after the fixes above): for each codec/v4 behavior, break the code
+- [x] Mutation check for Stage 1, 2 and 18 tests (after the fixes above): for each codec/v4 behavior, break the code
       on purpose (e.g. set mtime, skip temp cleanup, drop path from error, wrong wrap rule,
       v4 overwriting an existing value), confirm a test fails, revert. Record the
       break/test pairs in this stage's notes. Add tests where nothing fails.
@@ -447,6 +447,31 @@ Owner: implementer
 Files: `src/files/codec.rs`, `tests/integration/codec_test.rs`, `src/config/io.rs`,
        `tests/integration/config_test.rs`, `tests/integration/storage_test.rs`
 Depends on: Stage 17
+
+Notes:
+- Stage 3 fixture verdict: old inline `create_test_config(storage_dir)` is today's
+  `helpers::storage::create_dir_config` with identical values (threshold `Some(5.0)`, agents
+  claude/codex, no_wrap empty), the other helper was always `Config::default()` + directory.
+  Nothing to restore.
+- `Config::load_from(path)` added so the invalid-value error is testable without HOME.
+- `codec_size_test.rs` split from `codec_test.rs` to stay under 400 lines.
+- Mutation table (break -> failing test):
+
+| Break | Failing test |
+|-------|--------------|
+| mtime set non-zero | `codec_test::gzip_header_has_zero_mtime_and_no_name` |
+| no temp cleanup on error | `codec_test::atomic_write_removes_temp_on_error` |
+| path dropped from read error | `codec_test::truncated_gzip_error_names_path` |
+| path dropped from open error | `codec_test::open_reader_missing_file_names_path` |
+| path dropped from create error | `codec_test::atomic_write_create_error_names_temp_path` |
+| path dropped from write error | `codec_test::atomic_write_closure_error_names_target_path` |
+| FEXTRA size not patched | `codec_size_test::gzip_header_stores_exact_size_in_ag_subfield` |
+| trailer fallback inverted | `codec_size_test::trailer_fallback_1gb_at_10x_is_exact` |
+| v4 overwrites existing none | `migrate::migrations::v4::tests::v4_keeps_existing_none` |
+| `is_session_path` accepts `.x.cast.gz.bak` | `codec_test::session_path_rejects_hidden_bak_of_gzip` (new, nothing failed before) |
+| `is_session_path` ignores hidden prefix | `codec_test::session_path_rejects_hidden_even_with_session_suffix` (new) |
+| `session_stem` not stripping `.gz` | `codec_test::session_stem_strips_known_suffixes` |
+| `same_content` ignores length | `codec_test::same_content_detects_length_mismatch` (new) |
 
 ## Dependencies
 

@@ -242,3 +242,10 @@ fn same_content_detects_length_mismatch() {
     assert!(!codec::same_content(&a, &b).unwrap());
     assert!(!codec::same_content(&b, &a).unwrap());
 }
+
+#[test]
+fn session_path_rejects_hidden_even_with_session_suffix() {
+    assert!(!codec::is_session_path(Path::new("d/.x.cast.gz")));
+    assert!(!codec::is_session_path(Path::new("d/.x.cast")));
+    assert!(!codec::is_session_path(Path::new("d/x.cast.gz.bak")));
+}
