@@ -6,6 +6,7 @@ use anyhow::Result;
 use humansize::{format_size, BINARY};
 
 use agr::config::state::State;
+use agr::config::Compression;
 use agr::storage::compress::{self, CompressPlan};
 use agr::{Config, StorageManager};
 
@@ -26,15 +27,14 @@ pub fn should_offer(
 #[cfg(not(tarpaulin_include))]
 pub fn maybe_offer() -> Result<()> {
     let is_tty = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
-    if !is_tty {
-        return Ok(());
-    }
-    let storage = StorageManager::new(Config::load()?);
-    let plan = compress::plan(&storage, None)?;
+    let config = Config::load()?;
+    let compression = config.storage.compression;
+    let storage = StorageManager::new(config);
     let ask = |q: &str| should_proceed(q, false);
     offer_flow(
         is_tty,
-        &plan,
+        compression,
+        || compress::plan(&storage, None),
         State::load(),
         env!("CARGO_PKG_VERSION"),
         State::save,
@@ -42,28 +42,34 @@ pub fn maybe_offer() -> Result<()> {
     )
 }
 
-/// Gate, show the preview, remember the version, then run exactly like `agr compress`.
+/// Gate on tty, config and version first, only then plan (the plan samples every plain file),
+/// show the preview, remember the version, then run exactly like `agr compress`.
 pub fn offer_flow(
     is_tty: bool,
-    plan: &CompressPlan,
+    compression: Compression,
+    plan: impl FnOnce() -> Result<CompressPlan>,
     state: State,
     version: &str,
     save: impl FnOnce(&State) -> Result<()>,
     ask: impl FnOnce(&str) -> Result<bool>,
 ) -> Result<()> {
     let seen = state.compress_offer_version.as_deref();
+    if compression == Compression::None || !should_offer(is_tty, seen, version, 1) {
+        return Ok(());
+    }
+    let plan = plan()?;
     if !should_offer(is_tty, seen, version, plan.files.len()) {
         return Ok(());
     }
     print_lines(&["Plain sessions can be compressed to save disk space.".into()]);
-    print_lines(&preview_lines(plan));
+    print_lines(&preview_lines(&plan));
     let remembered = State {
         compress_offer_version: Some(version.to_string()),
     };
     if let Err(e) = save(&remembered) {
         eprintln!("Warning: could not remember the offer: {e:#}");
     }
-    confirm_and_run(plan, ask)
+    confirm_and_run(&plan, ask)
 }
 
 /// "N plain, ~X saved by agr compress" for the status output, none without plain sessions.
@@ -119,7 +125,8 @@ mod tests {
         let asked = Cell::new(0);
         offer_flow(
             true,
-            plan,
+            Compression::Gzip,
+            || Ok(plan.clone()),
             state,
             V,
             |s| {
@@ -159,7 +166,8 @@ mod tests {
         let mut touched = false;
         offer_flow(
             false,
-            &plan_of(1),
+            Compression::Gzip,
+            || panic!("no tty must not plan"),
             State::default(),
             V,
             |_| {
@@ -180,5 +188,52 @@ mod tests {
             Some("2 plain, ~6 KiB saved by agr compress")
         );
         assert_eq!(savings_line(&plan_of(0)), None);
+    }
+
+    #[test]
+    fn offer_returns_after_a_version_bump() {
+        let t = tempfile::tempdir().unwrap();
+        let path = t.path().join("state.toml");
+        State {
+            compress_offer_version: Some("0.2.0".into()),
+        }
+        .save_to(&path)
+        .unwrap();
+        let state = State::load_from(&path);
+        let seen = state.compress_offer_version.as_deref();
+        assert!(should_offer(true, seen, V, 1));
+        assert!(!should_offer(true, seen, "0.2.0", 1));
+    }
+
+    fn flow_counting_plans(compression: Compression, state: State) -> usize {
+        let planned = Cell::new(0);
+        offer_flow(
+            true,
+            compression,
+            || {
+                planned.set(planned.get() + 1);
+                Ok(plan_of(0))
+            },
+            state,
+            V,
+            |_| Ok(()),
+            |_| Ok(false),
+        )
+        .unwrap();
+        planned.get()
+    }
+
+    #[test]
+    fn plan_is_not_computed_when_version_already_offered() {
+        let state = State {
+            compress_offer_version: Some(V.into()),
+        };
+        assert_eq!(flow_counting_plans(Compression::Gzip, state), 0);
+        assert_eq!(flow_counting_plans(Compression::Gzip, State::default()), 1);
+    }
+
+    #[test]
+    fn compression_none_never_plans_or_offers() {
+        assert_eq!(flow_counting_plans(Compression::None, State::default()), 0);
     }
 }

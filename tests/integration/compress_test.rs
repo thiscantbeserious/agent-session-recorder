@@ -226,3 +226,37 @@ fn stop_flag_set_after_first_file_leaves_the_rest_untouched() {
     assert!(p.files[0].path.with_extension("cast.gz").exists());
     assert!(p.files[1].path.exists() && p.files[2].path.exists());
 }
+
+#[test]
+fn backup_failure_keeps_plain_and_its_backup_and_leaves_no_gzip() {
+    let temp = TempDir::new().unwrap();
+    let path = plain(&temp, "a", "x.cast");
+    // a directory where the backup file should be makes the conversion fail
+    fs::create_dir(backup::backup_path_for(&path)).unwrap();
+    let result = compress_file(&path);
+    assert!(result.is_err(), "{result:?}");
+    assert!(path.exists(), "plain session must stay");
+    assert!(
+        !gz(&path).exists(),
+        "unverified-backup gzip must be removed"
+    );
+    assert!(backup::backup_path_for(&path).exists());
+}
+
+#[test]
+fn existing_gzip_backup_is_never_overwritten() {
+    let temp = TempDir::new().unwrap();
+    let path = plain(&temp, "a", "x.cast");
+    backup::create_backup(&path).unwrap();
+    let target = backup::backup_path_for(&gz(&path));
+    fs::write(&target, "precious").unwrap();
+    let outcome = compress_file(&path).unwrap();
+    assert_eq!(fs::read(&target).unwrap(), b"precious");
+    match outcome {
+        Outcome::Compressed { warning, .. } => {
+            assert!(warning.unwrap().contains("already exists"));
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(backup::backup_path_for(&path).exists(), "old backup kept");
+}

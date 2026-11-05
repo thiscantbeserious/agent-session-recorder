@@ -58,15 +58,17 @@ fn finish_leftover(
     Ok(Outcome::Skipped(reason))
 }
 
-/// The gzip is verified: keep the age, remove the plain file, then convert the backup.
+/// The gzip is verified: convert the backup first (a failure there leaves the plain file and
+/// its backup untouched), keep the age, then remove the plain file.
 fn finalize(path: &Path, gz: &Path) -> Result<Outcome> {
+    let warning = match compress_backup(path, gz) {
+        Ok(warning) => warning,
+        Err(e) => return discard(gz, &format!("backup not compressed: {e:#}")),
+    };
     let plain_meta = fs::metadata(path)?;
     keep_mtime(gz, &plain_meta);
     fs::remove_file(path).with_context(|| format!("Failed to remove {}", path.display()))?;
     let saved = plain_meta.len().saturating_sub(fs::metadata(gz)?.len());
-    let warning = compress_backup(path, gz)
-        .err()
-        .map(|e| format!("backup of {} not compressed: {e:#}", path.display()));
     Ok(Outcome::Compressed { saved, warning })
 }
 
@@ -81,19 +83,28 @@ fn keep_mtime(gz: &Path, plain: &fs::Metadata) {
 }
 
 /// `.x.cast.bak` (plain) becomes `.x.cast.gz.bak` (gzip bytes, same as a backup of the gz).
-fn compress_backup(path: &Path, gz: &Path) -> Result<()> {
+/// An existing `.x.cast.gz.bak` is never overwritten, the plain backup stays and a warning
+/// is returned.
+fn compress_backup(path: &Path, gz: &Path) -> Result<Option<String>> {
     let old = backup::backup_path_for(path);
     if !old.exists() {
-        return Ok(());
+        return Ok(None);
     }
     let target = backup::backup_path_for(gz);
+    if target.exists() {
+        return Ok(Some(format!(
+            "{} already exists, backup of {} left plain",
+            target.display(),
+            path.display()
+        )));
+    }
     // Staging name ends in `.cast.gz` so `atomic_write` gzip-encodes it.
     let staging = hidden_auxiliary_path(&target, codec::GZIP_SUFFIX);
     let result = stage_backup(&old, &staging, &target);
     if result.is_err() {
         let _ = fs::remove_file(&staging);
     }
-    result
+    result.map(|()| None)
 }
 
 fn stage_backup(old: &Path, staging: &Path, target: &Path) -> Result<()> {
