@@ -12,6 +12,7 @@ use agr::tui::CleanupApp;
 use agr::{Config, StorageManager};
 
 mod delete;
+pub mod orphans;
 mod print;
 
 #[cfg(test)]
@@ -21,14 +22,17 @@ use print::{print_header, print_session_summary, print_sessions_table};
 
 /// Interactive cleanup of old session recordings.
 ///
+/// First offers to remove orphaned backups and stale locks (`yes` skips that question).
+///
 /// When stdout is a TTY, shows an interactive file explorer with multi-select.
 /// When piped, shows a text-based prompt interface (fallback).
 /// Supports filtering by agent and age threshold.
 #[cfg(not(tarpaulin_include))]
-pub fn handle(agent_filter: Option<&str>, older_than: Option<u32>) -> Result<()> {
+pub fn handle(agent_filter: Option<&str>, older_than: Option<u32>, yes: bool) -> Result<()> {
     let config = Config::load()?;
     let age_threshold = config.storage.age_threshold_days;
     let storage = StorageManager::new(config.clone());
+    orphans::handle(&storage.storage_dir(), yes)?;
 
     // Get sessions, optionally filtered by agent
     let mut sessions = storage.list_sessions(agent_filter)?;

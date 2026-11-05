@@ -18,9 +18,13 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             commands::compress_offer::maybe_offer()?;
             commands::status::handle()
         }
-        Commands::Cleanup { agent, older_than } => {
+        Commands::Cleanup {
+            agent,
+            older_than,
+            yes,
+        } => {
             commands::compress_offer::maybe_offer()?;
-            commands::cleanup::handle(agent.as_deref(), older_than)
+            commands::cleanup::handle(agent.as_deref(), older_than, yes)
         }
         Commands::Compress {
             agent,

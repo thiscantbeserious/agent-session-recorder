@@ -12,6 +12,9 @@ Displays a list of sessions sorted by age and lets you choose how many
 to delete. Supports filtering by agent and age. Sessions older than
 the configured threshold (default: 30 days) are marked with *.
 
+Orphaned backups (a hidden .bak whose session is gone) and stale lock
+files are listed first and removed after confirmation, --yes skips it.
+
 EXAMPLES:
     agr cleanup                          Interactive cleanup of all sessions
     agr cleanup --agent claude           Only show Claude sessions
@@ -32,6 +35,9 @@ Options:
 
       --older-than <OLDER_THAN>
           Only show sessions older than N days
+
+  -y, --yes
+          Remove orphaned backups and stale locks without asking
 
   -h, --help
           Print help (see a summary with '-h')

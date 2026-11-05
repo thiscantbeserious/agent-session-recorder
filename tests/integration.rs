@@ -51,6 +51,8 @@ mod storage_stats_test;
 
 #[path = "integration/storage_lookup_test.rs"]
 mod storage_lookup_test;
+#[path = "integration/storage_orphans_test.rs"]
+mod storage_orphans_test;
 
 #[path = "integration/storage_import_security_test.rs"]
 mod storage_import_security_test;

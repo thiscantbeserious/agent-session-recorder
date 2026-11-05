@@ -8,7 +8,9 @@ use clap_complete::Shell as CompletionShell;
 fn cli_cleanup_parses_with_no_args() {
     let cli = Cli::try_parse_from(["agr", "cleanup"]).unwrap();
     match cli.command {
-        Commands::Cleanup { agent, older_than } => {
+        Commands::Cleanup {
+            agent, older_than, ..
+        } => {
             assert!(agent.is_none());
             assert!(older_than.is_none());
         }
@@ -20,7 +22,9 @@ fn cli_cleanup_parses_with_no_args() {
 fn cli_cleanup_parses_with_agent_flag() {
     let cli = Cli::try_parse_from(["agr", "cleanup", "--agent", "claude"]).unwrap();
     match cli.command {
-        Commands::Cleanup { agent, older_than } => {
+        Commands::Cleanup {
+            agent, older_than, ..
+        } => {
             assert_eq!(agent, Some("claude".to_string()));
             assert!(older_than.is_none());
         }
@@ -32,7 +36,9 @@ fn cli_cleanup_parses_with_agent_flag() {
 fn cli_cleanup_parses_with_older_than_flag() {
     let cli = Cli::try_parse_from(["agr", "cleanup", "--older-than", "30"]).unwrap();
     match cli.command {
-        Commands::Cleanup { agent, older_than } => {
+        Commands::Cleanup {
+            agent, older_than, ..
+        } => {
             assert!(agent.is_none());
             assert_eq!(older_than, Some(30));
         }
@@ -45,7 +51,9 @@ fn cli_cleanup_parses_with_both_flags() {
     let cli =
         Cli::try_parse_from(["agr", "cleanup", "--agent", "codex", "--older-than", "60"]).unwrap();
     match cli.command {
-        Commands::Cleanup { agent, older_than } => {
+        Commands::Cleanup {
+            agent, older_than, ..
+        } => {
             assert_eq!(agent, Some("codex".to_string()));
             assert_eq!(older_than, Some(60));
         }

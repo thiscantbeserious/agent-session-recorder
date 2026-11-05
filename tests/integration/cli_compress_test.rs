@@ -135,3 +135,55 @@ fn no_tty_run_prints_no_progress_on_stderr() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(!stderr.contains("Compressing"), "{stderr:?}");
 }
+
+fn run_cmd(env: &Env, args: &[&str]) -> (String, i32) {
+    let out = Command::new(env!("CARGO_BIN_EXE_agr"))
+        .args(args)
+        .env("NO_COLOR", "1")
+        .env("HOME", env.home.path())
+        .env("XDG_CONFIG_HOME", env.home.path().join(".config"))
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    (
+        String::from_utf8_lossy(&out.stdout).to_string(),
+        out.status.code().unwrap_or(-1),
+    )
+}
+
+#[test]
+fn status_shows_orphan_line_and_cleanup_yes_removes_it() {
+    let env = Env::new();
+    env.plain("claude", "a.cast");
+    let orphan = env.storage.join("claude/.gone.cast.bak");
+    fs::write(&orphan, "12345").unwrap();
+    let (out, _) = run_cmd(&env, &["status"]);
+    assert!(
+        out.contains("1 orphaned backup(s), 5 B, remove with agr cleanup"),
+        "{out}"
+    );
+    let (out, _) = run_cmd(&env, &["cleanup"]);
+    assert!(orphan.exists(), "no tty and no --yes must keep it: {out}");
+    run_cmd(&env, &["cleanup", "--yes"]);
+    assert!(!orphan.exists());
+    let (out, _) = run_cmd(&env, &["status"]);
+    assert!(!out.contains("orphaned"), "{out}");
+}
+
+#[test]
+fn compress_yes_reduces_status_total_and_drops_plain_line() {
+    let env = Env::new();
+    let big = format!(
+        "{CAST}{}",
+        "[0.5,\"o\",\"hello hello hello hello\"]\n".repeat(2000)
+    );
+    create_codec_session(&env.storage, "claude", "big.cast", &big);
+    let (before, _) = run_cmd(&env, &["status"]);
+    assert!(before.contains("1 plain"), "{before}");
+    run_cmd(&env, &["compress", "--yes"]);
+    let (after, _) = run_cmd(&env, &["status"]);
+    assert!(!after.contains("plain,"), "{after}");
+    let size = |s: &str| s.split("Sessions: ").nth(1).map(str::to_string);
+    assert_ne!(size(&before), size(&after));
+    assert!(after.contains("on disk"), "{after}");
+}

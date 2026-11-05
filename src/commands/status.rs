@@ -21,5 +21,9 @@ pub fn handle() -> Result<()> {
     if let Some(line) = savings_line(&compress::plan(&storage, None)?) {
         println!("{}", theme.primary_text(&line));
     }
+    let found = agr::storage::orphans::find(&storage.storage_dir())?;
+    if let Some(line) = super::cleanup::orphans::status_line(&found) {
+        println!("{}", theme.primary_text(&line));
+    }
     Ok(())
 }

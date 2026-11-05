@@ -9,6 +9,7 @@
 pub mod compress;
 mod import;
 pub mod migrate;
+pub mod orphans;
 mod sessions;
 mod stats;
 

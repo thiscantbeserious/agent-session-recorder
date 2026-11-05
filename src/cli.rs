@@ -74,7 +74,8 @@ EXAMPLES:
 
 Shows the size on disk, the uncompressed size, disk usage percentage,
 session count by agent and age of the oldest recording. When plain .cast
-sessions are left, a last line shows what `agr compress` would save.
+sessions are left, a line shows what `agr compress` would save. Orphaned
+backups and stale locks get a line too.
 
 EXAMPLE:
     agr status
@@ -83,7 +84,8 @@ OUTPUT:
     Agent Sessions: 1.2 GiB on disk, 6.8 GiB uncompressed (0.50% of disk)
        Sessions: 23 total (claude: 15, codex: 8)
        Oldest: 2025-01-01 (20 days ago)
-    3 plain, ~410.00 MiB saved by agr compress")]
+    3 plain, ~410.00 MiB saved by agr compress
+    2 orphaned backup(s), 12.00 KiB, remove with agr cleanup")]
     Status,
 
     /// Interactive cleanup of old sessions
@@ -93,6 +95,9 @@ OUTPUT:
 Displays a list of sessions sorted by age and lets you choose how many
 to delete. Supports filtering by agent and age. Sessions older than
 the configured threshold (default: 30 days) are marked with *.
+
+Orphaned backups (a hidden .bak whose session is gone) and stale lock
+files are listed first and removed after confirmation, --yes skips it.
 
 EXAMPLES:
     agr cleanup                          Interactive cleanup of all sessions
@@ -113,6 +118,13 @@ INTERACTIVE OPTIONS:
         /// Only show sessions older than N days
         #[arg(long, help = "Only show sessions older than N days")]
         older_than: Option<u32>,
+        /// Skip the confirmation for orphaned backups and stale locks
+        #[arg(
+            long,
+            short = 'y',
+            help = "Remove orphaned backups and stale locks without asking"
+        )]
+        yes: bool,
     },
 
     /// List recorded sessions

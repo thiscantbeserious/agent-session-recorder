@@ -56,6 +56,8 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '--agent=[Only show sessions from this agent]:AGENT:_default' \
 '--older-than=[Only show sessions older than N days]:OLDER_THAN:_default' \
+'-y[Remove orphaned backups and stale locks without asking]' \
+'--yes[Remove orphaned backups and stale locks without asking]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 && ret=0

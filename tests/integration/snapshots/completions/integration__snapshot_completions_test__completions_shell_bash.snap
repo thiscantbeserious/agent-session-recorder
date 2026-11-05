@@ -712,7 +712,7 @@ _agr() {
             return 0
             ;;
         agr__cleanup)
-            opts="-h --agent --older-than --help"
+            opts="-y -h --agent --older-than --yes --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
