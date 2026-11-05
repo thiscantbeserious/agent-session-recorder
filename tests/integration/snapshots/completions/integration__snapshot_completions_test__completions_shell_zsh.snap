@@ -79,6 +79,7 @@ _arguments "${_arguments_options[@]}" : \
 '--agent=[Only compress sessions from this agent]:AGENT:_default' \
 '-y[Skip confirmation prompt]' \
 '--yes[Skip confirmation prompt]' \
+'--dry-run[Only show the preview, never prompt or change anything]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 && ret=0

@@ -146,7 +146,10 @@ rewritten, use --yes to apply.
 EXAMPLES:
     agr compress                    Preview and ask for confirmation
     agr compress --agent claude     Only compress Claude sessions
-    agr compress --yes              Compress without confirmation")]
+    agr compress --yes              Compress without confirmation
+    agr compress --dry-run          Only show the preview, change nothing
+
+Ctrl+C stops after the current file and prints what was done so far.")]
     Compress {
         /// Filter sessions by agent name
         #[arg(long, help = "Only compress sessions from this agent")]
@@ -154,6 +157,9 @@ EXAMPLES:
         /// Skip the confirmation prompt
         #[arg(long, short = 'y', help = "Skip confirmation prompt")]
         yes: bool,
+        /// Only print the preview
+        #[arg(long, help = "Only show the preview, never prompt or change anything")]
+        dry_run: bool,
     },
 
     /// Analyze a recording with AI

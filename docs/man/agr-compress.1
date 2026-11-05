@@ -4,7 +4,7 @@
 .SH NAME
 compress \- Compress plain sessions to .cast.gz
 .SH SYNOPSIS
-\fBcompress\fR [\fB\-\-agent\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+\fBcompress\fR [\fB\-\-agent\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-dry\-run\fR] [\fB\-h\fR|\fB\-\-help\fR] 
 .SH DESCRIPTION
 Compress existing plain .cast sessions to .cast.gz.
 .PP
@@ -17,6 +17,9 @@ EXAMPLES:
     agr compress                    Preview and ask for confirmation
     agr compress \-\-agent claude     Only compress Claude sessions
     agr compress \-\-yes              Compress without confirmation
+    agr compress \-\-dry\-run          Only show the preview, change nothing
+.PP
+Ctrl+C stops after the current file and prints what was done so far.
 .SH OPTIONS
 .TP
 \fB\-\-agent\fR \fI<AGENT>\fR
@@ -24,6 +27,9 @@ Only compress sessions from this agent
 .TP
 \fB\-y\fR, \fB\-\-yes\fR
 Skip confirmation prompt
+.TP
+\fB\-\-dry\-run\fR
+Only show the preview, never prompt or change anything
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help (see a summary with \*(Aq\-h\*(Aq)

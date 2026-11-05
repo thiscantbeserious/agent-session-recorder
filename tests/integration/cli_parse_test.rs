@@ -329,32 +329,41 @@ fn cli_completions_parses_with_limit() {
     }
 }
 
-fn parse_compress(args: &[&str]) -> (Option<String>, bool) {
+fn parse_compress(args: &[&str]) -> (Option<String>, bool, bool) {
     let mut full = vec!["agr", "compress"];
     full.extend_from_slice(args);
     let cli = Cli::try_parse_from(full);
     assert!(cli.is_ok(), "compress {args:?} should parse");
     match cli.unwrap().command {
-        Commands::Compress { agent, yes } => (agent, yes),
+        Commands::Compress {
+            agent,
+            yes,
+            dry_run,
+        } => (agent, yes, dry_run),
         _ => panic!("Expected Compress command"),
     }
 }
 
 #[test]
 fn cli_compress_parses_with_no_args() {
-    assert_eq!(parse_compress(&[]), (None, false));
+    assert_eq!(parse_compress(&[]), (None, false, false));
 }
 
 #[test]
 fn cli_compress_parses_with_agent_flag() {
     assert_eq!(
         parse_compress(&["--agent", "claude"]),
-        (Some("claude".to_string()), false)
+        (Some("claude".to_string()), false, false)
     );
 }
 
 #[test]
 fn cli_compress_parses_with_yes_flag() {
-    assert_eq!(parse_compress(&["--yes"]), (None, true));
-    assert_eq!(parse_compress(&["-y"]), (None, true));
+    assert_eq!(parse_compress(&["--yes"]), (None, true, false));
+    assert_eq!(parse_compress(&["-y"]), (None, true, false));
+}
+
+#[test]
+fn cli_compress_parses_dry_run_flag() {
+    assert_eq!(parse_compress(&["--dry-run"]), (None, false, true));
 }

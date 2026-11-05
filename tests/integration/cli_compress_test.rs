@@ -104,3 +104,34 @@ fn second_run_is_idempotent() {
         "stdout: {stdout:?}"
     );
 }
+
+#[test]
+fn dry_run_prints_preview_and_changes_nothing_even_with_yes() {
+    let env = Env::new();
+    let plain = env.plain("claude", "a.cast");
+    let (stdout, code) = env.run(&["--dry-run", "--yes"]);
+    assert_eq!(code, 0, "stdout: {stdout:?}");
+    assert!(stdout.contains("Sessions to compress: 1"), "{stdout:?}");
+    assert!(
+        !stdout.contains("Non-interactive"),
+        "never prompts: {stdout:?}"
+    );
+    assert!(plain.exists());
+    assert!(!plain.with_extension("cast.gz").exists());
+}
+
+#[test]
+fn no_tty_run_prints_no_progress_on_stderr() {
+    let env = Env::new();
+    env.plain("claude", "a.cast");
+    let out = Command::new(env!("CARGO_BIN_EXE_agr"))
+        .args(["compress", "--yes"])
+        .env("NO_COLOR", "1")
+        .env("HOME", env.home.path())
+        .env("XDG_CONFIG_HOME", env.home.path().join(".config"))
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains("Compressing"), "{stderr:?}");
+}

@@ -3,12 +3,18 @@
 use super::helpers::storage::{create_codec_session, create_test_config};
 use agr::files::{backup, codec, lock};
 use agr::storage::compress::{
-    compress_file, compress_file_with_verify, estimate, plan, run, Outcome,
+    compress_file, compress_file_with_verify, estimate, plan, run as run_with, CompressPlan,
+    CompressReport, Outcome, Progress,
 };
 use agr::StorageManager;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tempfile::TempDir;
+
+fn run(plan: &CompressPlan) -> CompressReport {
+    run_with(plan, &AtomicBool::new(false), &mut |_| {})
+}
 
 const CAST: &str = "{\"version\":3,\"width\":80,\"height\":24}\n[0.1,\"o\",\"x\"]\n";
 
@@ -189,4 +195,34 @@ fn estimate_is_within_2x_of_real_size() {
         projected * 2 >= real && projected <= real * 2,
         "{projected} vs {real}"
     );
+}
+
+#[test]
+fn progress_callback_reports_each_file_with_running_totals() {
+    let temp = TempDir::new().unwrap();
+    plain(&temp, "a", "x.cast");
+    plain(&temp, "a", "y.cast");
+    let p = plan(&manager(&temp), None).unwrap();
+    let mut seen: Vec<Progress> = Vec::new();
+    run_with(&p, &AtomicBool::new(false), &mut |pr| seen.push(pr.clone()));
+    let counts: Vec<_> = seen.iter().map(|s| (s.done, s.total)).collect();
+    assert_eq!(counts, vec![(1, 2), (2, 2)]);
+    assert_eq!(seen[1].bytes_done, seen[1].bytes_total);
+    assert_eq!(seen[0].bytes_done, p.files[0].size);
+    assert_eq!(seen[0].current, p.files[0].path);
+}
+
+#[test]
+fn stop_flag_set_after_first_file_leaves_the_rest_untouched() {
+    let temp = TempDir::new().unwrap();
+    for n in ["a.cast", "b.cast", "c.cast"] {
+        plain(&temp, "a", n);
+    }
+    let p = plan(&manager(&temp), None).unwrap();
+    let stop = AtomicBool::new(false);
+    let report = run_with(&p, &stop, &mut |_| stop.store(true, Ordering::SeqCst));
+    assert_eq!(report.compressed, 1);
+    assert_eq!(report.not_processed, 2);
+    assert!(p.files[0].path.with_extension("cast.gz").exists());
+    assert!(p.files[1].path.exists() && p.files[2].path.exists());
 }

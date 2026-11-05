@@ -167,6 +167,7 @@ Compress plain sessions to .cast.gz
 
 - `--agent`: Only compress sessions from this agent
 - `-y, --yes`: Skip confirmation prompt
+- `--dry-run`: Only show the preview, never prompt or change anything
 
 ### Description
 
@@ -182,6 +183,9 @@ EXAMPLES:
     agr compress                    Preview and ask for confirmation
     agr compress --agent claude     Only compress Claude sessions
     agr compress --yes              Compress without confirmation
+    agr compress --dry-run          Only show the preview, change nothing
+
+Ctrl+C stops after the current file and prints what was done so far.
 ```
 
 ---

@@ -22,7 +22,11 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             commands::compress_offer::maybe_offer()?;
             commands::cleanup::handle(agent.as_deref(), older_than)
         }
-        Commands::Compress { agent, yes } => commands::compress::handle(agent.as_deref(), yes),
+        Commands::Compress {
+            agent,
+            yes,
+            dry_run,
+        } => commands::compress::handle(agent.as_deref(), yes, dry_run),
         Commands::List { agent } => {
             commands::compress_offer::maybe_offer()?;
             commands::list::handle(agent.as_deref())

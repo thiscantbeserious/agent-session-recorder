@@ -2,20 +2,26 @@
 
 use anyhow::Result;
 use humansize::{format_size, BINARY};
+use std::ffi::OsStr;
+use std::io::IsTerminal;
+use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
-use agr::storage::compress::{self, CompressPlan, CompressReport};
+use agr::storage::compress::{self, CompressPlan, CompressReport, Progress};
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
 
 use super::prompt::should_proceed;
 
 /// Compress plain sessions after a preview and a confirmation (`--yes` skips the prompt).
+/// `--dry-run` only prints the preview, it never asks and never changes anything.
 #[cfg(not(tarpaulin_include))]
-pub fn handle(agent: Option<&str>, yes: bool) -> Result<()> {
+pub fn handle(agent: Option<&str>, yes: bool, dry_run: bool) -> Result<()> {
     let storage = StorageManager::new(Config::load()?);
     let plan = compress::plan(&storage, agent)?;
     print_lines(&preview_lines(&plan));
-    if plan.files.is_empty() {
+    if plan.files.is_empty() || dry_run {
         return Ok(());
     }
     confirm_and_run(&plan, |q| should_proceed(q, yes))
@@ -31,8 +37,49 @@ pub(super) fn confirm_and_run(
         println!("{}", current_theme().primary_text("No changes made."));
         return Ok(());
     }
-    print_lines(&report_lines(&compress::run(plan)));
+    print_lines(&report_lines(&run_interruptible(plan)));
     Ok(())
+}
+
+/// Run with Ctrl+C stopping after the current file, progress on stderr only on a terminal.
+#[cfg(not(tarpaulin_include))]
+fn run_interruptible(plan: &CompressPlan) -> CompressReport {
+    let stop = Arc::new(AtomicBool::new(false));
+    #[cfg(unix)]
+    let _ = signal_hook::flag::register(libc::SIGINT, stop.clone());
+    let show = std::io::stderr().is_terminal();
+    let width = terminal_size::terminal_size().map_or(80, |(w, _)| w.0 as usize);
+    let report = compress::run(plan, &stop, &mut |p| {
+        if show {
+            eprint!("{CLEAR_LINE}{}", progress_line(p, width));
+        }
+    });
+    if show {
+        eprint!("{CLEAR_LINE}");
+    }
+    report
+}
+
+/// Carriage return plus erase-line, so one status line updates in place.
+const CLEAR_LINE: &str = "\r\x1b[2K";
+
+/// `Compressing 312/721 · 2.1 GiB of 5.5 GiB · claude/foo.cast`, cut to `width - 1` chars.
+pub(super) fn progress_line(p: &Progress, width: usize) -> String {
+    let name = p.current.file_name().and_then(OsStr::to_str).unwrap_or("");
+    let agent = p
+        .current
+        .parent()
+        .and_then(Path::file_name)
+        .and_then(OsStr::to_str)
+        .unwrap_or("");
+    let line = format!(
+        "Compressing {}/{} \u{b7} {} of {} \u{b7} {agent}/{name}",
+        p.done,
+        p.total,
+        short_size(p.bytes_done),
+        short_size(p.bytes_total)
+    );
+    line.chars().take(width.saturating_sub(1)).collect()
 }
 
 pub(super) fn print_lines(lines: &[String]) {
@@ -44,6 +91,10 @@ pub(super) fn print_lines(lines: &[String]) {
 
 fn size(bytes: u64) -> String {
     format_size(bytes, BINARY)
+}
+
+fn short_size(bytes: u64) -> String {
+    format_size(bytes, BINARY.decimal_places(1))
 }
 
 /// Preview of what a run would do: count, current and projected size, skipped live sessions.
@@ -72,6 +123,12 @@ pub(super) fn preview_lines(plan: &CompressPlan) -> Vec<String> {
 fn report_lines(report: &CompressReport) -> Vec<String> {
     let mut lines = vec![format!("Compressed: {}", report.compressed)];
     lines.push(format!("Saved: {}", size(report.bytes_saved)));
+    if report.not_processed > 0 {
+        lines.push(format!(
+            "Stopped: {} session(s) left untouched",
+            report.not_processed
+        ));
+    }
     if !report.skipped.is_empty() {
         lines.push(format!("Skipped: {}", report.skipped.len()));
         lines.extend(
@@ -137,12 +194,33 @@ mod tests {
             }],
             warnings: vec!["backup stayed plain".into()],
             bytes_saved: 1024,
+            not_processed: 3,
         };
         let text = report_lines(&report).join("\n");
         assert!(text.contains("Compressed: 2"), "{text}");
         assert!(text.contains("Saved: 1 KiB"), "{text}");
+        assert!(
+            text.contains("Stopped: 3 session(s) left untouched"),
+            "{text}"
+        );
         assert!(text.contains("s.cast (live recording)"), "{text}");
         assert!(text.contains("f.cast: disk full"), "{text}");
         assert!(text.contains("Warning: backup stayed plain"), "{text}");
+    }
+
+    #[test]
+    fn progress_line_shows_counts_sizes_and_agent_file() {
+        let p = Progress {
+            done: 312,
+            total: 721,
+            bytes_done: 2254857830,
+            bytes_total: 5905580032,
+            current: PathBuf::from("/s/claude/foo.cast"),
+        };
+        assert_eq!(
+            progress_line(&p, 200),
+            "Compressing 312/721 \u{b7} 2.1 GiB of 5.5 GiB \u{b7} claude/foo.cast"
+        );
+        assert_eq!(progress_line(&p, 16), "Compressing 312");
     }
 }

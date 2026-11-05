@@ -760,7 +760,7 @@ _agr() {
             return 0
             ;;
         agr__compress)
-            opts="-y -h --agent --yes --help"
+            opts="-y -h --agent --yes --dry-run --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
