@@ -87,13 +87,13 @@ Goal: `src/sync/key.rs` (load, create 0600, refuse loose permissions, replace wi
 `src/sync/index.rs` (load, save, missing or corrupt means empty plus warning value).
 Owner: implementer
 
-- [ ] RED/GREEN: `save_new` creates the file with mode 0600 (unix), `load` refuses mode 0644
+- [x] RED/GREEN: `save_new` creates the file with mode 0600 (unix), `load` refuses mode 0644
       with a message naming `chmod 600`, missing file gives `None`.
-- [ ] RED/GREEN: `import` refuses a different existing key without force, accepts the same key,
+- [x] RED/GREEN: `import` refuses a different existing key without force, accepts the same key,
       replaces with force.
-- [ ] RED/GREEN: index round-trips entries, unparseable file loads empty and returns a warning
+- [x] RED/GREEN: index round-trips entries, unparseable file loads empty and returns a warning
       string, save goes through `atomic_write`, file is `<storage>/.agr-sync.json`.
-- [ ] RED/GREEN: `list_sessions` and `get_stats` ignore `.agr-sync.json` and `.agr-sync.lock`.
+- [x] RED/GREEN: `list_sessions` and `get_stats` ignore `.agr-sync.json` and `.agr-sync.lock`.
 
 Files: `src/sync/mod.rs`, `src/sync/key.rs`, `src/sync/index.rs`
 Depends on: Stage 1, Stage 3
@@ -278,7 +278,7 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 1 | done | also `zeroize = "1"` (already pulled in by the cipher) |
 | 2 | pending | |
 | 3 | pending | |
-| 4 | pending | |
+| 4 | done | |
 | 5 | pending | |
 | 6 | pending | |
 | 7 | pending | |
