@@ -10,6 +10,7 @@ Welcome to the AGR (Agent Session Recorder) wiki.
 - [[status|Command-status]] - Show storage statistics
 - [[cleanup|Command-cleanup]] - Interactive cleanup of old sessions
 - [[list|Command-list]] - List recorded sessions
+- [[compress|Command-compress]] - Compress plain sessions to .cast.gz
 - [[analyze|Command-analyze]] - Analyze a recording with AI
 - [[play|Command-play]] - Play a recording with the native player
 - [[copy|Command-copy]] - Copy a recording to the clipboard

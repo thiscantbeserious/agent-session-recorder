@@ -8,6 +8,7 @@ This document is auto-generated from the CLI definitions.
 - [status](#agr-status)
 - [cleanup](#agr-cleanup)
 - [list](#agr-list)
+- [compress](#agr-compress)
 - [analyze](#agr-analyze)
 - [play](#agr-play)
 - [copy](#agr-copy)
@@ -84,16 +85,18 @@ Show storage statistics
 ```
 Display storage statistics for recorded sessions.
 
-Shows total size, disk usage percentage, session count by agent,
-and age of the oldest recording.
+Shows the size on disk, the uncompressed size, disk usage percentage,
+session count by agent and age of the oldest recording. When plain .cast
+sessions are left, a last line shows what `agr compress` would save.
 
 EXAMPLE:
     agr status
 
 OUTPUT:
-    Agent Sessions: 1.2 GB (0.5% of disk)
+    Agent Sessions: 1.2 GiB on disk, 6.8 GiB uncompressed (0.50% of disk)
        Sessions: 23 total (claude: 15, codex: 8)
        Oldest: 2025-01-01 (20 days ago)
+    3 plain, ~410.00 MiB saved by agr compress
 ```
 
 ---
@@ -152,6 +155,33 @@ EXAMPLES:
     agr ls                  Same as 'agr list' (alias)
     agr list claude         List only Claude sessions
     agr list codex          List only Codex sessions
+```
+
+---
+
+## agr compress
+
+Compress plain sessions to .cast.gz
+
+### Options
+
+- `--agent`: Only compress sessions from this agent
+- `-y, --yes`: Skip confirmation prompt
+
+### Description
+
+```
+Compress existing plain .cast sessions to .cast.gz.
+
+Shows a preview with the number of sessions, current size and projected
+size, then asks for confirmation. Sessions that are currently being
+recorded are skipped. Without a TTY nothing is prompted and nothing is
+rewritten, use --yes to apply.
+
+EXAMPLES:
+    agr compress                    Preview and ask for confirmation
+    agr compress --agent claude     Only compress Claude sessions
+    agr compress --yes              Compress without confirmation
 ```
 
 ---

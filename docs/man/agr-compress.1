@@ -1,0 +1,29 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH compress 1  "compress " 
+.SH NAME
+compress \- Compress plain sessions to .cast.gz
+.SH SYNOPSIS
+\fBcompress\fR [\fB\-\-agent\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Compress existing plain .cast sessions to .cast.gz.
+.PP
+Shows a preview with the number of sessions, current size and projected
+size, then asks for confirmation. Sessions that are currently being
+recorded are skipped. Without a TTY nothing is prompted and nothing is
+rewritten, use \-\-yes to apply.
+.PP
+EXAMPLES:
+    agr compress                    Preview and ask for confirmation
+    agr compress \-\-agent claude     Only compress Claude sessions
+    agr compress \-\-yes              Compress without confirmation
+.SH OPTIONS
+.TP
+\fB\-\-agent\fR \fI<AGENT>\fR
+Only compress sessions from this agent
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Skip confirmation prompt
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)

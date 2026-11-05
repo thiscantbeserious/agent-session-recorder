@@ -29,8 +29,9 @@ Storage and cleanup settings
 | Option | Default | Description |
 |--------|---------|-------------|
 | `directory` | `~/recorded_agent_sessions` | Base directory for session recordings |
-| `size_threshold_gb` | `10.0` (example, unset by default) | Warn after recording when storage exceeds this size in GB (unset = off) |
+| `size_threshold_gb` | `10.0` | Warn after recording when storage exceeds this size in GB (unset = off) |
 | `age_threshold_days` | `30` | Age threshold in days for cleanup suggestions |
+| `compression` | `gzip` | Compression for new recordings: "gzip" (.cast.gz) or "none" (.cast) |
 
 ### [recording]
 
