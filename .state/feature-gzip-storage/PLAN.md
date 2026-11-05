@@ -356,14 +356,14 @@ Considerations:
 Goal: `.cast.gz` copies as a plain `.cast` file reference or decompressed text.
 Owner: implementer
 
-- [ ] RED: with a fake file-capable tool, copying `x.cast.gz` hands the tool a path ending in
+- [x] RED: with a fake file-capable tool, copying `x.cast.gz` hands the tool a path ending in
       `x.cast` whose content equals the decompressed session.
-- [ ] RED: the temp dir is cleared before the next copy (at most one leftover) and removed
+- [x] RED: the temp dir is cleared before the next copy (at most one leftover) and removed
       when every tool fails.
-- [ ] RED: text fallback for `.cast.gz` copies decompressed text, size limit checked against
+- [x] RED: text fallback for `.cast.gz` copies decompressed text, size limit checked against
       the uncompressed size (a small gzip with a big ISIZE is rejected `FileTooLarge`).
-- [ ] RED: plain `.cast` path unchanged (existing tests pass untouched).
-- [ ] GREEN: `clipboard/plain_copy.rs` (`prepare(path) -> PlainSource`), `Copy::file` asks it
+- [x] RED: plain `.cast` path unchanged (existing tests pass untouched).
+- [x] GREEN: `clipboard/plain_copy.rs` (`prepare(path) -> PlainSource`), `Copy::file` asks it
       for the path and size before trying tools.
 
 Files: `src/clipboard/copy.rs`, `src/clipboard/plain_copy.rs`, `src/clipboard/mod.rs`,

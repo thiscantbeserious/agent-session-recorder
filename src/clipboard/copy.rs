@@ -1,10 +1,11 @@
 //! Copy orchestrator for clipboard operations.
 
 use super::error::{ClipboardError, MAX_CONTENT_SIZE};
+use super::plain_copy::{prepare, PlainSource};
 use super::result::CopyResult;
 use super::tool::{CopyTool, CopyToolError};
 use super::tools::platform_tools;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Orchestrates clipboard copy operations using available tools.
 ///
@@ -13,6 +14,7 @@ use std::path::Path;
 /// 2. Content copy as fallback (with size limit)
 pub struct Copy {
     tools: Vec<Box<dyn CopyTool>>,
+    temp_base: PathBuf,
 }
 
 impl Copy {
@@ -20,12 +22,22 @@ impl Copy {
     pub fn new() -> Self {
         Self {
             tools: platform_tools(),
+            temp_base: std::env::temp_dir(),
         }
     }
 
     /// Create with specific tools (for testing).
     pub fn with_tools(tools: Vec<Box<dyn CopyTool>>) -> Self {
-        Self { tools }
+        Self {
+            tools,
+            temp_base: std::env::temp_dir(),
+        }
+    }
+
+    /// Use another base dir for the decompressed `.cast.gz` copy (for testing).
+    pub fn with_temp_base(mut self, base: PathBuf) -> Self {
+        self.temp_base = base;
+        self
     }
 
     /// Get a reference to the tools list.
@@ -44,20 +56,28 @@ impl Copy {
             });
         }
 
-        let file_copy_last_error = match self.try_copy_file_with_tools(path) {
+        let source = prepare(path, &self.temp_base)?;
+        let result = self.copy_source(&source);
+        if result.is_err() {
+            source.discard();
+        }
+        result
+    }
+
+    fn copy_source(&self, source: &PlainSource) -> Result<CopyResult, ClipboardError> {
+        let file_copy_last_error = match self.try_copy_file_with_tools(&source.path) {
             Ok(result) => return Ok(result),
             Err(last_error) => last_error,
         };
 
-        let metadata = std::fs::metadata(path)?;
-        if metadata.len() > MAX_CONTENT_SIZE {
+        if source.size > MAX_CONTENT_SIZE {
             return Err(ClipboardError::FileTooLarge {
-                size_mb: metadata.len() as f64 / (1024.0 * 1024.0),
+                size_mb: source.size as f64 / (1024.0 * 1024.0),
                 max_mb: MAX_CONTENT_SIZE / (1024 * 1024),
             });
         }
 
-        let content = std::fs::read_to_string(path)?;
+        let content = std::fs::read_to_string(&source.path)?;
 
         match self.try_copy_text_with_tools(&content) {
             Ok(result) => Ok(result),
