@@ -7,6 +7,7 @@ pub mod agents;
 pub mod analyze;
 pub mod cleanup;
 pub mod completions;
+pub mod compress;
 pub mod config;
 pub mod copy;
 pub mod list;

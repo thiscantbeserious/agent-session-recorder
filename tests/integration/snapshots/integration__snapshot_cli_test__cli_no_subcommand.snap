@@ -24,6 +24,7 @@ Commands:
   status    [37mShow storage statistics[0m
   cleanup   [37mInteractive cleanup of old sessions[0m
   list      [37mList recorded sessions [aliases: ls][0m
+  compress  [37mCompress plain sessions to .cast.gz[0m
   analyze   [37mAnalyze a recording with AI[0m
   play      [37mPlay a recording with the native player[0m
   copy      [37mCopy a recording to the clipboard[0m

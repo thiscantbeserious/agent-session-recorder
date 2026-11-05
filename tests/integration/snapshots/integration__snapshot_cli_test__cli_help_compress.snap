@@ -1,0 +1,32 @@
+---
+source: tests/integration/snapshot_cli_test.rs
+expression: output
+---
+=== agr compress --help ===
+Exit code: 0
+
+--- stdout ---
+Compress existing plain .cast sessions to .cast.gz.
+
+Shows a preview with the number of sessions, current size and projected
+size, then asks for confirmation. Sessions that are currently being
+recorded are skipped. Without a TTY nothing is prompted and nothing is
+rewritten, use --yes to apply.
+
+EXAMPLES:
+    agr compress                    [37mPreview and ask for confirmation[0m
+    agr compress --agent claude     [37mOnly compress Claude sessions[0m
+    agr compress --yes              [37mCompress without confirmation[0m
+
+Usage: agr compress [OPTIONS]
+
+Options:
+      --agent <AGENT>
+          Only compress sessions from this agent
+
+  -y, --yes
+          Skip confirmation prompt
+
+  -h, --help
+          Print help (see a summary with '-h')
+--- stderr ---

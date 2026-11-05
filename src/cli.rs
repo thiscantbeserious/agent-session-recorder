@@ -133,6 +133,27 @@ EXAMPLES:
         agent: Option<String>,
     },
 
+    /// Compress plain sessions to .cast.gz
+    #[command(long_about = "Compress existing plain .cast sessions to .cast.gz.
+
+Shows a preview with the number of sessions, current size and projected
+size, then asks for confirmation. Sessions that are currently being
+recorded are skipped. Without a TTY nothing is prompted and nothing is
+rewritten, use --yes to apply.
+
+EXAMPLES:
+    agr compress                    Preview and ask for confirmation
+    agr compress --agent claude     Only compress Claude sessions
+    agr compress --yes              Compress without confirmation")]
+    Compress {
+        /// Filter sessions by agent name
+        #[arg(long, help = "Only compress sessions from this agent")]
+        agent: Option<String>,
+        /// Skip the confirmation prompt
+        #[arg(long, short = 'y', help = "Skip confirmation prompt")]
+        yes: bool,
+    },
+
     /// Analyze a recording with AI
     #[command(long_about = "Analyze a recording file using an AI agent.
 

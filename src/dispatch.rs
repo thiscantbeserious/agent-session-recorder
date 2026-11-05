@@ -18,6 +18,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Commands::Cleanup { agent, older_than } => {
             commands::cleanup::handle(agent.as_deref(), older_than)
         }
+        Commands::Compress { agent, yes } => commands::compress::handle(agent.as_deref(), yes),
         Commands::List { agent } => commands::list::handle(agent.as_deref()),
         Commands::Analyze {
             file,
