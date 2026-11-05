@@ -8,6 +8,7 @@ pub mod analyze;
 pub mod cleanup;
 pub mod completions;
 pub mod compress;
+pub mod compress_offer;
 pub mod config;
 pub mod copy;
 pub mod list;

@@ -14,21 +14,28 @@ use super::prompt::should_proceed;
 pub fn handle(agent: Option<&str>, yes: bool) -> Result<()> {
     let storage = StorageManager::new(Config::load()?);
     let plan = compress::plan(&storage, agent)?;
-    let theme = current_theme();
     print_lines(&preview_lines(&plan));
     if plan.files.is_empty() {
         return Ok(());
     }
+    confirm_and_run(&plan, |q| should_proceed(q, yes))
+}
+
+/// Ask once, then compress and print the report, or say nothing changed.
+pub(super) fn confirm_and_run(
+    plan: &CompressPlan,
+    ask: impl FnOnce(&str) -> Result<bool>,
+) -> Result<()> {
     let question = format!("Compress {} session(s)?", plan.files.len());
-    if !should_proceed(&question, yes)? {
-        println!("{}", theme.primary_text("No changes made."));
+    if !ask(&question)? {
+        println!("{}", current_theme().primary_text("No changes made."));
         return Ok(());
     }
-    print_lines(&report_lines(&compress::run(&plan)));
+    print_lines(&report_lines(&compress::run(plan)));
     Ok(())
 }
 
-fn print_lines(lines: &[String]) {
+pub(super) fn print_lines(lines: &[String]) {
     let theme = current_theme();
     for line in lines {
         println!("{}", theme.primary_text(line));
@@ -40,7 +47,7 @@ fn size(bytes: u64) -> String {
 }
 
 /// Preview of what a run would do: count, current and projected size, skipped live sessions.
-fn preview_lines(plan: &CompressPlan) -> Vec<String> {
+pub(super) fn preview_lines(plan: &CompressPlan) -> Vec<String> {
     let mut lines = Vec::new();
     if plan.files.is_empty() {
         lines.push("No plain sessions to compress.".to_string());

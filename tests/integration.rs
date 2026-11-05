@@ -186,6 +186,9 @@ mod compress_test;
 #[path = "integration/cli_compress_test.rs"]
 mod cli_compress_test;
 
+#[path = "integration/cli_offer_test.rs"]
+mod cli_offer_test;
+
 // CLI colour decision
 #[path = "integration/cli_color_test.rs"]
 mod cli_color_test;
