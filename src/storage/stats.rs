@@ -1,6 +1,7 @@
 //! Storage statistics
 
-use super::{SessionInfo, StorageManager};
+use super::{format_uncompressed, SessionInfo, StorageManager};
+use crate::files::codec::UncompressedSize;
 use anyhow::Result;
 use humansize::{format_size, BINARY};
 use std::collections::HashMap;
@@ -9,6 +10,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct StorageStats {
     pub total_size: u64,
+    pub uncompressed_total: UncompressedSize,
     pub session_count: usize,
     pub sessions_by_agent: HashMap<String, usize>,
     pub oldest_session: Option<SessionInfo>,
@@ -19,6 +21,11 @@ impl StorageStats {
     /// Get human-readable total size
     pub fn size_human(&self) -> String {
         format_size(self.total_size, BINARY)
+    }
+
+    /// Get human-readable uncompressed total
+    pub fn uncompressed_human(&self) -> String {
+        format_uncompressed(self.uncompressed_total)
     }
 
     /// Format a summary for display
@@ -39,8 +46,9 @@ impl StorageStats {
         };
 
         let mut summary = format!(
-            "Agent Sessions: {} ({:.2}% of disk)\n   Sessions: {} total{}",
+            "Agent Sessions: {} on disk, {} uncompressed ({:.2}% of disk)\n   Sessions: {} total{}",
             self.size_human(),
+            self.uncompressed_human(),
             self.disk_percentage,
             self.session_count,
             agents_display
@@ -58,12 +66,27 @@ impl StorageStats {
     }
 }
 
+/// Sum of uncompressed sizes, `Over4GiB` once any part overflowed. A file whose header cannot
+/// be read counts with its on-disk size.
+fn sum_uncompressed(sessions: &[SessionInfo]) -> UncompressedSize {
+    let mut total = 0u64;
+    for session in sessions {
+        match session.uncompressed_size() {
+            Ok(UncompressedSize::Over4GiB) => return UncompressedSize::Over4GiB,
+            Ok(UncompressedSize::Exact(n)) => total = total.saturating_add(n),
+            Err(_) => total = total.saturating_add(session.size),
+        }
+    }
+    UncompressedSize::Exact(total)
+}
+
 impl StorageManager {
     /// Get storage statistics
     pub fn get_stats(&self) -> Result<StorageStats> {
         let sessions = self.list_sessions(None)?;
 
         let total_size: u64 = sessions.iter().map(|s| s.size).sum();
+        let uncompressed_total = sum_uncompressed(&sessions);
         let session_count = sessions.len();
 
         let mut sessions_by_agent: HashMap<String, usize> = HashMap::new();
@@ -78,6 +101,7 @@ impl StorageManager {
 
         Ok(StorageStats {
             total_size,
+            uncompressed_total,
             session_count,
             sessions_by_agent,
             oldest_session,

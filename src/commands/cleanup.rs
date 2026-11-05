@@ -367,6 +367,7 @@ mod tests {
     fn mock_stats(session_count: usize, by_agent: HashMap<String, usize>) -> StorageStats {
         StorageStats {
             total_size: 1024 * session_count as u64,
+            uncompressed_total: agr::files::codec::UncompressedSize::Exact(0),
             session_count,
             sessions_by_agent: by_agent,
             oldest_session: None,

@@ -132,7 +132,20 @@ pub struct SessionInfo {
     pub age_minutes: i64,
 }
 
+/// Human-readable uncompressed size, "4GiB+" when only a wrapped size is known.
+pub fn format_uncompressed(size: codec::UncompressedSize) -> String {
+    match size {
+        codec::UncompressedSize::Exact(n) => format_size(n, BINARY),
+        codec::UncompressedSize::Over4GiB => "4GiB+".to_string(),
+    }
+}
+
 impl SessionInfo {
+    /// Uncompressed size read from the file header, computed on demand (never decompresses).
+    pub fn uncompressed_size(&self) -> Result<codec::UncompressedSize> {
+        codec::uncompressed_size(&self.path)
+    }
+
     /// Get human-readable size
     pub fn size_human(&self) -> String {
         format_size(self.size, BINARY)
