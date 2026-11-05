@@ -338,3 +338,55 @@ fn trailing_garbage_after_last_gzip_member_is_an_error_with_path() {
         "{result:?} / {out:?}"
     );
 }
+
+fn gz_bytes(body: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut enc = flate2::write::GzEncoder::new(&mut out, flate2::Compression::default());
+    std::io::Write::write_all(&mut enc, body).unwrap();
+    enc.finish().unwrap();
+    out
+}
+
+#[test]
+fn atomic_write_raw_keeps_gzip_bytes_exactly() {
+    let dir = TempDir::new().unwrap();
+    let p = dir.path().join("x.cast.gz");
+    let bytes = gz_bytes(b"hello\n");
+    let _ = codec::atomic_write_raw(&p, &bytes);
+    assert!(p.exists(), "target must be written");
+    assert_eq!(std::fs::read(&p).unwrap(), bytes);
+    assert!(!codec::temp_path_for(&p).exists());
+}
+
+#[test]
+fn atomic_write_raw_replaces_existing_target() {
+    let dir = TempDir::new().unwrap();
+    let p = dir.path().join("x.cast.gz");
+    std::fs::write(&p, b"old").unwrap();
+    codec::atomic_write_raw(&p, b"new").unwrap();
+    assert_eq!(std::fs::read(&p).unwrap(), b"new");
+}
+
+#[test]
+fn atomic_write_raw_create_error_names_temp_path_and_leaves_nothing() {
+    let dir = TempDir::new().unwrap();
+    let p = dir.path().join("missing").join("x.cast.gz");
+    let res = codec::atomic_write_raw(&p, b"a");
+    assert!(res.is_err(), "write into a missing dir must fail");
+    let msg = chain(&res.unwrap_err());
+    assert!(msg.contains(".x.cast.gz.tmp"), "{msg}");
+    assert!(!p.exists());
+}
+
+#[test]
+fn atomic_write_raw_rename_error_names_target_and_removes_temp() {
+    let dir = TempDir::new().unwrap();
+    let p = dir.path().join("x.cast.gz");
+    std::fs::create_dir(&p).unwrap();
+    std::fs::write(p.join("keep"), b"k").unwrap();
+    let res = codec::atomic_write_raw(&p, b"a");
+    assert!(res.is_err(), "rename onto a non-empty dir must fail");
+    let msg = chain(&res.unwrap_err());
+    assert!(msg.contains("x.cast.gz"), "{msg}");
+    assert!(!codec::temp_path_for(&p).exists());
+}

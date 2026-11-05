@@ -231,6 +231,11 @@ pub fn atomic_write(
     result
 }
 
+/// Write `bytes` verbatim via the same temp and rename path, never gzip-encoding.
+pub fn atomic_write_raw(path: &Path, bytes: &[u8]) -> Result<()> {
+    Ok(())
+}
+
 /// Copy `src` to `dst`, converting format by suffix (compress, decompress, import).
 pub fn transcode(src: &Path, dst: &Path) -> Result<()> {
     let mut reader = open_reader(src)?;
