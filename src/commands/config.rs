@@ -10,7 +10,7 @@ use diff::print_diff_preview;
 use super::prompt::should_proceed;
 
 use agr::config::{migrate_config, MigrateResult};
-use agr::theme::ansi;
+use agr::theme::{ansi, gate};
 use agr::theme::{current_theme, Theme};
 use agr::Config;
 
@@ -171,7 +171,7 @@ fn print_migration_info(result: &MigrateResult, theme: &Theme) {
             ))
         );
         for field in &result.removed_fields {
-            println!("{}  - {}{}", ansi::RED, field, ansi::RESET);
+            println!("{}  - {}{}", gate(ansi::RED), field, gate(ansi::RESET));
         }
     }
 

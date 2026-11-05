@@ -19,16 +19,16 @@ The default agent is configured in ~/.config/agr/config.toml under
 [analysis].agent. Use --agent to override for a single run.
 
 EXAMPLES:
-    agr analyze session.cast                     [37mAnalyze with default agent[0m
-    agr analyze session.cast --agent codex       [37mUse Codex instead[0m
-    agr analyze session.cast --workers 4         [37mUse 4 parallel workers[0m
-    agr analyze session.cast --no-parallel       [37mSequential mode[0m
-    agr analyze session.cast --timeout 180       [37m3 minute timeout per chunk[0m
+    agr analyze session.cast                     Analyze with default agent
+    agr analyze session.cast --agent codex       Use Codex instead
+    agr analyze session.cast --workers 4         Use 4 parallel workers
+    agr analyze session.cast --no-parallel       Sequential mode
+    agr analyze session.cast --timeout 180       3 minute timeout per chunk
 
 SUPPORTED AGENTS:
-    claude      [37mClaude Code CLI (default)[0m
-    codex       [37mOpenAI Codex CLI[0m
-    gemini      [37mGoogle Gemini CLI[0m
+    claude      Claude Code CLI (default)
+    codex       OpenAI Codex CLI
+    gemini      Google Gemini CLI
 
 Usage: agr analyze [OPTIONS] <FILE>
 
@@ -63,4 +63,5 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
 --- stderr ---

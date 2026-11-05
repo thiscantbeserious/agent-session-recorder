@@ -1,6 +1,5 @@
 ---
-source: tests/integration/cli_test.rs
-assertion_line: 139
+source: tests/integration/snapshot_cli_test.rs
 expression: output
 ---
 === agr cleanup --help ===
@@ -14,16 +13,16 @@ to delete. Supports filtering by agent and age. Sessions older than
 the configured threshold (default: 30 days) are marked with *.
 
 EXAMPLES:
-    agr cleanup                          [37mInteractive cleanup of all sessions[0m
-    agr cleanup --agent claude           [37mOnly show Claude sessions[0m
-    agr cleanup --older-than 60          [37mOnly show sessions older than 60 days[0m
+    agr cleanup                          Interactive cleanup of all sessions
+    agr cleanup --agent claude           Only show Claude sessions
+    agr cleanup --older-than 60          Only show sessions older than 60 days
     agr cleanup --agent codex --older-than 30
 
 INTERACTIVE OPTIONS:
-    [number]    [37mDelete the N oldest sessions[0m
-    'old'       [37mDelete all sessions older than threshold[0m
-    'all'       [37mDelete all matching sessions[0m
-    0           [37mCancel without deleting[0m
+    [number]    Delete the N oldest sessions
+    'old'       Delete all sessions older than threshold
+    'all'       Delete all matching sessions
+    0           Cancel without deleting
 
 Usage: agr cleanup [OPTIONS]
 
@@ -36,4 +35,5 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
 --- stderr ---

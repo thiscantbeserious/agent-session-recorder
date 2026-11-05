@@ -19,7 +19,7 @@ pub fn should_proceed(message: &str, auto_confirm: bool) -> Result<bool> {
     let theme = current_theme();
 
     // Check if stdin is a TTY - if not, skip prompt and return false
-    if !atty::is(atty::Stream::Stdin) {
+    if !io::IsTerminal::is_terminal(&io::stdin()) {
         println!(
             "{}",
             theme.secondary_text("Non-interactive mode: use --yes to apply changes automatically")

@@ -5,7 +5,7 @@
 
 use unicode_width::UnicodeWidthStr;
 
-use super::cli::{color_to_ansi, ANSI_RESET};
+use super::cli::{color_to_ansi, gate, ANSI_RESET};
 use super::current_theme;
 use super::Theme;
 
@@ -39,7 +39,7 @@ pub fn print_done_banner() {
 
 /// Colorize the recording banner with bold REC.
 fn colorize_recording_banner(text: &str, theme: &Theme) -> String {
-    let accent = color_to_ansi(theme.accent);
+    let accent = gate(color_to_ansi(theme.accent));
 
     let mut result = String::new();
 
@@ -49,7 +49,7 @@ fn colorize_recording_banner(text: &str, theme: &Theme) -> String {
         } else {
             result.push_str(accent);
             result.push_str(line);
-            result.push_str(ANSI_RESET);
+            result.push_str(gate(ANSI_RESET));
             result.push('\n');
         }
     }
@@ -59,7 +59,7 @@ fn colorize_recording_banner(text: &str, theme: &Theme) -> String {
 
 /// Colorize a single line that contains "REC" with bold formatting.
 fn colorize_rec_banner_line(line: &str, accent: &str, result: &mut String) {
-    const BOLD: &str = "\x1b[1m";
+    let bold = gate("\x1b[1m");
     let mut chars = line.chars().peekable();
     let mut in_rec = false;
 
@@ -69,9 +69,9 @@ fn colorize_rec_banner_line(line: &str, accent: &str, result: &mut String) {
         if c == 'R' && !in_rec {
             let rest: String = chars.clone().take(2).collect();
             if rest == "EC" {
-                result.push_str(BOLD);
+                result.push_str(bold);
                 result.push_str("REC");
-                result.push_str(ANSI_RESET);
+                result.push_str(gate(ANSI_RESET));
                 result.push_str(accent);
                 chars.next(); // skip E
                 chars.next(); // skip C
@@ -83,7 +83,7 @@ fn colorize_rec_banner_line(line: &str, accent: &str, result: &mut String) {
             result.push(c);
         }
     }
-    result.push_str(ANSI_RESET);
+    result.push_str(gate(ANSI_RESET));
     result.push('\n');
 }
 
@@ -114,11 +114,11 @@ pub fn print_box_prompt(content: &str) {
     let theme = current_theme();
     print!(
         "{}║{:width$}",
-        color_to_ansi(theme.accent),
+        gate(color_to_ansi(theme.accent)),
         content,
         width = BOX_WIDTH
     );
-    print!("{}", ANSI_RESET);
+    print!("{}", gate(ANSI_RESET));
 }
 
 /// Print just the closing border character (after user input).

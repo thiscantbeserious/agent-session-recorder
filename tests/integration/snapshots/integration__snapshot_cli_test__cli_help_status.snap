@@ -1,6 +1,5 @@
 ---
-source: tests/integration/cli_test.rs
-assertion_line: 129
+source: tests/integration/snapshot_cli_test.rs
 expression: output
 ---
 === agr status --help ===
@@ -25,4 +24,5 @@ Usage: agr status
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
 --- stderr ---

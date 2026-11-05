@@ -1,6 +1,5 @@
 ---
-source: tests/integration/cli_test.rs
-assertion_line: 79
+source: tests/integration/snapshot_cli_test.rs
 expression: output
 ---
 === agr agents --help ===
@@ -14,22 +13,23 @@ record sessions. You can also control which agents are auto-wrapped
 using the no-wrap subcommand.
 
 EXAMPLES:
-    agr agents list                  [37mShow configured agents[0m
-    agr agents add claude            [37mAdd claude to the list[0m
-    agr agents remove codex          [37mRemove codex from the list[0m
-    agr agents no-wrap add claude    [37mDisable auto-wrap for claude[0m
+    agr agents list                  Show configured agents
+    agr agents add claude            Add claude to the list
+    agr agents remove codex          Remove codex from the list
+    agr agents no-wrap add claude    Disable auto-wrap for claude
 
 Usage: agr agents <COMMAND>
 
 Commands:
-  list        [37mList all configured agents[0m
-  add         [37mAdd an agent to the configuration[0m
-  remove      [37mRemove an agent from the configuration[0m
-  is-wrapped  [37mCheck if an agent should be wrapped (used by shell integration)[0m
-  no-wrap     [37mManage agents that should not be auto-wrapped[0m
-  help        [37mPrint this message or the help of the given subcommand(s)[0m
+  list        List all configured agents
+  add         Add an agent to the configuration
+  remove      Remove an agent from the configuration
+  is-wrapped  Check if an agent should be wrapped (used by shell integration)
+  no-wrap     Manage agents that should not be auto-wrapped
+  help        Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
 --- stderr ---

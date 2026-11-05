@@ -3,6 +3,8 @@
 //! Provides ANSI escape codes for CLI output, color conversion from
 //! ratatui colors, themed text wrappers, and help text colorization.
 
+use std::io::IsTerminal;
+
 use ratatui::style::Color;
 
 use super::Theme;
@@ -22,6 +24,47 @@ pub mod ansi {
     pub const DARK_GRAY: &str = "\x1b[90m";
     /// Reset color
     pub const RESET: &str = "\x1b[0m";
+}
+
+/// Pure colour decision, see <https://no-color.org>.
+///
+/// Colour only when stdout is a terminal and `NO_COLOR` is unset or empty.
+pub fn colors_enabled(is_tty: bool, no_color: Option<&str>) -> bool {
+    is_tty && no_color.is_none_or(|v| v.is_empty())
+}
+
+/// Runtime decision for CLI colour on stdout.
+///
+/// `AGR_FORCE_COLOR` set to a non-empty value forces colour on regardless of tty and
+/// `NO_COLOR`. It exists only so snapshot tests can capture colour without a tty.
+/// Not cached on purpose, the env read is cheap and tests can set the override late.
+pub fn cli_colors() -> bool {
+    let forced = std::env::var("AGR_FORCE_COLOR").is_ok_and(|v| !v.is_empty());
+    let no_color = std::env::var("NO_COLOR").ok();
+    forced || colors_enabled(std::io::stdout().is_terminal(), no_color.as_deref())
+}
+
+/// An ANSI code, or an empty string when CLI colour is off.
+pub fn gate(code: &'static str) -> &'static str {
+    if cli_colors() {
+        code
+    } else {
+        ""
+    }
+}
+
+/// Wrap text in a colour code and reset, or return it unchanged when colour is off.
+fn paint(color: Color, text: &str) -> String {
+    paint_if(cli_colors(), color, text)
+}
+
+/// Like the `Theme::*_text` helpers but with the colour decision passed in.
+pub fn paint_if(on: bool, color: Color, text: &str) -> String {
+    if on {
+        format!("{}{}{}", color_to_ansi(color), text, ANSI_RESET)
+    } else {
+        text.to_string()
+    }
 }
 
 /// Convert a ratatui Color to an ANSI escape code.
@@ -52,32 +95,27 @@ pub fn color_to_ansi(color: Color) -> &'static str {
 impl Theme {
     /// Format text with the accent color (for CLI output).
     pub fn accent_text(&self, text: &str) -> String {
-        format!("{}{}{}", color_to_ansi(self.accent), text, ANSI_RESET)
+        paint(self.accent, text)
     }
 
     /// Format text with the primary color (for CLI output).
     pub fn primary_text(&self, text: &str) -> String {
-        format!("{}{}{}", color_to_ansi(self.text_primary), text, ANSI_RESET)
+        paint(self.text_primary, text)
     }
 
     /// Format text with the secondary color (for CLI output).
     pub fn secondary_text(&self, text: &str) -> String {
-        format!(
-            "{}{}{}",
-            color_to_ansi(self.text_secondary),
-            text,
-            ANSI_RESET
-        )
+        paint(self.text_secondary, text)
     }
 
     /// Format text with the error color (for CLI output).
     pub fn error_text(&self, text: &str) -> String {
-        format!("{}{}{}", color_to_ansi(self.error), text, ANSI_RESET)
+        paint(self.error, text)
     }
 
     /// Format text with the success color (for CLI output).
     pub fn success_text(&self, text: &str) -> String {
-        format!("{}{}{}", color_to_ansi(self.success), text, ANSI_RESET)
+        paint(self.success, text)
     }
 }
 
@@ -89,6 +127,14 @@ impl Theme {
 ///
 /// This post-processes clap's output to apply consistent theming.
 pub fn colorize_help(text: &str) -> String {
+    colorize_help_with(cli_colors(), text)
+}
+
+/// Like [`colorize_help`] but with the colour decision passed in.
+pub fn colorize_help_with(on: bool, text: &str) -> String {
+    if !on {
+        return text.to_string();
+    }
     let theme = super::current_theme();
     let green = color_to_ansi(theme.accent);
     let gray = color_to_ansi(theme.text_primary);
@@ -197,18 +243,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ansi_text_helpers_wrap_with_color_codes() {
+    fn paint_wraps_only_when_on() {
         let theme = Theme::claude_code();
+        let on = paint_if(true, theme.accent, "test");
+        assert_eq!(on, "\x1b[92mtest\x1b[0m");
+        assert_eq!(paint_if(false, theme.accent, "test"), "test");
+    }
 
-        let accent = theme.accent_text("test");
-        assert!(accent.starts_with("\x1b[92m"));
-        assert!(accent.ends_with("\x1b[0m"));
-        assert!(accent.contains("test"));
+    #[test]
+    fn colors_enabled_needs_tty() {
+        assert!(!colors_enabled(false, None));
+        assert!(colors_enabled(true, None));
+    }
 
-        let primary = theme.primary_text("hello");
-        assert!(primary.starts_with("\x1b[37m"));
-        assert!(primary.ends_with("\x1b[0m"));
-        assert!(primary.contains("hello"));
+    #[test]
+    fn colors_enabled_honours_no_color() {
+        assert!(!colors_enabled(true, Some("1")));
+        assert!(colors_enabled(true, Some("")));
     }
 
     #[test]
