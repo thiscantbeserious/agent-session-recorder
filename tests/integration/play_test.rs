@@ -118,7 +118,7 @@ fn play_warns_for_non_cast_extension() {
 
     // Should show warning about extension (written to stderr)
     assert!(
-        stderr.contains("Warning: File does not have .cast extension"),
+        stderr.contains("Warning: File does not have .cast or .cast.gz extension"),
         "Should warn about non-.cast extension"
     );
 }

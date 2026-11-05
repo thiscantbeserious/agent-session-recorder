@@ -78,6 +78,9 @@ mod snapshot_completions_test;
 #[path = "integration/play_test.rs"]
 mod play_test;
 
+#[path = "integration/cli_gzip_test.rs"]
+mod cli_gzip_test;
+
 #[path = "integration/preview_test.rs"]
 mod preview_test;
 
@@ -86,6 +89,12 @@ mod snapshot_terminal_test;
 
 #[path = "integration/transform_test.rs"]
 mod transform_test;
+
+#[path = "integration/transform_roundtrip_test.rs"]
+mod transform_roundtrip_test;
+
+#[path = "integration/transform_lock_test.rs"]
+mod transform_lock_test;
 
 #[path = "integration/transform_ops_test.rs"]
 mod transform_ops_test;

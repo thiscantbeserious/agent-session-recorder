@@ -3,7 +3,7 @@
 //! Provides CLI support for applying transforms to asciicast recordings,
 //! such as silence removal.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
@@ -12,7 +12,6 @@ use agr::theme::current_theme;
 use agr::Config;
 
 use agr::asciicast::integrity::check_file_integrity;
-use agr::files::resolve::resolve_file_path;
 
 /// Resolve the threshold to use for silence removal.
 ///
@@ -49,6 +48,50 @@ pub fn validate_threshold(threshold: f64) -> Result<()> {
     Ok(())
 }
 
+/// Where the threshold came from, for the report line.
+fn threshold_source(cli: Option<f64>, header_idle: Option<f64>) -> &'static str {
+    if cli.is_some() {
+        "CLI argument"
+    } else if header_idle.is_some() {
+        "header idle_time_limit"
+    } else {
+        "default"
+    }
+}
+
+/// Print the duration summary after the transform.
+fn print_saved(original: f64, new: f64) {
+    let theme = current_theme();
+    let saved = original - new;
+    let line = if saved > 0.0 {
+        format!(
+            "Duration reduced from {:.1}s to {:.1}s (saved {:.1}s)",
+            original, new, saved
+        )
+    } else {
+        "No changes needed (all intervals below threshold)".to_string()
+    };
+    println!("{}", theme.primary_text(&line));
+}
+
+/// Print where the result went.
+fn print_destination(output: Option<&str>, output_path: &Path) {
+    let theme = current_theme();
+    let line = match output {
+        Some(_) => format!("Output written to: {}", output_path.display()),
+        None => "File modified in-place".to_string(),
+    };
+    println!("{}", theme.primary_text(&line));
+}
+
+/// Load the file, refusing corrupt or locked ones.
+fn load_for_transform(filepath: &Path) -> Result<AsciicastFile> {
+    check_file_integrity(filepath)?;
+    agr::files::lock::check_not_locked(filepath)?;
+    AsciicastFile::parse(filepath)
+        .with_context(|| format!("Failed to parse asciicast file: {}", filepath.display()))
+}
+
 /// Handle the transform command with silence removal.
 ///
 /// Applies silence removal transform to the specified file, either modifying
@@ -60,101 +103,24 @@ pub fn handle_remove_silence(
     output: Option<&str>,
 ) -> Result<()> {
     let config = Config::load()?;
-    let theme = current_theme();
-
-    // Resolve file path (supports short format like "claude/session.cast")
-    let filepath = resolve_file_path(file, &config)?;
-    if !filepath.exists() {
-        bail!(
-            "File not found: {}\nHint: Use format 'agent/file.cast'. Run 'agr list' to see available sessions.",
-            file
-        );
-    }
-
-    // Check file has .cast extension
-    if filepath.extension().and_then(|e| e.to_str()) != Some("cast") {
-        eprintln!("Warning: File does not have .cast extension");
-    }
-
-    // Check for file corruption before transforming
-    check_file_integrity(&filepath)?;
-
-    // Refuse to transform a file being actively recorded
-    agr::files::lock::check_not_locked(&filepath)?;
-
-    // Parse the file
-    let mut cast = AsciicastFile::parse(&filepath)
-        .with_context(|| format!("Failed to parse asciicast file: {}", filepath.display()))?;
-
-    // Resolve threshold: CLI arg > header idle_time_limit > default
-    let effective_threshold = resolve_threshold(threshold, cast.header.idle_time_limit);
-
-    // Validate threshold before any modifications
-    validate_threshold(effective_threshold)?;
-
-    // Report which threshold source is being used
-    let threshold_source = if threshold.is_some() {
-        "CLI argument"
-    } else if cast.header.idle_time_limit.is_some() {
-        "header idle_time_limit"
-    } else {
-        "default"
-    };
-
-    println!(
-        "{}",
-        theme.primary_text(&format!(
-            "Applying silence removal with {:.2}s threshold (from {})",
-            effective_threshold, threshold_source
-        ))
+    let filepath = super::resolve_existing_session(file, &config)?;
+    let mut cast = load_for_transform(&filepath)?;
+    let idle = cast.header.idle_time_limit;
+    let effective = resolve_threshold(threshold, idle);
+    validate_threshold(effective)?;
+    let message = format!(
+        "Applying silence removal with {:.2}s threshold (from {})",
+        effective,
+        threshold_source(threshold, idle)
     );
-
-    // Calculate original duration for reporting
-    let original_duration = cast.duration();
-
-    // Apply the transform
-    let mut transform = SilenceRemoval::new(effective_threshold);
-    transform.transform(&mut cast.events);
-
-    // Calculate new duration
-    let new_duration = cast.duration();
-
-    // Determine output path
-    let output_path: PathBuf = match output {
-        Some(path) => PathBuf::from(path),
-        None => filepath.clone(),
-    };
-
-    // Write the result
+    println!("{}", current_theme().primary_text(&message));
+    let original = cast.duration();
+    SilenceRemoval::new(effective).transform(&mut cast.events);
+    let output_path = output.map_or_else(|| filepath.clone(), PathBuf::from);
     cast.write(&output_path)
         .with_context(|| format!("Failed to write output file: {}", output_path.display()))?;
-
-    // Report results
-    let time_saved = original_duration - new_duration;
-    if time_saved > 0.0 {
-        println!(
-            "{}",
-            theme.primary_text(&format!(
-                "Duration reduced from {:.1}s to {:.1}s (saved {:.1}s)",
-                original_duration, new_duration, time_saved
-            ))
-        );
-    } else {
-        println!(
-            "{}",
-            theme.primary_text("No changes needed (all intervals below threshold)")
-        );
-    }
-
-    if output.is_some() {
-        println!(
-            "{}",
-            theme.primary_text(&format!("Output written to: {}", output_path.display()))
-        );
-    } else {
-        println!("{}", theme.primary_text("File modified in-place"));
-    }
-
+    print_saved(original, cast.duration());
+    print_destination(output, &output_path);
     Ok(())
 }
 

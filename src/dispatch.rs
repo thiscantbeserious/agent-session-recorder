@@ -30,9 +30,9 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             output,
             fast,
             wait,
-        } => commands::analyze::handle(
-            &file,
-            agent.as_deref(),
+        } => commands::analyze::handle(commands::analyze::AnalyzeArgs {
+            file,
+            agent,
             workers,
             timeout,
             no_parallel,
@@ -41,7 +41,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             output,
             fast,
             wait,
-        ),
+        }),
         Commands::Play { file } => commands::play::handle(&file),
         Commands::Copy { file } => commands::copy::handle(&file),
         Commands::Marker(cmd) => match cmd {

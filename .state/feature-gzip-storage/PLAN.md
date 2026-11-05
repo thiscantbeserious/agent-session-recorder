@@ -337,13 +337,13 @@ Goal: play, analyze, optimize, marker, copy accept `.cast.gz` without warnings, 
 rename keeps the suffix.
 Owner: implementer
 
-- [ ] RED: `agr play`/`optimize`/`marker list` on `.cast.gz` give no extension warning
+- [x] RED: `agr play`/`optimize`/`marker list` on `.cast.gz` give no extension warning
       (assert_cmd stderr).
-- [ ] RED: analyze rename suggestion on `x.cast.gz` produces `<suggested>.cast.gz` and moves
+- [x] RED: analyze rename suggestion on `x.cast.gz` produces `<suggested>.cast.gz` and moves
       the backup (use `filename::rename_file`).
-- [ ] RED: `agr optimize --remove-silence x.cast.gz` keeps gzip, `--output y.cast` writes
+- [x] RED: `agr optimize --remove-silence x.cast.gz` keeps gzip, `--output y.cast` writes
       plain.
-- [ ] GREEN: replace `extension() != Some("cast")` with `!codec::is_session_path`, analyze
+- [x] GREEN: replace `extension() != Some("cast")` with `!codec::is_session_path`, analyze
       rename through `rename_file`.
 
 Files: `src/commands/play.rs`, `src/commands/analyze.rs`, `src/commands/analyze/`,
