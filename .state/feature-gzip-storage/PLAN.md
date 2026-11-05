@@ -323,7 +323,7 @@ Owner: implementer
 
 Files: `src/tui/widgets/file_explorer/`, `src/tui/list_app/`, `src/tui/cleanup_app/`,
        `tests/integration/preview_test.rs`, `tests/integration/file_explorer_test.rs`,
-       `tests/integration/snapshot_tui_test.rs`
+       `tests/integration/snapshot_tui_explorer_test.rs`, `tests/integration/snapshots/`
 Depends on: Stage 1, Stage 7, Stage 8, Stage 21, Stage 23
 
 Considerations:
@@ -346,13 +346,19 @@ Owner: implementer
 - [ ] GREEN: replace `extension() != Some("cast")` with `!codec::is_session_path`, analyze
       rename through `rename_file`.
 
-Files: `src/commands/play.rs`, `src/commands/analyze.rs`, `src/commands/transform.rs`,
-       `src/commands/copy.rs`, `src/commands/marker.rs`, `tests/integration/play_test.rs`,
-       `tests/integration/transform_test.rs`
+Files: `src/commands/play.rs`, `src/commands/analyze.rs`, `src/commands/analyze/`,
+       `src/commands/transform.rs`, `src/commands/copy.rs`, `src/commands/marker.rs`,
+       `tests/integration/play_test.rs`, `tests/integration/transform_test.rs`,
+       `tests/integration/transform_*_test.rs`, `tests/integration/cli_gzip_test.rs`,
+       `tests/integration.rs`
 Depends on: Stage 1, Stage 5, Stage 6, Stage 19, Stage 20, Stage 23
 
 Considerations:
-- `analyze.rs` is within the limit since Stage 19 (392 lines), keep it there.
+- `analyze.rs` is 392 lines: if the change pushes it over ~400, split it by responsibility
+  inside `src/commands/analyze/` (it already has `tests.rs` there).
+- New tests go into `tests/integration/cli_gzip_test.rs`. `transform_test.rs` is 775 lines:
+  split it by topic into files within ~400 lines first (pure move, identical sorted test
+  names), since this stage touches it.
 
 ### Stage 15: Clipboard always plain
 
