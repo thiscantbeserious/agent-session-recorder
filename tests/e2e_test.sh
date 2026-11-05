@@ -71,6 +71,10 @@ echo
 echo "Running TUI key press tests..."
 source "$E2E_DIR/tui.sh"
 
+echo
+echo "Running compress offer tests..."
+source "$E2E_DIR/offer.sh"
+
 # Check for critical errors that should fail the test suite
 # These indicate real problems even if individual tests passed
 echo
