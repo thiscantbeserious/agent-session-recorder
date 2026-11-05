@@ -29,12 +29,27 @@ impl State {
         self.save_to(&Config::config_dir()?.join(FILE))
     }
 
-    /// Load from a path, default when the file is missing or malformed
+    /// Load from a path, default when the file is missing or malformed (warns on stderr).
     pub fn load_from(path: &Path) -> Self {
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|s| toml::from_str(&s).ok())
-            .unwrap_or_default()
+        let (state, warning) = Self::load_checked(path);
+        if let Some(w) = warning {
+            eprintln!("Warning: {w}");
+        }
+        state
+    }
+
+    /// Like `load_from`, but returns the warning for an unparseable file instead of printing.
+    pub fn load_checked(path: &Path) -> (Self, Option<String>) {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return (Self::default(), None);
+        };
+        match toml::from_str(&text) {
+            Ok(state) => (state, None),
+            Err(e) => (
+                Self::default(),
+                Some(format!("ignoring unreadable {}: {e}", path.display())),
+            ),
+        }
     }
 
     /// Save to a path atomically (temp file plus rename), creating parent dirs
