@@ -619,15 +619,15 @@ Goal: `rust-version` in Cargo.toml matches what the code needs, CI builds with e
 toolchain, no `#[allow(clippy::incompatible_msrv)]` or pre-1.74 workarounds remain.
 Owner: implementer
 
-- [ ] Find the real minimum: build `cargo check --all-targets` with older rustup toolchains
+- [x] Find the real minimum: build `cargo check --all-targets` with older rustup toolchains
       (binary search, e.g. 1.75, 1.80, 1.85 ...) or `cargo msrv find` if installable. Dependencies
       count too (`cargo tree` crates with their own rust-version).
-- [ ] Set `rust-version` to that version.
-- [ ] Remove `#[allow(clippy::incompatible_msrv)]` and its ponytail comment in
+- [x] Set `rust-version` to that version.
+- [x] Remove `#[allow(clippy::incompatible_msrv)]` and its ponytail comment in
       `src/storage/compress/file.rs`, use `std::io::Error::other` instead of
       `Error::new(ErrorKind::Other, ..)` in `src/clipboard/plain_copy.rs` if the new MSRV allows.
-- [ ] CI job `msrv`: `dtolnay/rust-toolchain@<msrv>` and `cargo check --all-targets`.
-- [ ] Gates on stable and on the MSRV toolchain.
+- [x] CI job `msrv`: `dtolnay/rust-toolchain@<msrv>` and `cargo check --all-targets`.
+- [x] Gates on stable and on the MSRV toolchain.
 
 Files: `Cargo.toml`, `.github/workflows/ci.yml`, `src/storage/compress/file.rs`,
        `src/clipboard/plain_copy.rs`

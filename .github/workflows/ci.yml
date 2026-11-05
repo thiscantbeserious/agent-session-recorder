@@ -369,6 +369,19 @@ jobs:
       - name: Check all targets
         run: cargo check --all-targets
 
+  # MSRV - builds with exactly the rust-version from Cargo.toml (keep both in sync)
+  msrv:
+    name: MSRV (1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: Check all targets
+        run: cargo check --all-targets --locked
+
   # Lint - runs in parallel, fast-fail for style issues
   lint:
     name: Lint
