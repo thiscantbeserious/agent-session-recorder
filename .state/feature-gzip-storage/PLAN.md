@@ -144,14 +144,14 @@ Considerations:
 Goal: `.x.cast.gz.bak` byte copies, restore via hidden temp, rename keeps `.cast.gz`.
 Owner: implementer
 
-- [ ] RED: `create_backup(x.cast.gz)` creates `.x.cast.gz.bak` byte-identical to the source.
-- [ ] RED: `restore_from_backup(x.cast.gz)` restores bytes exactly, no `x.cast.cast.tmp`.
-- [ ] RED: `rename_file(dir/x.cast.gz, "y")` gives `dir/y.cast.gz` and moves the backup to
+- [x] RED: `create_backup(x.cast.gz)` creates `.x.cast.gz.bak` byte-identical to the source.
+- [x] RED: `restore_from_backup(x.cast.gz)` restores bytes exactly, no `x.cast.cast.tmp`.
+- [x] RED: `rename_file(dir/x.cast.gz, "y")` gives `dir/y.cast.gz` and moves the backup to
       `.y.cast.gz.bak`.
-- [ ] RED: rename length check counts the full `.cast.gz` suffix.
-- [ ] GREEN: `restore_from_backup` temp via `codec::temp_path_for`, `rename_file` uses
+- [x] RED: rename length check counts the full `.cast.gz` suffix.
+- [x] GREEN: `restore_from_backup` temp via `codec::temp_path_for`, `rename_file` uses
       `codec::session_stem`/`session_suffix` instead of `extension()`.
-- [ ] REFACTOR: `transform_ops::apply_transforms` calls `backup::create_backup` instead of its
+- [x] REFACTOR: `transform_ops::apply_transforms` calls `backup::create_backup` instead of its
       own `fs::copy` (one backup code path).
 
 Files: `src/files/backup.rs`, `src/files/filename.rs`, `src/asciicast/transform_ops.rs`,

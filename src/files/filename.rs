@@ -4,6 +4,10 @@
 //! Template parsing and rendering live in `super::template`.
 
 use deunicode::deunicode;
+use std::ffi::OsStr;
+
+use super::backup::backup_path_for;
+use super::codec;
 
 // Re-export template types so existing consumers (tests, recording.rs) keep working.
 pub use super::template::encode_base36;
@@ -266,61 +270,62 @@ pub fn rename_file(
     old_path: &std::path::Path,
     new_stem: &str,
 ) -> Result<std::path::PathBuf, RenameError> {
-    use crate::files::backup::backup_path_for;
+    validate_new_stem(new_stem)?;
+    let (current_stem, suffix) = split_name(old_path);
+    if new_stem == current_stem {
+        return Ok(old_path.to_path_buf());
+    }
+    let new_filename = format!("{new_stem}{suffix}");
+    if new_filename.len() > MAX_FILENAME_LENGTH {
+        return Err(RenameError::TooLong);
+    }
+    let new_path = old_path.with_file_name(&new_filename);
+    if new_path.exists() {
+        return Err(RenameError::AlreadyExists(new_filename));
+    }
+    std::fs::rename(old_path, &new_path).map_err(RenameError::IoError)?;
+    move_backup(old_path, &new_path);
+    Ok(new_path)
+}
 
+/// Stem and suffix of a file name, `.cast.gz` and `.cast` whole, any other extension as is.
+fn split_name(path: &std::path::Path) -> (&str, String) {
+    let name = path.file_name().and_then(OsStr::to_str).unwrap_or("");
+    let stem = codec::session_stem(name);
+    if stem != name {
+        return (stem, codec::session_suffix(path).into());
+    }
+    let stem = path.file_stem().and_then(OsStr::to_str).unwrap_or("");
+    let ext = path.extension().and_then(OsStr::to_str);
+    (stem, ext.map(|e| format!(".{e}")).unwrap_or_default())
+}
+
+fn validate_new_stem(new_stem: &str) -> Result<(), RenameError> {
     if new_stem.trim().is_empty() {
         return Err(RenameError::EmptyName);
     }
-
     if new_stem.chars().any(|c| !is_valid_filename_char(c)) {
         return Err(RenameError::InvalidChars);
     }
-
     let base_name = new_stem.split('.').next().unwrap_or(new_stem);
     let upper = base_name.to_uppercase();
     if WINDOWS_RESERVED.iter().any(|r| upper == *r) {
         return Err(RenameError::ReservedName);
     }
+    Ok(())
+}
 
-    let current_stem = old_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    if new_stem == current_stem {
-        return Ok(old_path.to_path_buf());
-    }
-
-    let ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let new_filename = if ext.is_empty() {
-        new_stem.to_string()
+/// Best-effort move of the hidden backup (or a legacy visible one) next to the renamed file.
+fn move_backup(old_path: &std::path::Path, new_path: &std::path::Path) {
+    let hidden = backup_path_for(old_path);
+    let source = if hidden.exists() {
+        hidden
     } else {
-        format!("{}.{}", new_stem, ext)
+        crate::files::backup::old_backup_path_for(old_path)
     };
-
-    if new_filename.len() > MAX_FILENAME_LENGTH {
-        return Err(RenameError::TooLong);
+    if source.exists() {
+        let _ = std::fs::rename(&source, backup_path_for(new_path));
     }
-
-    let parent = old_path.parent().unwrap_or(std::path::Path::new("."));
-    let new_path = parent.join(&new_filename);
-
-    if new_path.exists() {
-        return Err(RenameError::AlreadyExists(new_filename));
-    }
-
-    std::fs::rename(old_path, &new_path).map_err(RenameError::IoError)?;
-
-    let old_backup = backup_path_for(old_path);
-    if old_backup.exists() {
-        let new_backup = backup_path_for(&new_path);
-        let _ = std::fs::rename(&old_backup, &new_backup);
-    } else {
-        // Fallback: check for old-format backup and migrate it to hidden format
-        let old_format_backup = crate::files::backup::old_backup_path_for(old_path);
-        if old_format_backup.exists() {
-            let new_backup = backup_path_for(&new_path);
-            let _ = std::fs::rename(&old_format_backup, &new_backup);
-        }
-    }
-
-    Ok(new_path)
 }
 
 // ---- Internal helpers ----

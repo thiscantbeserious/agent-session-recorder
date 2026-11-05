@@ -59,7 +59,7 @@ pub fn restore_from_backup(path: &Path) -> Result<()> {
     }
 
     // Use atomic temp+rename pattern for crash safety
-    let temp_path = path.with_extension("cast.tmp");
+    let temp_path = crate::files::codec::temp_path_for(path);
 
     fs::copy(&backup, &temp_path)
         .with_context(|| format!("Failed to copy backup to temp file: {}", backup.display()))?;

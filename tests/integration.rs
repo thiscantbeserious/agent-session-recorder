@@ -9,6 +9,9 @@ mod shell;
 #[path = "integration/asciicast_test.rs"]
 mod asciicast_test;
 
+#[path = "integration/backup_gzip_test.rs"]
+mod backup_gzip_test;
+
 #[path = "integration/branding_test.rs"]
 mod branding_test;
 
