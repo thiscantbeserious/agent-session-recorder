@@ -103,7 +103,7 @@ pub fn validate_cast_header(path: &Path) -> Result<(), ImportError> {
     }
 
     // Check extension
-    if path.extension().and_then(|e| e.to_str()) != Some("cast") {
+    if path.extension().and_then(std::ffi::OsStr::to_str) != Some("cast") {
         return Err(ImportError::WrongExtension(format!(
             "Expected .cast extension, got: {}",
             path.display()
@@ -164,9 +164,12 @@ fn resolve_filename_conflict(dir: &Path, filename: &str) -> PathBuf {
     let path = Path::new(filename);
     let stem = path
         .file_stem()
-        .and_then(|s| s.to_str())
+        .and_then(std::ffi::OsStr::to_str)
         .unwrap_or(filename);
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let ext = path
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
 
     // Try numbered variants
     for i in 1..=999 {
@@ -392,7 +395,7 @@ impl StorageManager {
         } else {
             // Check all subdirectories
             fs::read_dir(&storage_dir)?
-                .filter_map(|entry| entry.ok())
+                .filter_map(Result::ok)
                 .map(|entry| entry.path())
                 .filter(|path| path.is_dir())
                 .collect()
@@ -401,7 +404,7 @@ impl StorageManager {
         for agent_dir in agent_dirs {
             let agent_name = agent_dir
                 .file_name()
-                .and_then(|n| n.to_str())
+                .and_then(std::ffi::OsStr::to_str)
                 .unwrap_or("unknown")
                 .to_string();
 
@@ -420,7 +423,7 @@ impl StorageManager {
                     sessions.push(SessionInfo {
                         filename: path
                             .file_name()
-                            .and_then(|n| n.to_str())
+                            .and_then(std::ffi::OsStr::to_str)
                             .unwrap_or("")
                             .to_string(),
                         agent: agent_name.clone(),
@@ -625,7 +628,7 @@ impl StorageManager {
         // Get source filename
         let filename = source
             .file_name()
-            .and_then(|n| n.to_str())
+            .and_then(std::ffi::OsStr::to_str)
             .ok_or_else(|| ImportError::CopyFailed("Invalid source filename".to_string()))?;
 
         // Resolve conflicts

@@ -163,7 +163,7 @@ pub const AGENT_FIELDS: &[FieldDoc] = &[
 /// lines for any documented fields not already present. This lets users
 /// discover all available options even when their default is "unset".
 pub fn insert_optional_field_templates(toml_str: &str) -> String {
-    let mut lines: Vec<String> = toml_str.lines().map(|l| l.to_string()).collect();
+    let mut lines: Vec<String> = toml_str.lines().map(str::to_string).collect();
 
     let present = collect_present_fields(&lines);
 
