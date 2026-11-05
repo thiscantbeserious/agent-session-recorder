@@ -162,3 +162,8 @@ mod cleanup_draw_test;
 
 #[path = "integration/migrate_test.rs"]
 mod migrate_test;
+
+#[path = "integration/cli_parse_more_test.rs"]
+mod cli_parse_more_test;
+#[path = "integration/cli_parse_test.rs"]
+mod cli_parse_test;
