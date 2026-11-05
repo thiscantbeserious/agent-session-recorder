@@ -1,7 +1,7 @@
 //! Transparent plain (`.cast`) and gzip (`.cast.gz`) session I/O.
 
 use anyhow::{Context, Result};
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 use flate2::{Compression, GzBuilder};
 use std::ffi::OsStr;
 use std::fs::File;
@@ -80,7 +80,7 @@ pub fn open_reader(path: &Path) -> Result<Box<dyn BufRead>> {
     if !is_gzip_path(path) {
         return Ok(Box::new(BufReader::new(file)));
     }
-    let inner = GzDecoder::new(BufReader::new(file));
+    let inner = MultiGzDecoder::new(BufReader::new(file));
     Ok(Box::new(BufReader::new(PathReader {
         inner,
         path: path.to_path_buf(),
@@ -127,9 +127,14 @@ fn write_gzip(file: File, write_fn: impl FnOnce(&mut dyn Write) -> Result<()>) -
         .inner
         .finish()
         .context("Failed to finish gzip stream")?;
-    let mut file = out.into_inner().map_err(io::IntoInnerError::into_error)?;
+    let file = out.into_inner().map_err(io::IntoInnerError::into_error)?;
+    patch_size(file, counter.count)
+}
+
+/// Overwrite the size placeholder in the gzip header with the real uncompressed size.
+fn patch_size(mut file: File, size: u64) -> Result<File> {
     file.seek(SeekFrom::Start(SIZE_OFFSET))?;
-    file.write_all(&counter.count.to_le_bytes())?;
+    file.write_all(&size.to_le_bytes())?;
     Ok(file)
 }
 
@@ -155,7 +160,11 @@ fn write_target(
         .with_context(|| format!("Failed to sync {}", tmp.display()))?;
     std::fs::rename(tmp, path)
         .with_context(|| format!("Failed to rename {} to {}", tmp.display(), path.display()))?;
-    sync_parent(path)
+    // The rename succeeded, so a failed directory fsync only weakens crash safety.
+    if let Err(e) = sync_parent(path) {
+        eprintln!("Warning: {:#}", e);
+    }
+    Ok(())
 }
 
 /// fsync the directory so the rename survives a crash (unix only).
