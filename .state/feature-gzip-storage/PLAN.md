@@ -672,6 +672,29 @@ Files: `src/theme/cli.rs`, `src/theme/mod.rs`, `src/help.rs`, `src/commands/conf
        `tests/integration/snapshot_cli_test.rs`
 Depends on: Stage 11
 
+### Stage 26: Config docs example values and size limit (found in Stage 16, in this MR)
+
+Goal: `FieldDoc.default_display` is used both for the "Default" column in generated docs and
+for the commented template line in config files. For optional fields those must differ:
+`size_threshold_gb` now shows default `10.0` in docs/wiki/Configuration.md although it is
+unset, and `# agent = auto-detect`, `# workers = auto`, `# token_budget = auto` are invalid
+TOML when uncommented (CodeRabbit flagged the pattern on #162). `src/config/docs.rs` is 593
+lines.
+Owner: implementer
+
+- [ ] Split `src/config/docs.rs` by responsibility (field tables, template insertion, markdown
+      generation) into modules within ~400 lines, pure move, identical sorted test names and
+      snapshots.
+- [ ] RED/GREEN: every template line produced by `insert_optional_field_templates`, once
+      uncommented, parses as valid TOML for its section (test iterates all fields).
+- [ ] RED/GREEN: generated docs show `unset` (or the real default) for optional fields, never
+      the example value.
+- [ ] `FieldDoc` gains `example: Option<&'static str>` used for templates, `default_display`
+      for docs. Regenerate with `cargo xtask gen-docs`.
+
+Files: `src/config/docs.rs`, `src/config/docs/`, `docs/`, `tests/integration/snapshots/`
+Depends on: Stage 16
+
 ## Dependencies
 
 - Stage 1, Stage 2, Stage 3 are independent foundations.
@@ -679,6 +702,7 @@ Depends on: Stage 11
 - Stage 5 depends on Stage 1, Stage 6 on Stage 1 and Stage 5.
 - Stage 17 depends on Stage 1, Stage 2, Stage 3 (Batch 1 hardening, user request).
 - Stage 20 depends on Stage 4, 5, 7, 15, 19 (Batch 4 review fixes).
+- Stage 26 depends on Stage 16 (config docs example values, docs.rs size).
 - Stage 25 depends on Stage 11 (CLI colour on terminal only, NO_COLOR).
 - Stage 24 depends on Stage 9, 13, 14, 15 (real MSRV enforced in CI).
 - Stage 23 depends on Stage 20, 21, 22 (review fixes, Windows check).
