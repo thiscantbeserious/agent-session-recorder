@@ -23,20 +23,20 @@ Goal: `src/sync/crypto.rs` with seal/open, metadata token, recovery phrase and S
 callers yet.
 Owner: implementer
 
-- [ ] Add `chacha20poly1305 = "0.10"`, `sha2 = "0.10"`, `data-encoding = "2"`.
-- [ ] RED/GREEN: `sha256_hex` of known input matches the NIST test vector for "abc".
-- [ ] RED/GREEN: `seal(key, aad, plain)` then `open` returns the input, output starts with
+- [x] Add `chacha20poly1305 = "0.10"`, `sha2 = "0.10"`, `data-encoding = "2"`.
+- [x] RED/GREEN: `sha256_hex` of known input matches the NIST test vector for "abc".
+- [x] RED/GREEN: `seal(key, aad, plain)` then `open` returns the input, output starts with
       `AGR1` + version 1, two seals of the same input differ (random nonce).
-- [ ] RED/GREEN: open fails on a flipped ciphertext byte, flipped tag, wrong key, wrong AAD,
+- [x] RED/GREEN: open fails on a flipped ciphertext byte, flipped tag, wrong key, wrong AAD,
       truncated blob, unknown version, each with a distinct error.
-- [ ] RED/GREEN: the sealed bytes of a gzip session contain neither `1f 8b` at offset 0 nor
+- [x] RED/GREEN: the sealed bytes of a gzip session contain neither `1f 8b` at offset 0 nor
       any substring of the session text.
-- [ ] RED/GREEN: `Meta { v, path, sha256, size }` round-trips through `seal_meta`/`open_meta`
+- [x] RED/GREEN: `Meta { v, path, sha256, size }` round-trips through `seal_meta`/`open_meta`
       as base64url, token for another key gives `OtherKey`.
-- [ ] RED/GREEN: phrase export/import round-trips, accepts lowercase, spaces and missing dashes,
+- [x] RED/GREEN: phrase export/import round-trips, accepts lowercase, spaces and missing dashes,
       rejects wrong prefix, wrong length and a single changed character (checksum).
-- [ ] `Key::generate()` from `OsRng`, `Debug` prints `Key(..)` never the bytes.
-- [ ] `cargo check --target x86_64-pc-windows-msvc` passes.
+- [x] `Key::generate()` from `OsRng`, `Debug` prints `Key(..)` never the bytes.
+- [x] `cargo check --target x86_64-pc-windows-msvc` passes.
 
 Files: `Cargo.toml`, `Cargo.lock`, `src/lib.rs`, `src/sync/mod.rs`, `src/sync/crypto.rs`
 Depends on: none
@@ -275,7 +275,7 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 
 | Stage | Status | Notes |
 |-------|--------|-------|
-| 1 | pending | |
+| 1 | done | also `zeroize = "1"` (already pulled in by the cipher) |
 | 2 | pending | |
 | 3 | pending | |
 | 4 | pending | |
