@@ -121,6 +121,23 @@ else
     fail "No cast file to check structure"
 fi
 
+# Test: Default compression (gzip) leaves only a .cast.gz after recording
+test_header "Record with compression gzip"
+create_config << 'TOMLEOF'
+[storage]
+compression = "gzip"
+TOMLEOF
+$AGR record gzagent -- "gzip e2e" </dev/null
+GZ_DIR="$HOME/recorded_agent_sessions/gzagent"
+if ls "$GZ_DIR/"*.cast.gz >/dev/null 2>&1 && ! ls "$GZ_DIR/"*.cast >/dev/null 2>&1; then
+    pass "Recording finished as .cast.gz with gzip compression"
+else
+    fail "Expected only .cast.gz with gzip compression"
+    ls "$GZ_DIR"
+fi
+rm -rf "$GZ_DIR"
+reset_config
+
 # Print summary when running standalone
 if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     print_summary
