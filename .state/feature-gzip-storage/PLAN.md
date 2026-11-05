@@ -479,17 +479,17 @@ Notes:
 Goal: every file this branch touched is within ~400 lines. Pure moves, no behavior change.
 Owner: implementer
 
-- [ ] Move inline `#[cfg(test)]` tests out of `src/config/migrate/mod.rs` (1055),
+- [x] Move inline `#[cfg(test)]` tests out of `src/config/migrate/mod.rs` (1055),
       `src/commands/analyze.rs` (699), `src/analyzer/transforms/cleaner.rs` (536) into
       `tests/integration/` where they only need the public API. Keep inline only tests that
       need private items, and split the source file if it is still over the limit.
-- [ ] Split `tests/integration/snapshot_tui_test.rs` (1232) by widget/screen into files within
+- [x] Split `tests/integration/snapshot_tui_test.rs` (1232) by widget/screen into files within
       ~400 lines. Snapshot names must stay identical (pass the explicit name to
       `assert_snapshot!`), no `.snap` file renamed or changed.
-- [ ] Bring `tests/integration/aggressive_transform_test.rs` (409),
+- [x] Bring `tests/integration/aggressive_transform_test.rs` (409),
       `tests/integration/storage_import_test.rs` (404), `tests/integration/import_test.rs`
       (404) within the limit.
-- [ ] Test names and counts identical before and after (diff of sorted test names).
+- [x] Test names and counts identical before and after (diff of sorted test names).
 
 Files: `src/config/migrate/mod.rs`, `src/commands/analyze.rs`,
        `src/analyzer/transforms/cleaner.rs`, `tests/integration/snapshot_tui_test.rs`,

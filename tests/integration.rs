@@ -12,10 +12,18 @@ mod asciicast_test;
 #[path = "integration/branding_test.rs"]
 mod branding_test;
 
+#[path = "integration/cleaner_test.rs"]
+mod cleaner_test;
+
 #[path = "integration/codec_size_test.rs"]
 mod codec_size_test;
 #[path = "integration/codec_test.rs"]
 mod codec_test;
+
+#[path = "integration/config_migrate_edge_test.rs"]
+mod config_migrate_edge_test;
+#[path = "integration/config_migrate_test.rs"]
+mod config_migrate_test;
 
 #[path = "integration/config_test.rs"]
 mod config_test;
@@ -41,12 +49,20 @@ mod storage_stats_test;
 #[path = "integration/storage_lookup_test.rs"]
 mod storage_lookup_test;
 
+#[path = "integration/storage_import_security_test.rs"]
+mod storage_import_security_test;
 #[path = "integration/storage_import_test.rs"]
 mod storage_import_test;
 
 #[path = "integration/storage_import_gzip_test.rs"]
 mod storage_import_gzip_test;
 
+#[path = "integration/snapshot_tui_explorer_test.rs"]
+mod snapshot_tui_explorer_test;
+#[path = "integration/snapshot_tui_import_test.rs"]
+mod snapshot_tui_import_test;
+#[path = "integration/snapshot_tui_modals_test.rs"]
+mod snapshot_tui_modals_test;
 #[path = "integration/snapshot_tui_test.rs"]
 mod snapshot_tui_test;
 
@@ -116,6 +132,8 @@ mod file_explorer_test;
 #[path = "integration/process_guard_test.rs"]
 mod process_guard_test;
 
+#[path = "integration/import_paste_test.rs"]
+mod import_paste_test;
 #[path = "integration/import_test.rs"]
 mod import_test;
 
@@ -128,6 +146,8 @@ mod dedupe_transform_test;
 #[path = "integration/content_cleaner_test.rs"]
 mod content_cleaner_test;
 
+#[path = "integration/aggressive_similarity_test.rs"]
+mod aggressive_similarity_test;
 #[path = "integration/aggressive_transform_test.rs"]
 mod aggressive_transform_test;
 

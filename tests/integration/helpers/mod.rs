@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 pub mod storage;
+pub mod tui_snapshot;
 
 use std::fs;
 use std::path::PathBuf;
