@@ -343,6 +343,17 @@ mod integrity_gzip {
     }
 
     #[test]
+    fn repair_drops_only_the_invalid_utf8_line_and_keeps_valid_bytes() {
+        let dir = TempDir::new().unwrap();
+        let path = write_raw(&dir, &[0xff, 0xfe, b'x']);
+
+        assert_eq!(repair(&path).unwrap(), 1);
+
+        let expected = b"{\"version\":3}\n[0.1, \"o\", \"ok\"]\n[0.2, \"o\", \"ok\"]\n";
+        assert_eq!(std::fs::read(&path).unwrap(), expected);
+    }
+
+    #[test]
     fn repair_and_diagnose_agree_on_json_errors() {
         let dir = TempDir::new().unwrap();
         let path = write_raw(&dir, b"[not json");
