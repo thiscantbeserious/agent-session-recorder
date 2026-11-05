@@ -20,6 +20,11 @@ mod codec_size_test;
 #[path = "integration/codec_test.rs"]
 mod codec_test;
 
+#[path = "integration/config_migrate_edge_test.rs"]
+mod config_migrate_edge_test;
+#[path = "integration/config_migrate_test.rs"]
+mod config_migrate_test;
+
 #[path = "integration/config_test.rs"]
 mod config_test;
 
