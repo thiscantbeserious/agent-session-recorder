@@ -538,10 +538,10 @@ Goal: `src/tui/list_app.rs` (2134), `src/tui/widgets/file_explorer.rs` (2109),
 modules within ~400 lines. Pure move, no behavior change.
 Owner: implementer
 
-- [ ] Sorted test names identical before and after, snapshot files unchanged, no `.snap.new`.
-- [ ] Public paths used elsewhere keep working via re-exports.
-- [ ] `main.rs` keeps only CLI parsing and dispatch (coding-principles entry point rule).
-- [ ] Functions moved unchanged; functions over ~20 lines in these files are split in this
+- [x] Sorted test names identical before and after, snapshot files unchanged, no `.snap.new`.
+- [x] Public paths used elsewhere keep working via re-exports.
+- [x] `main.rs` keeps only CLI parsing and dispatch (coding-principles entry point rule).
+- [x] Functions moved unchanged; functions over ~20 lines in these files are split in this
       stage where the split is mechanical.
 
 Files: `src/tui/list_app.rs`, `src/tui/list_app/`, `src/tui/widgets/file_explorer.rs`,
