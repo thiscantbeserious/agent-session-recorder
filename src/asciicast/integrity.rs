@@ -3,11 +3,12 @@
 //! Provides non-interactive functions for detecting and fixing corrupt lines
 //! in asciicast files, plus an interactive wrapper that prompts via stdin.
 
-use std::fs;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+
+use crate::files::codec;
 
 use super::types::{Event, Header};
 use super::AsciicastFile;
@@ -40,9 +41,7 @@ pub struct DiagnoseResult {
 /// every line that cannot be parsed as a valid event.
 pub fn diagnose<P: AsRef<Path>>(path: P) -> Result<DiagnoseResult> {
     let path = path.as_ref();
-    let file = fs::File::open(path).with_context(|| format!("Failed to open file: {:?}", path))?;
-    let reader = BufReader::new(file);
-    let mut lines = reader.lines();
+    let mut lines = codec::open_reader(path)?.lines();
 
     // Validate header
     let header_line = lines
@@ -111,17 +110,18 @@ pub fn diagnose<P: AsRef<Path>>(path: P) -> Result<DiagnoseResult> {
 
 /// Repair an asciicast file by removing corrupt/unparseable lines.
 ///
-/// Reads the file, keeps only the header and valid event lines, and
-/// writes the result back atomically. Returns the number of lines removed.
+/// Streams the file through the codec, keeps only the header and valid event
+/// lines, and writes the result back atomically in the same format. Returns
+/// the number of lines removed.
 pub fn repair<P: AsRef<Path>>(path: P) -> Result<usize> {
     let path = path.as_ref();
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read file: {:?}", path))?;
+    let mut lines = codec::open_reader(path)?.lines();
 
-    let mut lines_iter = content.lines();
-
-    let header_line = lines_iter.next().context("File is empty")?;
-    let header: Header = serde_json::from_str(header_line).context("Failed to parse header")?;
+    let header_line = lines
+        .next()
+        .context("File is empty")?
+        .context("Failed to read header line")?;
+    let header: Header = serde_json::from_str(&header_line).context("Failed to parse header")?;
     if header.version != 3 {
         bail!(
             "Only asciicast v3 format is supported (got version {})",
@@ -130,36 +130,20 @@ pub fn repair<P: AsRef<Path>>(path: P) -> Result<usize> {
     }
 
     let mut removed = 0;
-    let temp_path = path.with_extension("cast.tmp");
-    let mut file = fs::File::create(&temp_path)
-        .with_context(|| format!("Failed to create temp file: {:?}", temp_path))?;
-
-    writeln!(file, "{}", header_line)?;
-
-    for line in lines_iter {
-        if line.trim().is_empty() {
-            continue;
+    codec::atomic_write(path, |w| {
+        writeln!(w, "{}", header_line)?;
+        for line in lines {
+            let line = line.context("Failed to read line")?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            if line.contains('\0') || Event::from_json(&line).is_err() {
+                removed += 1;
+                continue;
+            }
+            writeln!(w, "{}", line)?;
         }
-
-        if line.contains('\0') {
-            removed += 1;
-            continue;
-        }
-
-        if Event::from_json(line).is_err() {
-            removed += 1;
-            continue;
-        }
-
-        writeln!(file, "{}", line)?;
-    }
-
-    file.sync_all()?;
-    drop(file);
-
-    fs::rename(&temp_path, path).with_context(|| {
-        let _ = fs::remove_file(&temp_path);
-        format!("Failed to replace file: {:?}", path)
+        Ok(())
     })?;
 
     Ok(removed)
@@ -215,6 +199,7 @@ pub fn check_file_integrity(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::io::Write;
 
     #[test]

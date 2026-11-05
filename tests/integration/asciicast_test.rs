@@ -193,3 +193,67 @@ fn rejects_non_v3_files() {
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("v3"));
 }
+
+// === Gzip round trips ===
+
+use agr::files::codec;
+use std::path::Path;
+
+const CORRUPT: &str = "{\"version\":3}\n[0.1, \"o\", \"a\"]\nnot json\n[0.2, \"o\", \"b\"]\n";
+
+fn seed(path: &Path, content: &str) {
+    codec::atomic_write(path, |w| Ok(w.write_all(content.as_bytes())?)).unwrap();
+}
+
+fn is_gzip_file(path: &Path) -> bool {
+    std::fs::read(path).unwrap().starts_with(&[0x1f, 0x8b])
+}
+
+#[test]
+fn parse_gz_equals_plain_twin() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let content = load_fixture("sample.cast");
+    seed(&dir.path().join("x.cast"), &content);
+    seed(&dir.path().join("x.cast.gz"), &content);
+
+    let plain = AsciicastFile::parse(dir.path().join("x.cast")).unwrap();
+    let gz = AsciicastFile::parse(dir.path().join("x.cast.gz")).ok();
+
+    assert_eq!(gz.and_then(|c| c.to_string().ok()), plain.to_string().ok());
+}
+
+#[test]
+fn write_keeps_format_by_suffix_and_leaves_no_temp() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let cast = AsciicastFile::parse_str(&load_fixture("sample.cast")).unwrap();
+
+    for (name, gzip) in [("x.cast", false), ("x.cast.gz", true)] {
+        let path = dir.path().join(name);
+        cast.write(&path).unwrap();
+        assert_eq!(is_gzip_file(&path), gzip, "{name}");
+        assert_eq!(
+            AsciicastFile::parse(&path).unwrap().to_string().ok(),
+            cast.to_string().ok()
+        );
+    }
+    assert!(!dir.path().join("x.cast.cast.tmp").exists());
+    assert!(!codec::temp_path_for(&dir.path().join("x.cast.gz")).exists());
+}
+
+#[test]
+fn diagnose_and_repair_keep_format() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    for (name, gzip) in [("x.cast", false), ("x.cast.gz", true)] {
+        let path = dir.path().join(name);
+        seed(&path, CORRUPT);
+
+        let found = agr::asciicast::diagnose(&path)
+            .ok()
+            .map(|d| d.bad_lines.len());
+        assert_eq!(found, Some(1), "{name}");
+        assert_eq!(agr::asciicast::repair(&path).ok(), Some(1), "{name}");
+        assert_eq!(is_gzip_file(&path), gzip, "{name}");
+        assert_eq!(AsciicastFile::parse(&path).unwrap().events.len(), 2);
+    }
+}

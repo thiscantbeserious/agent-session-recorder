@@ -445,7 +445,7 @@ mod tests {
         apply_transforms(&path).unwrap();
 
         // Verify no .tmp file exists after successful operation
-        let temp_path = path.with_extension("cast.tmp");
+        let temp_path = crate::files::codec::temp_path_for(&path);
         assert!(
             !temp_path.exists(),
             "Temp file should not exist after successful transform"
@@ -468,7 +468,7 @@ mod tests {
         restore_from_backup(&path).unwrap();
 
         // Verify no .tmp file exists after successful operation
-        let temp_path = path.with_extension("cast.tmp");
+        let temp_path = crate::files::codec::temp_path_for(&path);
         assert!(
             !temp_path.exists(),
             "Temp file should not exist after successful restore"
@@ -537,7 +537,7 @@ mod tests {
         );
 
         // Verify no .tmp file exists (cleanup should have happened)
-        let temp_path = path.with_extension("cast.tmp");
+        let temp_path = crate::files::codec::temp_path_for(&path);
         assert!(
             !temp_path.exists(),
             "Temp file should be cleaned up after rename failure"
@@ -579,7 +579,7 @@ mod tests {
         );
 
         // Verify no .tmp file exists (cleanup should have happened)
-        let temp_path = path.with_extension("cast.tmp");
+        let temp_path = crate::files::codec::temp_path_for(&path);
         assert!(
             !temp_path.exists(),
             "Temp file should be cleaned up after rename failure"
