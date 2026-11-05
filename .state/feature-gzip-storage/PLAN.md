@@ -155,7 +155,8 @@ Owner: implementer
       own `fs::copy` (one backup code path).
 
 Files: `src/files/backup.rs`, `src/files/filename.rs`, `src/asciicast/transform_ops.rs`,
-       `tests/integration/filename_test.rs`
+       `tests/integration/backup_gzip_test.rs`, `tests/integration.rs`
+(New test file instead of `filename_test.rs`, which is 2807 lines.)
 Depends on: Stage 1, Stage 5, Stage 20, Stage 23
 
 Considerations:
@@ -193,9 +194,9 @@ Considerations:
 Goal: on-disk size stays primary, uncompressed size shown in status and list.
 Owner: implementer
 
-- [ ] RED: `SessionInfo` exposes `uncompressed_size()` via `codec::uncompressed_size` (trailer
-      read, test asserts it works on a file whose body is garbage after a valid trailer, as
-      proof there is no decompress).
+- [ ] RED: `SessionInfo` exposes `uncompressed_size()` via `codec::uncompressed_size` (AG
+      header subfield since Stage 18, trailer fallback for foreign files). Test proves there
+      is no decompress: a file with a valid header and garbage body still returns the size.
 - [ ] RED: `StorageStats.total_size` equals the sum of on-disk sizes, a new
       `uncompressed_total` is the sum of uncompressed sizes (or flags "4GiB+" when any part
       overflowed).
