@@ -7,6 +7,24 @@ use anyhow::Result;
 use super::CleanupApp;
 use crate::files::remove_auxiliary_files;
 
+/// Delete session files with their auxiliary lock/backup files.
+///
+/// Returns the number of removed sessions and the on-disk bytes freed.
+pub(super) fn delete_paths(paths: &[String]) -> (usize, u64) {
+    let mut deleted = 0;
+    let mut freed = 0;
+    for path in paths {
+        let size = std::fs::metadata(path).map_or(0, |m| m.len());
+        // Always attempt auxiliary cleanup, even if session file removal fails
+        remove_auxiliary_files(std::path::Path::new(path));
+        if std::fs::remove_file(path).is_ok() {
+            deleted += 1;
+            freed += size;
+        }
+    }
+    (deleted, freed)
+}
+
 impl CleanupApp {
     /// Select items matching a glob-like pattern.
     /// Supports: * (any chars), ? (single char), agent/pattern syntax
@@ -61,52 +79,37 @@ impl CleanupApp {
 
     /// Delete all selected sessions.
     pub(super) fn delete_selected(&mut self) -> Result<()> {
-        let selected_items = self.shared.explorer.selected_items();
-        if selected_items.is_empty() {
+        let paths: Vec<String> = self
+            .shared
+            .explorer
+            .selected_items()
+            .iter()
+            .map(|i| i.path.clone())
+            .collect();
+        if paths.is_empty() {
             return Ok(());
         }
-
-        // Collect paths to delete
-        let paths: Vec<String> = selected_items.iter().map(|i| i.path.clone()).collect();
-        let count = paths.len();
-
-        // Delete files and their auxiliary lock/backup files (both formats)
-        let mut deleted = 0;
-        let mut total_freed: u64 = 0;
-        for path in &paths {
-            if let Ok(metadata) = std::fs::metadata(path) {
-                total_freed += metadata.len();
-            }
-            // Always attempt auxiliary cleanup, even if cast file removal fails
-            remove_auxiliary_files(std::path::Path::new(path));
-            if std::fs::remove_file(path).is_ok() {
-                deleted += 1;
-            }
-        }
-
-        // Remove from explorer
+        let (deleted, freed) = delete_paths(&paths);
         for path in &paths {
             self.shared.explorer.remove_item(path);
         }
-
-        // Update status
-        if deleted == count {
-            self.shared.status_message = Some(format!(
-                "Deleted {} sessions (freed {})",
-                deleted,
-                format_size(total_freed)
-            ));
-            self.files_deleted = true;
-        } else {
-            self.shared.status_message = Some(format!(
-                "Deleted {}/{} sessions (some files could not be removed)",
-                deleted, count
-            ));
-            if deleted > 0 {
-                self.files_deleted = true;
-            }
-        }
-
+        self.shared.status_message = Some(deletion_status(deleted, paths.len(), freed));
+        self.files_deleted |= deleted > 0;
         Ok(())
     }
+}
+
+/// Status line after a delete run, the freed size is the on-disk size.
+pub(super) fn deletion_status(deleted: usize, count: usize, freed: u64) -> String {
+    if deleted == count {
+        return format!(
+            "Deleted {} sessions (freed {})",
+            deleted,
+            format_size(freed)
+        );
+    }
+    format!(
+        "Deleted {}/{} sessions (some files could not be removed)",
+        deleted, count
+    )
 }

@@ -215,3 +215,32 @@ fn glob_match_multibyte_utf8() {
     assert!(glob_match("über.cast", "?ber.cast"));
     assert!(glob_match("日本語.cast", "*.cast"));
 }
+
+// Deleting compressed sessions
+
+#[test]
+fn delete_paths_removes_gzip_session_with_hidden_backup() {
+    use super::actions::delete_paths;
+    let dir = tempfile::tempdir().unwrap();
+    let session = dir.path().join("x.cast.gz");
+    let backup = dir.path().join(".x.cast.gz.bak");
+    std::fs::write(&session, [0u8; 40]).unwrap();
+    std::fs::write(&backup, b"bak").unwrap();
+
+    let (deleted, freed) = delete_paths(&[session.to_string_lossy().to_string()]);
+
+    assert_eq!(deleted, 1);
+    assert_eq!(freed, 40);
+    assert!(!session.exists());
+    assert!(!backup.exists());
+}
+
+#[test]
+fn deletion_status_reports_on_disk_size_freed() {
+    use super::actions::deletion_status;
+    assert_eq!(
+        deletion_status(2, 2, 2048),
+        "Deleted 2 sessions (freed 2 KiB)"
+    );
+    assert!(deletion_status(1, 2, 0).contains("1/2"));
+}

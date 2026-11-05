@@ -29,7 +29,7 @@ impl CleanupApp {
             help_shortcut_line("  a", "              Select all / Deselect all", accent),
             help_shortcut_line(
                 "  g",
-                "              Glob select (e.g., *2024*, claude/*.cast)",
+                "              Glob select (e.g., *2024*, claude/*.cast*)",
                 accent,
             ),
             Line::from(""),
