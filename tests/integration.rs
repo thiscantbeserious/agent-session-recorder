@@ -47,6 +47,12 @@ mod storage_import_test;
 #[path = "integration/storage_import_gzip_test.rs"]
 mod storage_import_gzip_test;
 
+#[path = "integration/snapshot_tui_explorer_test.rs"]
+mod snapshot_tui_explorer_test;
+#[path = "integration/snapshot_tui_import_test.rs"]
+mod snapshot_tui_import_test;
+#[path = "integration/snapshot_tui_modals_test.rs"]
+mod snapshot_tui_modals_test;
 #[path = "integration/snapshot_tui_test.rs"]
 mod snapshot_tui_test;
 
