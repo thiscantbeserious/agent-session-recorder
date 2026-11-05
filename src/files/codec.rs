@@ -2,8 +2,7 @@
 
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
-use flate2::write::GzEncoder;
-use flate2::Compression;
+use flate2::{Compression, GzBuilder};
 use std::ffi::OsStr;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
@@ -12,11 +11,13 @@ use std::path::{Path, PathBuf};
 pub const SESSION_SUFFIX: &str = ".cast";
 pub const GZIP_SUFFIX: &str = ".cast.gz";
 
-/// Wrap-plausibility ratio for the 32-bit gzip ISIZE field.
-const MAX_RATIO: u64 = 64;
-const ISIZE_MODULUS: u64 = 1 << 32;
+/// Gzip FEXTRA subfield id holding the exact uncompressed size (u64 LE).
+const SIZE_SUBFIELD_ID: &[u8; 2] = b"AG";
+/// Byte offset of that u64: 10 byte header, 2 byte XLEN, 4 byte subfield header.
+const SIZE_OFFSET: u64 = 16;
+const FEXTRA: u8 = 0x04;
 
-/// Uncompressed size of a session, `Over4GiB` when the gzip ISIZE may have wrapped.
+/// Uncompressed size of a session, `Over4GiB` when only a wrapped gzip ISIZE is known.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UncompressedSize {
     Exact(u64),
@@ -86,32 +87,100 @@ pub fn open_reader(path: &Path) -> Result<Box<dyn BufRead>> {
     })))
 }
 
-type WriteFn<'a> = &'a mut dyn FnMut(&mut dyn Write) -> Result<()>;
+/// Counts bytes passed through, so the gzip header can record the uncompressed size.
+struct CountingWriter<W> {
+    inner: W,
+    count: u64,
+}
 
-fn write_target(path: &Path, tmp: &Path, write_fn: WriteFn) -> Result<()> {
-    let file = File::create(tmp).with_context(|| format!("Failed to create {}", tmp.display()))?;
-    let mut out = BufWriter::new(file);
-    if is_gzip_path(path) {
-        // Default GzEncoder header: mtime 0, no FNAME, so output is deterministic.
-        let mut enc = GzEncoder::new(&mut out, Compression::default());
-        write_fn(&mut enc)?;
-        enc.finish()?;
-    } else {
-        write_fn(&mut out)?;
+impl<W: Write> Write for CountingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        self.count += n as u64;
+        Ok(n)
     }
-    let file = out.into_inner().map_err(io::IntoInnerError::into_error)?;
-    file.sync_all()?;
-    std::fs::rename(tmp, path).with_context(|| format!("Failed to write {}", path.display()))
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+/// FEXTRA payload: subfield `AG`, length 8, zero size placeholder.
+fn size_placeholder() -> Vec<u8> {
+    let mut extra = SIZE_SUBFIELD_ID.to_vec();
+    extra.extend_from_slice(&8u16.to_le_bytes());
+    extra.extend_from_slice(&0u64.to_le_bytes());
+    extra
+}
+
+fn write_gzip(file: File, write_fn: impl FnOnce(&mut dyn Write) -> Result<()>) -> Result<File> {
+    // Fixed header: mtime 0, no FNAME, so output is deterministic.
+    let enc = GzBuilder::new()
+        .extra(size_placeholder())
+        .write(BufWriter::new(file), Compression::default());
+    let mut counter = CountingWriter {
+        inner: enc,
+        count: 0,
+    };
+    write_fn(&mut counter)?;
+    let out = counter
+        .inner
+        .finish()
+        .context("Failed to finish gzip stream")?;
+    let mut file = out.into_inner().map_err(io::IntoInnerError::into_error)?;
+    file.seek(SeekFrom::Start(SIZE_OFFSET))?;
+    file.write_all(&counter.count.to_le_bytes())?;
+    Ok(file)
+}
+
+fn write_plain(file: File, write_fn: impl FnOnce(&mut dyn Write) -> Result<()>) -> Result<File> {
+    let mut out = BufWriter::new(file);
+    write_fn(&mut out)?;
+    Ok(out.into_inner().map_err(io::IntoInnerError::into_error)?)
+}
+
+fn write_target(
+    path: &Path,
+    tmp: &Path,
+    write_fn: impl FnOnce(&mut dyn Write) -> Result<()>,
+) -> Result<()> {
+    let file = File::create(tmp).with_context(|| format!("Failed to create {}", tmp.display()))?;
+    let file = if is_gzip_path(path) {
+        write_gzip(file, write_fn)
+    } else {
+        write_plain(file, write_fn)
+    }
+    .with_context(|| format!("Failed to write {}", path.display()))?;
+    file.sync_all()
+        .with_context(|| format!("Failed to sync {}", tmp.display()))?;
+    std::fs::rename(tmp, path)
+        .with_context(|| format!("Failed to rename {} to {}", tmp.display(), path.display()))?;
+    sync_parent(path)
+}
+
+/// fsync the directory so the rename survives a crash (unix only).
+fn sync_parent(path: &Path) -> Result<()> {
+    if !cfg!(unix) {
+        return Ok(());
+    }
+    let dir = match path.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
+    };
+    File::open(dir)
+        .and_then(|d| d.sync_all())
+        .with_context(|| format!("Failed to sync directory {}", dir.display()))
 }
 
 /// Write via a hidden temp file and rename, gzip-encoding when the target is `.cast.gz`.
+// ponytail: fixed temp path, two concurrent writers to the same target clobber each other,
+// upgrade path is a unique temp name (pid) if concurrent writes ever happen.
 pub fn atomic_write(
     path: &Path,
     write_fn: impl FnOnce(&mut dyn Write) -> Result<()>,
 ) -> Result<()> {
     let tmp = temp_path_for(path);
-    let mut once = Some(write_fn);
-    let result = write_target(path, &tmp, &mut |w| once.take().map_or(Ok(()), |f| f(w)));
+    let result = write_target(path, &tmp, write_fn);
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
@@ -144,28 +213,61 @@ pub fn same_content(a: &Path, b: &Path) -> Result<bool> {
     }
 }
 
-/// Decide whether the 32-bit ISIZE may have wrapped given the on-disk size.
-// ponytail: sessions over 4GiB compressing better than 64x show a wrong exact number,
-// upgrade path is storing the 64-bit size in the gzip FEXTRA field.
-pub fn size_from_trailer(isize: u64, on_disk: u64) -> UncompressedSize {
-    if isize + ISIZE_MODULUS <= on_disk.saturating_mul(MAX_RATIO) {
-        UncompressedSize::Over4GiB
-    } else {
-        UncompressedSize::Exact(isize)
-    }
-}
-
-/// Uncompressed size from the gzip trailer (ISIZE) or the plain file length.
-pub fn uncompressed_size(path: &Path) -> Result<UncompressedSize> {
+/// Size from our `AG` header subfield, `None` for gzip files written by other tools.
+/// Reads only the header bytes, never the deflate body.
+fn size_from_header(path: &Path) -> Result<Option<u64>> {
     let mut file =
         File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
-    let len = file.metadata()?.len();
-    if !is_gzip_path(path) {
-        return Ok(UncompressedSize::Exact(len));
+    let mut fixed = [0u8; 12];
+    let read = file.read_exact(&mut fixed).and_then(|_| {
+        let xlen = u16::from_le_bytes([fixed[10], fixed[11]]) as usize;
+        let mut extra = vec![0u8; if fixed[3] & FEXTRA == 0 { 0 } else { xlen }];
+        file.read_exact(&mut extra).map(|_| extra)
+    });
+    // A header too short for FEXTRA is not an error, the trailer fallback decides.
+    Ok(read.ok().and_then(|extra| find_size_subfield(&extra)))
+}
+
+fn find_size_subfield(mut extra: &[u8]) -> Option<u64> {
+    while extra.len() >= 4 {
+        let len = u16::from_le_bytes([extra[2], extra[3]]) as usize;
+        let data = extra.get(4..4 + len)?;
+        if extra[..2] == SIZE_SUBFIELD_ID[..] {
+            return Some(u64::from_le_bytes(data.try_into().ok()?));
+        }
+        extra = &extra[4 + len..];
     }
+    None
+}
+
+/// Trailer ISIZE as `Exact`, `Over4GiB` when it is below the on-disk size (a wrap).
+fn size_from_trailer(path: &Path, on_disk: u64) -> Result<UncompressedSize> {
+    let mut file =
+        File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
     let mut buf = [0u8; 4];
     file.seek(SeekFrom::End(-4))
         .and_then(|_| file.read_exact(&mut buf))
         .with_context(|| format!("Failed to read gzip trailer of {}", path.display()))?;
-    Ok(size_from_trailer(u32::from_le_bytes(buf) as u64, len))
+    let isize = u32::from_le_bytes(buf) as u64;
+    Ok(if isize < on_disk {
+        UncompressedSize::Over4GiB
+    } else {
+        UncompressedSize::Exact(isize)
+    })
+}
+
+/// Uncompressed size: plain file length, gzip `AG` header subfield, else the gzip trailer.
+// ponytail: foreign gzip files over 4GiB whose wrapped ISIZE still exceeds the on-disk size
+// show a wrong number, rewriting through `atomic_write` fixes them.
+pub fn uncompressed_size(path: &Path) -> Result<UncompressedSize> {
+    let len = std::fs::metadata(path)
+        .with_context(|| format!("Failed to stat {}", path.display()))?
+        .len();
+    if !is_gzip_path(path) {
+        return Ok(UncompressedSize::Exact(len));
+    }
+    match size_from_header(path)? {
+        Some(size) => Ok(UncompressedSize::Exact(size)),
+        None => size_from_trailer(path, len),
+    }
 }

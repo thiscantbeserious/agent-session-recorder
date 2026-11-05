@@ -1,6 +1,6 @@
 //! Tests for the session codec (plain and gzip)
 
-use agr::files::codec::{self, UncompressedSize};
+use agr::files::codec;
 use flate2::read::GzDecoder;
 use std::io::{BufRead, Read};
 use std::path::Path;
@@ -188,41 +188,57 @@ fn same_content_compares_decoded_bytes() {
     assert!(!codec::same_content(&a, &c).unwrap());
 }
 
+fn chain(err: &anyhow::Error) -> String {
+    format!("{err:#}")
+}
+
 #[test]
-fn uncompressed_size_plain_is_file_length() {
+fn atomic_write_create_error_names_temp_path() {
     let dir = TempDir::new().unwrap();
-    let p = dir.path().join("a.cast");
-    write_bytes(&p, b"12345");
-    assert_eq!(
-        codec::uncompressed_size(&p).unwrap(),
-        UncompressedSize::Exact(5)
-    );
+    let p = dir.path().join("missing").join("x.cast.gz");
+    let err = codec::atomic_write(&p, |_| Ok(())).unwrap_err();
+    assert!(chain(&err).contains(".x.cast.gz.tmp"), "{}", chain(&err));
 }
 
 #[test]
-fn uncompressed_size_gzip_reads_trailer() {
+fn atomic_write_closure_error_names_target_path() {
     let dir = TempDir::new().unwrap();
-    let p = dir.path().join("a.cast.gz");
-    write_bytes(&p, &vec![b'a'; 1000]);
-    assert_eq!(
-        codec::uncompressed_size(&p).unwrap(),
-        UncompressedSize::Exact(1000)
-    );
+    let p = dir.path().join("x.cast.gz");
+    let err = codec::atomic_write(&p, |_| anyhow::bail!("boom")).unwrap_err();
+    let msg = chain(&err);
+    assert!(msg.contains("x.cast.gz") && msg.contains("boom"), "{msg}");
 }
 
 #[test]
-fn size_decision_exact_at_realistic_ratio() {
-    // 490MB in 52MB (9.5x)
-    let got = codec::size_from_trailer(490_000_000, 52_000_000);
-    assert_eq!(got, UncompressedSize::Exact(490_000_000));
+fn atomic_write_rename_error_names_target_path() {
+    let dir = TempDir::new().unwrap();
+    let p = dir.path().join("x.cast");
+    std::fs::create_dir(&p).unwrap();
+    std::fs::write(p.join("keep"), b"k").unwrap();
+    let err = codec::atomic_write(&p, |w| Ok(w.write_all(b"a")?)).unwrap_err();
+    assert!(chain(&err).contains("x.cast"), "{}", chain(&err));
+    assert!(!codec::temp_path_for(&p).exists());
 }
 
 #[test]
-fn size_decision_over_4gib_when_wrap_plausible() {
-    // ISIZE 0.2GiB wrapped from ~4.2GiB, ~450MB on disk
-    let isize = 200_000_000;
-    assert_eq!(
-        codec::size_from_trailer(isize, 450_000_000),
-        UncompressedSize::Over4GiB
-    );
+fn open_reader_missing_file_names_path() {
+    let err = codec::open_reader(Path::new("/nope/gone.cast.gz"))
+        .err()
+        .unwrap();
+    assert!(chain(&err).contains("gone.cast.gz"), "{}", chain(&err));
+}
+
+#[test]
+fn session_path_rejects_hidden_bak_of_gzip() {
+    assert!(!codec::is_session_path(Path::new("d/.x.cast.gz.bak")));
+}
+
+#[test]
+fn same_content_detects_length_mismatch() {
+    let dir = TempDir::new().unwrap();
+    let (a, b) = (dir.path().join("a.cast"), dir.path().join("b.cast.gz"));
+    write_bytes(&a, b"abc\n");
+    write_bytes(&b, b"abc\nmore\n");
+    assert!(!codec::same_content(&a, &b).unwrap());
+    assert!(!codec::same_content(&b, &a).unwrap());
 }
