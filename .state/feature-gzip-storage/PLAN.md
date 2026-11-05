@@ -576,25 +576,25 @@ Depends on: Stage 20, Stage 21
 Goal: fix every Stage 20/21 review finding, add a Windows compile check to CI.
 Owner: implementer
 
-- [ ] `#[cfg(not(tarpaulin_include))]` on `dispatch::dispatch` (was covered by the excluded
+- [x] `#[cfg(not(tarpaulin_include))]` on `dispatch::dispatch` (was covered by the excluded
       `main` before the split).
-- [ ] RED/GREEN: `repair` drops invalid-UTF-8 lines (deliberate since Stage 20, matches
+- [x] RED/GREEN: `repair` drops invalid-UTF-8 lines (deliberate since Stage 20, matches
       `diagnose`), test pins it: file with one invalid-UTF-8 line, repair removes exactly it,
       valid lines byte-identical. ADR note.
-- [ ] RED/GREEN: dir fsync warning is returned to the caller instead of `eprintln!` while a
+- [x] RED/GREEN: dir fsync warning is returned to the caller instead of `eprintln!` while a
       TUI may own the terminal. Design: a process-wide warning sink in `src/files/codec.rs`
       (`set_warning_sink(fn(&str))` / default stderr), the TUI app installs a sink that queues
       the message for its status line while it owns the terminal and restores stderr on exit.
       Keeps `atomic_write`'s signature for its many callers. Test: install a test sink, force
       a dir fsync failure, assert the sink got the message and nothing hit stderr.
-- [ ] `is_owned_by` becomes `pub(crate)`, test moved accordingly (inline test module if
+- [x] `is_owned_by` becomes `pub(crate)`, test moved accordingly (inline test module if
       needed).
-- [ ] Comment on the non-unix `fresh_temp_dir` (fixed name, no ownership check, Windows is
+- [x] Comment on the non-unix `fresh_temp_dir` (fixed name, no ownership check, Windows is
       out of scope). ADR note on leftover `<tmp>/agr-clipboard` dirs from before the uid name.
-- [ ] RED/GREEN: `uncompressed_size` on a foreign multi-member `.cast.gz`: documented trailer
+- [x] RED/GREEN: `uncompressed_size` on a foreign multi-member `.cast.gz`: documented trailer
       limit (last member ISIZE), and `open_reader` behavior on trailing non-gzip bytes after
       the last member pinned by a test (error with path, no silent truncation).
-- [ ] Windows: fix `cargo check --target x86_64-pc-windows-msvc --all-targets` errors
+- [x] Windows: fix `cargo check --target x86_64-pc-windows-msvc --all-targets` errors
       (`libc::getuid` in `tests/integration/clipboard_gzip_test.rs` without `#[cfg(unix)]`,
       unused `inode` in `src/recording.rs` on non-unix), then add a CI job
       `cargo check --target x86_64-pc-windows-msvc --all-targets` with `RUSTFLAGS=-D warnings`
