@@ -1,5 +1,6 @@
 //! Lazy session preview data (duration, markers, terminal snapshot).
 
+use std::io::BufRead;
 use std::path::Path;
 
 use ratatui::{
@@ -7,7 +8,9 @@ use ratatui::{
     text::{Line, Span},
 };
 
-use crate::asciicast::EventType;
+use crate::asciicast::{EventType, Header};
+use crate::files::codec;
+use crate::terminal::TerminalBuffer;
 
 use crate::terminal::{Color, StyledLine};
 
@@ -22,6 +25,76 @@ pub struct SessionPreview {
     pub marker_count: usize,
     /// Terminal snapshot at 10% of recording (with color info)
     pub styled_preview: Vec<StyledLine>,
+    /// Uncompressed size, only set for gzip sessions (plain sessions equal the on-disk size)
+    pub uncompressed_size: Option<codec::UncompressedSize>,
+}
+
+/// Process terminal output for the first ~30 seconds (enough for the preview snapshot),
+/// keep scanning for total duration and marker count.
+struct Scan {
+    buffer: TerminalBuffer,
+    duration: f64,
+    markers: usize,
+    styled: Option<Vec<StyledLine>>,
+}
+
+const PREVIEW_THRESHOLD_SECS: f64 = 30.0;
+
+impl Scan {
+    fn from_header(line: &str) -> Option<Self> {
+        let header: Header = serde_json::from_str(line).ok()?;
+        if header.version != 3 {
+            return None;
+        }
+        let cols = header.term.as_ref().and_then(|t| t.cols).unwrap_or(80) as usize;
+        let rows = header.term.as_ref().and_then(|t| t.rows).unwrap_or(24) as usize;
+        Some(Self {
+            buffer: TerminalBuffer::new(cols, rows),
+            duration: 0.0,
+            markers: 0,
+            styled: None,
+        })
+    }
+
+    /// Feed all lines, skipping invalid UTF-8 lines but stopping at a real I/O error
+    /// (a corrupt gzip stream keeps failing, so it must not be retried).
+    fn feed_all(&mut self, lines: impl Iterator<Item = std::io::Result<String>>) {
+        for line in lines {
+            match line {
+                Ok(l) => self.feed(&l),
+                Err(e) if e.kind() != std::io::ErrorKind::InvalidData => break,
+                Err(_) => {}
+            }
+        }
+    }
+
+    fn feed(&mut self, line: &str) {
+        let Some((time, event_type, data)) = SessionPreview::parse_event_minimal(line) else {
+            return;
+        };
+        self.duration += time;
+        if event_type == EventType::Marker {
+            self.markers += 1;
+        }
+        if self.styled.is_some() {
+            return;
+        }
+        if let (EventType::Output, Some(output)) = (event_type, data) {
+            self.buffer.process(&output, None);
+        }
+        if self.duration >= PREVIEW_THRESHOLD_SECS {
+            self.styled = Some(self.buffer.styled_lines());
+        }
+    }
+
+    fn finish(self, uncompressed_size: Option<codec::UncompressedSize>) -> SessionPreview {
+        SessionPreview {
+            duration_secs: self.duration,
+            marker_count: self.markers,
+            styled_preview: self.styled.unwrap_or_else(|| self.buffer.styled_lines()),
+            uncompressed_size,
+        }
+    }
 }
 
 impl SessionPreview {
@@ -39,84 +112,17 @@ impl SessionPreview {
 
     /// Streaming loader that minimizes memory usage and processing time.
     ///
-    /// Single-pass approach:
-    /// - Process terminal output for first ~30 seconds (enough for preview)
-    /// - Continue scanning for total duration and marker count
-    /// - Never stores all events in memory
+    /// Single-pass approach (see [`Scan`]), never stores all events in memory.
+    /// Reads `.cast` and `.cast.gz` alike through `codec::open_reader`.
     fn load_streaming<P: AsRef<Path>>(path: P) -> Option<Self> {
-        use crate::asciicast::{EventType, Header};
-        use crate::terminal::TerminalBuffer;
-        use std::fs::File;
-        use std::io::{BufRead, BufReader};
-
-        let file = File::open(path.as_ref()).ok()?;
-        let reader = BufReader::new(file);
-        let mut lines = reader.lines();
-
-        // Parse header
-        let header_line = lines.next()?.ok()?;
-        let header: Header = serde_json::from_str(&header_line).ok()?;
-        if header.version != 3 {
-            return None;
-        }
-
-        // Get terminal size
-        let cols = header.term.as_ref().and_then(|t| t.cols).unwrap_or(80) as usize;
-        let rows = header.term.as_ref().and_then(|t| t.rows).unwrap_or(24) as usize;
-
-        let mut buffer = TerminalBuffer::new(cols, rows);
-        let mut total_duration = 0.0;
-        let mut marker_count = 0;
-        let mut preview_captured = false;
-        let mut styled_preview = Vec::new();
-
-        // Single pass: process events
-        // - Process terminal output until 30 seconds (capture preview snapshot)
-        // - Continue counting markers and duration
-        const PREVIEW_THRESHOLD_SECS: f64 = 30.0;
-
-        for line_result in lines {
-            let line = match line_result {
-                Ok(l) if !l.trim().is_empty() => l,
-                _ => continue,
-            };
-
-            // Quick parse for time, type, and optionally data
-            if let Some((time, event_type, data)) = Self::parse_event_minimal(&line) {
-                total_duration += time;
-
-                if event_type == EventType::Marker {
-                    marker_count += 1;
-                }
-
-                // Only process terminal output before threshold
-                if !preview_captured {
-                    if event_type == EventType::Output {
-                        if let Some(output) = data {
-                            buffer.process(&output, None);
-                        }
-                    }
-
-                    // Capture preview at threshold
-                    if total_duration >= PREVIEW_THRESHOLD_SECS {
-                        styled_preview = buffer.styled_lines();
-                        preview_captured = true;
-                        // Don't need buffer anymore, drop it
-                    }
-                }
-            }
-        }
-
-        // If file was shorter than threshold, capture final state
-        if !preview_captured {
-            styled_preview = buffer.styled_lines();
-        }
-
-        Some(Self {
-            duration_secs: total_duration,
-            marker_count,
-            styled_preview,
-        })
+        let path = path.as_ref();
+        let mut lines = BufRead::lines(codec::open_reader(path).ok()?);
+        let mut scan = Scan::from_header(&lines.next()?.ok()?)?;
+        scan.feed_all(lines);
+        let uncompressed_size = codec::is_gzip_path(path)
+            .then(|| codec::uncompressed_size(path).ok())
+            .flatten();
+        Some(scan.finish(uncompressed_size))
     }
 
     /// Minimal event parsing - only extracts what we need

@@ -75,6 +75,7 @@ fn snapshot_file_explorer_locked_item_preview() {
                 })
                 .collect(),
         }],
+        uncompressed_size: None,
     };
 
     let output = render_explorer_with_preview(&mut explorer, Some(&preview), 100, 15);

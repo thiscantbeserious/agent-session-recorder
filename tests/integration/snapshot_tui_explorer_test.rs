@@ -223,6 +223,7 @@ fn snapshot_file_explorer_with_session_preview() {
                     .collect(),
             },
         ],
+        uncompressed_size: None,
     };
 
     let output = render_explorer_with_preview(&mut explorer, Some(&preview), 100, 20);
@@ -249,6 +250,7 @@ fn snapshot_file_explorer_preview_with_backup() {
                 })
                 .collect(),
         }],
+        uncompressed_size: None,
     };
 
     // Render with backup indicator
@@ -277,6 +279,7 @@ fn snapshot_file_explorer_preview_without_backup() {
                 })
                 .collect(),
         }],
+        uncompressed_size: None,
     };
 
     // Render without backup indicator

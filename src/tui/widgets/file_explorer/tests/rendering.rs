@@ -303,6 +303,7 @@ fn session_preview_format_duration_seconds() {
         duration_secs: 45.0,
         marker_count: 0,
         styled_preview: Vec::new(),
+        uncompressed_size: None,
     };
     assert_eq!(preview.format_duration(), "45s");
 }
@@ -313,6 +314,7 @@ fn session_preview_format_duration_minutes() {
         duration_secs: 332.0, // 5m 32s
         marker_count: 0,
         styled_preview: Vec::new(),
+        uncompressed_size: None,
     };
     assert_eq!(preview.format_duration(), "5m 32s");
 }
@@ -323,6 +325,7 @@ fn session_preview_format_duration_hours() {
         duration_secs: 3732.0, // 1h 2m 12s
         marker_count: 0,
         styled_preview: Vec::new(),
+        uncompressed_size: None,
     };
     assert_eq!(preview.format_duration(), "1h 2m 12s");
 }
