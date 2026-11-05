@@ -49,6 +49,8 @@ mod storage_stats_test;
 #[path = "integration/storage_lookup_test.rs"]
 mod storage_lookup_test;
 
+#[path = "integration/storage_import_security_test.rs"]
+mod storage_import_security_test;
 #[path = "integration/storage_import_test.rs"]
 mod storage_import_test;
 
@@ -130,6 +132,8 @@ mod file_explorer_test;
 #[path = "integration/process_guard_test.rs"]
 mod process_guard_test;
 
+#[path = "integration/import_paste_test.rs"]
+mod import_paste_test;
 #[path = "integration/import_test.rs"]
 mod import_test;
 
@@ -142,6 +146,8 @@ mod dedupe_transform_test;
 #[path = "integration/content_cleaner_test.rs"]
 mod content_cleaner_test;
 
+#[path = "integration/aggressive_similarity_test.rs"]
+mod aggressive_similarity_test;
 #[path = "integration/aggressive_transform_test.rs"]
 mod aggressive_transform_test;
 
