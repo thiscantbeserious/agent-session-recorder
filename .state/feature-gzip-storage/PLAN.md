@@ -22,23 +22,23 @@ Goal: `src/files/codec.rs` with suffix helpers, `open_reader`, `atomic_write`, `
 `same_content`, `uncompressed_size`. No callers yet.
 Owner: implementer
 
-- [ ] Add `flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }`.
-- [ ] RED/GREEN: `is_gzip_path`, `is_session_path` (accepts `x.cast`, `x.cast.gz`, rejects
+- [x] Add `flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }`.
+- [x] RED/GREEN: `is_gzip_path`, `is_session_path` (accepts `x.cast`, `x.cast.gz`, rejects
       `.x.cast.gz.bak`, `.x.cast.gz.tmp`, `.x.cast.lock`, `x.gz`, `x.txt`).
-- [ ] RED/GREEN: `session_stem` strips `.cast.gz` then `.cast`, `session_suffix` returns the
+- [x] RED/GREEN: `session_stem` strips `.cast.gz` then `.cast`, `session_suffix` returns the
       matching suffix.
-- [ ] RED/GREEN: `temp_path_for(dir/x.cast.gz)` is `dir/.x.cast.gz.tmp` (via
+- [x] RED/GREEN: `temp_path_for(dir/x.cast.gz)` is `dir/.x.cast.gz.tmp` (via
       `hidden_auxiliary_path`).
-- [ ] RED/GREEN: `atomic_write` to `.cast.gz` yields a file `GzDecoder` decodes to the input,
+- [x] RED/GREEN: `atomic_write` to `.cast.gz` yields a file `GzDecoder` decodes to the input,
       to `.cast` yields plain bytes, temp removed on write error.
-- [ ] RED/GREEN: determinism, two writes of the same content are byte-identical, header has
+- [x] RED/GREEN: determinism, two writes of the same content are byte-identical, header has
       mtime 0, no FNAME.
-- [ ] RED/GREEN: `open_reader` on plain and gzip yields the same lines.
-- [ ] RED/GREEN: truncated `.cast.gz` and flipped trailer byte give an error whose message
+- [x] RED/GREEN: `open_reader` on plain and gzip yields the same lines.
+- [x] RED/GREEN: truncated `.cast.gz` and flipped trailer byte give an error whose message
       contains the file path.
-- [ ] RED/GREEN: `transcode` plain to gzip and back is lossless, `same_content` true for a
+- [x] RED/GREEN: `transcode` plain to gzip and back is lossless, `same_content` true for a
       plain/gzip pair and false after one byte changes.
-- [ ] RED/GREEN: `uncompressed_size` returns trailer ISIZE for gzip, file length for plain,
+- [x] RED/GREEN: `uncompressed_size` returns trailer ISIZE for gzip, file length for plain,
       `Over4GiB` when the 64x wrap rule triggers (unit test on the pure decision function with
       synthetic numbers, no 4GiB file).
 

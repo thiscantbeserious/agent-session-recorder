@@ -53,6 +53,7 @@ tracing = "0.1.44"
 rayon = "1.10"
 libc = "0.2"
 signal-hook = "0.4.3"
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 
 [dev-dependencies]
 tempfile = "3.10"
