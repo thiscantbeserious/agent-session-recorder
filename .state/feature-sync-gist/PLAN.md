@@ -106,13 +106,13 @@ Considerations:
 Goal: `SyncBackend`, `RemoteEntry`, `BackendError`, `MemoryBackend`, pure `plan` function.
 Owner: implementer
 
-- [ ] RED/GREEN: `MemoryBackend` push without id creates a new id, with id replaces, pull of an
+- [x] RED/GREEN: `MemoryBackend` push without id creates a new id, with id replaces, pull of an
       unknown id errors, delete removes, `fail_on(id)` injects an error for robustness tests.
-- [ ] RED/GREEN: decision table, one test per ADR row: in sync, local only, remote only,
+- [x] RED/GREEN: decision table, one test per ADR row: in sync, local only, remote only,
       local changed, remote changed, both changed, no index plus different hash (conflict), no
       index plus equal hash (in sync), other key, unknown version, plain, locked, over cap.
-- [ ] RED/GREEN: newer local mtime with remote changed is still a conflict (mtime not an input).
-- [ ] RED/GREEN: `--overwrite` turns a conflict into push (push) or pull (pull) only for the
+- [x] RED/GREEN: newer local mtime with remote changed is still a conflict (mtime not an input).
+- [x] RED/GREEN: `--overwrite` turns a conflict into push (push) or pull (pull) only for the
       selected sessions.
 
 Files: `src/sync/mod.rs`, `src/sync/backend.rs`, `src/sync/memory.rs`, `src/sync/plan.rs`
@@ -279,7 +279,7 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 2 | pending | |
 | 3 | pending | |
 | 4 | done | |
-| 5 | pending | |
+| 5 | done | |
 | 6 | pending | |
 | 7 | pending | |
 | 8 | pending | |
