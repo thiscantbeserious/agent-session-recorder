@@ -12,6 +12,7 @@ pub mod copy;
 pub mod list;
 pub mod marker;
 pub mod play;
+pub mod prompt;
 pub mod record;
 pub mod shell;
 pub mod status;
