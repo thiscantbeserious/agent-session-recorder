@@ -264,16 +264,16 @@ Considerations:
 Goal: `agr compress [--agent X] [--yes]` with dry-run preview and confirm prompt.
 Owner: implementer
 
-- [ ] Move `should_proceed` from `commands/config.rs` to `commands/prompt.rs`, config migrate
+- [x] Move `should_proceed` from `commands/config.rs` to `commands/prompt.rs`, config migrate
       and reset use it (no behavior change, existing tests pass).
-- [ ] RED: CLI parse tests for `compress`, `--agent`, `--yes` (in `tests/integration`).
-- [ ] RED: help snapshot for `agr compress --help`, main help snapshot lists it.
-- [ ] RED: `agr compress --yes` (assert_cmd, temp storage via config env or HOME) compresses
+- [x] RED: CLI parse tests for `compress`, `--agent`, `--yes` (in `tests/integration`).
+- [x] RED: help snapshot for `agr compress --help`, main help snapshot lists it.
+- [x] RED: `agr compress --yes` (assert_cmd, temp storage via config env or HOME) compresses
       and prints the report, without `--yes` and no TTY it prints the preview and changes
       nothing.
-- [ ] GREEN: `Commands::Compress` in the cli module, dispatch in `src/dispatch.rs`, handler in
+- [x] GREEN: `Commands::Compress` in the cli module, dispatch in `src/dispatch.rs`, handler in
       `commands/compress.rs` (preview print, prompt, `compress::run`, report print).
-- [ ] First, as pure-move commits: split `src/cli.rs` (614) and `src/commands/config.rs` (599)
+- [x] First, as pure-move commits: split `src/cli.rs` (614) and `src/commands/config.rs` (599)
       by responsibility into modules within ~400 lines (identical sorted test names, CLI help
       snapshots byte-identical), since this stage touches both.
 
