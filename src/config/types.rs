@@ -103,18 +103,15 @@ impl Default for RecordingConfig {
 pub struct StorageConfig {
     #[serde(default = "default_directory")]
     pub directory: String,
-    #[serde(default = "default_size_threshold")]
-    pub size_threshold_gb: f64,
+    /// Warn after recording when storage exceeds this size. Unset disables the warning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_threshold_gb: Option<f64>,
     #[serde(default = "default_age_threshold")]
     pub age_threshold_days: u32,
 }
 
 pub fn default_directory() -> String {
     "~/recorded_agent_sessions".to_string()
-}
-
-pub fn default_size_threshold() -> f64 {
-    5.0
 }
 
 pub fn default_age_threshold() -> u32 {
@@ -125,7 +122,7 @@ impl Default for StorageConfig {
     fn default() -> Self {
         Self {
             directory: default_directory(),
-            size_threshold_gb: default_size_threshold(),
+            size_threshold_gb: None,
             age_threshold_days: default_age_threshold(),
         }
     }

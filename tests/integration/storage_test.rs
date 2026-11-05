@@ -967,3 +967,22 @@ fn stats_oldest_session_is_actually_oldest() {
         oldest.filename
     );
 }
+
+// === Size threshold (optional warning) ===
+
+#[test]
+fn exceeds_threshold_is_false_when_threshold_unset() {
+    let (_temp_dir, manager) = create_test_manager();
+    assert!(!manager.exceeds_threshold().unwrap());
+}
+
+#[test]
+fn exceeds_threshold_is_true_when_size_above_configured_threshold() {
+    let temp_dir = TempDir::new().unwrap();
+    let sessions_dir = setup_test_sessions(&temp_dir);
+    let mut config = Config::default();
+    config.storage.directory = sessions_dir.to_string_lossy().to_string();
+    config.storage.size_threshold_gb = Some(0.0);
+    let manager = StorageManager::new(config);
+    assert!(manager.exceeds_threshold().unwrap());
+}

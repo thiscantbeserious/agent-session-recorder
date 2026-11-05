@@ -2,15 +2,15 @@
 source: src/config/migrate/mod.rs
 expression: result.content
 ---
-config_version = 2
+config_version = 3
 
 [shell]
 auto_wrap = true
 
 [storage]
 directory = "~/recorded_agent_sessions"
-size_threshold_gb = 5.0
 age_threshold_days = 30
+# size_threshold_gb = 10.0
 
 [recording]
 filename_template = "{directory}{?branch}_{id}"

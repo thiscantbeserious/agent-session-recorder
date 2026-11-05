@@ -6,7 +6,7 @@ use agr::Config;
 fn default_config_has_expected_values() {
     let config = Config::default();
     assert_eq!(config.storage.directory, "~/recorded_agent_sessions");
-    assert_eq!(config.storage.size_threshold_gb, 5.0);
+    assert_eq!(config.storage.size_threshold_gb, None);
     assert_eq!(config.storage.age_threshold_days, 30);
     assert!(config.agents.enabled.contains(&"claude".to_string()));
     assert!(config.agents.enabled.contains(&"codex".to_string()));

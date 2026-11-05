@@ -48,8 +48,9 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
             },
             FieldDoc {
                 name: "size_threshold_gb",
-                description: "Storage warning threshold in GB",
-                default_display: "5.0",
+                description: "Warn after recording when storage exceeds this size in GB (unset = off)",
+                // ponytail: example value so the commented template stays valid TOML when uncommented
+                default_display: "10.0",
             },
             FieldDoc {
                 name: "age_threshold_days",
@@ -163,7 +164,7 @@ pub const AGENT_FIELDS: &[FieldDoc] = &[
 /// lines for any documented fields not already present. This lets users
 /// discover all available options even when their default is "unset".
 pub fn insert_optional_field_templates(toml_str: &str) -> String {
-    let mut lines: Vec<String> = toml_str.lines().map(|l| l.to_string()).collect();
+    let mut lines: Vec<String> = toml_str.lines().map(str::to_string).collect();
 
     let present = collect_present_fields(&lines);
 

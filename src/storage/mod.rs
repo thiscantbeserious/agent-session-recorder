@@ -103,7 +103,7 @@ pub fn validate_cast_header(path: &Path) -> Result<(), ImportError> {
     }
 
     // Check extension
-    if path.extension().and_then(|e| e.to_str()) != Some("cast") {
+    if path.extension().and_then(std::ffi::OsStr::to_str) != Some("cast") {
         return Err(ImportError::WrongExtension(format!(
             "Expected .cast extension, got: {}",
             path.display()
@@ -164,9 +164,12 @@ fn resolve_filename_conflict(dir: &Path, filename: &str) -> PathBuf {
     let path = Path::new(filename);
     let stem = path
         .file_stem()
-        .and_then(|s| s.to_str())
+        .and_then(std::ffi::OsStr::to_str)
         .unwrap_or(filename);
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let ext = path
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
 
     // Try numbered variants
     for i in 1..=999 {
@@ -392,7 +395,7 @@ impl StorageManager {
         } else {
             // Check all subdirectories
             fs::read_dir(&storage_dir)?
-                .filter_map(|entry| entry.ok())
+                .filter_map(Result::ok)
                 .map(|entry| entry.path())
                 .filter(|path| path.is_dir())
                 .collect()
@@ -401,7 +404,7 @@ impl StorageManager {
         for agent_dir in agent_dirs {
             let agent_name = agent_dir
                 .file_name()
-                .and_then(|n| n.to_str())
+                .and_then(std::ffi::OsStr::to_str)
                 .unwrap_or("unknown")
                 .to_string();
 
@@ -420,7 +423,7 @@ impl StorageManager {
                     sessions.push(SessionInfo {
                         filename: path
                             .file_name()
-                            .and_then(|n| n.to_str())
+                            .and_then(std::ffi::OsStr::to_str)
                             .unwrap_or("")
                             .to_string(),
                         agent: agent_name.clone(),
@@ -436,7 +439,7 @@ impl StorageManager {
         }
 
         // Sort by modification time, newest first
-        sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.modified));
 
         Ok(sessions)
     }
@@ -496,11 +499,13 @@ impl StorageManager {
         Ok(freed_size)
     }
 
-    /// Check if storage exceeds threshold
+    /// Check if storage exceeds the configured threshold (false when unset)
     pub fn exceeds_threshold(&self) -> Result<bool> {
+        let Some(threshold_gb) = self.config.storage.size_threshold_gb else {
+            return Ok(false);
+        };
         let stats = self.get_stats()?;
-        let threshold_bytes =
-            (self.config.storage.size_threshold_gb * 1024.0 * 1024.0 * 1024.0) as u64;
+        let threshold_bytes = (threshold_gb * 1024.0 * 1024.0 * 1024.0) as u64;
         Ok(stats.total_size > threshold_bytes)
     }
 
@@ -569,7 +574,7 @@ impl StorageManager {
         let mut matches: Vec<_> = sessions.iter().filter(|s| s.filename == filename).collect();
 
         // Sort by modification time (newest first) and return the first match
-        matches.sort_by(|a, b| b.modified.cmp(&a.modified));
+        matches.sort_by_key(|s| std::cmp::Reverse(s.modified));
         matches.first().map(|s| s.path.clone())
     }
 
@@ -581,7 +586,7 @@ impl StorageManager {
         let mut sessions = self.list_sessions(None)?;
 
         // Sort by modification time (most recent first)
-        sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.modified));
 
         let mut files: Vec<String> = sessions
             .iter()
@@ -623,7 +628,7 @@ impl StorageManager {
         // Get source filename
         let filename = source
             .file_name()
-            .and_then(|n| n.to_str())
+            .and_then(std::ffi::OsStr::to_str)
             .ok_or_else(|| ImportError::CopyFailed("Invalid source filename".to_string()))?;
 
         // Resolve conflicts
@@ -692,7 +697,7 @@ mod tests {
         Config {
             storage: crate::config::StorageConfig {
                 directory: storage_dir.to_string_lossy().to_string(),
-                size_threshold_gb: 5.0,
+                size_threshold_gb: Some(5.0),
                 age_threshold_days: 30,
             },
             agents: crate::config::AgentsConfig {

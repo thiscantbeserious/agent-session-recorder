@@ -189,7 +189,7 @@ impl Recorder {
         let actual_path = Self::resolve_actual_path(&filepath, inode, &header, &agent_dir);
         let display_name = actual_path
             .file_name()
-            .and_then(|n| n.to_str())
+            .and_then(std::ffi::OsStr::to_str)
             .unwrap_or(&filename);
 
         // Display final filename
@@ -289,7 +289,7 @@ impl Recorder {
                 stats.size_human(),
                 stats.session_count
             );
-            eprintln!("   Run 'asr cleanup' to free space.");
+            eprintln!("   Run 'agr cleanup' to free space.");
         }
         Ok(())
     }
