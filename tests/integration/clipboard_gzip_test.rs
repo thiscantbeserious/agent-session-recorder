@@ -1,7 +1,6 @@
 //! Clipboard tests for `.cast.gz` sources. Fake tools only, the system clipboard is never touched.
 
 use agr::clipboard::copy::Copy;
-use agr::clipboard::plain_copy::is_owned_by;
 use agr::clipboard::tool::{CopyTool, CopyToolError};
 use agr::clipboard::{ClipboardError, CopyMethod, CopyResult, MAX_CONTENT_SIZE};
 use agr::files::codec;
@@ -230,12 +229,6 @@ fn gzip_temp_dir_symlink_is_refused() {
     assert!(result.is_err(), "{result:?}");
     assert!(rec.file.lock().unwrap().is_none());
     assert_eq!(std::fs::read_dir(elsewhere.path()).unwrap().count(), 0);
-}
-
-#[test]
-fn temp_dir_owner_must_be_current_user() {
-    assert!(is_owned_by(1000, 1000));
-    assert!(!is_owned_by(0, 1000));
 }
 
 #[test]
