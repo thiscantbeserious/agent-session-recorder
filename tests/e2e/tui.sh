@@ -29,6 +29,11 @@ fi
 
 section "TUI Key Press Tests"
 
+# The PTY here would get the once-per-version compress offer and eat the first keypress
+mkdir -p "$HOME/.config/agr"
+AGR_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' "$(dirname "${BASH_SOURCE[0]}")/../../Cargo.toml" | head -1)
+echo "compress_offer_version = \"$AGR_VERSION\"" > "$HOME/.config/agr/state.toml"
+
 # Ensure recordings exist for TUI to display
 EXISTING_CASTS=$(find "$HOME/recorded_agent_sessions" -name "*.cast.gz" 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$EXISTING_CASTS" -lt 2 ]]; then

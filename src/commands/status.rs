@@ -2,6 +2,8 @@
 
 use anyhow::Result;
 
+use super::compress_offer::savings_line;
+use agr::storage::compress;
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
 
@@ -16,5 +18,8 @@ pub fn handle() -> Result<()> {
     let stats = storage.get_stats()?;
     let theme = current_theme();
     println!("{}", theme.primary_text(&stats.summary()));
+    if let Some(line) = savings_line(&compress::plan(&storage, None)?) {
+        println!("{}", theme.primary_text(&line));
+    }
     Ok(())
 }

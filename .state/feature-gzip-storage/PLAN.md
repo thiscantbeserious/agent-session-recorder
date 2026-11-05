@@ -294,12 +294,12 @@ Goal: once-per-version offer on list/status/cleanup, `agr status` shows plain co
 projected savings.
 Owner: implementer
 
-- [ ] RED: gate function `should_offer(is_tty, state_version, current_version, plain_count)`
+- [x] RED: gate function `should_offer(is_tty, state_version, current_version, plain_count)`
       truth table (no TTY never, same version never, zero plain never).
-- [ ] RED: accepting and declining both save the current version, a second call does not offer.
-- [ ] RED: non-TTY run of `agr status` never prompts and never rewrites (assert_cmd).
-- [ ] RED: `agr status` with plain sessions shows "N plain, ~X saved by agr compress".
-- [ ] GREEN: `commands/compress_offer.rs` (gate, reuses preview and run from
+- [x] RED: accepting and declining both save the current version, a second call does not offer.
+- [x] RED: non-TTY run of `agr status` never prompts and never rewrites (assert_cmd).
+- [x] RED: `agr status` with plain sessions shows "N plain, ~X saved by agr compress".
+- [x] GREEN: `commands/compress_offer.rs` (gate, reuses preview and run from
       `commands/compress.rs`), called at the start of `list`, `status`, `cleanup` handlers.
 
 Files: `src/commands/compress_offer.rs`, `src/commands/mod.rs`, `src/commands/list.rs`,
