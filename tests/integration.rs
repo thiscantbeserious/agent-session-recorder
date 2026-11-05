@@ -30,8 +30,17 @@ mod recording_test;
 #[path = "integration/shell_test.rs"]
 mod shell_test;
 
-#[path = "integration/storage_test.rs"]
-mod storage_test;
+#[path = "integration/storage_list_test.rs"]
+mod storage_list_test;
+
+#[path = "integration/storage_stats_test.rs"]
+mod storage_stats_test;
+
+#[path = "integration/storage_lookup_test.rs"]
+mod storage_lookup_test;
+
+#[path = "integration/storage_import_test.rs"]
+mod storage_import_test;
 
 #[path = "integration/snapshot_tui_test.rs"]
 mod snapshot_tui_test;

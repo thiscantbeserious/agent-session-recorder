@@ -2,6 +2,8 @@
 
 #![allow(dead_code)]
 
+pub mod storage;
+
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
