@@ -31,6 +31,11 @@ impl Config {
         io::load()
     }
 
+    /// Load configuration from a given path, defaults when the file does not exist
+    pub fn load_from(path: &std::path::Path) -> Result<Self> {
+        io::load_from(path)
+    }
+
     /// Save configuration to file
     pub fn save(&self) -> Result<()> {
         io::save(self)

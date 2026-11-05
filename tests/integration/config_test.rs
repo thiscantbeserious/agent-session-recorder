@@ -245,3 +245,20 @@ fn storage_directory_handles_relative_path() {
     let path = config.storage_directory();
     assert_eq!(path, std::path::PathBuf::from("relative/path"));
 }
+
+#[test]
+fn load_from_invalid_compression_names_path_and_allowed_values() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "[storage]\ncompression = \"zstd\"\n").unwrap();
+    let msg = format!("{:#}", Config::load_from(&path).unwrap_err());
+    assert!(msg.contains("config.toml"), "{msg}");
+    assert!(msg.contains("gzip") && msg.contains("none"), "{msg}");
+}
+
+#[test]
+fn load_from_missing_file_returns_defaults() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let config = Config::load_from(&dir.path().join("nope.toml")).unwrap();
+    assert_eq!(config.storage.directory, "~/recorded_agent_sessions");
+}
