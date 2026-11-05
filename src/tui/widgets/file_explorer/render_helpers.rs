@@ -169,12 +169,16 @@ pub(super) fn render_preview_panel(
         build_preview_lines(input, theme)
     });
     let preview_text = lines.unwrap_or_else(|| vec![Line::from("No file selected")]);
-    let block = Block::default()
+    let preview = Paragraph::new(preview_text).block(preview_block(theme));
+    preview.render(area, buf);
+}
+
+/// Bordered " Preview " block.
+fn preview_block(theme: &crate::theme::Theme) -> Block<'static> {
+    Block::default()
         .borders(Borders::ALL)
         .title(" Preview ")
-        .border_style(theme.text_secondary_style());
-    let preview = Paragraph::new(preview_text).block(block);
-    preview.render(area, buf);
+        .border_style(theme.text_secondary_style())
 }
 
 /// One `Label: value` line, label dimmed.
