@@ -2,7 +2,7 @@
 source: src/config/migrate/mod.rs
 expression: result.content
 ---
-config_version = 3
+config_version = 4
 
 [shell]
 auto_wrap = true
@@ -10,6 +10,7 @@ auto_wrap = true
 [storage]
 directory = "~/recorded_agent_sessions"
 age_threshold_days = 30
+compression = "gzip"
 # size_threshold_gb = 10.0
 
 [recording]

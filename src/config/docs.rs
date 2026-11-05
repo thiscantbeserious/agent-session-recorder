@@ -57,6 +57,11 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
                 description: "Age threshold in days for cleanup suggestions",
                 default_display: "30",
             },
+            FieldDoc {
+                name: "compression",
+                description: "Compression for new recordings: \"gzip\" (.cast.gz) or \"none\" (.cast)",
+                default_display: "gzip",
+            },
         ],
     },
     SectionDoc {

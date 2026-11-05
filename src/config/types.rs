@@ -108,6 +108,18 @@ pub struct StorageConfig {
     pub size_threshold_gb: Option<f64>,
     #[serde(default = "default_age_threshold")]
     pub age_threshold_days: u32,
+    /// Compression for new recordings. Existing files keep their format.
+    #[serde(default)]
+    pub compression: Compression,
+}
+
+/// On-disk format of new recordings: `.cast.gz` for gzip, `.cast` for none.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Compression {
+    #[default]
+    Gzip,
+    None,
 }
 
 pub fn default_directory() -> String {
@@ -124,6 +136,7 @@ impl Default for StorageConfig {
             directory: default_directory(),
             size_threshold_gb: None,
             age_threshold_days: default_age_threshold(),
+            compression: Compression::default(),
         }
     }
 }

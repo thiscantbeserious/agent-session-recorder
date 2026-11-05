@@ -56,13 +56,13 @@ Considerations:
 Goal: `[storage] compression = "gzip" | "none"`, default gzip, versioned migration v4.
 Owner: implementer
 
-- [ ] RED: `migrate_config("config_version = 3\n[storage]\n")` yields `compression = "gzip"` and
+- [x] RED: `migrate_config("config_version = 3\n[storage]\n")` yields `compression = "gzip"` and
       `config_version = 4`, field listed in `added_fields`.
-- [ ] RED: an existing `compression = "none"` is kept by v4.
-- [ ] RED: loading `compression = "zstd"` fails with a message naming the allowed values.
-- [ ] GREEN: `Compression` enum (`serde(rename_all = "lowercase")`, `Default = Gzip`) on
+- [x] RED: an existing `compression = "none"` is kept by v4.
+- [x] RED: loading `compression = "zstd"` fails with a message naming the allowed values.
+- [x] GREEN: `Compression` enum (`serde(rename_all = "lowercase")`, `Default = Gzip`) on
       `StorageConfig`, `migrations/v4.rs`, register in `MIGRATIONS`, `CURRENT_VERSION = 4`.
-- [ ] Add the key to `src/config/docs.rs` field docs, accept the updated default-config
+- [x] Add the key to `src/config/docs.rs` field docs, accept the updated default-config
       snapshot (only the new line may change).
 
 Files: `src/config/types.rs`, `src/config/migrate/mod.rs`,
