@@ -3,8 +3,8 @@
 use anyhow::Result;
 use crossterm::event::{KeyEvent, MouseEvent, MouseEventKind};
 
-use super::render::*;
-use super::*;
+use super::render::{footer_text_for_mode, render_modal_overlays, render_status_line_for_mode};
+use super::{ListApp, Mode};
 use crate::files::backup::has_backup;
 use crate::tui::app::layout::build_explorer_layout;
 use crate::tui::app::list_view::{render_explorer_list, render_explorer_list_with_rename};

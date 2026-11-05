@@ -9,7 +9,7 @@ use agr::theme::{ansi, gate};
 pub(super) fn print_diff_preview(new_content: &str, added_fields: &[String], is_new_file: bool) {
     // Build a set of full field paths (section.key) for accurate matching
     let added_field_set: std::collections::HashSet<&str> =
-        added_fields.iter().map(|s| s.as_str()).collect();
+        added_fields.iter().map(String::as_str).collect();
 
     let mut current_section = String::new();
     let mut section_has_additions = false;

@@ -3,13 +3,16 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 
-use super::*;
+use super::{ListApp, Mode};
 use crate::files::{codec, filename};
 use crate::tui::import;
 
 /// Rename input pre-filled for a session path: its stem without `.cast` / `.cast.gz`.
 pub(super) fn rename_stem(path: &std::path::Path) -> String {
-    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    let name = path
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
     codec::session_stem(name).to_string()
 }
 
@@ -207,7 +210,7 @@ impl ListApp {
         for path in &state.paths {
             let filename = path
                 .file_name()
-                .and_then(|n| n.to_str())
+                .and_then(std::ffi::OsStr::to_str)
                 .unwrap_or("unknown")
                 .to_string();
 
@@ -246,7 +249,7 @@ impl ListApp {
                         self.shared.explorer.reindex_after_rename(&new_path_str);
                         let new_name = new_path
                             .file_name()
-                            .and_then(|n| n.to_str())
+                            .and_then(std::ffi::OsStr::to_str)
                             .unwrap_or("unknown");
                         self.shared.status_message = Some(format!("Renamed to {}", new_name));
                     }

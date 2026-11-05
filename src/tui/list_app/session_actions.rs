@@ -4,7 +4,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::*;
+use super::{ListApp, Mode, OptimizeResultState};
 use crate::asciicast::apply_transforms;
 use crate::files::backup::{create_backup, has_backup, restore_from_backup};
 use crate::files::{codec, remove_auxiliary_files};
@@ -173,7 +173,7 @@ impl ListApp {
         let new_path_str = new_path.to_string_lossy().to_string();
         self.shared.preview_cache.invalidate(&new_path_str);
         self.shared.explorer.update_item_path(path, &new_path_str);
-        let name = new_path.file_name().and_then(|n| n.to_str());
+        let name = new_path.file_name().and_then(std::ffi::OsStr::to_str);
         format!(
             "Analysis complete (renamed to {})",
             name.unwrap_or("unknown")
@@ -183,7 +183,7 @@ impl ListApp {
 
 /// File name without the `.cast` / `.cast.gz` suffix, "recording" when there is none.
 fn display_stem(path: &Path) -> &str {
-    let name = path.file_name().and_then(|s| s.to_str());
+    let name = path.file_name().and_then(std::ffi::OsStr::to_str);
     name.map_or("recording", codec::session_stem)
 }
 

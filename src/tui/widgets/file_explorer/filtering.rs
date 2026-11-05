@@ -200,7 +200,7 @@ impl FileExplorer {
             self.items[idx].path = new_path.to_string();
             self.items[idx].name = new_p
                 .file_name()
-                .and_then(|n| n.to_str())
+                .and_then(std::ffi::OsStr::to_str)
                 .unwrap_or(new_path)
                 .to_string();
             // Reload metadata from disk

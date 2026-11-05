@@ -3,7 +3,7 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 
-use super::*;
+use super::{ContextMenuItem, ListApp, Mode};
 use crate::files::backup::has_backup;
 use crate::files::lock;
 use crate::tui::app::{classify_confirm_key, ConfirmAction};

@@ -180,73 +180,52 @@ impl SessionPreview {
         let mut current_style: Option<crate::terminal::CellStyle> = None;
 
         for cell in &line.cells {
-            if Some(cell.style) == current_style {
-                current_text.push(cell.char);
-            } else {
-                // Flush previous span
-                if !current_text.is_empty() {
-                    if let Some(style) = current_style {
-                        let mut ratatui_style = Style::default();
-                        if style.fg != Color::Default {
-                            ratatui_style = ratatui_style.fg(Self::to_ratatui_color(style.fg));
-                        }
-                        if style.bg != Color::Default {
-                            ratatui_style = ratatui_style.bg(Self::to_ratatui_color(style.bg));
-                        }
-                        if style.bold {
-                            ratatui_style = ratatui_style.add_modifier(Modifier::BOLD);
-                        }
-                        if style.dim {
-                            ratatui_style = ratatui_style.add_modifier(Modifier::DIM);
-                        }
-                        if style.italic {
-                            ratatui_style = ratatui_style.add_modifier(Modifier::ITALIC);
-                        }
-                        if style.underline {
-                            ratatui_style = ratatui_style.add_modifier(Modifier::UNDERLINED);
-                        }
-                        spans.push(Span::styled(
-                            std::mem::take(&mut current_text),
-                            ratatui_style,
-                        ));
-                    } else {
-                        spans.push(Span::raw(std::mem::take(&mut current_text)));
-                    }
-                }
+            if Some(cell.style) != current_style {
+                spans.extend(Self::flush_span(&mut current_text, current_style));
                 current_style = Some(cell.style);
-                current_text.push(cell.char);
             }
+            current_text.push(cell.char);
         }
-
-        // Flush final span
-        if !current_text.is_empty() {
-            if let Some(style) = current_style {
-                let mut ratatui_style = Style::default();
-                if style.fg != Color::Default {
-                    ratatui_style = ratatui_style.fg(Self::to_ratatui_color(style.fg));
-                }
-                if style.bg != Color::Default {
-                    ratatui_style = ratatui_style.bg(Self::to_ratatui_color(style.bg));
-                }
-                if style.bold {
-                    ratatui_style = ratatui_style.add_modifier(Modifier::BOLD);
-                }
-                if style.dim {
-                    ratatui_style = ratatui_style.add_modifier(Modifier::DIM);
-                }
-                if style.italic {
-                    ratatui_style = ratatui_style.add_modifier(Modifier::ITALIC);
-                }
-                if style.underline {
-                    ratatui_style = ratatui_style.add_modifier(Modifier::UNDERLINED);
-                }
-                spans.push(Span::styled(current_text, ratatui_style));
-            } else {
-                spans.push(Span::raw(current_text));
-            }
-        }
+        spans.extend(Self::flush_span(&mut current_text, current_style));
 
         Line::from(spans)
+    }
+
+    /// Turn the collected text into a span (none when empty), leaving `text` empty.
+    fn flush_span(
+        text: &mut String,
+        style: Option<crate::terminal::CellStyle>,
+    ) -> Option<Span<'static>> {
+        if text.is_empty() {
+            return None;
+        }
+        let text = std::mem::take(text);
+        Some(match style {
+            Some(style) => Span::styled(text, Self::to_ratatui_style(style)),
+            None => Span::raw(text),
+        })
+    }
+
+    fn to_ratatui_style(style: crate::terminal::CellStyle) -> Style {
+        let mut out = Style::default();
+        if style.fg != Color::Default {
+            out = out.fg(Self::to_ratatui_color(style.fg));
+        }
+        if style.bg != Color::Default {
+            out = out.bg(Self::to_ratatui_color(style.bg));
+        }
+        let modifiers = [
+            (style.bold, Modifier::BOLD),
+            (style.dim, Modifier::DIM),
+            (style.italic, Modifier::ITALIC),
+            (style.underline, Modifier::UNDERLINED),
+        ];
+        for (on, modifier) in modifiers {
+            if on {
+                out = out.add_modifier(modifier);
+            }
+        }
+        out
     }
 
     /// Format duration as human-readable string (e.g., "5m 32s").

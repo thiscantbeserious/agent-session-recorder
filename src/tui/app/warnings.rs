@@ -13,13 +13,15 @@ static QUEUE: Mutex<Vec<String>> = Mutex::new(Vec::new());
 pub(crate) fn push(message: &str) {
     QUEUE
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
         .push(message.to_string());
 }
 
 /// Take the newest queued warning, dropping older ones.
 pub fn take_latest() -> Option<String> {
-    let mut queue = QUEUE.lock().unwrap_or_else(|e| e.into_inner());
+    let mut queue = QUEUE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let latest = queue.pop();
     queue.clear();
     latest
@@ -59,7 +61,9 @@ mod tests {
 
     #[test]
     fn guard_queues_warnings_and_restores_on_drop() {
-        let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let guard = WarningGuard::install();
         let queued = failing_fsync_write();
         let seen = take_latest().unwrap_or_default();

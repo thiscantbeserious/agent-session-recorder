@@ -3,7 +3,7 @@
 use anyhow::Result;
 use crossterm::event::{MouseEvent, MouseEventKind};
 
-use super::*;
+use super::{ContextMenuItem, ListApp, Mode};
 use crate::tui::app::modals::{self};
 
 impl ListApp {

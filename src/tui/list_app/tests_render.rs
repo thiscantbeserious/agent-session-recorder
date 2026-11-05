@@ -1,8 +1,9 @@
 //! Unit tests for the list app rendering helpers.
 
-use super::render::*;
-use super::*;
-
+use super::render::{
+    build_menu_item_label, build_rename_status_spans, format_duration, menu_item_style,
+};
+use super::ContextMenuItem;
 use ratatui::style::{Modifier, Style};
 // ── build_menu_item_label ─────────────────────────────────────────────
 

@@ -30,11 +30,15 @@ static WARNING_SINK: Mutex<Option<fn(&str)>> = Mutex::new(None);
 /// Route non-fatal warnings (failed directory fsync) to `sink`, `None` restores stderr.
 /// A TUI owning the terminal installs one so a stray `eprintln!` cannot corrupt the screen.
 pub fn set_warning_sink(sink: Option<fn(&str)>) {
-    *WARNING_SINK.lock().unwrap_or_else(|e| e.into_inner()) = sink;
+    *WARNING_SINK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = sink;
 }
 
 fn warn(message: &str) {
-    let sink = *WARNING_SINK.lock().unwrap_or_else(|e| e.into_inner());
+    let sink = *WARNING_SINK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     match sink {
         Some(sink) => sink(message),
         None => eprintln!("Warning: {message}"),

@@ -40,9 +40,9 @@ fn create_test_file_items() -> Vec<FileItem> {
     ]
 }
 
-/// Snapshot a file explorer render with the relative age column (e.g. `2y1m`) masked.
-///
-/// The age is computed against `Local::now()` while fixtures use fixed dates,
+// Snapshot a file explorer render with the relative age column (e.g. `2y1m`) masked.
+//
+// The age is computed against `Local::now()` while fixtures use fixed dates,
 
 #[test]
 fn snapshot_file_explorer_basic() {

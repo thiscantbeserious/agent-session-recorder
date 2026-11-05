@@ -30,7 +30,7 @@ pub mod ansi {
 ///
 /// Colour only when stdout is a terminal and `NO_COLOR` is unset or empty.
 pub fn colors_enabled(is_tty: bool, no_color: Option<&str>) -> bool {
-    is_tty && no_color.is_none_or(|v| v.is_empty())
+    is_tty && no_color.is_none_or(str::is_empty)
 }
 
 /// Runtime decision for CLI colour on stdout.

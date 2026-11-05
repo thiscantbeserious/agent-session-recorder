@@ -39,7 +39,10 @@ pub fn prepare(path: &Path, base: &Path) -> Result<PlainSource, ClipboardError> 
 }
 
 fn decompress_to_temp(path: &Path, dir: PathBuf) -> Result<PlainSource, ClipboardError> {
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let name = path
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
     let stem = codec::session_stem(name);
     let dest = dir.join(format!("{stem}{}", codec::SESSION_SUFFIX));
     let decoded = codec::transcode(path, &dest).and_then(|()| Ok(std::fs::metadata(&dest)?.len()));

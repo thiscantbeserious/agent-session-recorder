@@ -12,7 +12,10 @@ use agr::files::filename::rename_file;
 
 /// Current file name without the session suffix, the input for the LLM suggestion.
 pub(super) fn current_stem(filepath: &Path) -> String {
-    let name = filepath.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    let name = filepath
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
     codec::session_stem(name).to_string()
 }
 
@@ -56,7 +59,10 @@ pub(super) fn handle_rename_suggestion(
     if target == *filepath || target.exists() {
         return Ok(());
     }
-    let name = target.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    let name = target
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
     if confirm(&format!("Rename to \"{name}\"?"))? {
         println!(
             "Renamed to: {}",

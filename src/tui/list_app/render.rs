@@ -8,7 +8,7 @@ use ratatui::{
     Frame,
 };
 
-use super::*;
+use super::{ContextMenuItem, ListApp, Mode, OptimizeResultState};
 use crate::theme::current_theme;
 use crate::tui::app::modals::{self};
 use crate::tui::app::status_footer::{render_input_line, render_status_line};
