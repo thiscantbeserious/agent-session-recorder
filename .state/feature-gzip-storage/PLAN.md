@@ -400,16 +400,16 @@ Goal: README and config docs describe the feature, e2e covers zcat and recording
 check on a large file.
 Owner: implementer
 
-- [ ] README: `compression` key, `.cast.gz` naming, `agr compress`, offer behavior, state file.
-- [ ] `src/config/docs.rs` example block includes `compression = "gzip"`.
-- [ ] e2e: a finished recording is `.cast.gz` and `gzip -dc` output is valid asciicast (not `zcat`, which is the legacy .Z tool on macOS), with
+- [x] README: `compression` key, `.cast.gz` naming, `agr compress`, offer behavior, state file.
+- [x] `src/config/docs.rs` example block includes `compression = "gzip"`.
+- [x] e2e: a finished recording is `.cast.gz` and `gzip -dc` output is valid asciicast (not `zcat`, which is the legacy .Z tool on macOS), with
       `none` it stays `.cast`. (Landed in Stage 10, verify only.)
-- [ ] Regenerate generated docs with `cargo xtask gen-docs` (wiki Command-*.md incl. new
+- [x] Regenerate generated docs with `cargo xtask gen-docs` (wiki Command-*.md incl. new
       Command-compress.md, Configuration.md, man pages), never hand-edit generated files. Update
       the `agr status` help example (`src/cli`) to the new on-disk/uncompressed/plain lines first.
-- [ ] Performance test: generated 100MB-decompressed `.cast.gz`, parse peak RSS within ~10%
+- [x] Performance test: generated 100MB-decompressed `.cast.gz`, parse peak RSS within ~10%
       of the plain file (ignored by default like the other performance tests).
-- [ ] Full `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`,
+- [x] Full `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`,
       `./tests/e2e_test.sh`.
 
 Files: `README.md`, `src/config/docs.rs`, `tests/e2e/recording.sh`, `src/cli/`, `docs/`,
