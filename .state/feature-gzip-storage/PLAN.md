@@ -244,10 +244,10 @@ Considerations:
 Goal: finished recordings become `.cast.gz` when `compression = "gzip"`.
 Owner: implementer
 
-- [ ] RED: helper `finalize_recording(path, &config)` returns `x.cast.gz` with gzip config and
+- [x] RED: helper `finalize_recording(path, &config)` returns `x.cast.gz` with gzip config and
       `x.cast` with `none`.
-- [ ] RED: on compress failure it returns the plain path and the plain file still exists.
-- [ ] GREEN: call it in `Recorder::record` after `remove_lock` and `resolve_actual_path`, use
+- [x] RED: on compress failure it returns the plain path and the plain file still exists.
+- [x] GREEN: call it in `Recorder::record` after `remove_lock` and `resolve_actual_path`, use
       its result for the final box line and `maybe_auto_analyze`, print a warning on failure.
 
 Files: `src/recording.rs`, `tests/integration/recording_test.rs`
