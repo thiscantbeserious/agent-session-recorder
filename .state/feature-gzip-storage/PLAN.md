@@ -181,7 +181,7 @@ Owner: implementer
 
 Files: `src/storage/sessions.rs`, `src/storage/import.rs`, `tests/integration/storage_test.rs`,
        `tests/integration/import_test.rs`
-Depends on: Stage 1, Stage 2, Stage 3
+Depends on: Stage 1, Stage 2, Stage 3, Stage 17
 
 Considerations:
 - `ImportError::WrongExtension` message becomes "Expected .cast or .cast.gz".
@@ -395,12 +395,39 @@ Depends on: Stage 10, Stage 12, Stage 13, Stage 14, Stage 15
 Considerations:
 - Run SonarCloud locally if available, otherwise check the PR analysis for zero new issues.
 
+### Stage 17: Batch 1 hardening (user request, in this MR)
+
+Goal: no deferred cleanup. Prove Batch 1 tests catch regressions, bring the storage test
+file under the size limit, make clippy clean for all targets.
+Owner: implementer
+
+- [ ] Mutation check for Stage 1 and 2 tests: for each codec/v4 behavior, break the code
+      on purpose (e.g. set mtime, skip temp cleanup, drop path from error, wrong wrap rule,
+      v4 overwriting an existing value), confirm a test fails, revert. Record the
+      break/test pairs in this stage's notes. Add tests where nothing fails.
+- [ ] Split `tests/integration/storage_test.rs` (~1300 lines) by topic so every file is
+      within ~400 lines, no test removed or renamed, identical test count.
+- [ ] Fix every `cargo clippy --all-targets -- -D warnings` error (lib test modules,
+      `src/commands/analyze.rs`, `src/config/migrate/mod.rs`,
+      `src/analyzer/transforms/cleaner.rs`, integration tests incl. `codec_test.rs`).
+- [ ] Add `--all-targets` to the CI lint job so this stays clean.
+
+Files: `tests/integration/storage_test.rs`, `tests/integration/storage_*_test.rs`,
+       `tests/integration.rs`, `tests/integration/codec_test.rs`,
+       `tests/integration/aggressive_transform_test.rs`,
+       `tests/integration/snapshot_tui_test.rs`,
+       `tests/integration/terminal_transform_test.rs`, `src/commands/analyze.rs`,
+       `src/config/migrate/mod.rs`, `src/analyzer/transforms/cleaner.rs`,
+       `.github/workflows/ci.yml`
+Depends on: Stage 1, Stage 2, Stage 3
+
 ## Dependencies
 
 - Stage 1, Stage 2, Stage 3 are independent foundations.
 - Stage 4 depends on Stage 2 (shares `config_test.rs`).
 - Stage 5 depends on Stage 1, Stage 6 on Stage 1 and Stage 5.
-- Stage 7 depends on Stage 1, Stage 2, Stage 3. Stage 8 on Stage 7.
+- Stage 17 depends on Stage 1, Stage 2, Stage 3 (Batch 1 hardening, user request).
+- Stage 7 depends on Stage 1, Stage 2, Stage 3, Stage 17 (17 splits `storage_test.rs`). Stage 8 on Stage 7.
 - Stage 9 depends on Stage 1, Stage 3, Stage 6, Stage 7.
 - Stage 10 depends on Stage 2, Stage 9. Stage 11 on Stage 9. Stage 12 on Stage 4, 8, 11.
 - Stage 13 depends on Stage 1, 7, 8. Stage 14 on Stage 1, 5, 6. Stage 15 on Stage 1.
@@ -411,7 +438,7 @@ flowchart LR
   S1 --> S5 --> S6
   S1 --> S15
   S2 --> S4
-  S1 & S2 & S3 --> S7 --> S8
+  S1 & S2 & S3 --> S17 --> S7 --> S8
   S6 & S7 --> S9
   S9 --> S10
   S9 --> S11 --> S12
