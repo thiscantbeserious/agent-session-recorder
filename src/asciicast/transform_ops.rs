@@ -4,13 +4,12 @@
 //! transform application, and restore operations. These are higher-level operations
 //! built on top of the core transform traits.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 
 use super::{AsciicastFile, SilenceRemoval, Transform, DEFAULT_SILENCE_THRESHOLD};
-use crate::files::backup::backup_path_for;
+use crate::files::backup::{backup_path_for, create_backup};
 
 /// Result of applying transforms to a recording.
 #[derive(Debug, Clone)]
@@ -71,14 +70,8 @@ pub fn apply_transforms(path: &Path) -> Result<TransformResult> {
     let original_duration = cast.duration();
 
     // Create backup if it doesn't exist
+    let backup_created = create_backup(path)?;
     let backup = backup_path_for(path);
-    let backup_created = if !backup.exists() {
-        fs::copy(path, &backup)
-            .with_context(|| format!("Failed to create backup: {}", backup.display()))?;
-        true
-    } else {
-        false
-    };
 
     // Resolve threshold: header's idle_time_limit or default
     let threshold = cast
