@@ -170,3 +170,6 @@ mod migrate_test;
 mod cli_parse_more_test;
 #[path = "integration/cli_parse_test.rs"]
 mod cli_parse_test;
+
+#[path = "integration/compress_test.rs"]
+mod compress_test;

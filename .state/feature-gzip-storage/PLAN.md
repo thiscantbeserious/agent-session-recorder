@@ -217,20 +217,20 @@ Considerations:
 Goal: `src/storage/compress.rs` with `plan`, `estimate`, `compress_file`, `run`, report.
 Owner: implementer
 
-- [ ] RED: `compress_file(x.cast)` leaves only `x.cast.gz`, content equal, no temp left.
-- [ ] RED: failure injection (read-only dir, verify mismatch) leaves `x.cast` untouched and
+- [x] RED: `compress_file(x.cast)` leaves only `x.cast.gz`, content equal, no temp left.
+- [x] RED: failure injection (read-only dir, verify mismatch) leaves `x.cast` untouched and
       no `x.cast.gz` or temp behind.
-- [ ] RED: an existing `.x.cast.bak` becomes `.x.cast.gz.bak` with equal decoded content.
-- [ ] RED: `plan` skips sessions with a live lock (current PID) and reports them, a stale lock
+- [x] RED: an existing `.x.cast.bak` becomes `.x.cast.gz.bak` with equal decoded content.
+- [x] RED: `plan` skips sessions with a live lock (current PID) and reports them, a stale lock
       is cleaned and the file is eligible.
-- [ ] RED: `plan` with an agent filter only includes that agent.
-- [ ] RED: `run` continues after a per-file failure, report counts compressed, skipped,
+- [x] RED: `plan` with an agent filter only includes that agent.
+- [x] RED: `run` continues after a per-file failure, report counts compressed, skipped,
       failed, bytes saved.
-- [ ] RED: idempotent, a second `run` finds nothing to do.
-- [ ] RED: leftover `x.cast` next to an equal `x.cast.gz` is removed, a differing one is
+- [x] RED: idempotent, a second `run` finds nothing to do.
+- [x] RED: leftover `x.cast` next to an equal `x.cast.gz` is removed, a differing one is
       skipped with a warning.
-- [ ] RED: `estimate` is within 2x of the real size on the fixture files.
-- [ ] GREEN: implement, `pub mod compress;` in `storage/mod.rs`.
+- [x] RED: `estimate` is within 2x of the real size on the fixture files.
+- [x] GREEN: implement, `pub mod compress;` in `storage/mod.rs`.
 
 Files: `src/storage/compress.rs`, `src/storage/mod.rs`, `tests/integration/compress_test.rs`,
        `tests/integration.rs`

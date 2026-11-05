@@ -6,6 +6,7 @@
 //! - Managing agent directories and session metadata
 //! - Computing storage statistics
 
+pub mod compress;
 mod import;
 pub mod migrate;
 mod sessions;
