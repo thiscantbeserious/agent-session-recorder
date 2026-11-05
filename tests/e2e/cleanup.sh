@@ -19,7 +19,7 @@ if [[ ! -d "$HOME/recorded_agent_sessions" ]] || [[ -z "$(ls -A "$HOME/recorded_
 fi
 
 # Count current sessions
-SESSION_COUNT=$(find "$HOME/recorded_agent_sessions" -name "*.cast" 2>/dev/null | wc -l | tr -d ' ')
+SESSION_COUNT=$(find "$HOME/recorded_agent_sessions" -name "*.cast.gz" 2>/dev/null | wc -l | tr -d ' ')
 
 # Test: Cleanup (non-interactive)
 test_header "Cleanup command"

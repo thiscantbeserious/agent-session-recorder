@@ -17,7 +17,7 @@ fi
 # Test: Record a simple command
 test_header "Record simple command"
 $AGR record echo -- "hello e2e test" </dev/null
-CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/head -1)
+CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast.gz 2>/dev/null | /usr/bin/head -1)
 if [[ -f "$CAST_FILE" ]]; then
     pass "Recording created file"
 else
@@ -27,7 +27,7 @@ fi
 # Test: Verify cast file is valid asciicast v3
 test_header "Verify asciicast v3 format"
 if [[ -f "$CAST_FILE" ]]; then
-    HEADER=$(/usr/bin/head -1 "$CAST_FILE")
+    HEADER=$(gzip -dc "$CAST_FILE" | /usr/bin/head -1)
     if echo "$HEADER" | /usr/bin/grep -q '"version":3'; then
         pass "Cast file has version 3 header"
     else
@@ -40,11 +40,11 @@ fi
 # Test: Verify output was captured
 test_header "Verify output captured"
 if [[ -f "$CAST_FILE" ]]; then
-    if /usr/bin/grep -q "hello e2e test" "$CAST_FILE"; then
+    if gzip -dc "$CAST_FILE" | /usr/bin/grep -q "hello e2e test"; then
         pass "Output 'hello e2e test' captured in recording"
     else
         fail "Output not captured in recording"
-        cat "$CAST_FILE"
+        gzip -dc "$CAST_FILE"
     fi
 else
     fail "No cast file to verify"
@@ -71,7 +71,7 @@ fi
 # Test: Record with different agent
 test_header "Record with different agent"
 $AGR record ls -- -la </dev/null
-LS_CAST=$(ls "$HOME/recorded_agent_sessions/ls/"*.cast 2>/dev/null | /usr/bin/head -1)
+LS_CAST=$(ls "$HOME/recorded_agent_sessions/ls/"*.cast.gz 2>/dev/null | /usr/bin/head -1)
 if [[ -f "$LS_CAST" ]]; then
     pass "Second recording with different agent created"
 else
@@ -81,7 +81,7 @@ fi
 # Test: Record with --name flag (skips rename prompt)
 test_header "Record with --name flag"
 $AGR record echo --name "my-custom-session" -- "test with name flag" </dev/null
-NAMED_CAST="$HOME/recorded_agent_sessions/echo/my-custom-session.cast"
+NAMED_CAST="$HOME/recorded_agent_sessions/echo/my-custom-session.cast.gz"
 if [[ -f "$NAMED_CAST" ]]; then
     pass "Recording with --name flag created correct filename"
 else
@@ -93,7 +93,7 @@ fi
 test_header "List filter by agent"
 ECHO_LIST=$($AGR list echo)
 LS_LIST=$($AGR list ls)
-if echo "$ECHO_LIST" | /usr/bin/grep -q "echo" && ! echo "$ECHO_LIST" | /usr/bin/grep -q "\.cast (ls,"; then
+if echo "$ECHO_LIST" | /usr/bin/grep -q "echo" && ! echo "$ECHO_LIST" | /usr/bin/grep -q "\.cast\.gz (ls,"; then
     pass "List filters by agent correctly"
 else
     fail "List filter not working: echo=$ECHO_LIST"
@@ -112,7 +112,7 @@ fi
 test_header "Cast file event structure"
 if [[ -f "$CAST_FILE" ]]; then
     # Check for output event format [time, "o", "data"]
-    if /usr/bin/grep -E '^\[.*"o".*\]' "$CAST_FILE" >/dev/null; then
+    if gzip -dc "$CAST_FILE" | /usr/bin/grep -E '^\[.*"o".*\]' >/dev/null; then
         pass "Cast file has proper output event structure"
     else
         fail "Cast file missing proper event structure"
@@ -121,21 +121,21 @@ else
     fail "No cast file to check structure"
 fi
 
-# Test: Default compression (gzip) leaves only a .cast.gz after recording
-test_header "Record with compression gzip"
+# Test: compression = "none" leaves a plain .cast
+test_header "Record with compression none"
 create_config << 'TOMLEOF'
 [storage]
-compression = "gzip"
+compression = "none"
 TOMLEOF
-$AGR record gzagent -- "gzip e2e" </dev/null
-GZ_DIR="$HOME/recorded_agent_sessions/gzagent"
-if ls "$GZ_DIR/"*.cast.gz >/dev/null 2>&1 && ! ls "$GZ_DIR/"*.cast >/dev/null 2>&1; then
-    pass "Recording finished as .cast.gz with gzip compression"
+$AGR record plainagent -- "plain e2e" </dev/null
+PLAIN_DIR="$HOME/recorded_agent_sessions/plainagent"
+if ls "$PLAIN_DIR/"*.cast >/dev/null 2>&1 && ! ls "$PLAIN_DIR/"*.cast.gz >/dev/null 2>&1; then
+    pass "Recording stays a plain .cast with compression none"
 else
-    fail "Expected only .cast.gz with gzip compression"
-    ls "$GZ_DIR"
+    fail "Expected only .cast with compression none"
+    ls "$PLAIN_DIR"
 fi
-rm -rf "$GZ_DIR"
+rm -rf "$PLAIN_DIR"
 reset_config
 
 # Print summary when running standalone

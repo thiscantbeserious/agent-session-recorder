@@ -146,9 +146,6 @@ create_ci_config() {
 filename_template = "{directory}_{date}_{time:%H%M%S%f}"
 directory_max_length = 50
 
-[storage]
-compression = "none"
-
 [agents]
 agents = ["claude", "codex", "gemini"]
 auto_wrap = true

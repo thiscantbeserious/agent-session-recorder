@@ -13,18 +13,18 @@ if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
 fi
 
 # Ensure we have a recording to work with
-CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/head -1)
+CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast.gz 2>/dev/null | /usr/bin/head -1)
 if [[ -z "$CAST_FILE" ]] || [[ ! -f "$CAST_FILE" ]]; then
     # Create a recording first
     $AGR record echo -- "marker test recording" </dev/null
-    CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast 2>/dev/null | /usr/bin/head -1)
+    CAST_FILE=$(ls "$HOME/recorded_agent_sessions/echo/"*.cast.gz 2>/dev/null | /usr/bin/head -1)
 fi
 
 # Test: Add marker to recording
 test_header "Add marker to recording"
 if [[ -f "$CAST_FILE" ]]; then
     $AGR marker add "$CAST_FILE" 0.01 "E2E test marker"
-    if /usr/bin/grep -q "E2E test marker" "$CAST_FILE"; then
+    if gzip -dc "$CAST_FILE" | /usr/bin/grep -q "E2E test marker"; then
         pass "Marker added to cast file"
     else
         fail "Marker not found in cast file"

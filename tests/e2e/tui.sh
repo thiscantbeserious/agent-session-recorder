@@ -30,7 +30,7 @@ fi
 section "TUI Key Press Tests"
 
 # Ensure recordings exist for TUI to display
-EXISTING_CASTS=$(find "$HOME/recorded_agent_sessions" -name "*.cast" 2>/dev/null | wc -l | tr -d ' ')
+EXISTING_CASTS=$(find "$HOME/recorded_agent_sessions" -name "*.cast.gz" 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$EXISTING_CASTS" -lt 2 ]]; then
     $AGR record echo -- "tui test session 1" </dev/null 2>/dev/null || true
     $AGR record echo -- "tui test session 2" </dev/null 2>/dev/null || true
