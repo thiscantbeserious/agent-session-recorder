@@ -6,7 +6,7 @@ use agr::sync::crypto::{blob_aad, seal, seal_meta, sha256_hex, Key, Meta};
 use agr::sync::index::{self, Index};
 use agr::sync::memory::MemoryBackend;
 use agr::sync::plan::{Decision, SkipReason};
-use agr::sync::run::{Engine, Options, Outcome, SyncError};
+use agr::sync::run::{Engine, Options, Outcome};
 use agr::{Config, StorageManager};
 use std::fs;
 use std::io::BufRead;
@@ -339,7 +339,7 @@ fn held_lock_is_busy() {
     let held = format!("{{\"pid\":{},\"started\":\"x\"}}", std::process::id());
     fs::write(m.dir().join(index::LOCK_FILE), held).unwrap();
     let result = m.engine(&backend, &key).push(&opts());
-    assert_eq!(result.err(), Some(SyncError::Busy));
+    assert_eq!(result.err(), Some(agr::sync::run::SyncError::Busy));
     assert!(backend.is_empty());
 }
 

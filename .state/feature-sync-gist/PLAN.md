@@ -156,22 +156,23 @@ Considerations:
 Goal: `GistBackend`, the only code that spawns `gh` and `git`.
 Owner: implementer
 
-- [ ] RED/GREEN (pure, no process): parse `gh api gists --paginate` JSON into `RemoteEntry`
+- [x] RED/GREEN (pure, no process): parse `gh api gists --paginate` JSON into `RemoteEntry`
       filtered on the `agr:v1 ` prefix, map gh/git stderr samples to `BackendError` variants
       (`not logged in`, missing `gist` scope, network, credential helper hint `gh auth setup-git`).
-- [ ] `check`: `gh` and `git` on PATH, `gh auth status` exit code, scope line contains `gist`.
+- [x] `check`: `gh` and `git` on PATH, `gh auth status` exit code, scope line contains `gist`.
       Never pass or capture the token.
-- [ ] `push` new: `gh gist create` with `agr-session.json` (`{"format":1}`) and the description,
+- [x] `push` new: `gh gist create` with `agr-session.json` (`{"format":1}`) and the description,
       then shallow clone to a temp dir under `std::env::temp_dir()`, write `session.agr`,
       commit, push, remove the temp dir (also on error).
-- [ ] `push` existing: clone, replace, commit, push. `pull`: clone, read `session.agr`.
+- [x] `push` existing: clone, replace, commit, push. `pull`: clone, read `session.agr`.
       `delete`: `gh gist delete <id> --yes`.
-- [ ] Live test `tests/sync_gist_live.rs`, `#[ignore]`: create, push a 2MB random binary blob,
-      list, pull, compare bytes, update, delete. Run it once by hand and record the result for
-      Open Questions 1 to 3 in this PLAN. If binary push fails, switch the blob to base64url text
+- [x] Live test `tests/sync_gist_live.rs`, `#[ignore]`: create, push a 2MB random binary blob,
+      list, pull, compare bytes, update, delete. Run it once by hand (NOT run in this session, uploads
+      are blocked by policy) and record the result for Open Questions 1 to 3 in this PLAN. If binary push fails, switch the blob to base64url text
       inside `gist.rs` only.
 
-Files: `src/sync/mod.rs`, `src/sync/gist.rs`, `tests/sync_gist_live.rs`
+Files: `src/sync/mod.rs`, `src/sync/gist.rs`, `src/sync/gist_parse.rs`, `src/sync/runner.rs`,
+       `tests/sync_gist_live.rs`
 Depends on: Stage 6
 
 ### Stage 8: Sync and key commands
@@ -281,7 +282,7 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 4 | done | |
 | 5 | done | |
 | 6 | done | |
-| 7 | pending | |
+| 7 | done | live test written but not run, see ADR "To verify" |
 | 8 | pending | |
 | 9 | pending | |
 | 10 | pending | |

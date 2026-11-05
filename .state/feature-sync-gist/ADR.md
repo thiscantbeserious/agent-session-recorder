@@ -306,6 +306,22 @@ the table with `auto_push = true` and the commented backend line, idempotent. `S
 3. https protocol without credential helper error mapping (Stage 7).
 4. `cargo check --target x86_64-pc-windows-msvc` passes with the new deps (Stage 1 and Stage 11).
 
+**Still unverified live (Stage 7 was tested against a fake process runner only, no real gist was
+created, edited or deleted, the ignored `tests/sync_gist_live.rs` was not run):**
+- Exact `gh gist create <file> --desc <text>` output format (the id is parsed from the last path
+  segment of the printed `gist.github.com/...` URL).
+- `gh gist clone <id> <dir> -- --depth 1` works for a secret gist and with the configured git
+  protocol.
+- A binary `session.agr` pushed with plain `git push` is served back byte-identical (Open
+  Question 1), gist description length for the token (Open Question 2), and the real https
+  without credential helper error text (Open Question 3, the mapping is built from sample
+  strings, not captured output).
+- `gh api gists?per_page=100 --paginate` prints concatenated JSON arrays (parser accepts that and
+  a single array), and `gh api -X PATCH gists/<id> -f description=...` updates the description.
+- The `gh auth status` scope line wording (`Token scopes: ...`) on other gh versions.
+- Push order: blob first, description second (new gists carry the token from create). A crash
+  between the two leaves a hash mismatch that pull rejects, not verified live.
+
 ## Decision History
 1. 2026-11-06: user added auto push after recording (default on once a backend is set).
 2. 2026-11-06: user required private storage, gists have no private mode, decided: keep secret
