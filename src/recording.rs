@@ -250,6 +250,8 @@ impl Recorder {
         if filepath.exists() {
             return filepath.to_path_buf();
         }
+        #[cfg(not(unix))]
+        let _ = inode; // inode recovery is unix only
 
         eprintln!("  \u{26a0} Recording file was moved during session");
 

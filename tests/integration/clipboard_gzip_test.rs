@@ -1,4 +1,5 @@
 //! Clipboard tests for `.cast.gz` sources. Fake tools only, the system clipboard is never touched.
+#![cfg(unix)] // the uid named temp dir is unix only, Windows only gets a compile check
 
 use agr::clipboard::copy::Copy;
 use agr::clipboard::tool::{CopyTool, CopyToolError};

@@ -19,11 +19,10 @@ pub(crate) fn push(message: &str) {
 
 /// Take the newest queued warning, dropping older ones.
 pub fn take_latest() -> Option<String> {
-    QUEUE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .drain(..)
-        .last()
+    let mut queue = QUEUE.lock().unwrap_or_else(|e| e.into_inner());
+    let latest = queue.pop();
+    queue.clear();
+    latest
 }
 
 /// Installs the queueing sink for its lifetime, restores stderr on drop (also on panic).
