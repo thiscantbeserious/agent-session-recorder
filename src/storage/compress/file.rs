@@ -80,8 +80,6 @@ fn finalize(path: &Path, gz: &Path) -> Result<Outcome> {
 }
 
 /// Age based cleanup reads the mtime, so the gzip inherits it (best-effort).
-// ponytail: `set_modified` is 1.75, above the declared MSRV 1.70, a bump or `filetime` is the fix.
-#[allow(clippy::incompatible_msrv)]
 fn keep_mtime(gz: &Path, plain: &fs::Metadata) {
     if let Ok(modified) = plain.modified() {
         let _ = fs::File::options()

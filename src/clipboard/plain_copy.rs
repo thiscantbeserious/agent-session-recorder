@@ -57,7 +57,7 @@ fn decompress_to_temp(path: &Path, dir: PathBuf) -> Result<PlainSource, Clipboar
 }
 
 fn other_error(e: anyhow::Error) -> ClipboardError {
-    std::io::Error::new(std::io::ErrorKind::Other, format!("{e:#}")).into()
+    std::io::Error::other(format!("{e:#}")).into()
 }
 
 /// Ownership decision for the shared temp dir: only our own uid may use it.
