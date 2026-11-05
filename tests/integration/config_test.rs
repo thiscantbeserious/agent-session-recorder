@@ -1,5 +1,6 @@
 //! Unit tests for config module
 
+use agr::config::Compression;
 use agr::Config;
 
 #[test]
@@ -8,6 +9,7 @@ fn default_config_has_expected_values() {
     assert_eq!(config.storage.directory, "~/recorded_agent_sessions");
     assert_eq!(config.storage.size_threshold_gb, None);
     assert_eq!(config.storage.age_threshold_days, 30);
+    assert_eq!(config.storage.compression, Compression::Gzip);
     assert!(config.agents.enabled.contains(&"claude".to_string()));
     assert!(config.agents.enabled.contains(&"codex".to_string()));
     assert!(config.agents.enabled.contains(&"gemini".to_string()));

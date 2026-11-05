@@ -996,6 +996,7 @@ fn create_dir_config(storage_dir: &Path) -> Config {
             directory: storage_dir.to_string_lossy().to_string(),
             size_threshold_gb: Some(5.0),
             age_threshold_days: 30,
+            ..Default::default()
         },
         agents: agr::config::AgentsConfig {
             enabled: vec!["claude".to_string(), "codex".to_string()],
