@@ -30,30 +30,14 @@ impl StorageStats {
 
     /// Format a summary for display
     pub fn summary(&self) -> String {
-        // Sort agents alphabetically for consistent output
-        let mut agents: Vec<_> = self.sessions_by_agent.iter().collect();
-        agents.sort_by(|a, b| a.0.cmp(b.0));
-
-        let agents_summary: Vec<String> = agents
-            .iter()
-            .map(|(agent, count)| format!("{}: {}", agent, count))
-            .collect();
-
-        let agents_display = if agents_summary.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", agents_summary.join(", "))
-        };
-
         let mut summary = format!(
             "Agent Sessions: {} on disk, {} uncompressed ({:.2}% of disk)\n   Sessions: {} total{}",
             self.size_human(),
             self.uncompressed_human(),
             self.disk_percentage,
             self.session_count,
-            agents_display
+            self.agents_display()
         );
-
         if let Some(oldest) = &self.oldest_session {
             summary.push_str(&format!(
                 "\n   Oldest: {} ({} days ago)",
@@ -61,8 +45,22 @@ impl StorageStats {
                 oldest.age_days
             ));
         }
-
         summary
+    }
+
+    /// ` (a: 1, b: 2)` sorted by agent name, empty without sessions
+    fn agents_display(&self) -> String {
+        let mut agents: Vec<_> = self.sessions_by_agent.iter().collect();
+        agents.sort_by(|a, b| a.0.cmp(b.0));
+        let parts: Vec<String> = agents
+            .iter()
+            .map(|(agent, count)| format!("{}: {}", agent, count))
+            .collect();
+        if parts.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", parts.join(", "))
+        }
     }
 }
 
@@ -80,32 +78,27 @@ fn sum_uncompressed(sessions: &[SessionInfo]) -> UncompressedSize {
     UncompressedSize::Exact(total)
 }
 
+fn count_by_agent(sessions: &[SessionInfo]) -> HashMap<String, usize> {
+    let mut by_agent = HashMap::new();
+    for session in sessions {
+        *by_agent.entry(session.agent.clone()).or_insert(0) += 1;
+    }
+    by_agent
+}
+
 impl StorageManager {
     /// Get storage statistics
     pub fn get_stats(&self) -> Result<StorageStats> {
         let sessions = self.list_sessions(None)?;
 
         let total_size: u64 = sessions.iter().map(|s| s.size).sum();
-        let uncompressed_total = sum_uncompressed(&sessions);
-        let session_count = sessions.len();
-
-        let mut sessions_by_agent: HashMap<String, usize> = HashMap::new();
-        for session in &sessions {
-            *sessions_by_agent.entry(session.agent.clone()).or_insert(0) += 1;
-        }
-
-        let oldest_session = sessions.last().cloned();
-
-        // Calculate disk percentage (simplified - uses available space)
-        let disk_percentage = self.calculate_disk_percentage(total_size);
-
         Ok(StorageStats {
             total_size,
-            uncompressed_total,
-            session_count,
-            sessions_by_agent,
-            oldest_session,
-            disk_percentage,
+            uncompressed_total: sum_uncompressed(&sessions),
+            session_count: sessions.len(),
+            sessions_by_agent: count_by_agent(&sessions),
+            oldest_session: sessions.last().cloned(),
+            disk_percentage: self.calculate_disk_percentage(total_size),
         })
     }
 

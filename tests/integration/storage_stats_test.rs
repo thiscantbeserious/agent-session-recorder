@@ -337,9 +337,18 @@ fn summary_shows_on_disk_and_uncompressed() {
         .get_stats()
         .unwrap()
         .summary();
-    assert!(summary.contains("2 KiB uncompressed"), "{summary}");
-    assert!(summary.contains("on disk"), "{summary}");
-    assert!(summary.contains("1 total"), "{summary}");
+    assert!(
+        summary.contains("2 KiB uncompressed"),
+        "expected '2 KiB uncompressed' in: {summary}"
+    );
+    assert!(
+        summary.contains("on disk"),
+        "expected 'on disk' in: {summary}"
+    );
+    assert!(
+        summary.contains("1 total"),
+        "expected '1 total' in: {summary}"
+    );
 }
 
 #[test]
