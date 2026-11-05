@@ -124,24 +124,24 @@ Goal: `src/sync/scan.rs` builds plan inputs from storage, index and backend list
 executes it with per-session errors, sync lock and index updates.
 Owner: implementer
 
-- [ ] RED: push of three new sessions on `MemoryBackend` uploads three blobs, none starts with
+- [x] RED: push of three new sessions on `MemoryBackend` uploads three blobs, none starts with
       gzip magic, the index holds path, hash and id, a second push plans nothing.
-- [ ] RED: a locally changed session updates the same remote id, no new entry.
-- [ ] RED: pull on an empty storage dir writes byte-identical `.cast.gz` files, creates agent
+- [x] RED: a locally changed session updates the same remote id, no new entry.
+- [x] RED: pull on an empty storage dir writes byte-identical `.cast.gz` files, creates agent
       dirs, builds the index, files open with `codec::open_reader`.
-- [ ] RED: tampered blob, wrong key and hash mismatch are reported as failed, leave no file and
+- [x] RED: tampered blob, wrong key and hash mismatch are reported as failed, leave no file and
       no temp.
-- [ ] RED: pull `--overwrite` keeps the old file as hidden `.bak`, without it the file is
+- [x] RED: pull `--overwrite` keeps the old file as hidden `.bak`, without it the file is
       untouched.
-- [ ] RED: one failing session (`fail_on`) does not stop the others, report counts pushed,
+- [x] RED: one failing session (`fail_on`) does not stop the others, report counts pushed,
       pulled, skipped, conflicts, failed, bytes.
-- [ ] RED: dry run returns the same plan and changes nothing locally or in the backend.
-- [ ] RED: delete removes the remote entry and the index entry and keeps the local file.
-- [ ] RED: deleted index rebuilds to the same decisions as a second machine.
-- [ ] RED: a second engine run while `.agr-sync.lock` is held by a live pid returns `Busy`.
-- [ ] RED: session filter uses the same name lookup as other commands (`resolve_cast_path`).
-- [ ] GREEN: engine takes `&dyn SyncBackend`, `&Key`, `&StorageManager`, never prints.
-- [ ] Split `run.rs` into `run.rs` and `pull.rs` if it passes ~400 lines.
+- [x] RED: dry run returns the same plan and changes nothing locally or in the backend.
+- [x] RED: delete removes the remote entry and the index entry and keeps the local file.
+- [x] RED: deleted index rebuilds to the same decisions as a second machine.
+- [x] RED: a second engine run while `.agr-sync.lock` is held by a live pid returns `Busy`.
+- [x] RED: session filter uses the same name lookup as other commands (`resolve_cast_path`).
+- [x] GREEN: engine takes `&dyn SyncBackend`, `&Key`, `&StorageManager`, never prints.
+- [x] Split `run.rs` into `run.rs` and `pull.rs` if it passes ~400 lines.
 
 Files: `src/sync/mod.rs`, `src/sync/scan.rs`, `src/sync/run.rs`,
        `tests/integration/sync_engine_test.rs`, `tests/integration.rs`
@@ -280,7 +280,7 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 3 | pending | |
 | 4 | done | |
 | 5 | done | |
-| 6 | pending | |
+| 6 | done | |
 | 7 | pending | |
 | 8 | pending | |
 | 9 | pending | |

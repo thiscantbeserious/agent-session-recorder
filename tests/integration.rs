@@ -194,3 +194,6 @@ mod cli_offer_test;
 // CLI colour decision
 #[path = "integration/cli_color_test.rs"]
 mod cli_color_test;
+
+#[path = "integration/sync_engine_test.rs"]
+mod sync_engine_test;

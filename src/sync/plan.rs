@@ -7,6 +7,9 @@ pub enum SkipReason {
     Plain,
     Locked,
     OverCap,
+    Unreadable,
+    /// A requested session name matched nothing.
+    NotFound,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,0 +1,307 @@
+//! Sync engine, push, pull, delete and status against any backend. Never prints.
+
+use thiserror::Error;
+
+use super::backend::{BackendError, SyncBackend};
+use super::crypto::{blob_aad, seal, seal_meta, sha256_hex, Key, Meta};
+use super::index::{self, Index, IndexEntry};
+use super::lock::SyncLock;
+use super::plan::{decide, resolve, Command, Decision, Local, SkipReason};
+use super::pull::pull_one;
+use super::scan::{scan, select, Row};
+use crate::StorageManager;
+
+/// Whole-run failures, per-session failures live in the report.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum SyncError {
+    #[error("another sync is running")]
+    Busy,
+    #[error(transparent)]
+    Backend(#[from] BackendError),
+    #[error("{0}")]
+    Failed(String),
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Options {
+    pub overwrite: bool,
+    pub dry_run: bool,
+    /// Empty means every session.
+    pub sessions: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
+    /// Dry run, would act.
+    Planned,
+    /// Acted, carries the bytes moved.
+    Done(u64),
+    /// In sync or the other direction, nothing to do for this command.
+    Nothing,
+    Skipped(String),
+    Failed(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Item {
+    pub path: String,
+    pub decision: Decision,
+    pub outcome: Outcome,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Report {
+    pub items: Vec<Item>,
+    pub pushed: usize,
+    pub pulled: usize,
+    pub deleted: usize,
+    pub skipped: usize,
+    pub conflicts: usize,
+    pub failed: usize,
+    pub bytes: u64,
+    /// Index was unparseable and rebuilt.
+    pub warning: Option<String>,
+}
+
+impl Report {
+    fn add(&mut self, command: Command, item: Item) {
+        match (&item.outcome, item.decision) {
+            (Outcome::Done(bytes), _) => {
+                self.bytes += bytes;
+                match command {
+                    Command::Push => self.pushed += 1,
+                    Command::Pull => self.pulled += 1,
+                }
+            }
+            (Outcome::Skipped(_), Decision::Conflict) => self.conflicts += 1,
+            (Outcome::Skipped(_), _) => self.skipped += 1,
+            (Outcome::Failed(_), _) => self.failed += 1,
+            _ => {}
+        }
+        self.items.push(item);
+    }
+}
+
+/// Engine over any backend, the key and the storage dir.
+pub struct Engine<'a> {
+    pub backend: &'a dyn SyncBackend,
+    pub key: &'a Key,
+    pub storage: &'a StorageManager,
+}
+
+struct Loaded {
+    rows: Vec<Row>,
+    index: Index,
+    report: Report,
+}
+
+impl Engine<'_> {
+    /// Decisions only, never changes anything.
+    pub fn status(&self, sessions: &[String]) -> Result<Report, SyncError> {
+        let opts = Options {
+            dry_run: true,
+            sessions: sessions.to_vec(),
+            ..Options::default()
+        };
+        self.sync(Command::Push, &opts)
+    }
+
+    pub fn push(&self, opts: &Options) -> Result<Report, SyncError> {
+        self.sync(Command::Push, opts)
+    }
+
+    pub fn pull(&self, opts: &Options) -> Result<Report, SyncError> {
+        self.sync(Command::Pull, opts)
+    }
+
+    /// Remove the remote entry and the index entry, the local file stays.
+    pub fn delete(&self, sessions: &[String]) -> Result<Report, SyncError> {
+        if sessions.is_empty() {
+            return Ok(Report::default());
+        }
+        let _lock = SyncLock::acquire(&self.storage.storage_dir())?;
+        let mut loaded = self.load(sessions)?;
+        for row in std::mem::take(&mut loaded.rows) {
+            let outcome = self.delete_one(&row, &mut loaded.index);
+            let done = matches!(outcome, Outcome::Done(_));
+            let item = Item {
+                path: row.path.clone(),
+                decision: decide(&row.input),
+                outcome,
+            };
+            loaded.report.deleted += usize::from(done);
+            loaded.report.add(Command::Push, strip_done(item));
+        }
+        Ok(loaded.report)
+    }
+
+    fn sync(&self, command: Command, opts: &Options) -> Result<Report, SyncError> {
+        let _lock = if opts.dry_run {
+            None
+        } else {
+            Some(SyncLock::acquire(&self.storage.storage_dir())?)
+        };
+        let mut loaded = self.load(&opts.sessions)?;
+        for row in std::mem::take(&mut loaded.rows) {
+            let decision = resolve(decide(&row.input), command, opts.overwrite);
+            let outcome = self.step(command, opts, decision, &row, &mut loaded.index);
+            let item = Item {
+                path: row.path,
+                decision,
+                outcome,
+            };
+            loaded.report.add(command, item);
+        }
+        Ok(loaded.report)
+    }
+
+    fn load(&self, sessions: &[String]) -> Result<Loaded, SyncError> {
+        let dir = self.storage.storage_dir();
+        let (index, warning) = index::load(&dir);
+        let remote = self.backend.list()?;
+        let rows = scan(self.storage, self.key, &remote, &index)
+            .map_err(|e| SyncError::Failed(e.to_string()))?;
+        let mut report = Report {
+            warning,
+            ..Report::default()
+        };
+        if sessions.is_empty() {
+            return Ok(Loaded {
+                rows,
+                index,
+                report,
+            });
+        }
+        let (rows, unmatched) = select(rows, self.storage, sessions);
+        for name in unmatched {
+            report.add(Command::Push, not_found(name));
+        }
+        Ok(Loaded {
+            rows,
+            index,
+            report,
+        })
+    }
+
+    fn step(
+        &self,
+        command: Command,
+        opts: &Options,
+        decision: Decision,
+        row: &Row,
+        index: &mut Index,
+    ) -> Outcome {
+        match (decision, command) {
+            (Decision::Push, Command::Push) | (Decision::Pull, Command::Pull) if opts.dry_run => {
+                Outcome::Planned
+            }
+            (Decision::Push, Command::Push) => self.act(self.push_one(row, index)),
+            (Decision::Pull, Command::Pull) => self.act(pull_one(self, row, index)),
+            (
+                Decision::InSync {
+                    refresh_index: true,
+                },
+                _,
+            ) if !opts.dry_run => match self.refresh(row, index) {
+                Ok(()) => Outcome::Nothing,
+                Err(message) => Outcome::Failed(message),
+            },
+            (Decision::Conflict, _) => Outcome::Skipped("conflict, use --overwrite".into()),
+            (Decision::Skip(reason), _) => Outcome::Skipped(skip_text(reason).into()),
+            (Decision::OtherKey, _) => Outcome::Skipped("sealed with another key".into()),
+            (Decision::UnknownVersion, _) => Outcome::Skipped("unknown remote version".into()),
+            _ => Outcome::Nothing,
+        }
+    }
+
+    fn act(&self, result: Result<u64, String>) -> Outcome {
+        match result {
+            Ok(bytes) => Outcome::Done(bytes),
+            Err(message) => Outcome::Failed(message),
+        }
+    }
+
+    fn push_one(&self, row: &Row, index: &mut Index) -> Result<u64, String> {
+        let dir = self.storage.storage_dir();
+        let plain = std::fs::read(dir.join(&row.path)).map_err(|e| e.to_string())?;
+        let sha256 = sha256_hex(&plain);
+        let meta = Meta {
+            v: 1,
+            path: row.path.clone(),
+            sha256: sha256.clone(),
+            size: plain.len() as u64,
+        };
+        let token = seal_meta(self.key, &meta);
+        let blob = seal(self.key, &blob_aad(&row.path), &plain);
+        let id = self
+            .backend
+            .push(row.remote_id.as_deref(), &token, &blob)
+            .map_err(|e| e.to_string())?;
+        record(index, &row.path, sha256, id);
+        index::save(&dir, index).map_err(|e| e.to_string())?;
+        Ok(plain.len() as u64)
+    }
+
+    /// Hashes already agree, only the index lacks the entry.
+    fn refresh(&self, row: &Row, index: &mut Index) -> Result<(), String> {
+        let (Local::Hash(hash), Some(id)) = (&row.input.local, &row.remote_id) else {
+            return Ok(());
+        };
+        record(index, &row.path, hash.clone(), id.clone());
+        index::save(&self.storage.storage_dir(), index).map_err(|e| e.to_string())
+    }
+
+    fn delete_one(&self, row: &Row, index: &mut Index) -> Outcome {
+        let Some(id) = &row.remote_id else {
+            return Outcome::Skipped("not on the remote".into());
+        };
+        if let Err(e) = self.backend.delete(id) {
+            return Outcome::Failed(e.to_string());
+        }
+        index.entries.remove(&row.path);
+        self.act(
+            index::save(&self.storage.storage_dir(), index)
+                .map(|()| 0)
+                .map_err(|e| e.to_string()),
+        )
+    }
+}
+
+fn record(index: &mut Index, path: &str, sha256: String, remote_id: String) {
+    let synced_at = chrono::Utc::now().to_rfc3339();
+    let entry = IndexEntry {
+        sha256,
+        remote_id,
+        synced_at,
+    };
+    index.entries.insert(path.to_string(), entry);
+}
+
+fn not_found(name: String) -> Item {
+    Item {
+        path: name,
+        decision: Decision::Skip(SkipReason::NotFound),
+        outcome: Outcome::Failed("no such session".into()),
+    }
+}
+
+/// Delete counts in `deleted`, not in `pushed`.
+fn strip_done(item: Item) -> Item {
+    match item.outcome {
+        Outcome::Done(_) => Item {
+            outcome: Outcome::Nothing,
+            ..item
+        },
+        _ => item,
+    }
+}
+
+fn skip_text(reason: SkipReason) -> &'static str {
+    match reason {
+        SkipReason::Plain => "plain .cast, run `agr compress` first",
+        SkipReason::Locked => "still recording",
+        SkipReason::OverCap => "over the 100MB limit",
+        SkipReason::Unreadable => "cannot read the file",
+        SkipReason::NotFound => "no such session",
+    }
+}
