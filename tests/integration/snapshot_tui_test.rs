@@ -378,6 +378,16 @@ fn create_test_file_items() -> Vec<FileItem> {
     ]
 }
 
+/// Snapshot a file explorer render with the relative age column (e.g. `2y1m`) masked.
+///
+/// The age is computed against `Local::now()` while fixtures use fixed dates,
+/// as such it changes every month. Replacement keeps the column width.
+fn assert_explorer_snapshot(name: &str, output: &str) {
+    insta::with_settings!({filters => vec![(r"\s+\d+y\d+m:", "  #y#m:")]}, {
+        insta::assert_snapshot!(name, output);
+    });
+}
+
 /// Render a file explorer widget to a string for snapshot testing.
 fn render_explorer_to_string(explorer: &mut FileExplorer, width: u16, height: u16) -> String {
     let area = Rect::new(0, 0, width, height);
@@ -402,7 +412,7 @@ fn snapshot_file_explorer_basic() {
     let mut explorer = FileExplorer::new(create_test_file_items());
 
     let output = render_explorer_to_string(&mut explorer, 100, 15);
-    insta::assert_snapshot!("file_explorer_basic", output);
+    assert_explorer_snapshot("file_explorer_basic", &output);
 }
 
 #[test]
@@ -412,7 +422,7 @@ fn snapshot_file_explorer_with_selection() {
     explorer.down();
 
     let output = render_explorer_to_string(&mut explorer, 100, 15);
-    insta::assert_snapshot!("file_explorer_with_selection", output);
+    assert_explorer_snapshot("file_explorer_with_selection", &output);
 }
 
 #[test]
@@ -427,7 +437,7 @@ fn snapshot_file_explorer_with_multi_select() {
     explorer.down();
 
     let output = render_explorer_to_string(&mut explorer, 100, 15);
-    insta::assert_snapshot!("file_explorer_multi_select", output);
+    assert_explorer_snapshot("file_explorer_multi_select", &output);
 }
 
 #[test]
@@ -436,7 +446,7 @@ fn snapshot_file_explorer_filtered_by_agent() {
     explorer.set_agent_filter(Some("claude".to_string()));
 
     let output = render_explorer_to_string(&mut explorer, 100, 15);
-    insta::assert_snapshot!("file_explorer_filtered", output);
+    assert_explorer_snapshot("file_explorer_filtered", &output);
 }
 
 #[test]
@@ -447,7 +457,7 @@ fn snapshot_file_explorer_sorted_by_name() {
     explorer.set_sort(SortField::Name);
 
     let output = render_explorer_to_string(&mut explorer, 100, 15);
-    insta::assert_snapshot!("file_explorer_sorted_name", output);
+    assert_explorer_snapshot("file_explorer_sorted_name", &output);
 }
 
 #[test]
@@ -458,7 +468,7 @@ fn snapshot_file_explorer_sorted_by_size() {
     explorer.set_sort(SortField::Size);
 
     let output = render_explorer_to_string(&mut explorer, 100, 15);
-    insta::assert_snapshot!("file_explorer_sorted_size", output);
+    assert_explorer_snapshot("file_explorer_sorted_size", &output);
 }
 
 #[test]
@@ -467,7 +477,7 @@ fn snapshot_file_explorer_narrow() {
 
     // Narrow width - should hide preview panel
     let output = render_explorer_to_string(&mut explorer, 50, 15);
-    insta::assert_snapshot!("file_explorer_narrow", output);
+    assert_explorer_snapshot("file_explorer_narrow", &output);
 }
 
 #[test]
@@ -475,7 +485,7 @@ fn snapshot_file_explorer_empty() {
     let mut explorer = FileExplorer::new(vec![]);
 
     let output = render_explorer_to_string(&mut explorer, 100, 15);
-    insta::assert_snapshot!("file_explorer_empty", output);
+    assert_explorer_snapshot("file_explorer_empty", &output);
 }
 
 #[test]
@@ -616,7 +626,7 @@ fn snapshot_file_explorer_with_session_preview() {
     };
 
     let output = render_explorer_with_preview(&mut explorer, Some(&preview), 100, 20);
-    insta::assert_snapshot!("file_explorer_with_session_preview", output);
+    assert_explorer_snapshot("file_explorer_with_session_preview", &output);
 }
 
 #[test]
@@ -644,7 +654,7 @@ fn snapshot_file_explorer_preview_with_backup() {
     // Render with backup indicator
     let output =
         render_explorer_with_preview_and_backup(&mut explorer, Some(&preview), true, 100, 20);
-    insta::assert_snapshot!("file_explorer_preview_with_backup", output);
+    assert_explorer_snapshot("file_explorer_preview_with_backup", &output);
 }
 
 #[test]
@@ -672,7 +682,7 @@ fn snapshot_file_explorer_preview_without_backup() {
     // Render without backup indicator
     let output =
         render_explorer_with_preview_and_backup(&mut explorer, Some(&preview), false, 100, 20);
-    insta::assert_snapshot!("file_explorer_preview_without_backup", output);
+    assert_explorer_snapshot("file_explorer_preview_without_backup", &output);
 }
 
 // ============================================================================
@@ -915,7 +925,7 @@ fn snapshot_file_explorer_with_locked_item() {
     let mut explorer = FileExplorer::new(create_test_file_items_with_lock());
 
     let output = render_explorer_to_string(&mut explorer, 100, 12);
-    insta::assert_snapshot!("file_explorer_with_locked_item", output);
+    assert_explorer_snapshot("file_explorer_with_locked_item", &output);
 }
 
 #[test]
@@ -941,7 +951,7 @@ fn snapshot_file_explorer_locked_item_preview() {
     };
 
     let output = render_explorer_with_preview(&mut explorer, Some(&preview), 100, 15);
-    insta::assert_snapshot!("file_explorer_locked_item_preview", output);
+    assert_explorer_snapshot("file_explorer_locked_item_preview", &output);
 }
 
 #[test]

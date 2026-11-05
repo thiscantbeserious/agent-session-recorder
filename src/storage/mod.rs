@@ -436,7 +436,7 @@ impl StorageManager {
         }
 
         // Sort by modification time, newest first
-        sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.modified));
 
         Ok(sessions)
     }
@@ -571,7 +571,7 @@ impl StorageManager {
         let mut matches: Vec<_> = sessions.iter().filter(|s| s.filename == filename).collect();
 
         // Sort by modification time (newest first) and return the first match
-        matches.sort_by(|a, b| b.modified.cmp(&a.modified));
+        matches.sort_by_key(|s| std::cmp::Reverse(s.modified));
         matches.first().map(|s| s.path.clone())
     }
 
@@ -583,7 +583,7 @@ impl StorageManager {
         let mut sessions = self.list_sessions(None)?;
 
         // Sort by modification time (most recent first)
-        sessions.sort_by(|a, b| b.modified.cmp(&a.modified));
+        sessions.sort_by_key(|s| std::cmp::Reverse(s.modified));
 
         let mut files: Vec<String> = sessions
             .iter()

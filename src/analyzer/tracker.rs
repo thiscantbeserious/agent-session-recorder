@@ -269,11 +269,9 @@ impl TokenTracker {
 
         let total_duration = self.elapsed();
 
-        let avg_tokens_per_chunk = if chunks_processed > 0 {
-            total_estimated_tokens / chunks_processed
-        } else {
-            0
-        };
+        let avg_tokens_per_chunk = total_estimated_tokens
+            .checked_div(chunks_processed)
+            .unwrap_or(0);
 
         let avg_duration_per_chunk = if chunks_processed > 0 {
             total_duration / chunks_processed as u32

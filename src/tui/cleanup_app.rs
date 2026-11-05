@@ -172,10 +172,10 @@ impl CleanupApp {
             KeyCode::Backspace => {
                 self.glob_input.pop();
             }
-            KeyCode::Char(c) => {
-                if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT {
-                    self.glob_input.push(c);
-                }
+            KeyCode::Char(c)
+                if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT =>
+            {
+                self.glob_input.push(c);
             }
             _ => {}
         }
