@@ -504,24 +504,24 @@ Depends on: Stage 17, Stage 18
 Goal: fix every Batch 4 review finding.
 Owner: implementer
 
-- [ ] RED/GREEN: `diagnose` on a truncated `.cast.gz` returns within a timeout (test runs it
+- [x] RED/GREEN: `diagnose` on a truncated `.cast.gz` returns within a timeout (test runs it
       on a thread with `recv_timeout`), records the decode error once and stops. Confirmed
       hang today.
-- [ ] RED/GREEN: `repair` and `diagnose` agree on what a bad line is (invalid UTF-8 and JSON
+- [x] RED/GREEN: `repair` and `diagnose` agree on what a bad line is (invalid UTF-8 and JSON
       errors are bad lines in both, decoder errors are terminal in both).
-- [ ] RED/GREEN: clipboard file reference for a `.cast.gz` above 10MB decompressed succeeds
+- [x] RED/GREEN: clipboard file reference for a `.cast.gz` above 10MB decompressed succeeds
       (no up-front size reject), text fallback still enforces the limit on the decompressed
       size. One size check only, in the text path.
-- [ ] RED/GREEN: temp dir is `<tmp>/agr-clipboard-<uid>` (unix uid via `libc::getuid`),
+- [x] RED/GREEN: temp dir is `<tmp>/agr-clipboard-<uid>` (unix uid via `libc::getuid`),
       refused when it is a symlink or owned by another uid, created with mode 0700.
-- [ ] RED/GREEN: `resolve_target` returns an error after exhausting collision suffixes
+- [x] RED/GREEN: `resolve_target` returns an error after exhausting collision suffixes
       instead of overwriting the last candidate.
-- [ ] RED/GREEN: dir fsync failure after a successful rename does not report the write as
+- [x] RED/GREEN: dir fsync failure after a successful rename does not report the write as
       failed (warn on stderr, return Ok).
-- [ ] RED/GREEN: `open_reader` decodes multi-member gzip (`MultiGzDecoder`), test with two
+- [x] RED/GREEN: `open_reader` decodes multi-member gzip (`MultiGzDecoder`), test with two
       concatenated members, same for `uncompressed_size` trailer fallback (documented limit).
-- [ ] `state.toml` broken file: warn on stderr once when it cannot be parsed.
-- [ ] Every function touched in Batch 4 within ~20 lines and nesting <= 3 (`repair`,
+- [x] `state.toml` broken file: warn on stderr once when it cannot be parsed.
+- [x] Every function touched in Batch 4 within ~20 lines and nesting <= 3 (`repair`,
       `write_gzip`, `read_first_line` and others).
 
 Files: `src/asciicast/integrity.rs`, `src/clipboard/plain_copy.rs`, `src/clipboard/copy.rs`,

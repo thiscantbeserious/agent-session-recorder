@@ -109,40 +109,32 @@ fn read_first_line(path: &Path) -> Result<String, ImportError> {
 /// - First line is valid JSON with a "version" field
 /// - Version is 2 or 3
 pub fn validate_cast_header(path: &Path) -> Result<(), ImportError> {
-    // Check if file exists
     if !path.exists() {
         return Err(ImportError::NotFound(format!("{}", path.display())));
     }
-
     if !codec::is_session_path(path) {
         return Err(ImportError::WrongExtension(format!(
             "Expected .cast or .cast.gz extension, got: {}",
             path.display()
         )));
     }
+    check_version(read_first_line(path)?.trim())
+}
 
-    let first_line = read_first_line(path)?;
-
-    // Parse as JSON and check for version field
-    let json: serde_json::Value = serde_json::from_str(first_line.trim())
+/// First line must be JSON with a `version` of 2 or 3.
+fn check_version(first_line: &str) -> Result<(), ImportError> {
+    let json: serde_json::Value = serde_json::from_str(first_line)
         .map_err(|e| ImportError::InvalidFormat(format!("First line is not valid JSON: {}", e)))?;
-
-    // Check for version field
     let version = json.get("version").ok_or_else(|| {
         ImportError::InvalidFormat("Missing 'version' field in header".to_string())
     })?;
-
-    // Accept version 2 or 3
-    if let Some(v) = version.as_u64() {
-        if v == 2 || v == 3 {
-            return Ok(());
-        }
+    match version.as_u64() {
+        Some(2 | 3) => Ok(()),
+        _ => Err(ImportError::InvalidFormat(format!(
+            "Unsupported asciicast version: {}",
+            version
+        ))),
     }
-
-    Err(ImportError::InvalidFormat(format!(
-        "Unsupported asciicast version: {}",
-        version
-    )))
 }
 
 /// Resolve the target path for `stem` with `suffix`, adding `-1`, `-2`, ... on conflict.

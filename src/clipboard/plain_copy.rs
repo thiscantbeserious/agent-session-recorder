@@ -28,29 +28,29 @@ impl PlainSource {
 pub fn prepare(path: &Path, base: &Path) -> Result<PlainSource, ClipboardError> {
     if !codec::is_gzip_path(path) {
         let size = std::fs::metadata(path)?.len();
+        let path = path.to_path_buf();
         return Ok(PlainSource {
-            path: path.to_path_buf(),
+            path,
             size,
             temp_dir: None,
         });
     }
-    let dir = fresh_temp_dir(base)?;
+    decompress_to_temp(path, fresh_temp_dir(base)?)
+}
+
+fn decompress_to_temp(path: &Path, dir: PathBuf) -> Result<PlainSource, ClipboardError> {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let dest = dir.join(format!(
-        "{}{}",
-        codec::session_stem(name),
-        codec::SESSION_SUFFIX
-    ));
-    let source = PlainSource {
-        path: dest.clone(),
-        size: 0,
-        temp_dir: Some(dir),
-    };
+    let stem = codec::session_stem(name);
+    let dest = dir.join(format!("{stem}{}", codec::SESSION_SUFFIX));
     let decoded = codec::transcode(path, &dest).and_then(|()| Ok(std::fs::metadata(&dest)?.len()));
     match decoded {
-        Ok(size) => Ok(PlainSource { size, ..source }),
+        Ok(size) => Ok(PlainSource {
+            path: dest,
+            size,
+            temp_dir: Some(dir),
+        }),
         Err(e) => {
-            source.discard();
+            let _ = std::fs::remove_dir_all(&dir);
             Err(other_error(e))
         }
     }
