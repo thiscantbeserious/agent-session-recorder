@@ -344,6 +344,31 @@ jobs:
       - name: Run snapshot tests
         run: cargo insta test --check
 
+  # Windows compile check - runtime stays unsupported, this only keeps the crate compiling
+  windows-check:
+    name: Windows check
+    runs-on: windows-latest
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check all targets
+        run: cargo check --all-targets
+
   # Lint - runs in parallel, fast-fail for style issues
   lint:
     name: Lint
