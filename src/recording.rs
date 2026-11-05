@@ -289,7 +289,7 @@ impl Recorder {
                 stats.size_human(),
                 stats.session_count
             );
-            eprintln!("   Run 'asr cleanup' to free space.");
+            eprintln!("   Run 'agr cleanup' to free space.");
         }
         Ok(())
     }

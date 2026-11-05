@@ -1,4 +1,4 @@
-//! Configuration management for ASR
+//! Configuration management for AGR
 
 pub mod analysis;
 pub mod docs;

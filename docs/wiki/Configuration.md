@@ -29,7 +29,7 @@ Storage and cleanup settings
 | Option | Default | Description |
 |--------|---------|-------------|
 | `directory` | `~/recorded_agent_sessions` | Base directory for session recordings |
-| `size_threshold_gb` | `5.0` | Storage warning threshold in GB |
+| `size_threshold_gb` | `unset` | Warn after recording when storage exceeds this size in GB (unset = off) |
 | `age_threshold_days` | `30` | Age threshold in days for cleanup suggestions |
 
 ### [recording]

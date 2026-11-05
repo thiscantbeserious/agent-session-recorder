@@ -496,11 +496,13 @@ impl StorageManager {
         Ok(freed_size)
     }
 
-    /// Check if storage exceeds threshold
+    /// Check if storage exceeds the configured threshold (false when unset)
     pub fn exceeds_threshold(&self) -> Result<bool> {
+        let Some(threshold_gb) = self.config.storage.size_threshold_gb else {
+            return Ok(false);
+        };
         let stats = self.get_stats()?;
-        let threshold_bytes =
-            (self.config.storage.size_threshold_gb * 1024.0 * 1024.0 * 1024.0) as u64;
+        let threshold_bytes = (threshold_gb * 1024.0 * 1024.0 * 1024.0) as u64;
         Ok(stats.total_size > threshold_bytes)
     }
 
@@ -692,7 +694,7 @@ mod tests {
         Config {
             storage: crate::config::StorageConfig {
                 directory: storage_dir.to_string_lossy().to_string(),
-                size_threshold_gb: 5.0,
+                size_threshold_gb: Some(5.0),
                 age_threshold_days: 30,
             },
             agents: crate::config::AgentsConfig {

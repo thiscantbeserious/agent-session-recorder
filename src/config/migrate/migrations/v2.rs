@@ -94,7 +94,7 @@ filename_template = "{directory}_{date}_{time}"
 "#;
         let result = migrate_config(input).unwrap();
         assert_eq!(result.old_version, 0);
-        assert_eq!(result.new_version, 2);
+        assert_eq!(result.new_version, crate::config::migrate::CURRENT_VERSION);
 
         let parsed: Config = toml::from_str(&result.content).unwrap();
         // v1 migration moves analysis_agent -> analysis.agent

@@ -48,8 +48,8 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
             },
             FieldDoc {
                 name: "size_threshold_gb",
-                description: "Storage warning threshold in GB",
-                default_display: "5.0",
+                description: "Warn after recording when storage exceeds this size in GB (unset = off)",
+                default_display: "unset",
             },
             FieldDoc {
                 name: "age_threshold_days",

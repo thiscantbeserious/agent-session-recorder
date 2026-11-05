@@ -14,7 +14,7 @@ use super::Config;
 
 /// The latest config schema version.
 /// Bump this and add a migration file when the schema changes.
-pub const CURRENT_VERSION: u32 = 2;
+pub const CURRENT_VERSION: u32 = 3;
 
 /// Result of a config migration operation
 #[derive(Debug, Clone, Default)]
@@ -420,7 +420,7 @@ directory = "~/my-recordings"
         assert!(result.sections_added.contains(&"analysis".to_string()));
         assert!(!result.sections_added.contains(&"storage".to_string()));
 
-        assert!(result
+        assert!(!result
             .added_fields
             .contains(&"storage.size_threshold_gb".to_string()));
         assert!(result
@@ -463,7 +463,7 @@ auto_analyze = true
 
         let parsed: Config = toml::from_str(&result.content).unwrap();
         assert_eq!(parsed.storage.directory, "~/custom");
-        assert_eq!(parsed.storage.size_threshold_gb, 10.0);
+        assert_eq!(parsed.storage.size_threshold_gb, Some(10.0));
         assert_eq!(parsed.agents.enabled, vec!["claude"]);
         assert!(!parsed.shell.auto_wrap);
         assert!(parsed.recording.auto_analyze);
