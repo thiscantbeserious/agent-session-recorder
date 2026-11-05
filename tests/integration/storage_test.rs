@@ -986,3 +986,323 @@ fn exceeds_threshold_is_true_when_size_above_configured_threshold() {
     let manager = StorageManager::new(config);
     assert!(manager.exceeds_threshold().unwrap());
 }
+
+// === Moved from src/storage/mod.rs ===
+
+/// Create a test config with a custom storage directory.
+fn create_dir_config(storage_dir: &Path) -> Config {
+    Config {
+        storage: agr::config::StorageConfig {
+            directory: storage_dir.to_string_lossy().to_string(),
+            size_threshold_gb: Some(5.0),
+            age_threshold_days: 30,
+        },
+        agents: agr::config::AgentsConfig {
+            enabled: vec!["claude".to_string(), "codex".to_string()],
+            no_wrap: vec![],
+            ..Default::default()
+        },
+        shell: Default::default(),
+        recording: Default::default(),
+        analysis: Default::default(),
+        ..Default::default()
+    }
+}
+
+// ========================================================================
+// Backup file filtering tests
+// ========================================================================
+
+/// Test that list_sessions excludes .bak files from the file list.
+///
+/// This is a critical regression test - .bak files are backups created
+/// by the transform feature and should never appear in the session list.
+#[test]
+fn list_sessions_excludes_bak_files() {
+    let dir = TempDir::new().unwrap();
+    let storage_dir = dir.path();
+
+    // Create agent directory
+    let agent_dir = storage_dir.join("claude");
+    fs::create_dir_all(&agent_dir).unwrap();
+
+    // Create a valid .cast file
+    let cast_file = agent_dir.join("session.cast");
+    let mut f = fs::File::create(&cast_file).unwrap();
+    writeln!(f, r#"{{"version":3}}"#).unwrap();
+    writeln!(f, r#"[0.1,"o","hello"]"#).unwrap();
+
+    // Create a .cast.bak file (backup)
+    let bak_file = agent_dir.join("session.cast.bak");
+    let mut f = fs::File::create(&bak_file).unwrap();
+    writeln!(f, r#"{{"version":3}}"#).unwrap();
+    writeln!(f, r#"[0.1,"o","original"]"#).unwrap();
+
+    // Create another .bak file without .cast prefix
+    let other_bak = agent_dir.join("other.bak");
+    let mut f = fs::File::create(&other_bak).unwrap();
+    writeln!(f, "some backup data").unwrap();
+
+    // List sessions
+    let config = create_dir_config(storage_dir);
+    let manager = StorageManager::new(config);
+    let sessions = manager.list_sessions(None).unwrap();
+
+    // Should only find the .cast file, not any .bak files
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].filename, "session.cast");
+
+    // Verify .bak files still exist on disk (possibly migrated to hidden format) but aren't listed.
+    // The startup sweep in StorageManager::new() renames old-format `session.cast.bak` to
+    // hidden `.session.cast.bak`, so check either location.
+    let hidden_bak = agent_dir.join(".session.cast.bak");
+    assert!(bak_file.exists() || hidden_bak.exists());
+    assert!(other_bak.exists());
+}
+
+/// Test that list_sessions only includes files with .cast extension.
+#[test]
+fn list_sessions_only_includes_cast_extension() {
+    let dir = TempDir::new().unwrap();
+    let storage_dir = dir.path();
+
+    // Create agent directory
+    let agent_dir = storage_dir.join("claude");
+    fs::create_dir_all(&agent_dir).unwrap();
+
+    // Create files with various extensions
+    let extensions = [
+        "session.cast",     // Valid - should be included
+        "session.cast.bak", // Backup - should be excluded
+        "session.txt",      // Wrong extension - excluded
+        "session.json",     // Wrong extension - excluded
+        "session",          // No extension - excluded
+    ];
+
+    for filename in &extensions {
+        let path = agent_dir.join(filename);
+        let mut f = fs::File::create(&path).unwrap();
+        writeln!(f, "test content").unwrap();
+    }
+
+    // List sessions
+    let config = create_dir_config(storage_dir);
+    let manager = StorageManager::new(config);
+    let sessions = manager.list_sessions(None).unwrap();
+
+    // Should only find session.cast
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].filename, "session.cast");
+}
+
+/// Test that list_sessions works correctly with empty directory.
+#[test]
+fn list_sessions_empty_directory() {
+    let dir = TempDir::new().unwrap();
+    let storage_dir = dir.path();
+
+    let config = create_dir_config(storage_dir);
+    let manager = StorageManager::new(config);
+    let sessions = manager.list_sessions(None).unwrap();
+
+    assert!(sessions.is_empty());
+}
+
+/// Test that list_sessions filters by agent correctly.
+#[test]
+fn list_sessions_filters_by_agent() {
+    let dir = TempDir::new().unwrap();
+    let storage_dir = dir.path();
+
+    // Create two agent directories
+    let claude_dir = storage_dir.join("claude");
+    let codex_dir = storage_dir.join("codex");
+    fs::create_dir_all(&claude_dir).unwrap();
+    fs::create_dir_all(&codex_dir).unwrap();
+
+    // Create files in each
+    let mut f = fs::File::create(claude_dir.join("claude_session.cast")).unwrap();
+    writeln!(f, "claude data").unwrap();
+
+    let mut f = fs::File::create(codex_dir.join("codex_session.cast")).unwrap();
+    writeln!(f, "codex data").unwrap();
+
+    let config = create_dir_config(storage_dir);
+    let manager = StorageManager::new(config);
+
+    // List all sessions
+    let all_sessions = manager.list_sessions(None).unwrap();
+    assert_eq!(all_sessions.len(), 2);
+
+    // List only claude sessions
+    let claude_sessions = manager.list_sessions(Some("claude")).unwrap();
+    assert_eq!(claude_sessions.len(), 1);
+    assert_eq!(claude_sessions[0].agent, "claude");
+
+    // List only codex sessions
+    let codex_sessions = manager.list_sessions(Some("codex")).unwrap();
+    assert_eq!(codex_sessions.len(), 1);
+    assert_eq!(codex_sessions[0].agent, "codex");
+}
+
+// ========================================================================
+// Path Traversal Security Tests
+// ========================================================================
+
+/// Test that import_cast_file rejects agent names with path traversal attempts.
+#[test]
+fn import_cast_file_rejects_path_traversal() {
+    let temp = TempDir::new().unwrap();
+    let storage_dir = temp.path();
+
+    // Create a valid cast file to import
+    let source = temp.path().join("test.cast");
+    let mut f = fs::File::create(&source).unwrap();
+    writeln!(f, r#"{{"version":3,"width":80,"height":24}}"#).unwrap();
+    writeln!(f, r#"[0.1,"o","test"]"#).unwrap();
+
+    let config = create_dir_config(storage_dir);
+    let manager = StorageManager::new(config);
+
+    // Test various path traversal attempts
+    let malicious_names = vec![
+        "../../etc",
+        "../../../root",
+        "..\\..\\windows",
+        "agent/../etc",
+        "./../../tmp",
+    ];
+
+    for agent_name in malicious_names {
+        let result = manager.import_cast_file(&source, agent_name);
+        assert!(
+            result.is_err(),
+            "Should reject path traversal attempt: {}",
+            agent_name
+        );
+
+        // Verify error is InvalidAgentName
+        match result {
+            Err(ImportError::InvalidAgentName(_)) => {
+                // Expected error type
+            }
+            other => panic!(
+                "Expected InvalidAgentName error for '{}', got: {:?}",
+                agent_name, other
+            ),
+        }
+    }
+}
+
+/// Test that import_cast_file rejects empty or whitespace-only agent names.
+#[test]
+fn import_cast_file_rejects_empty_agent() {
+    let temp = TempDir::new().unwrap();
+    let storage_dir = temp.path();
+
+    // Create a valid cast file
+    let source = temp.path().join("test.cast");
+    let mut f = fs::File::create(&source).unwrap();
+    writeln!(f, r#"{{"version":3,"width":80,"height":24}}"#).unwrap();
+    writeln!(f, r#"[0.1,"o","test"]"#).unwrap();
+
+    let config = create_dir_config(storage_dir);
+    let manager = StorageManager::new(config);
+
+    // Test empty and whitespace-only names
+    let invalid_names = vec!["", "   ", "\t", "\n", "  \n\t  "];
+
+    for agent_name in invalid_names {
+        let result = manager.import_cast_file(&source, agent_name);
+        assert!(
+            result.is_err(),
+            "Should reject empty/whitespace agent name: {:?}",
+            agent_name
+        );
+
+        // Verify error is InvalidAgentName
+        match result {
+            Err(ImportError::InvalidAgentName(_)) => {
+                // Expected error type
+            }
+            other => panic!(
+                "Expected InvalidAgentName error for '{:?}', got: {:?}",
+                agent_name, other
+            ),
+        }
+    }
+}
+
+/// Test that import_cast_file rejects agent names with slashes.
+#[test]
+fn import_cast_file_rejects_slashes() {
+    let temp = TempDir::new().unwrap();
+    let storage_dir = temp.path();
+
+    // Create a valid cast file
+    let source = temp.path().join("test.cast");
+    let mut f = fs::File::create(&source).unwrap();
+    writeln!(f, r#"{{"version":3,"width":80,"height":24}}"#).unwrap();
+    writeln!(f, r#"[0.1,"o","test"]"#).unwrap();
+
+    let config = create_dir_config(storage_dir);
+    let manager = StorageManager::new(config);
+
+    // Test names with slashes
+    let invalid_names = vec!["agent/subdir", "path\\to\\agent", "/absolute/path"];
+
+    for agent_name in invalid_names {
+        let result = manager.import_cast_file(&source, agent_name);
+        assert!(
+            result.is_err(),
+            "Should reject agent name with slashes: {}",
+            agent_name
+        );
+
+        match result {
+            Err(ImportError::InvalidAgentName(_)) => {
+                // Expected error type
+            }
+            other => panic!(
+                "Expected InvalidAgentName error for '{}', got: {:?}",
+                agent_name, other
+            ),
+        }
+    }
+}
+
+/// Test that import_cast_file accepts valid agent names.
+#[test]
+fn import_cast_file_accepts_valid_agent_names() {
+    let temp = TempDir::new().unwrap();
+    let storage_dir = temp.path();
+
+    // Create a valid cast file
+    let source = temp.path().join("test.cast");
+    let mut f = fs::File::create(&source).unwrap();
+    writeln!(f, r#"{{"version":3,"width":80,"height":24}}"#).unwrap();
+    writeln!(f, r#"[0.1,"o","test"]"#).unwrap();
+
+    let config = create_dir_config(storage_dir);
+    let manager = StorageManager::new(config);
+
+    // Test valid agent names
+    let valid_names = vec![
+        "claude",
+        "agent-1",
+        "my_agent",
+        "AgentName123",
+        "a",
+        "test-agent_v2",
+    ];
+
+    for agent_name in valid_names {
+        let result = manager.import_cast_file(&source, agent_name);
+        assert!(
+            result.is_ok(),
+            "Should accept valid agent name '{}': {:?}",
+            agent_name,
+            result
+        );
+    }
+}
