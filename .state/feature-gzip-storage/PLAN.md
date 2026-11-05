@@ -646,14 +646,14 @@ codes when stdout is piped or redirected and when `NO_COLOR` is set (verified wi
 unset or empty (https://no-color.org). The TUI is not affected.
 Owner: implementer
 
-- [ ] RED/GREEN: one decision function in `src/theme/cli.rs` (`colors_enabled(is_tty, no_color)`
+- [x] RED/GREEN: one decision function in `src/theme/cli.rs` (`colors_enabled(is_tty, no_color)`
       pure, plus a cached runtime wrapper), every CLI colour helper routes through it.
-- [ ] RED/GREEN: `agr status`, `agr list`, `agr compress` piped (assert_cmd captures stdout,
+- [x] RED/GREEN: `agr status`, `agr list`, `agr compress` piped (assert_cmd captures stdout,
       not a tty) contain no `\x1b[`.
-- [ ] Help output (`src/help.rs` already checks `atty`) uses the same decision, `NO_COLOR`
+- [x] Help output (`src/help.rs` already checks `atty`) uses the same decision, `NO_COLOR`
       respected there too. Colored help snapshots that run without a tty keep passing via an
       explicit force flag if they rely on colour today (check `cli_help_main_colored`).
-- [ ] Replace remaining `atty` uses with `std::io::IsTerminal` and drop the `atty` dependency
+- [x] Replace remaining `atty` uses with `std::io::IsTerminal` and drop the `atty` dependency
       if nothing else needs it (unmaintained crate, RUSTSEC-2021-0145).
 
 Files: `src/theme/cli.rs`, `src/theme/mod.rs`, `src/help.rs`, `src/commands/config.rs`,
