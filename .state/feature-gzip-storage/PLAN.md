@@ -403,14 +403,18 @@ Owner: implementer
 - [ ] README: `compression` key, `.cast.gz` naming, `agr compress`, offer behavior, state file.
 - [ ] `src/config/docs.rs` example block includes `compression = "gzip"`.
 - [ ] e2e: a finished recording is `.cast.gz` and `gzip -dc` output is valid asciicast (not `zcat`, which is the legacy .Z tool on macOS), with
-      `none` it stays `.cast`.
+      `none` it stays `.cast`. (Landed in Stage 10, verify only.)
+- [ ] Regenerate generated docs with `cargo xtask gen-docs` (wiki Command-*.md incl. new
+      Command-compress.md, Configuration.md, man pages), never hand-edit generated files. Update
+      the `agr status` help example (`src/cli`) to the new on-disk/uncompressed/plain lines first.
 - [ ] Performance test: generated 100MB-decompressed `.cast.gz`, parse peak RSS within ~10%
       of the plain file (ignored by default like the other performance tests).
 - [ ] Full `cargo test`, `cargo clippy -- -D warnings`, `cargo fmt --check`,
       `./tests/e2e_test.sh`.
 
-Files: `README.md`, `src/config/docs.rs`, `tests/e2e/recording.sh`,
-       `tests/performance/gzip_memory_test.rs`, `tests/performance.rs`
+Files: `README.md`, `src/config/docs.rs`, `tests/e2e/recording.sh`, `src/cli/`, `docs/`,
+       `tests/integration/snapshots/`, `tests/performance/gzip_memory_test.rs`,
+       `tests/performance.rs`
 Depends on: Stage 10, Stage 12, Stage 13, Stage 14, Stage 15
 
 Considerations:
