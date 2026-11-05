@@ -1,7 +1,8 @@
 //! Storage tests: listing sessions and fixture-based manager behavior
 
 use super::helpers::storage::{
-    create_dir_config, create_test_config, create_test_manager, create_test_session,
+    create_codec_session, create_dir_config, create_test_config, create_test_manager,
+    create_test_session,
 };
 use agr::{Config, StorageManager};
 use std::fs;
@@ -350,4 +351,39 @@ fn list_sessions_filters_by_agent() {
     let codex_sessions = manager.list_sessions(Some("codex")).unwrap();
     assert_eq!(codex_sessions.len(), 1);
     assert_eq!(codex_sessions[0].agent, "codex");
+}
+
+// === Gzip sessions (Stage 7) ===
+
+const CAST: &str = "{\"version\":3}\n[0.1,\"o\",\"x\"]\n";
+
+#[test]
+fn list_sessions_includes_plain_and_gzip_but_no_hidden_files() {
+    let temp = TempDir::new().unwrap();
+    let manager = StorageManager::new(create_test_config(&temp));
+    create_codec_session(temp.path(), "claude", "x.cast", CAST);
+    create_codec_session(temp.path(), "claude", "y.cast.gz", CAST);
+    create_test_session(temp.path(), "claude", ".y.cast.gz.bak", "bak");
+    create_test_session(temp.path(), "claude", ".y.cast.gz.tmp", "tmp");
+
+    let mut names: Vec<String> = manager
+        .list_sessions(None)
+        .unwrap()
+        .into_iter()
+        .map(|s| s.filename)
+        .collect();
+    names.sort();
+    assert_eq!(names, vec!["x.cast", "y.cast.gz"]);
+}
+
+#[test]
+fn list_sessions_prefers_gzip_when_both_variants_exist() {
+    let temp = TempDir::new().unwrap();
+    let manager = StorageManager::new(create_test_config(&temp));
+    create_codec_session(temp.path(), "claude", "x.cast", CAST);
+    create_codec_session(temp.path(), "claude", "x.cast.gz", CAST);
+
+    let sessions = manager.list_sessions(None).unwrap();
+    assert_eq!(sessions.len(), 1);
+    assert_eq!(sessions[0].filename, "x.cast.gz");
 }

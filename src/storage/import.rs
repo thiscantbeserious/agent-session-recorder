@@ -1,6 +1,9 @@
 //! Import of external .cast files into managed storage
 
+use super::sessions::other_variant;
 use super::StorageManager;
+use crate::config::Compression;
+use crate::files::codec;
 use std::fs;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -12,7 +15,7 @@ pub enum ImportError {
     NotFound(String),
     /// Permission denied when accessing the file
     PermissionDenied(String),
-    /// File does not have .cast extension
+    /// File does not have .cast or .cast.gz extension
     WrongExtension(String),
     /// File format is invalid (not valid asciicast JSON)
     InvalidFormat(String),
@@ -75,6 +78,26 @@ fn validate_agent_name(agent: &str) -> Result<String, ImportError> {
     Ok(trimmed.to_string())
 }
 
+/// First decoded line of a session, gunzipping `.cast.gz`.
+fn read_first_line(path: &Path) -> Result<String, ImportError> {
+    let mut reader = codec::open_reader(path).map_err(|e| {
+        let denied = e
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(|io| io.kind() == std::io::ErrorKind::PermissionDenied);
+        let msg = format!("{}: {:#}", path.display(), e);
+        if denied {
+            ImportError::PermissionDenied(msg)
+        } else {
+            ImportError::NotFound(msg)
+        }
+    })?;
+    let mut line = String::new();
+    reader
+        .read_line(&mut line)
+        .map_err(|e| ImportError::InvalidFormat(format!("Failed to read first line: {}", e)))?;
+    Ok(line)
+}
+
 /// Validates that a file is a valid asciicast file by checking its header.
 ///
 /// Checks:
@@ -88,29 +111,14 @@ pub fn validate_cast_header(path: &Path) -> Result<(), ImportError> {
         return Err(ImportError::NotFound(format!("{}", path.display())));
     }
 
-    // Check extension
-    if path.extension().and_then(std::ffi::OsStr::to_str) != Some("cast") {
+    if !codec::is_session_path(path) {
         return Err(ImportError::WrongExtension(format!(
-            "Expected .cast extension, got: {}",
+            "Expected .cast or .cast.gz extension, got: {}",
             path.display()
         )));
     }
 
-    // Try to open file
-    let file = fs::File::open(path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::PermissionDenied {
-            ImportError::PermissionDenied(format!("{}: {}", path.display(), e))
-        } else {
-            ImportError::NotFound(format!("{}: {}", path.display(), e))
-        }
-    })?;
-
-    // Read first line
-    let mut reader = std::io::BufReader::new(file);
-    let mut first_line = String::new();
-    reader
-        .read_line(&mut first_line)
-        .map_err(|e| ImportError::InvalidFormat(format!("Failed to read first line: {}", e)))?;
+    let first_line = read_first_line(path)?;
 
     // Parse as JSON and check for version field
     let json: serde_json::Value = serde_json::from_str(first_line.trim())
@@ -134,45 +142,52 @@ pub fn validate_cast_header(path: &Path) -> Result<(), ImportError> {
     )))
 }
 
-/// Helper function to resolve filename conflicts by adding a numeric suffix.
+/// Resolve the target path for `stem` with `suffix`, adding `-1`, `-2`, ... on conflict.
 ///
-/// If the target path does not exist, returns it unchanged.
-/// If it exists, tries stem-1.ext, stem-2.ext, etc. up to stem-999.ext.
-fn resolve_filename_conflict(dir: &Path, filename: &str) -> PathBuf {
-    let target = dir.join(filename);
-
-    // No conflict - return as-is
-    if !target.exists() {
+/// A conflict is either variant (`.cast` or `.cast.gz`) already existing.
+fn resolve_target(dir: &Path, stem: &str, suffix: &str) -> PathBuf {
+    let taken = |p: &Path| p.exists() || other_variant(p).exists();
+    let target = dir.join(format!("{stem}{suffix}"));
+    if !taken(&target) {
         return target;
     }
+    (1..=999)
+        .map(|i| dir.join(format!("{stem}-{i}{suffix}")))
+        .find(|c| !taken(c))
+        // Fallback - return original target (should be very rare)
+        .unwrap_or(target)
+}
 
-    // Split filename into stem and extension
-    let path = Path::new(filename);
-    let stem = path
-        .file_stem()
-        .and_then(std::ffi::OsStr::to_str)
-        .unwrap_or(filename);
-    let ext = path
-        .extension()
-        .and_then(std::ffi::OsStr::to_str)
-        .unwrap_or("");
-
-    // Try numbered variants
-    for i in 1..=999 {
-        let new_filename = if ext.is_empty() {
-            format!("{}-{}", stem, i)
-        } else {
-            format!("{}-{}.{}", stem, i, ext)
-        };
-
-        let candidate = dir.join(&new_filename);
-        if !candidate.exists() {
-            return candidate;
-        }
+/// Defense in depth: verify the target path is within the storage directory.
+fn ensure_inside(storage_dir: &Path, target: &Path) -> Result<(), ImportError> {
+    let canonical_storage = storage_dir.canonicalize().map_err(|e| {
+        ImportError::CopyFailed(format!("Failed to canonicalize storage dir: {}", e))
+    })?;
+    let parent = target
+        .parent()
+        .ok_or_else(|| ImportError::CopyFailed("Target path has no parent".to_string()))?;
+    let canonical_parent = parent.canonicalize().map_err(|e| {
+        ImportError::CopyFailed(format!("Failed to canonicalize target path: {}", e))
+    })?;
+    if canonical_parent.starts_with(&canonical_storage) {
+        return Ok(());
     }
+    Err(ImportError::InvalidAgentName(format!(
+        "Target path is outside storage directory: {}",
+        target.display()
+    )))
+}
 
-    // Fallback - return original target (should be very rare)
-    target
+/// Copy when formats match, else transcode to the target format.
+fn store(source: &Path, target: &Path) -> Result<(), ImportError> {
+    let result = if codec::is_gzip_path(source) == codec::is_gzip_path(target) {
+        fs::copy(source, target)
+            .map(drop)
+            .map_err(anyhow::Error::from)
+    } else {
+        codec::transcode(source, target)
+    };
+    result.map_err(|e| ImportError::CopyFailed(format!("Failed to copy file: {:#}", e)))
 }
 
 impl StorageManager {
@@ -200,40 +215,18 @@ impl StorageManager {
             .ensure_agent_dir(&agent)
             .map_err(|e| ImportError::CopyFailed(format!("Failed to create agent dir: {}", e)))?;
 
-        // Get source filename
         let filename = source
             .file_name()
             .and_then(std::ffi::OsStr::to_str)
             .ok_or_else(|| ImportError::CopyFailed("Invalid source filename".to_string()))?;
 
-        // Resolve conflicts
-        let target = resolve_filename_conflict(&agent_dir, filename);
-
-        // Defense in depth: verify target path is within storage directory
-        let storage_dir = self.storage_dir();
-        let canonical_storage = storage_dir.canonicalize().map_err(|e| {
-            ImportError::CopyFailed(format!("Failed to canonicalize storage dir: {}", e))
-        })?;
-
-        // Get the parent of target and canonicalize it (target doesn't exist yet)
-        let target_parent = target
-            .parent()
-            .ok_or_else(|| ImportError::CopyFailed("Target path has no parent".to_string()))?;
-        let canonical_target_parent = target_parent.canonicalize().map_err(|e| {
-            ImportError::CopyFailed(format!("Failed to canonicalize target path: {}", e))
-        })?;
-
-        if !canonical_target_parent.starts_with(&canonical_storage) {
-            return Err(ImportError::InvalidAgentName(format!(
-                "Target path is outside storage directory: {}",
-                target.display()
-            )));
-        }
-
-        // Copy file
-        fs::copy(source, &target)
-            .map_err(|e| ImportError::CopyFailed(format!("Failed to copy file: {}", e)))?;
-
+        let suffix = match self.config.storage.compression {
+            Compression::Gzip => codec::GZIP_SUFFIX,
+            Compression::None => codec::SESSION_SUFFIX,
+        };
+        let target = resolve_target(&agent_dir, codec::session_stem(filename), suffix);
+        ensure_inside(&self.storage_dir(), &target)?;
+        store(source, &target)?;
         Ok(target)
     }
 }

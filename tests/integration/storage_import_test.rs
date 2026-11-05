@@ -1,6 +1,7 @@
 //! Storage tests: cast header validation and import
 
-use super::helpers::storage::{create_dir_config, create_test_config};
+use super::helpers::storage::{compression_config, create_dir_config};
+use agr::config::Compression;
 use agr::storage::{validate_cast_header, ImportError};
 use agr::StorageManager;
 use std::fs;
@@ -110,7 +111,7 @@ fn validate_cast_header_no_version() {
 #[test]
 fn import_cast_file_success() {
     let temp = TempDir::new().unwrap();
-    let config = create_test_config(&temp);
+    let config = compression_config(&temp, Compression::None);
     let manager = StorageManager::new(config);
 
     // Create a valid cast file to import
@@ -136,7 +137,7 @@ fn import_cast_file_success() {
 #[test]
 fn import_cast_file_creates_agent_dir() {
     let temp = TempDir::new().unwrap();
-    let config = create_test_config(&temp);
+    let config = compression_config(&temp, Compression::None);
     let manager = StorageManager::new(config);
 
     // Create a valid cast file
@@ -157,7 +158,7 @@ fn import_cast_file_creates_agent_dir() {
 #[test]
 fn import_cast_file_conflict_resolution() {
     let temp = TempDir::new().unwrap();
-    let config = create_test_config(&temp);
+    let config = compression_config(&temp, Compression::None);
     let manager = StorageManager::new(config);
 
     // Create source file
@@ -184,7 +185,7 @@ fn import_cast_file_conflict_resolution() {
 #[test]
 fn import_cast_file_preserves_filename() {
     let temp = TempDir::new().unwrap();
-    let config = create_test_config(&temp);
+    let config = compression_config(&temp, Compression::None);
     let manager = StorageManager::new(config);
 
     // Create source with specific filename
@@ -206,7 +207,7 @@ fn resolve_filename_conflict_no_conflict() {
     let temp = TempDir::new().unwrap();
 
     // Create test using the internal helper via import
-    let config = create_test_config(&temp);
+    let config = compression_config(&temp, Compression::None);
     let manager = StorageManager::new(config);
 
     let source = temp.path().join("unique.cast");
@@ -222,7 +223,7 @@ fn resolve_filename_conflict_no_conflict() {
 #[test]
 fn resolve_filename_conflict_with_existing() {
     let temp = TempDir::new().unwrap();
-    let config = create_test_config(&temp);
+    let config = compression_config(&temp, Compression::None);
     let manager = StorageManager::new(config);
 
     let source = temp.path().join("conflict.cast");
