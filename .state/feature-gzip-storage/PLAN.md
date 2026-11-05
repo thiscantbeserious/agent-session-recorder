@@ -556,14 +556,14 @@ budgets of 1ms/1ms/100ms. `hundred_events_fast` failed once under load during Ba
 verification, passes 3/3 alone. Make them deterministic without losing their intent.
 Owner: implementer
 
-- [ ] `single_event_no_overhead`, `hundred_events_fast`, `ten_thousand_events_reasonable_time`
+- [x] `single_event_no_overhead`, `hundred_events_fast`, `ten_thousand_events_reasonable_time`
       in `tests/performance/silence_removal_test.rs`: replace absolute wall-clock budgets with a
       check that cannot flake on a loaded runner and still catches a regression to quadratic
       behavior (e.g. compare 10k vs 1k events scaling ratio with a generous bound, measured as
       the minimum over several runs, or count work done). Keep the correctness assertions.
-- [ ] Prove the new check catches a regression: temporarily make the transform quadratic,
+- [x] Prove the new check catches a regression: temporarily make the transform quadratic,
       capture the failing assertion line, revert.
-- [ ] Run the performance suite 20 times in a row while `cargo build --release` runs in
+- [x] Run the performance suite 20 times in a row while `cargo build --release` runs in
       parallel, zero failures.
 
 Files: `tests/performance/silence_removal_test.rs`
