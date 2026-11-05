@@ -78,19 +78,22 @@ fn validate_agent_name(agent: &str) -> Result<String, ImportError> {
     Ok(trimmed.to_string())
 }
 
+/// Map an open failure to `PermissionDenied` or `NotFound`.
+fn open_error(path: &Path, e: &anyhow::Error) -> ImportError {
+    let denied = e
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|io| io.kind() == std::io::ErrorKind::PermissionDenied);
+    let msg = format!("{}: {:#}", path.display(), e);
+    if denied {
+        ImportError::PermissionDenied(msg)
+    } else {
+        ImportError::NotFound(msg)
+    }
+}
+
 /// First decoded line of a session, gunzipping `.cast.gz`.
 fn read_first_line(path: &Path) -> Result<String, ImportError> {
-    let mut reader = codec::open_reader(path).map_err(|e| {
-        let denied = e
-            .downcast_ref::<std::io::Error>()
-            .is_some_and(|io| io.kind() == std::io::ErrorKind::PermissionDenied);
-        let msg = format!("{}: {:#}", path.display(), e);
-        if denied {
-            ImportError::PermissionDenied(msg)
-        } else {
-            ImportError::NotFound(msg)
-        }
-    })?;
+    let mut reader = codec::open_reader(path).map_err(|e| open_error(path, &e))?;
     let mut line = String::new();
     reader
         .read_line(&mut line)
@@ -144,18 +147,15 @@ pub fn validate_cast_header(path: &Path) -> Result<(), ImportError> {
 
 /// Resolve the target path for `stem` with `suffix`, adding `-1`, `-2`, ... on conflict.
 ///
-/// A conflict is either variant (`.cast` or `.cast.gz`) already existing.
-fn resolve_target(dir: &Path, stem: &str, suffix: &str) -> PathBuf {
+/// A conflict is either variant (`.cast` or `.cast.gz`) already existing. Errors when every
+/// candidate is taken, an existing session is never overwritten.
+fn resolve_target(dir: &Path, stem: &str, suffix: &str) -> Result<PathBuf, ImportError> {
     let taken = |p: &Path| p.exists() || other_variant(p).exists();
-    let target = dir.join(format!("{stem}{suffix}"));
-    if !taken(&target) {
-        return target;
-    }
-    (1..=999)
-        .map(|i| dir.join(format!("{stem}-{i}{suffix}")))
+    let first = dir.join(format!("{stem}{suffix}"));
+    std::iter::once(first)
+        .chain((1..=999).map(|i| dir.join(format!("{stem}-{i}{suffix}"))))
         .find(|c| !taken(c))
-        // Fallback - return original target (should be very rare)
-        .unwrap_or(target)
+        .ok_or_else(|| ImportError::CopyFailed(format!("Too many conflicting names for {stem}")))
 }
 
 /// Defense in depth: verify the target path is within the storage directory.
@@ -225,7 +225,7 @@ impl StorageManager {
             Compression::Gzip => codec::GZIP_SUFFIX,
             Compression::None => codec::SESSION_SUFFIX,
         };
-        let target = resolve_target(&agent_dir, codec::session_stem(filename), suffix);
+        let target = resolve_target(&agent_dir, codec::session_stem(filename), suffix)?;
         ensure_inside(&self.storage_dir(), &target)?;
         store(source, &target)?;
         Ok(target)
