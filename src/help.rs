@@ -80,7 +80,7 @@ pub fn should_show_tui_help() -> bool {
         args.len() == 2 && (args[1] == "--help" || args[1] == "-h" || args[1] == "help");
 
     // Check if stdout is a TTY
-    let is_tty = atty::is(atty::Stream::Stdout);
+    let is_tty = std::io::IsTerminal::is_terminal(&std::io::stdout());
 
     is_help_request && is_tty
 }
