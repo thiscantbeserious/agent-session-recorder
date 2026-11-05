@@ -66,8 +66,10 @@ pub fn handle(storage_dir: &Path, yes: bool) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{offer_removal, preview_lines, status_line};
+    use agr::storage::orphans::{self, Orphans};
     use std::fs;
+    use std::path::Path;
 
     fn found_in(dir: &Path) -> Orphans {
         fs::create_dir_all(dir.join("a")).unwrap();

@@ -17,3 +17,21 @@ pub fn build_cli_styles() -> Styles {
         .invalid(AnsiColor::Red.on_default())
         .error(AnsiColor::Red.on_default() | Effects::BOLD)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn styles_use_green_headers_and_red_errors() {
+        let styles = build_cli_styles();
+        assert_eq!(
+            styles.get_header().get_fg_color(),
+            Some(AnsiColor::Green.into())
+        );
+        assert_eq!(
+            styles.get_error().get_fg_color(),
+            Some(AnsiColor::Red.into())
+        );
+    }
+}

@@ -89,7 +89,7 @@ fn glob_match_recursive(text: &str, pattern: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::matches_glob_pattern;
 
     #[test]
     fn star_cast_pattern_matches_gzip_sessions_too() {

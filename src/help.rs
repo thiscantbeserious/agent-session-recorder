@@ -263,3 +263,31 @@ pub fn parse_matches(cmd: clap::Command) -> clap::ArgMatches {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn version_string_names_the_package_version() {
+        assert!(build_version().starts_with(env!("CARGO_PKG_VERSION")));
+    }
+
+    #[test]
+    fn logo_is_not_empty() {
+        assert!(!build_logo().is_empty());
+    }
+
+    #[test]
+    fn tui_help_is_off_for_test_harness_args() {
+        assert!(!should_show_tui_help());
+    }
+
+    #[test]
+    fn themed_help_prints_without_panic_for_help_and_error() {
+        let err = Cli::command()
+            .try_get_matches_from(["agr", "--help"])
+            .unwrap_err();
+        print_themed_help(&err);
+    }
+}

@@ -208,3 +208,80 @@ impl StorageManager {
         Ok(target)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_error_variant_names_its_message() {
+        let cases = [
+            (ImportError::NotFound("a".into()), "File not found: a"),
+            (
+                ImportError::PermissionDenied("a".into()),
+                "Permission denied: a",
+            ),
+            (
+                ImportError::WrongExtension("a".into()),
+                "Wrong extension: a",
+            ),
+            (ImportError::InvalidFormat("a".into()), "Invalid format: a"),
+            (ImportError::CopyFailed("a".into()), "Copy failed: a"),
+            (
+                ImportError::InvalidAgentName("a".into()),
+                "Invalid agent name: a",
+            ),
+        ];
+        for (err, text) in cases {
+            assert_eq!(err.to_string(), text);
+        }
+    }
+
+    #[test]
+    fn open_error_maps_permission_denied_and_the_rest_to_not_found() {
+        let denied =
+            anyhow::Error::from(std::io::Error::from(std::io::ErrorKind::PermissionDenied));
+        assert!(matches!(
+            open_error(Path::new("/x"), &denied),
+            ImportError::PermissionDenied(_)
+        ));
+        let missing = anyhow::anyhow!("gone");
+        assert!(matches!(
+            open_error(Path::new("/x"), &missing),
+            ImportError::NotFound(_)
+        ));
+    }
+
+    #[test]
+    fn unsupported_version_is_invalid_format() {
+        let err = check_version(r#"{"version":9}"#).unwrap_err();
+        assert!(err.to_string().contains("Unsupported asciicast version: 9"));
+        assert!(check_version(r#"{"version":3}"#).is_ok());
+    }
+
+    #[test]
+    fn ensure_inside_rejects_outside_and_missing_dirs() {
+        let storage = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let inside = storage.path().join("x.cast");
+        assert!(ensure_inside(storage.path(), &inside).is_ok());
+        let outside = other.path().join("x.cast");
+        assert!(matches!(
+            ensure_inside(storage.path(), &outside),
+            Err(ImportError::InvalidAgentName(_))
+        ));
+        let gone = storage.path().join("nope").join("x.cast");
+        assert!(matches!(
+            ensure_inside(storage.path(), &gone),
+            Err(ImportError::CopyFailed(_))
+        ));
+        assert!(matches!(
+            ensure_inside(&storage.path().join("nope"), &inside),
+            Err(ImportError::CopyFailed(_))
+        ));
+        assert!(matches!(
+            ensure_inside(storage.path(), Path::new("/")),
+            Err(ImportError::CopyFailed(_))
+        ));
+    }
+}

@@ -105,3 +105,30 @@ fn move_backup(old_path: &std::path::Path, new_path: &std::path::Path) {
         let _ = std::fs::rename(&source, backup_path_for(new_path));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_error_displays_a_message() {
+        let cases = [
+            (RenameError::EmptyName, "Name cannot be empty"),
+            (
+                RenameError::InvalidChars,
+                "Name contains invalid characters",
+            ),
+            (RenameError::ReservedName, "Name is a reserved system name"),
+            (RenameError::TooLong, "Name is too long"),
+            (
+                RenameError::AlreadyExists("x".into()),
+                "File already exists: x",
+            ),
+        ];
+        for (err, text) in cases {
+            assert_eq!(err.to_string(), text);
+        }
+        let io = RenameError::IoError(std::io::Error::other("boom"));
+        assert_eq!(io.to_string(), "Rename failed: boom");
+    }
+}

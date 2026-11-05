@@ -178,3 +178,45 @@ impl std::fmt::Display for FilenameError {
 }
 
 impl std::error::Error for FilenameError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generate_appends_cast_only_when_missing() {
+        let ctx = RenderContext {
+            directory: "d",
+            branch: None,
+        };
+        let cfg = Config::default();
+        assert_eq!(generate(&ctx, "x", &cfg).unwrap(), "x.cast");
+        assert_eq!(generate(&ctx, "x.cast", &cfg).unwrap(), "x.cast");
+    }
+
+    #[test]
+    fn collision_without_extension_appends_the_suffix_letter() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("plain"), "").unwrap();
+        assert_eq!(
+            resolve_collision(dir.path(), "plain"),
+            Some("plaina".into())
+        );
+    }
+
+    #[test]
+    fn errors_display_their_cause() {
+        let long = FilenameError::TooLong {
+            length: 300,
+            max: 255,
+        };
+        assert_eq!(
+            long.to_string(),
+            "Filename too long: 300 characters (max 255)"
+        );
+        let g = GenerateError::from(long);
+        assert!(g.to_string().starts_with("Filename error: "));
+        let t = GenerateError::Template(TemplateError::Empty);
+        assert!(t.to_string().starts_with("Template error: "));
+    }
+}
