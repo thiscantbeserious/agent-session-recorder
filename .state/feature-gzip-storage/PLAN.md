@@ -49,7 +49,7 @@ Depends on: none
 Considerations:
 - `atomic_write` takes `FnOnce(&mut dyn Write) -> Result<()>` so `AsciicastFile::write_to` and
   `io::copy` both fit. Call `GzEncoder::finish()` before `sync_all`.
-- Gzip output must be single-member and readable by `zcat` (e2e check in Stage 16).
+- Gzip output must be single-member and readable by `gzip -dc` (e2e check in Stage 16).
 
 ### Stage 2: Config v4 and Compression enum
 
@@ -179,8 +179,9 @@ Owner: implementer
 - [ ] GREEN: `is_session_path` in listing, dedupe by stem, resolve fallbacks, header check via
       `open_reader`, import via `codec::transcode` (or `fs::copy` when formats match).
 
-Files: `src/storage/sessions.rs`, `src/storage/import.rs`, `tests/integration/storage_test.rs`,
-       `tests/integration/import_test.rs`
+Files: `src/storage/sessions.rs`, `src/storage/import.rs`,
+       `tests/integration/storage_list_test.rs`, `tests/integration/storage_lookup_test.rs`,
+       `tests/integration/storage_import_test.rs`, `tests/integration/import_test.rs`
 Depends on: Stage 1, Stage 2, Stage 3, Stage 17, Stage 18
 
 Considerations:
@@ -203,7 +204,7 @@ Owner: implementer
 - [ ] GREEN: implement in `stats.rs`, `agr list` table gets an uncompressed column.
 
 Files: `src/storage/stats.rs`, `src/commands/status.rs`, `src/commands/list.rs`,
-       `src/commands/cleanup.rs`, `tests/integration/storage_test.rs`
+       `src/commands/cleanup.rs`, `tests/integration/storage_stats_test.rs`
 Depends on: Stage 7
 
 Considerations:
@@ -381,7 +382,7 @@ Owner: implementer
 
 - [ ] README: `compression` key, `.cast.gz` naming, `agr compress`, offer behavior, state file.
 - [ ] `src/config/docs.rs` example block includes `compression = "gzip"`.
-- [ ] e2e: a finished recording is `.cast.gz` and `zcat` output is valid asciicast, with
+- [ ] e2e: a finished recording is `.cast.gz` and `gzip -dc` output is valid asciicast (not `zcat`, which is the legacy .Z tool on macOS), with
       `none` it stays `.cast`.
 - [ ] Performance test: generated 100MB-decompressed `.cast.gz`, parse peak RSS within ~10%
       of the plain file (ignored by default like the other performance tests).
