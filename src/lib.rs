@@ -13,6 +13,7 @@ pub mod player;
 pub mod recording;
 pub mod shell;
 pub mod storage;
+pub mod sync;
 pub mod terminal;
 pub mod tui;
 pub mod utils;
