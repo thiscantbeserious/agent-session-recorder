@@ -916,7 +916,7 @@ fn create_test_file_items_with_lock() -> Vec<FileItem> {
         },
     ];
     // Sort by date descending (default) - the locked item should be first
-    items.sort_by(|a, b| b.modified.cmp(&a.modified));
+    items.sort_by_key(|b| std::cmp::Reverse(b.modified));
     items
 }
 

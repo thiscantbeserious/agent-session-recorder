@@ -216,8 +216,8 @@ fn story_hash_deduplication_filters_rescrolled_content() {
     // Fill and overflow: lines 0-2 filled, line 3 forces a scroll.
     // Then fill again with the same content to trigger scroll-path hash check.
     let mut events = vec![
-        Event::output(0.1, &format!("{}\n{}\n{}\n", line, line, line)),
-        Event::output(0.1, &format!("{}\n", line)), // scroll: line 0 scrolls off
+        Event::output(0.1, format!("{}\n{}\n{}\n", line, line, line)),
+        Event::output(0.1, format!("{}\n", line)), // scroll: line 0 scrolls off
     ];
     t.transform(&mut events);
 

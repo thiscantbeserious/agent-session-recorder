@@ -353,7 +353,7 @@ fn similarity_filter_flush_at_end_of_stream() {
     let collapsed = filter.collapsed_count();
     // The two similar lines after line_a should be counted
     assert!(
-        collapsed > 0 || events.len() >= 1,
+        collapsed > 0 || !events.is_empty(),
         "Filter must handle end-of-stream flush"
     );
 }

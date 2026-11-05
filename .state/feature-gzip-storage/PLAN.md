@@ -401,12 +401,12 @@ Goal: no deferred cleanup. Prove Batch 1 tests catch regressions, bring the stor
 file under the size limit, make clippy clean for all targets.
 Owner: implementer
 
-- [ ] Split `tests/integration/storage_test.rs` (~1300 lines) by topic so every file is
+- [x] Split `tests/integration/storage_test.rs` (~1300 lines) by topic so every file is
       within ~400 lines, no test removed or renamed, identical test count.
-- [ ] Fix every `cargo clippy --all-targets -- -D warnings` error (lib test modules,
+- [x] Fix every `cargo clippy --all-targets -- -D warnings` error (lib test modules,
       `src/commands/analyze.rs`, `src/config/migrate/mod.rs`,
       `src/analyzer/transforms/cleaner.rs`, integration tests incl. `codec_test.rs`).
-- [ ] Add `--all-targets` to the CI lint job so this stays clean.
+- [x] Add `--all-targets` to the CI lint job so this stays clean.
 
 Files: `tests/integration/storage_test.rs`, `tests/integration/storage_*_test.rs`,
        `tests/integration.rs`, `tests/integration/codec_test.rs`,

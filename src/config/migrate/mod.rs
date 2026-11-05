@@ -768,7 +768,7 @@ extra_args = ["--model", "gpt-5.2-codex"]
 
     #[test]
     fn sort_blocks_by_order_canonical_order() {
-        let blocks = vec![
+        let blocks = [
             ("recording".to_string(), "r".to_string()),
             ("shell".to_string(), "s".to_string()),
             ("analysis".to_string(), "a".to_string()),
@@ -781,7 +781,7 @@ extra_args = ["--model", "gpt-5.2-codex"]
 
     #[test]
     fn sort_blocks_by_order_unknown_appended_after_known() {
-        let blocks = vec![
+        let blocks = [
             ("my_custom".to_string(), "c".to_string()),
             ("shell".to_string(), "s".to_string()),
         ];
@@ -792,7 +792,7 @@ extra_args = ["--model", "gpt-5.2-codex"]
 
     #[test]
     fn sort_blocks_by_order_only_unknowns_preserved_in_original_order() {
-        let blocks = vec![
+        let blocks = [
             ("zzz".to_string(), "z".to_string()),
             ("aaa".to_string(), "a".to_string()),
         ];
@@ -814,7 +814,7 @@ extra_args = ["--model", "gpt-5.2-codex"]
 
     #[test]
     fn reassemble_toml_no_preamble() {
-        let blocks = vec![
+        let blocks = [
             ("shell".to_string(), "[shell]\nauto_wrap = true".to_string()),
             (
                 "storage".to_string(),
@@ -834,7 +834,7 @@ extra_args = ["--model", "gpt-5.2-codex"]
     #[test]
     fn reassemble_toml_with_preamble() {
         let preamble = "config_version = 2";
-        let blocks = vec![("shell".to_string(), "[shell]\nauto_wrap = true".to_string())];
+        let blocks = [("shell".to_string(), "[shell]\nauto_wrap = true".to_string())];
         let refs: Vec<&(String, String)> = blocks.iter().collect();
         let result = reassemble_toml(preamble, &refs);
         assert!(result.starts_with("config_version = 2"));
@@ -844,7 +844,7 @@ extra_args = ["--model", "gpt-5.2-codex"]
 
     #[test]
     fn reassemble_toml_multiple_blocks_single_blank_line_between_each() {
-        let blocks = vec![
+        let blocks = [
             ("shell".to_string(), "[shell]\nauto_wrap = true".to_string()),
             (
                 "storage".to_string(),
@@ -864,7 +864,7 @@ extra_args = ["--model", "gpt-5.2-codex"]
 
     #[test]
     fn reassemble_toml_always_trailing_newline() {
-        let blocks = vec![("shell".to_string(), "[shell]\nauto_wrap = true".to_string())];
+        let blocks = [("shell".to_string(), "[shell]\nauto_wrap = true".to_string())];
         let refs: Vec<&(String, String)> = blocks.iter().collect();
         let result = reassemble_toml("", &refs);
         assert!(result.ends_with('\n'));
@@ -919,7 +919,7 @@ extra_args = ["--model", "gpt-5.2-codex"]
     #[test]
     fn reassemble_toml_block_with_trailing_newlines_produces_single_blank_line() {
         // If block text itself ends with extra newlines, the output must not have triple newlines
-        let blocks = vec![
+        let blocks = [
             (
                 "shell".to_string(),
                 "[shell]\nauto_wrap = true\n\n".to_string(),

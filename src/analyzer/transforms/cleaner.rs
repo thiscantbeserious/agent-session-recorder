@@ -444,10 +444,12 @@ mod tests {
 
     #[test]
     fn strip_nothing_when_all_flags_false() {
-        let mut config = ExtractionConfig::default();
-        config.strip_box_drawing = false;
-        config.strip_spinner_chars = false;
-        config.strip_progress_blocks = false;
+        let config = ExtractionConfig {
+            strip_box_drawing: false,
+            strip_spinner_chars: false,
+            strip_progress_blocks: false,
+            ..Default::default()
+        };
         let mut cleaner = ContentCleaner::new(&config);
 
         // Box drawing, spinner, and progress chars should all pass through
@@ -457,10 +459,12 @@ mod tests {
 
     #[test]
     fn strip_only_box_when_flag_set() {
-        let mut config = ExtractionConfig::default();
-        config.strip_box_drawing = true;
-        config.strip_spinner_chars = false;
-        config.strip_progress_blocks = false;
+        let config = ExtractionConfig {
+            strip_box_drawing: true,
+            strip_spinner_chars: false,
+            strip_progress_blocks: false,
+            ..Default::default()
+        };
         let mut cleaner = ContentCleaner::new(&config);
 
         // Box drawing stripped
@@ -475,10 +479,12 @@ mod tests {
 
     #[test]
     fn strip_only_spinner_when_flag_set() {
-        let mut config = ExtractionConfig::default();
-        config.strip_box_drawing = false;
-        config.strip_spinner_chars = true;
-        config.strip_progress_blocks = false;
+        let config = ExtractionConfig {
+            strip_box_drawing: false,
+            strip_spinner_chars: true,
+            strip_progress_blocks: false,
+            ..Default::default()
+        };
         let mut cleaner = ContentCleaner::new(&config);
 
         // Spinner chars stripped
@@ -492,10 +498,12 @@ mod tests {
 
     #[test]
     fn strip_only_progress_when_flag_set() {
-        let mut config = ExtractionConfig::default();
-        config.strip_box_drawing = false;
-        config.strip_spinner_chars = false;
-        config.strip_progress_blocks = true;
+        let config = ExtractionConfig {
+            strip_box_drawing: false,
+            strip_spinner_chars: false,
+            strip_progress_blocks: true,
+            ..Default::default()
+        };
         let mut cleaner = ContentCleaner::new(&config);
 
         // Progress blocks stripped

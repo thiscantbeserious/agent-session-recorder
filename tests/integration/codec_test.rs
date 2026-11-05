@@ -2,21 +2,12 @@
 
 use agr::files::codec::{self, UncompressedSize};
 use flate2::read::GzDecoder;
-use std::io::{BufRead, Read, Write};
+use std::io::{BufRead, Read};
 use std::path::Path;
 use tempfile::TempDir;
 
 fn write_bytes(path: &Path, bytes: &[u8]) {
     codec::atomic_write(path, |w| Ok(w.write_all(bytes)?)).unwrap();
-}
-
-fn read_all(path: &Path) -> String {
-    let mut s = String::new();
-    codec::open_reader(path)
-        .unwrap()
-        .read_to_string(&mut s)
-        .unwrap();
-    s
 }
 
 #[test]

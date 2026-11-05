@@ -454,8 +454,10 @@ mod tests {
 
     #[test]
     fn build_analyze_options_cli_workers_wins_over_config() {
-        let mut analysis = AnalysisConfig::default();
-        analysis.workers = Some(2);
+        let analysis = AnalysisConfig {
+            workers: Some(2),
+            ..Default::default()
+        };
         let config = config_with_analysis(analysis);
         let opts = build_analyze_options(
             &config,
@@ -472,8 +474,10 @@ mod tests {
 
     #[test]
     fn build_analyze_options_config_workers_fallback() {
-        let mut analysis = AnalysisConfig::default();
-        analysis.workers = Some(4);
+        let analysis = AnalysisConfig {
+            workers: Some(4),
+            ..Default::default()
+        };
         let config = config_with_analysis(analysis);
         let opts = build_analyze_options(
             &config,
@@ -490,8 +494,10 @@ mod tests {
 
     #[test]
     fn build_analyze_options_cli_timeout_wins_over_config() {
-        let mut analysis = AnalysisConfig::default();
-        analysis.timeout = Some(60);
+        let analysis = AnalysisConfig {
+            timeout: Some(60),
+            ..Default::default()
+        };
         let config = config_with_analysis(analysis);
         let opts = build_analyze_options(
             &config,
@@ -508,8 +514,10 @@ mod tests {
 
     #[test]
     fn build_analyze_options_config_timeout_fallback() {
-        let mut analysis = AnalysisConfig::default();
-        analysis.timeout = Some(45);
+        let analysis = AnalysisConfig {
+            timeout: Some(45),
+            ..Default::default()
+        };
         let config = config_with_analysis(analysis);
         let opts = build_analyze_options(
             &config,
@@ -542,8 +550,10 @@ mod tests {
 
     #[test]
     fn build_analyze_options_config_fast_enables_fast() {
-        let mut analysis = AnalysisConfig::default();
-        analysis.fast = Some(true);
+        let analysis = AnalysisConfig {
+            fast: Some(true),
+            ..Default::default()
+        };
         let config = config_with_analysis(analysis);
         let opts = build_analyze_options(
             &config,
