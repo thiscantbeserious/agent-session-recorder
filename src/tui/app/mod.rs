@@ -9,6 +9,7 @@ pub mod list_view;
 pub mod modals;
 pub mod shared_state;
 pub mod status_footer;
+pub mod warnings;
 
 // Re-exports for convenient access
 pub use keybindings::{
