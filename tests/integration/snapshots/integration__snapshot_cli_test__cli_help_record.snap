@@ -1,6 +1,5 @@
 ---
-source: tests/integration/cli_test.rs
-assertion_line: 59
+source: tests/integration/snapshot_cli_test.rs
 expression: output
 ---
 === agr record --help ===
@@ -14,11 +13,11 @@ in asciicast v3 format. When the session ends, you can optionally rename
 the recording for easier identification.
 
 EXAMPLES:
-    agr record claude                    [37mRecord a Claude Code session[0m
-    agr record codex                     [37mRecord an OpenAI Codex session[0m
-    agr record claude --name my-session  [37mRecord with a specific filename[0m
-    agr record claude -- --help          [37mPass --help flag to claude[0m
-    agr record gemini -- chat        [37mStart gemini in chat mode[0m
+    agr record claude                    Record a Claude Code session
+    agr record codex                     Record an OpenAI Codex session
+    agr record claude --name my-session  Record with a specific filename
+    agr record claude -- --help          Pass --help flag to claude
+    agr record gemini -- chat        Start gemini in chat mode
 
 Usage: agr record [OPTIONS] <AGENT> [-- <ARGS>...]
 
@@ -35,4 +34,5 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
 --- stderr ---

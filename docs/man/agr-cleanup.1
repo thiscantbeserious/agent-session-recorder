@@ -4,13 +4,16 @@
 .SH NAME
 cleanup \- Interactive cleanup of old sessions
 .SH SYNOPSIS
-\fBcleanup\fR [\fB\-\-agent\fR] [\fB\-\-older\-than\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+\fBcleanup\fR [\fB\-\-agent\fR] [\fB\-\-older\-than\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] 
 .SH DESCRIPTION
 Interactively delete old session recordings to free up disk space.
 .PP
 Displays a list of sessions sorted by age and lets you choose how many
 to delete. Supports filtering by agent and age. Sessions older than
 the configured threshold (default: 30 days) are marked with *.
+.PP
+Orphaned backups (a hidden .bak whose session is gone) and stale lock
+files are listed first and removed after confirmation, \-\-yes skips it.
 .PP
 EXAMPLES:
     agr cleanup                          Interactive cleanup of all sessions
@@ -30,6 +33,9 @@ Only show sessions from this agent
 .TP
 \fB\-\-older\-than\fR \fI<OLDER_THAN>\fR
 Only show sessions older than N days
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Remove orphaned backups and stale locks without asking
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help (see a summary with \*(Aq\-h\*(Aq)

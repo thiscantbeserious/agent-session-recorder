@@ -344,6 +344,44 @@ jobs:
       - name: Run snapshot tests
         run: cargo insta test --check
 
+  # Windows compile check - runtime stays unsupported, this only keeps the crate compiling
+  windows-check:
+    name: Windows check
+    runs-on: windows-latest
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-check-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check all targets
+        run: cargo check --all-targets
+
+  # MSRV - builds with exactly the rust-version from Cargo.toml (keep both in sync)
+  msrv:
+    name: MSRV (1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - name: Check all targets
+        run: cargo check --all-targets --locked
+
   # Lint - runs in parallel, fast-fail for style issues
   lint:
     name: Lint
@@ -360,4 +398,4 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings

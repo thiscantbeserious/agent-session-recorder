@@ -24,7 +24,7 @@ fn run_agr_with_colors(args: &[&str]) -> (String, String, i32) {
     let output = Command::new(env!("CARGO_BIN_EXE_agr"))
         .args(args)
         .env_remove("NO_COLOR") // Ensure colors are enabled
-        .env("FORCE_COLOR", "1") // Force colors even without TTY
+        .env("AGR_FORCE_COLOR", "1") // Force colors even without TTY
         .output()
         .expect("Failed to execute agr");
 
@@ -117,6 +117,16 @@ fn snapshot_cli_help_list() {
         exit_code, stdout, stderr
     );
     insta::assert_snapshot!("cli_help_list", output);
+}
+
+#[test]
+fn snapshot_cli_help_compress() {
+    let (stdout, stderr, exit_code) = run_agr(&["compress", "--help"]);
+    let output = format!(
+        "=== agr compress --help ===\nExit code: {}\n\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        exit_code, stdout, stderr
+    );
+    insta::assert_snapshot!("cli_help_compress", output);
 }
 
 #[test]

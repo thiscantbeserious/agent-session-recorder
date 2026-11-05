@@ -12,14 +12,18 @@ agr status [OPTIONS]
 
 Display storage statistics for recorded sessions.
 
-Shows total size, disk usage percentage, session count by agent,
-and age of the oldest recording.
+Shows the size on disk, the uncompressed size, disk usage percentage,
+session count by agent and age of the oldest recording. When plain .cast
+sessions are left, a line shows what `agr compress` would save. Orphaned
+backups and stale locks get a line too.
 
 EXAMPLE:
     agr status
 
 OUTPUT:
-    Agent Sessions: 1.2 GB (0.5% of disk)
+    Agent Sessions: 1.2 GiB on disk, 6.8 GiB uncompressed (0.50% of disk)
        Sessions: 23 total (claude: 15, codex: 8)
        Oldest: 2025-01-01 (20 days ago)
+    3 plain, ~410.00 MiB saved by agr compress
+    2 orphaned backup(s), 12.00 KiB, remove with agr cleanup
 

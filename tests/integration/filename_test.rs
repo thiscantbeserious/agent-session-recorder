@@ -2683,6 +2683,15 @@ fn collision_returns_none_when_all_suffixes_taken() {
     assert_eq!(result, None);
 }
 
+#[test]
+fn collision_counts_gzip_variant_as_taken() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("test.cast.gz"), "").unwrap();
+
+    let result = filename::resolve_collision(dir.path(), "test.cast");
+    assert_eq!(result, Some("testa.cast".to_string()));
+}
+
 // --- EC-5: Base36 zero-padding sortability ---
 
 #[test]

@@ -1,5 +1,6 @@
 //! Unit tests for config module
 
+use agr::config::Compression;
 use agr::Config;
 
 #[test]
@@ -8,6 +9,7 @@ fn default_config_has_expected_values() {
     assert_eq!(config.storage.directory, "~/recorded_agent_sessions");
     assert_eq!(config.storage.size_threshold_gb, None);
     assert_eq!(config.storage.age_threshold_days, 30);
+    assert_eq!(config.storage.compression, Compression::Gzip);
     assert!(config.agents.enabled.contains(&"claude".to_string()));
     assert!(config.agents.enabled.contains(&"codex".to_string()));
     assert!(config.agents.enabled.contains(&"gemini".to_string()));
@@ -242,4 +244,69 @@ fn storage_directory_handles_relative_path() {
     config.storage.directory = "relative/path".to_string();
     let path = config.storage_directory();
     assert_eq!(path, std::path::PathBuf::from("relative/path"));
+}
+
+#[test]
+fn load_from_invalid_compression_names_path_and_allowed_values() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("config.toml");
+    std::fs::write(&path, "[storage]\ncompression = \"zstd\"\n").unwrap();
+    let msg = format!("{:#}", Config::load_from(&path).unwrap_err());
+    assert!(msg.contains("config.toml"), "{msg}");
+    assert!(msg.contains("gzip") && msg.contains("none"), "{msg}");
+}
+
+#[test]
+fn load_from_missing_file_returns_defaults() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let config = Config::load_from(&dir.path().join("nope.toml")).unwrap();
+    assert_eq!(config.storage.directory, "~/recorded_agent_sessions");
+}
+
+mod state {
+    use agr::config::state::State;
+
+    #[test]
+    fn load_from_missing_file_returns_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = State::load_from(&dir.path().join("state.toml"));
+        assert_eq!(state.compress_offer_version, None);
+    }
+
+    #[test]
+    fn load_from_malformed_file_returns_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        std::fs::write(&path, "compress_offer_version = [not toml").unwrap();
+        assert_eq!(State::load_from(&path), State::default());
+    }
+
+    #[test]
+    fn malformed_file_warns_naming_the_path_and_missing_file_does_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        assert_eq!(State::load_checked(&path).1, None);
+        std::fs::write(&path, "compress_offer_version = [not toml").unwrap();
+        let warning = State::load_checked(&path).1;
+        assert!(
+            warning.is_some_and(|w| w.contains("state.toml")),
+            "no warning for broken state"
+        );
+    }
+
+    #[test]
+    fn save_then_load_round_trips_and_leaves_no_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub").join("state.toml");
+        let state = State {
+            compress_offer_version: Some("0.3.0".into()),
+        };
+        state.save_to(&path).unwrap();
+        assert_eq!(State::load_from(&path), state);
+        let names: Vec<_> = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("state.toml")]);
+    }
 }

@@ -41,11 +41,12 @@
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 
-use std::fs;
 use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Context, Result};
+
+use crate::files::codec;
 
 use super::types::{AsciicastFile, Event};
 
@@ -67,8 +68,8 @@ impl Event {
 impl AsciicastFile {
     /// Write the asciicast file to a filesystem path.
     ///
-    /// Uses atomic write (temp file + rename) to prevent corruption if the
-    /// write is interrupted (crash, disk full, etc.). The original file is
+    /// Uses atomic write through the codec (gzip when the path ends in `.cast.gz`) to prevent
+    /// corruption if the write is interrupted (crash, disk full, etc.). The original file is
     /// only replaced after the new content is fully written.
     ///
     /// # Errors
@@ -76,24 +77,7 @@ impl AsciicastFile {
     /// Returns an error if the file cannot be created or written.
     pub fn write<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
-        let temp_path = path.with_extension("cast.tmp");
-
-        let mut file = fs::File::create(&temp_path)
-            .with_context(|| format!("Failed to create temp file: {:?}", temp_path))?;
-
-        self.write_to(&mut file)?;
-
-        // Ensure data is flushed to disk before renaming
-        file.sync_all()
-            .with_context(|| format!("Failed to sync temp file: {:?}", temp_path))?;
-        drop(file);
-
-        if let Err(e) = fs::rename(&temp_path, path) {
-            let _ = fs::remove_file(&temp_path);
-            return Err(e).with_context(|| format!("Failed to replace file: {:?}", path));
-        }
-
-        Ok(())
+        codec::atomic_write(path, |mut w| self.write_to(&mut w))
     }
 
     /// Write the asciicast file to any writer.

@@ -58,21 +58,22 @@ pub fn restore_from_backup(path: &Path) -> Result<()> {
         anyhow::bail!("No backup exists for: {}", path.display());
     }
 
-    // Use atomic temp+rename pattern for crash safety
-    let temp_path = path.with_extension("cast.tmp");
-
-    fs::copy(&backup, &temp_path)
-        .with_context(|| format!("Failed to copy backup to temp file: {}", backup.display()))?;
-
-    if let Err(e) = fs::rename(&temp_path, path) {
-        // Clean up temp file on failure
-        let _ = fs::remove_file(&temp_path);
-        return Err(e)
-            .with_context(|| format!("Failed to restore from backup: {}", path.display()));
-    }
+    copy_via_temp(&backup, path)?;
 
     // Delete backup file after successful restore (best-effort, ignore errors)
     let _ = fs::remove_file(&backup);
 
+    Ok(())
+}
+
+/// Copy `from` to a hidden temp next to `to`, then rename it over `to`.
+fn copy_via_temp(from: &Path, to: &Path) -> Result<()> {
+    let temp_path = crate::files::codec::temp_path_for(to);
+    fs::copy(from, &temp_path)
+        .with_context(|| format!("Failed to copy backup to temp file: {}", from.display()))?;
+    if let Err(e) = fs::rename(&temp_path, to) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(e).with_context(|| format!("Failed to restore from backup: {}", to.display()));
+    }
     Ok(())
 }

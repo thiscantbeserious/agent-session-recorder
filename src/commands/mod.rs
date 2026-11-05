@@ -7,15 +7,36 @@ pub mod agents;
 pub mod analyze;
 pub mod cleanup;
 pub mod completions;
+pub mod compress;
+pub mod compress_offer;
 pub mod config;
 pub mod copy;
 pub mod list;
 pub mod marker;
 pub mod play;
+pub mod prompt;
 pub mod record;
 pub mod shell;
 pub mod status;
 pub mod transform;
+
+/// Resolve `file` (absolute, short or fuzzy), fail if missing, warn if not `.cast` or `.cast.gz`.
+pub fn resolve_existing_session(
+    file: &str,
+    config: &agr::Config,
+) -> anyhow::Result<std::path::PathBuf> {
+    let filepath = agr::files::resolve::resolve_file_path(file, config)?;
+    if !filepath.exists() {
+        anyhow::bail!(
+            "File not found: {}\nHint: Use format 'agent/file.cast'. Run 'agr list' to see available sessions.",
+            file
+        );
+    }
+    if !agr::files::codec::is_session_path(&filepath) {
+        eprintln!("Warning: File does not have .cast or .cast.gz extension");
+    }
+    Ok(filepath)
+}
 
 /// Truncate a string to a maximum length, adding ellipsis if needed.
 pub fn truncate_string(s: &str, max_len: usize) -> String {

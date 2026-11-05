@@ -14,6 +14,7 @@ agr cleanup [OPTIONS]
 |--------|-------------|
 | `--agent` | Only show sessions from this agent |
 | `--older-than` | Only show sessions older than N days |
+| `-y, --yes` | Remove orphaned backups and stale locks without asking |
 
 ## Description
 
@@ -22,6 +23,9 @@ Interactively delete old session recordings to free up disk space.
 Displays a list of sessions sorted by age and lets you choose how many
 to delete. Supports filtering by agent and age. Sessions older than
 the configured threshold (default: 30 days) are marked with *.
+
+Orphaned backups (a hidden .bak whose session is gone) and stale lock
+files are listed first and removed after confirmation, --yes skips it.
 
 EXAMPLES:
     agr cleanup                          Interactive cleanup of all sessions

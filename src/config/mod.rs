@@ -4,6 +4,7 @@ pub mod analysis;
 pub mod docs;
 mod io;
 mod migrate;
+pub mod state;
 mod types;
 
 pub use analysis::*;
@@ -29,6 +30,11 @@ impl Config {
     /// Load configuration from file, or return defaults if not found
     pub fn load() -> Result<Self> {
         io::load()
+    }
+
+    /// Load configuration from a given path, defaults when the file does not exist
+    pub fn load_from(path: &std::path::Path) -> Result<Self> {
+        io::load_from(path)
     }
 
     /// Save configuration to file

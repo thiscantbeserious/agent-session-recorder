@@ -1,0 +1,16 @@
+---
+source: tests/integration/helpers/tui_snapshot.rs
+expression: output
+---
+┌ Sessions ────────────────────────────────────────────────┐┌ Preview ─────────────────────────────┐
+│> [ ]  #y#m: 20240115-session1.cast.gz  (claude, 5.0 KB)  ││Name: 20240115-session1.cast.gz       │
+│                                                          ││Agent: claude                         │
+│                                                          ││Size: 5.0 KB                          │
+│                                                          ││Uncompressed: 50 KiB                  │
+│                                                          ││Duration: 1m 0s                       │
+│                                                          ││Markers: 1                            │
+│                                                          ││Modified: 2024-01-15 10:30            │
+│                                                          ││                                      │
+│                                                          ││                                      │
+│                                                          ││                                      │
+└──────────────────────────────────────────────────────────┘└──────────────────────────────────────┘

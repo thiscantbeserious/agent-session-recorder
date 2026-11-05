@@ -43,6 +43,7 @@ fn session_preview_format_duration_formats_correctly() {
         duration_secs: 3661.5, // 1h 1m 1.5s
         marker_count: 0,
         styled_preview: Vec::new(),
+        uncompressed_size: None,
     };
 
     // Should format as "1h 1m 1s"
@@ -97,4 +98,22 @@ fn session_preview_loads_from_fixtures_dir() {
         preview.is_some(),
         "Should load preview from fixtures/sample.cast"
     );
+}
+
+#[test]
+fn session_preview_loads_gzip_like_plain_twin() {
+    let (temp_dir, plain_path) = temp_fixture("with_markers.cast");
+    let gz_path = temp_dir.path().join("with_markers.cast.gz");
+    agr::files::codec::transcode(&plain_path, &gz_path).unwrap();
+
+    let plain = SessionPreview::load(&plain_path).expect("plain loads");
+    let gz = SessionPreview::load(&gz_path);
+
+    assert!(gz.is_some(), "gzip session should load a preview");
+    let gz = gz.unwrap();
+    assert_eq!(gz.duration_secs, plain.duration_secs);
+    assert_eq!(gz.marker_count, plain.marker_count);
+    assert_eq!(gz.styled_preview.len(), plain.styled_preview.len());
+    assert!(gz.uncompressed_size.is_some());
+    assert!(plain.uncompressed_size.is_none());
 }

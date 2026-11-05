@@ -36,6 +36,9 @@ _agr() {
             agr,completions)
                 cmd="agr__completions"
                 ;;
+            agr,compress)
+                cmd="agr__compress"
+                ;;
             agr,config)
                 cmd="agr__config"
                 ;;
@@ -180,6 +183,9 @@ _agr() {
             agr__help,completions)
                 cmd="agr__help__completions"
                 ;;
+            agr__help,compress)
+                cmd="agr__help__compress"
+                ;;
             agr__help,config)
                 cmd="agr__help__config"
                 ;;
@@ -310,7 +316,7 @@ _agr() {
 
     case "${cmd}" in
         agr)
-            opts="-h -V --help --version record status cleanup list ls analyze play copy marker agents config shell optimize completions help"
+            opts="-h -V --help --version record status cleanup list ls compress analyze play copy marker agents config shell optimize completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 1 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -706,7 +712,7 @@ _agr() {
             return 0
             ;;
         agr__cleanup)
-            opts="-h --agent --older-than --help"
+            opts="-y -h --agent --older-than --yes --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -743,6 +749,24 @@ _agr() {
                     return 0
                     ;;
                 --limit)
+                    COMPREPLY=($(compgen -f "${cur}"))
+                    return 0
+                    ;;
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        agr__compress)
+            opts="-y -h --agent --yes --dry-run --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                --agent)
                     COMPREPLY=($(compgen -f "${cur}"))
                     return 0
                     ;;
@@ -922,7 +946,7 @@ _agr() {
             return 0
             ;;
         agr__help)
-            opts="record status cleanup list analyze play copy marker agents config shell optimize completions help"
+            opts="record status cleanup list compress analyze play copy marker agents config shell optimize completions help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1090,6 +1114,20 @@ _agr() {
             return 0
             ;;
         agr__help__completions)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        agr__help__compress)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )

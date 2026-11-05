@@ -284,7 +284,7 @@ chmod +x "$MOCK_AGENT_DIR/mock-agent"
 $AGR agents add mock-agent
 
 # Test that invoking wrapper creates a recording
-BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
+BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast.gz 2>/dev/null | wc -l | tr -d ' ')
 
 # Get the path to asciinema for the subshell
 ASCIINEMA_PATH=$(command -v asciinema)
@@ -301,7 +301,7 @@ run_with_timeout 30 bash -c "
     unset ASCIINEMA_REC
     source \"\$HOME/$SHELL_RC\" && mock-agent test-arg
 " </dev/null
-AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
+AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast.gz 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$AFTER_COUNT" -gt "$BEFORE_COUNT" ]]; then
     pass "Wrapper invoked agr record and created recording"
 else
@@ -310,7 +310,7 @@ fi
 
 # Test: Wrapper skips when ASCIINEMA_REC is set
 test_header "Wrapper skips when ASCIINEMA_REC is set"
-BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
+BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast.gz 2>/dev/null | wc -l | tr -d ' ')
 (
     export PATH="$MOCK_AGENT_DIR:$PROJECT_DIR/target/release:$ASCIINEMA_DIR:$PATH"
     export HOME="$TEST_DIR"
@@ -318,7 +318,7 @@ BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null 
     # The AGR script is now embedded in $SHELL_RC
     bash -c "source '$HOME/$SHELL_RC' && mock-agent skip-test" </dev/null 2>/dev/null
 )
-AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
+AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast.gz 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$AFTER_COUNT" -eq "$BEFORE_COUNT" ]]; then
     pass "Wrapper skipped recording when ASCIINEMA_REC is set"
 else
@@ -329,14 +329,14 @@ fi
 test_header "Wrapper respects no_wrap list"
 # Add mock-agent to no-wrap list
 $AGR agents no-wrap add mock-agent
-BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
+BEFORE_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast.gz 2>/dev/null | wc -l | tr -d ' ')
 (
     export PATH="$MOCK_AGENT_DIR:$PROJECT_DIR/target/release:$ASCIINEMA_DIR:$PATH"
     export HOME="$TEST_DIR"
     # The AGR script is now embedded in $SHELL_RC
     bash -c "source '$HOME/$SHELL_RC' && mock-agent nowrap-test" </dev/null 2>/dev/null
 )
-AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast 2>/dev/null | wc -l | tr -d ' ')
+AFTER_COUNT=$(ls "$HOME/recorded_agent_sessions/mock-agent/"*.cast.gz 2>/dev/null | wc -l | tr -d ' ')
 if [[ "$AFTER_COUNT" -eq "$BEFORE_COUNT" ]]; then
     pass "Wrapper respects no_wrap list (no recording created)"
 else

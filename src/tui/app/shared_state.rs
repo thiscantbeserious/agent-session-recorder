@@ -7,6 +7,7 @@ use std::time::Instant;
 
 use crate::config::Config;
 use crate::storage::StorageManager;
+use crate::tui::app::warnings;
 use crate::tui::lru_cache::{new_preview_cache, PreviewCache};
 use crate::tui::widgets::{FileExplorer, FileItem, SessionPreview};
 
@@ -66,6 +67,13 @@ impl SharedState {
             preview_cache,
             storage,
             last_lock_refresh: Instant::now(),
+        }
+    }
+
+    /// Show the newest queued codec warning in the status line.
+    pub fn show_pending_warning(&mut self) {
+        if let Some(message) = warnings::take_latest() {
+            self.status_message = Some(format!("Warning: {message}"));
         }
     }
 
@@ -151,5 +159,26 @@ impl SharedState {
                 self.agent_filter_idx = 0; // Reset to "All" if agent disappeared
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod warning_tests {
+    use super::*;
+
+    #[test]
+    fn pending_warning_lands_in_status_line() {
+        let _lock = warnings::TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let mut state = SharedState::new(vec![], None);
+        warnings::push("sync failed");
+
+        state.show_pending_warning();
+
+        assert_eq!(
+            state.status_message.as_deref(),
+            Some("Warning: sync failed")
+        );
     }
 }

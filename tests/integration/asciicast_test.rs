@@ -193,3 +193,175 @@ fn rejects_non_v3_files() {
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("v3"));
 }
+
+// === Gzip round trips ===
+
+use agr::files::codec;
+use std::path::Path;
+
+const CORRUPT: &str = "{\"version\":3}\n[0.1, \"o\", \"a\"]\nnot json\n[0.2, \"o\", \"b\"]\n";
+
+fn seed(path: &Path, content: &str) {
+    codec::atomic_write(path, |w| Ok(w.write_all(content.as_bytes())?)).unwrap();
+}
+
+fn is_gzip_file(path: &Path) -> bool {
+    std::fs::read(path).unwrap().starts_with(&[0x1f, 0x8b])
+}
+
+#[test]
+fn parse_gz_equals_plain_twin() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let content = load_fixture("sample.cast");
+    seed(&dir.path().join("x.cast"), &content);
+    seed(&dir.path().join("x.cast.gz"), &content);
+
+    let plain = AsciicastFile::parse(dir.path().join("x.cast")).unwrap();
+    let gz = AsciicastFile::parse(dir.path().join("x.cast.gz")).ok();
+
+    assert_eq!(gz.and_then(|c| c.to_string().ok()), plain.to_string().ok());
+}
+
+#[test]
+fn write_keeps_format_by_suffix_and_leaves_no_temp() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let cast = AsciicastFile::parse_str(&load_fixture("sample.cast")).unwrap();
+
+    for (name, gzip) in [("x.cast", false), ("x.cast.gz", true)] {
+        let path = dir.path().join(name);
+        cast.write(&path).unwrap();
+        assert_eq!(is_gzip_file(&path), gzip, "{name}");
+        assert_eq!(
+            AsciicastFile::parse(&path).unwrap().to_string().ok(),
+            cast.to_string().ok()
+        );
+    }
+    assert!(!dir.path().join("x.cast.cast.tmp").exists());
+    assert!(!codec::temp_path_for(&dir.path().join("x.cast.gz")).exists());
+}
+
+#[test]
+fn diagnose_and_repair_keep_format() {
+    let dir = tempfile::TempDir::new().unwrap();
+
+    for (name, gzip) in [("x.cast", false), ("x.cast.gz", true)] {
+        let path = dir.path().join(name);
+        seed(&path, CORRUPT);
+
+        let found = agr::asciicast::diagnose(&path)
+            .ok()
+            .map(|d| d.bad_lines.len());
+        assert_eq!(found, Some(1), "{name}");
+        assert_eq!(agr::asciicast::repair(&path).ok(), Some(1), "{name}");
+        assert_eq!(is_gzip_file(&path), gzip, "{name}");
+        assert_eq!(AsciicastFile::parse(&path).unwrap().events.len(), 2);
+    }
+}
+
+// === Integrity on gzip sessions ===
+
+mod integrity_gzip {
+    use agr::asciicast::{diagnose, repair, DiagnoseResult};
+    use agr::files::codec;
+    use std::path::Path;
+    use std::sync::mpsc;
+    use std::time::Duration;
+    use tempfile::TempDir;
+
+    fn write_session_gz(path: &Path, events: usize) {
+        codec::atomic_write(path, |w| {
+            writeln!(w, "{{\"version\":3}}")?;
+            for i in 0..events {
+                writeln!(w, "[0.1, \"o\", \"line {i} {}\"]", "x".repeat(40))?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    fn truncate_to_half(path: &Path) {
+        let bytes = std::fs::read(path).unwrap();
+        std::fs::write(path, &bytes[..bytes.len() / 2]).unwrap();
+    }
+
+    fn diagnose_with_timeout(path: &Path) -> DiagnoseResult {
+        let (tx, rx) = mpsc::channel();
+        let path = path.to_path_buf();
+        std::thread::spawn(move || {
+            let _ = tx.send(diagnose(&path));
+        });
+        rx.recv_timeout(Duration::from_secs(10))
+            .expect("diagnose did not return within 10s")
+            .unwrap()
+    }
+
+    #[test]
+    fn diagnose_truncated_gzip_returns_and_records_decode_error_once() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("t.cast.gz");
+        write_session_gz(&path, 20_000);
+        truncate_to_half(&path);
+
+        let result = diagnose_with_timeout(&path);
+
+        assert_eq!(result.bad_lines.len(), 1, "{:?}", result.bad_lines);
+        assert!(result.valid_event_lines > 0);
+    }
+
+    #[test]
+    fn repair_truncated_gzip_aborts_and_keeps_original() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("t.cast.gz");
+        write_session_gz(&path, 20_000);
+        truncate_to_half(&path);
+        let before = std::fs::read(&path).unwrap();
+
+        assert!(repair(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    fn write_raw(dir: &TempDir, bytes: &[u8]) -> std::path::PathBuf {
+        let path = dir.path().join("b.cast");
+        let mut data = b"{\"version\":3}\n[0.1, \"o\", \"ok\"]\n".to_vec();
+        data.extend_from_slice(bytes);
+        data.extend_from_slice(b"\n[0.2, \"o\", \"ok\"]\n");
+        std::fs::write(&path, data).unwrap();
+        path
+    }
+
+    #[test]
+    fn repair_and_diagnose_agree_on_invalid_utf8_lines() {
+        let dir = TempDir::new().unwrap();
+        let path = write_raw(&dir, &[0xff, 0xfe, b'x']);
+
+        let diagnosed = diagnose(&path).unwrap();
+        let removed = repair(&path).ok();
+
+        assert_eq!(diagnosed.bad_lines.len(), 1);
+        assert_eq!(removed, Some(diagnosed.bad_lines.len()));
+        assert_eq!(diagnose(&path).unwrap().bad_lines.len(), 0);
+    }
+
+    #[test]
+    fn repair_drops_only_the_invalid_utf8_line_and_keeps_valid_bytes() {
+        let dir = TempDir::new().unwrap();
+        let path = write_raw(&dir, &[0xff, 0xfe, b'x']);
+
+        assert_eq!(repair(&path).unwrap(), 1);
+
+        let expected = b"{\"version\":3}\n[0.1, \"o\", \"ok\"]\n[0.2, \"o\", \"ok\"]\n";
+        assert_eq!(std::fs::read(&path).unwrap(), expected);
+    }
+
+    #[test]
+    fn repair_and_diagnose_agree_on_json_errors() {
+        let dir = TempDir::new().unwrap();
+        let path = write_raw(&dir, b"[not json");
+
+        let diagnosed = diagnose(&path).unwrap();
+        let removed = repair(&path).unwrap();
+
+        assert_eq!(removed, diagnosed.bad_lines.len());
+        assert_eq!(removed, 1);
+    }
+}

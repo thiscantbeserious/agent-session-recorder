@@ -9,6 +9,7 @@ pub mod list_view;
 pub mod modals;
 pub mod shared_state;
 pub mod status_footer;
+pub mod warnings;
 
 // Re-exports for convenient access
 pub use keybindings::{
@@ -49,6 +50,8 @@ pub struct App {
     tick_rate: Duration,
     /// Whether the app should quit
     should_quit: bool,
+    /// Routes codec warnings to the status line, restores stderr when the app drops.
+    _warnings: warnings::WarningGuard,
 }
 
 impl App {
@@ -96,6 +99,7 @@ impl App {
             events,
             tick_rate,
             should_quit: false,
+            _warnings: warnings::WarningGuard::install(),
         })
     }
 
@@ -288,6 +292,7 @@ pub trait TuiApp {
     /// Exits when a `Quit` event is received or `app().should_quit()` is true.
     fn run(&mut self) -> Result<()> {
         loop {
+            self.shared_state().show_pending_warning();
             self.draw()?;
 
             match self.app().next_event()? {

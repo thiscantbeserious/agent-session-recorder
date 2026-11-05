@@ -3,11 +3,12 @@
 //! Provides non-interactive functions for detecting and fixing corrupt lines
 //! in asciicast files, plus an interactive wrapper that prompts via stdin.
 
-use std::fs;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+
+use crate::files::codec;
 
 use super::types::{Event, Header};
 use super::AsciicastFile;
@@ -34,22 +35,64 @@ pub struct DiagnoseResult {
     pub bad_lines: Vec<LineDiagnostic>,
 }
 
-/// Diagnose an asciicast file for corrupt or unparseable lines.
-///
-/// Scans the entire file without failing, collecting information about
-/// every line that cannot be parsed as a valid event.
-pub fn diagnose<P: AsRef<Path>>(path: P) -> Result<DiagnoseResult> {
-    let path = path.as_ref();
-    let file = fs::File::open(path).with_context(|| format!("Failed to open file: {:?}", path))?;
-    let reader = BufReader::new(file);
-    let mut lines = reader.lines();
+/// Verdict on one raw line, shared by `diagnose` and `repair` so they agree.
+enum Verdict {
+    Blank,
+    Valid,
+    Bad(String),
+}
 
-    // Validate header
-    let header_line = lines
-        .next()
-        .context("File is empty")?
-        .context("Failed to read header line")?;
+fn classify(raw: &[u8]) -> Verdict {
+    let Ok(line) = std::str::from_utf8(raw) else {
+        return Verdict::Bad("invalid UTF-8".to_string());
+    };
+    if line.trim().is_empty() {
+        Verdict::Blank
+    } else if line.contains('\0') {
+        Verdict::Bad("contains null bytes (file corruption)".to_string())
+    } else {
+        match Event::from_json(line) {
+            Ok(_) => Verdict::Valid,
+            Err(e) => Verdict::Bad(e.to_string()),
+        }
+    }
+}
 
+/// Line reader over raw bytes. A read error is a decoder error and terminal, a gzip stream
+/// cannot resume after one, so callers stop on the first `Err`.
+struct RawLines {
+    reader: Box<dyn BufRead>,
+    buf: Vec<u8>,
+}
+
+impl RawLines {
+    fn next_line(&mut self) -> io::Result<Option<&[u8]>> {
+        self.buf.clear();
+        if self.reader.read_until(b'\n', &mut self.buf)? == 0 {
+            return Ok(None);
+        }
+        let mut end = self.buf.len();
+        if self.buf[..end].ends_with(b"\n") {
+            end -= 1;
+            if self.buf[..end].ends_with(b"\r") {
+                end -= 1;
+            }
+        }
+        Ok(Some(&self.buf[..end]))
+    }
+}
+
+/// Open a v3 cast file, returning the line reader positioned after the header and the header.
+fn open_v3(path: &Path) -> Result<(RawLines, String)> {
+    let mut lines = RawLines {
+        reader: codec::open_reader(path)?,
+        buf: Vec::new(),
+    };
+    let raw = lines
+        .next_line()
+        .context("Failed to read header line")?
+        .context("File is empty")?;
+    let header_line = String::from_utf8(raw.to_vec()).context("Header line is not valid UTF-8")?;
     let header: Header = serde_json::from_str(&header_line).context("Failed to parse header")?;
     if header.version != 3 {
         bail!(
@@ -57,111 +100,74 @@ pub fn diagnose<P: AsRef<Path>>(path: P) -> Result<DiagnoseResult> {
             header.version
         );
     }
+    Ok((lines, header_line))
+}
 
-    let mut total_lines = 1; // header
-    let mut valid_event_lines = 0;
-    let mut bad_lines = Vec::new();
-
-    for (line_num, line_result) in lines.enumerate() {
-        total_lines += 1;
-        let file_line = line_num + 2; // 1-based, header is line 1
-
-        let line = match line_result {
-            Ok(l) => l,
+/// Diagnose an asciicast file for corrupt or unparseable lines.
+///
+/// Scans the entire file without failing, collecting information about
+/// every line that cannot be parsed as a valid event. A decoder error ends
+/// the scan and is recorded once.
+pub fn diagnose<P: AsRef<Path>>(path: P) -> Result<DiagnoseResult> {
+    let (mut lines, _) = open_v3(path.as_ref())?;
+    let mut result = DiagnoseResult {
+        total_lines: 1, // header
+        valid_event_lines: 0,
+        bad_lines: Vec::new(),
+    };
+    loop {
+        let line_number = result.total_lines + 1;
+        match lines.next_line() {
+            Ok(None) => break,
+            Ok(Some(raw)) => result.record(line_number, classify(raw), raw.len()),
             Err(e) => {
-                bad_lines.push(LineDiagnostic {
-                    line_number: file_line,
-                    reason: format!("I/O error: {}", e),
-                    byte_len: 0,
-                });
-                continue;
+                let reason = format!("I/O error: {}", e);
+                result.record(line_number, Verdict::Bad(reason), 0);
+                break;
             }
-        };
-
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        if line.contains('\0') {
-            bad_lines.push(LineDiagnostic {
-                line_number: file_line,
-                reason: "contains null bytes (file corruption)".to_string(),
-                byte_len: line.len(),
-            });
-            continue;
-        }
-
-        if let Err(e) = Event::from_json(&line) {
-            bad_lines.push(LineDiagnostic {
-                line_number: file_line,
-                reason: format!("{}", e),
-                byte_len: line.len(),
-            });
-        } else {
-            valid_event_lines += 1;
         }
     }
+    Ok(result)
+}
 
-    Ok(DiagnoseResult {
-        total_lines,
-        valid_event_lines,
-        bad_lines,
-    })
+impl DiagnoseResult {
+    fn record(&mut self, line_number: usize, verdict: Verdict, byte_len: usize) {
+        self.total_lines += 1;
+        match verdict {
+            Verdict::Blank => {}
+            Verdict::Valid => self.valid_event_lines += 1,
+            Verdict::Bad(reason) => self.bad_lines.push(LineDiagnostic {
+                line_number,
+                reason,
+                byte_len,
+            }),
+        }
+    }
 }
 
 /// Repair an asciicast file by removing corrupt/unparseable lines.
 ///
-/// Reads the file, keeps only the header and valid event lines, and
-/// writes the result back atomically. Returns the number of lines removed.
+/// Streams the file through the codec, keeps only the header and valid event
+/// lines, and writes the result back atomically in the same format. Returns
+/// the number of lines removed. A decoder error aborts and leaves the file as is.
 pub fn repair<P: AsRef<Path>>(path: P) -> Result<usize> {
     let path = path.as_ref();
-    let content =
-        fs::read_to_string(path).with_context(|| format!("Failed to read file: {:?}", path))?;
-
-    let mut lines_iter = content.lines();
-
-    let header_line = lines_iter.next().context("File is empty")?;
-    let header: Header = serde_json::from_str(header_line).context("Failed to parse header")?;
-    if header.version != 3 {
-        bail!(
-            "Only asciicast v3 format is supported (got version {})",
-            header.version
-        );
-    }
-
+    let (mut lines, header_line) = open_v3(path)?;
     let mut removed = 0;
-    let temp_path = path.with_extension("cast.tmp");
-    let mut file = fs::File::create(&temp_path)
-        .with_context(|| format!("Failed to create temp file: {:?}", temp_path))?;
-
-    writeln!(file, "{}", header_line)?;
-
-    for line in lines_iter {
-        if line.trim().is_empty() {
-            continue;
+    codec::atomic_write(path, |w| {
+        writeln!(w, "{}", header_line)?;
+        while let Some(raw) = lines.next_line().context("Failed to read line")? {
+            match classify(raw) {
+                Verdict::Blank => {}
+                Verdict::Bad(_) => removed += 1,
+                Verdict::Valid => {
+                    w.write_all(raw)?;
+                    writeln!(w)?;
+                }
+            }
         }
-
-        if line.contains('\0') {
-            removed += 1;
-            continue;
-        }
-
-        if Event::from_json(line).is_err() {
-            removed += 1;
-            continue;
-        }
-
-        writeln!(file, "{}", line)?;
-    }
-
-    file.sync_all()?;
-    drop(file);
-
-    fs::rename(&temp_path, path).with_context(|| {
-        let _ = fs::remove_file(&temp_path);
-        format!("Failed to replace file: {:?}", path)
+        Ok(())
     })?;
-
     Ok(removed)
 }
 
@@ -180,27 +186,8 @@ pub fn check_file_integrity(path: &Path) -> Result<()> {
         anyhow::bail!("Failed to parse file: {:?}", path);
     }
 
-    eprintln!(
-        "File has {} corrupt line(s) ({} valid events):",
-        diagnosis.bad_lines.len(),
-        diagnosis.valid_event_lines
-    );
-    for diag in &diagnosis.bad_lines {
-        eprintln!(
-            "  line {}: {} ({} bytes)",
-            diag.line_number, diag.reason, diag.byte_len
-        );
-    }
-    print!(
-        "Remove {} corrupt line(s) and continue? [y/N]: ",
-        diagnosis.bad_lines.len()
-    );
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().lock().read_line(&mut input)?;
-
-    if input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes") {
+    print_diagnosis(&diagnosis);
+    if confirm_removal(diagnosis.bad_lines.len())? {
         let removed = repair(path)?;
         println!("Removed {} corrupt line(s).", removed);
         Ok(())
@@ -212,9 +199,35 @@ pub fn check_file_integrity(path: &Path) -> Result<()> {
     }
 }
 
+#[cfg(not(tarpaulin_include))]
+fn print_diagnosis(diagnosis: &DiagnoseResult) {
+    eprintln!(
+        "File has {} corrupt line(s) ({} valid events):",
+        diagnosis.bad_lines.len(),
+        diagnosis.valid_event_lines
+    );
+    for diag in &diagnosis.bad_lines {
+        eprintln!(
+            "  line {}: {} ({} bytes)",
+            diag.line_number, diag.reason, diag.byte_len
+        );
+    }
+}
+
+#[cfg(not(tarpaulin_include))]
+fn confirm_removal(count: usize) -> Result<bool> {
+    print!("Remove {} corrupt line(s) and continue? [y/N]: ", count);
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().lock().read_line(&mut input)?;
+    let answer = input.trim();
+    Ok(answer.eq_ignore_ascii_case("y") || answer.eq_ignore_ascii_case("yes"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     use std::io::Write;
 
     #[test]

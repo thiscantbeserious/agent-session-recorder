@@ -29,8 +29,9 @@ Storage and cleanup settings
 | Option | Default | Description |
 |--------|---------|-------------|
 | `directory` | `~/recorded_agent_sessions` | Base directory for session recordings |
-| `size_threshold_gb` | `10.0` (example, unset by default) | Warn after recording when storage exceeds this size in GB (unset = off) |
+| `size_threshold_gb` | `unset` | Warn after recording when storage exceeds this size in GB (unset = off) |
 | `age_threshold_days` | `30` | Age threshold in days for cleanup suggestions |
+| `compression` | `gzip` | Compression for new recordings: "gzip" (.cast.gz) or "none" (.cast) |
 
 ### [recording]
 
@@ -48,8 +49,8 @@ AI analysis settings
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `agent` | `auto-detect` | Preferred agent for analysis (claude, codex, gemini) |
-| `workers` | `auto` | Number of parallel analysis workers (auto-scale if unset) |
+| `agent` | `unset` | Preferred agent for analysis (claude, codex, gemini) |
+| `workers` | `unset` | Number of parallel analysis workers (auto-scale if unset) |
 | `timeout` | `120` | Timeout per analysis chunk in seconds |
 | `fast` | `false` | Fast mode: skip JSON schema enforcement |
 | `curate` | `true` | Auto-curate markers when count exceeds threshold |
@@ -73,7 +74,7 @@ Per-agent analysis configuration. Applies to `[agents.claude]`, `[agents.codex]`
 | `analyze_extra_args` | `[]` | Extra CLI arguments for analysis (overrides extra_args) |
 | `curate_extra_args` | `[]` | Extra CLI arguments for curation (overrides extra_args) |
 | `rename_extra_args` | `[]` | Extra CLI arguments for rename (overrides extra_args) |
-| `token_budget` | `auto` | Override the token budget for this agent |
+| `token_budget` | `unset` | Override the token budget for this agent |
 
 ## Filename Templates
 

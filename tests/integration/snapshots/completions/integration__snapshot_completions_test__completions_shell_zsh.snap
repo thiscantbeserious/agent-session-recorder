@@ -56,6 +56,8 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 '--agent=[Only show sessions from this agent]:AGENT:_default' \
 '--older-than=[Only show sessions older than N days]:OLDER_THAN:_default' \
+'-y[Remove orphaned backups and stale locks without asking]' \
+'--yes[Remove orphaned backups and stale locks without asking]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 && ret=0
@@ -72,6 +74,16 @@ _arguments "${_arguments_options[@]}" : \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 '::agent -- Filter sessions by agent name:_default' \
+&& ret=0
+;;
+(compress)
+_arguments "${_arguments_options[@]}" : \
+'--agent=[Only compress sessions from this agent]:AGENT:_default' \
+'-y[Skip confirmation prompt]' \
+'--yes[Skip confirmation prompt]' \
+'--dry-run[Only show the preview, never prompt or change anything]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
 && ret=0
 ;;
 (analyze)
@@ -549,6 +561,10 @@ _arguments "${_arguments_options[@]}" : \
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
+(compress)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (analyze)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
@@ -734,6 +750,7 @@ _agr_commands() {
 'cleanup:Interactive cleanup of old sessions' \
 'list:List recorded sessions' \
 'ls:List recorded sessions' \
+'compress:Compress plain sessions to .cast.gz' \
 'analyze:Analyze a recording with AI' \
 'play:Play a recording with the native player' \
 'copy:Copy a recording to the clipboard' \
@@ -910,6 +927,11 @@ _agr__completions_commands() {
     local commands; commands=()
     _describe -t commands 'agr completions commands' commands "$@"
 }
+(( $+functions[_agr__compress_commands] )) ||
+_agr__compress_commands() {
+    local commands; commands=()
+    _describe -t commands 'agr compress commands' commands "$@"
+}
 (( $+functions[_agr__config_commands] )) ||
 _agr__config_commands() {
     local commands; commands=(
@@ -989,6 +1011,7 @@ _agr__help_commands() {
 'status:Show storage statistics' \
 'cleanup:Interactive cleanup of old sessions' \
 'list:List recorded sessions' \
+'compress:Compress plain sessions to .cast.gz' \
 'analyze:Analyze a recording with AI' \
 'play:Play a recording with the native player' \
 'copy:Copy a recording to the clipboard' \
@@ -1071,6 +1094,11 @@ _agr__help__cleanup_commands() {
 _agr__help__completions_commands() {
     local commands; commands=()
     _describe -t commands 'agr help completions commands' commands "$@"
+}
+(( $+functions[_agr__help__compress_commands] )) ||
+_agr__help__compress_commands() {
+    local commands; commands=()
+    _describe -t commands 'agr help compress commands' commands "$@"
 }
 (( $+functions[_agr__help__config_commands] )) ||
 _agr__help__config_commands() {

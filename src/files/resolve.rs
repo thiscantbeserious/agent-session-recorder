@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 
 use crate::config::Config;
+use crate::files::codec;
 use crate::storage::StorageManager;
 
 /// Resolve a file path, trying short format (agent/file.cast) first.
@@ -22,8 +23,12 @@ pub fn resolve_file_path(file: &str, config: &Config) -> Result<PathBuf> {
     let path = PathBuf::from(file);
 
     // If it's already an absolute path or exists as-is, use it directly
-    if path.is_absolute() || path.exists() {
+    if path.exists() {
         return Ok(path);
+    }
+    if path.is_absolute() {
+        let twin = codec::other_variant(&path);
+        return Ok(if twin.exists() { twin } else { path });
     }
 
     // Try to resolve as short format via StorageManager
@@ -128,5 +133,25 @@ mod tests {
 
         let result = resolve_file_path("claude/session.cast", &config).unwrap();
         assert_eq!(result, PathBuf::from("claude/session.cast"));
+    }
+
+    #[test]
+    fn resolve_absolute_missing_plain_falls_back_to_gzip() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        create_test_session(temp.path(), "claude", "x.cast.gz");
+        let dir = temp.path().join("claude");
+
+        let result = resolve_file_path(dir.join("x.cast").to_str().unwrap(), &config).unwrap();
+        assert_eq!(result, dir.join("x.cast.gz"));
+    }
+
+    #[test]
+    fn resolve_absolute_missing_everywhere_stays_as_given() {
+        let temp = TempDir::new().unwrap();
+        let config = create_test_config(&temp);
+        let missing = temp.path().join("claude").join("x.cast");
+        let result = resolve_file_path(missing.to_str().unwrap(), &config).unwrap();
+        assert_eq!(result, missing);
     }
 }

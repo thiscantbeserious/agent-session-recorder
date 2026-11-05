@@ -336,7 +336,7 @@ impl ChunkCalculator {
         let step = available.saturating_sub(overlap).max(1);
 
         // Ceiling division considering overlap
-        ((total_tokens.saturating_sub(overlap)) + step - 1) / step
+        total_tokens.saturating_sub(overlap).div_ceil(step)
     }
 }
 

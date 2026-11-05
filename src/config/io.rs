@@ -2,7 +2,7 @@
 
 use anyhow::{Context, Result};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use super::types::Config;
 
@@ -20,21 +20,23 @@ pub fn config_dir() -> Result<PathBuf> {
 
 /// Load configuration from file, or return defaults if not found
 pub fn load() -> Result<Config> {
-    let config_path = config_path()?;
+    load_from(&config_path()?)
+}
 
-    if config_path.exists() {
-        let contents = fs::read_to_string(&config_path)
-            .with_context(|| format!("Failed to read config file: {:?}", config_path))?;
-        let config: Config = toml::from_str(&contents)
-            .with_context(|| format!("Failed to parse config file: {:?}", config_path))?;
-        config
-            .analysis
-            .validate()
-            .map_err(|e| anyhow::anyhow!("Invalid config: {}", e))?;
-        Ok(config)
-    } else {
-        Ok(Config::default())
+/// Load configuration from a given path, defaults when the file does not exist
+pub fn load_from(config_path: &Path) -> Result<Config> {
+    if !config_path.exists() {
+        return Ok(Config::default());
     }
+    let contents = fs::read_to_string(config_path)
+        .with_context(|| format!("Failed to read config file: {:?}", config_path))?;
+    let config: Config = toml::from_str(&contents)
+        .with_context(|| format!("Failed to parse config file: {:?}", config_path))?;
+    config
+        .analysis
+        .validate()
+        .map_err(|e| anyhow::anyhow!("Invalid config: {}", e))?;
+    Ok(config)
 }
 
 /// Save configuration to file

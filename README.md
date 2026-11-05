@@ -35,7 +35,8 @@ AGR is a lightweight CLI tool that automatically records your terminal sessions 
 
 - **Transparent recording** - Shell wrappers automatically record sessions without changing your workflow
 - **AI-powered analysis** - Agents can analyze their own recordings and mark interesting moments
-- **Native asciicast v3** - Markers stored directly in `.cast` files, playable in any asciinema player
+- **Native asciicast v3** - Markers stored directly in the recording, playable in any asciinema player
+- **Compressed by default** - Recordings are stored as `.cast.gz`, about 10x smaller
 - **Storage management** - Track usage by agent, get warnings when storage is high, clean up old sessions
 - **Interactive TUI** - Browse and preview recordings with a terminal-based interface
 
@@ -186,6 +187,44 @@ agr optimize --remove-silence --output fast.cast session.cast
 1. CLI argument (`--remove-silence=1.5`) - explicit user intent
 2. Header's `idle_time_limit` - recording author's intent
 3. Default: 2.0 seconds
+
+## Storage and Compression
+
+New recordings are saved gzip-compressed as `.cast.gz`. Every command (play, list, analyze, optimize, marker, copy, cleanup) works the same on `.cast.gz` and plain `.cast` files, and `agr copy` always hands over plain asciicast.
+
+```toml
+[storage]
+compression = "gzip"   # or "none" to keep writing plain .cast
+```
+
+`agr status` and `agr list` show the size on disk and the uncompressed size.
+
+### Compressing Existing Sessions
+
+```bash
+agr compress                  # Preview sessions, current vs projected size, then ask
+agr compress --agent claude   # Only one agent
+agr compress --yes            # Skip the confirmation
+agr compress --dry-run        # Only show the preview, never prompt or change anything
+```
+
+Sessions that are currently being recorded are skipped. Without a TTY nothing is rewritten unless you pass `--yes`. On a terminal a progress line shows the current file and the size done so far on stderr. Ctrl+C stops after the current file and prints what was done.
+
+Orphaned backups (a hidden `.bak` whose session is gone) and stale lock files are shown by `agr status` and removed by `agr cleanup` after a preview and confirmation (`--yes` skips it).
+
+After an upgrade, `agr list`, `agr ls`, `agr status` and `agr cleanup` offer the same preview once per version, interactive terminals only. The last version that showed the offer is kept in `~/.config/agr/state.toml`. Nothing is rewritten without confirmation.
+
+### Reading a Session with Standard Tools
+
+```bash
+gzip -dc session.cast.gz | less
+```
+
+Use `gzip -dc` and not `zcat`, on macOS `zcat` is the legacy `.Z` tool.
+
+### Colors
+
+Set `NO_COLOR=1` to disable colored output.
 
 ## Documentation
 

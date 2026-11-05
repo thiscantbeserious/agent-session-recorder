@@ -11,7 +11,7 @@ Generate shell completions (internal use)
 Usage: agr completions [OPTIONS] [PREFIX]
 
 Arguments:
-  [PREFIX]  [37mFilter prefix for file listing [default: ][0m
+  [PREFIX]  Filter prefix for file listing [default: ]
 
 Options:
       --shell <SHELL>            Shell to generate completions for (clap native) [possible values: bash, elvish, fish, powershell, zsh]
@@ -20,4 +20,5 @@ Options:
       --files                    List cast files for completion (outputs agent/filename.cast format)
       --limit <LIMIT>            Limit number of files returned [default: 10]
   -h, --help                     Print help
+
 --- stderr ---
