@@ -37,19 +37,11 @@ impl ListApp {
         if let Some(item) = self.shared.explorer.selected_item() {
             let path = Path::new(&item.path);
 
-            let filename = path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .map_or("recording", codec::session_stem);
-
-            match copy_file_to_clipboard(path) {
-                Ok(result) => {
-                    self.shared.status_message = Some(result.message(filename));
-                }
-                Err(e) => {
-                    self.shared.status_message = Some(format!("Copy failed: {}", e));
-                }
-            }
+            let filename = display_stem(path);
+            self.shared.status_message = Some(match copy_file_to_clipboard(path) {
+                Ok(result) => result.message(filename),
+                Err(e) => format!("Copy failed: {}", e),
+            });
         }
         Ok(())
     }
@@ -147,18 +139,23 @@ impl ListApp {
             self.shared.status_message = Some(format!("ERROR: Backup failed for {}: {}", path, e));
             return Ok(());
         }
-        self.app.suspend()?;
-        // --wait pauses before returning to TUI
-        let status = std::process::Command::new(std::env::current_exe()?)
-            .args(["analyze", &path, "--wait"])
-            .status();
-        self.app.resume()?;
+        let status = self.run_analyze(&path)?;
         self.shared.status_message = Some(match status {
             Ok(s) if s.success() => self.after_analyze(&path),
             Ok(s) => format!("Analyze exited with code {}", s.code().unwrap_or(-1)),
             Err(e) => format!("Failed to run analyze: {}", e),
         });
         Ok(())
+    }
+
+    /// Run `agr analyze --wait` with the TUI suspended.
+    fn run_analyze(&mut self, path: &str) -> Result<std::io::Result<std::process::ExitStatus>> {
+        self.app.suspend()?;
+        let status = std::process::Command::new(std::env::current_exe()?)
+            .args(["analyze", path, "--wait"])
+            .status();
+        self.app.resume()?;
+        Ok(status)
     }
 
     /// Sync explorer and preview cache after a successful analyze, returns the status text.
@@ -182,6 +179,12 @@ impl ListApp {
             name.unwrap_or("unknown")
         )
     }
+}
+
+/// File name without the `.cast` / `.cast.gz` suffix, "recording" when there is none.
+fn display_stem(path: &Path) -> &str {
+    let name = path.file_name().and_then(|s| s.to_str());
+    name.map_or("recording", codec::session_stem)
 }
 
 /// Newest `.cast` / `.cast.gz` session in `dir` by modification time.

@@ -18,7 +18,17 @@ fn test_theme() -> crate::theme::Theme {
 #[test]
 fn rename_spans_selected_all() {
     let theme = test_theme();
-    let spans = build_rename_item_spans("my-session", 0, true, ".cast", "claude", "1.0 KB", &theme);
+    let spans = build_rename_item_spans(
+        &RenameRow {
+            input: "my-session",
+            cursor: 0,
+            selected_all: true,
+            suffix: ".cast",
+            agent: "claude",
+            size_str: "1.0 KB",
+        },
+        &theme,
+    );
     // First span should contain the full input text
     assert_eq!(spans[0].content, "my-session");
     // Second span contains ".cast"
@@ -31,11 +41,41 @@ fn rename_spans_selected_all() {
 #[test]
 fn rename_spans_show_real_suffix() {
     let theme = test_theme();
-    let all = build_rename_item_spans("my", 0, true, ".cast.gz", "ag", "1 B", &theme);
+    let all = build_rename_item_spans(
+        &RenameRow {
+            input: "my",
+            cursor: 0,
+            selected_all: true,
+            suffix: ".cast.gz",
+            agent: "ag",
+            size_str: "1 B",
+        },
+        &theme,
+    );
     assert!(all.iter().any(|s| s.content == ".cast.gz"));
-    let mid = build_rename_item_spans("hello", 2, false, ".cast.gz", "ag", "1 B", &theme);
+    let mid = build_rename_item_spans(
+        &RenameRow {
+            input: "hello",
+            cursor: 2,
+            selected_all: false,
+            suffix: ".cast.gz",
+            agent: "ag",
+            size_str: "1 B",
+        },
+        &theme,
+    );
     assert!(mid.iter().any(|s| s.content == ".cast.gz"));
-    let end = build_rename_item_spans("hi", 2, false, ".cast.gz", "ag", "1 B", &theme);
+    let end = build_rename_item_spans(
+        &RenameRow {
+            input: "hi",
+            cursor: 2,
+            selected_all: false,
+            suffix: ".cast.gz",
+            agent: "ag",
+            size_str: "1 B",
+        },
+        &theme,
+    );
     assert!(end.iter().any(|s| s.content == "."));
     assert!(end.iter().any(|s| s.content == "cast.gz"));
     assert!(!end.iter().any(|s| s.content.contains(".cast.gz.")));
@@ -45,7 +85,17 @@ fn rename_spans_show_real_suffix() {
 #[test]
 fn rename_spans_cursor_start() {
     let theme = test_theme();
-    let spans = build_rename_item_spans("abc", 0, false, ".cast", "ag", "2 B", &theme);
+    let spans = build_rename_item_spans(
+        &RenameRow {
+            input: "abc",
+            cursor: 0,
+            selected_all: false,
+            suffix: ".cast",
+            agent: "ag",
+            size_str: "2 B",
+        },
+        &theme,
+    );
     // No "before" span at cursor=0; first span is the cursor char
     assert_eq!(spans[0].content, "a");
     // After portion
@@ -57,7 +107,17 @@ fn rename_spans_cursor_start() {
 #[test]
 fn rename_spans_cursor_middle() {
     let theme = test_theme();
-    let spans = build_rename_item_spans("hello", 2, false, ".cast", "ag", "0 B", &theme);
+    let spans = build_rename_item_spans(
+        &RenameRow {
+            input: "hello",
+            cursor: 2,
+            selected_all: false,
+            suffix: ".cast",
+            agent: "ag",
+            size_str: "0 B",
+        },
+        &theme,
+    );
     // "he" before cursor, "l" cursor char, "lo" after
     assert!(spans.iter().any(|s| s.content == "he"));
     assert!(spans.iter().any(|s| s.content == "l"));
@@ -68,7 +128,17 @@ fn rename_spans_cursor_middle() {
 #[test]
 fn rename_spans_cursor_end() {
     let theme = test_theme();
-    let spans = build_rename_item_spans("hi", 2, false, ".cast", "ag", "0 B", &theme);
+    let spans = build_rename_item_spans(
+        &RenameRow {
+            input: "hi",
+            cursor: 2,
+            selected_all: false,
+            suffix: ".cast",
+            agent: "ag",
+            size_str: "0 B",
+        },
+        &theme,
+    );
     // "hi" is the before span
     assert!(spans.iter().any(|s| s.content == "hi"));
     // cursor char is "."
@@ -81,7 +151,17 @@ fn rename_spans_cursor_end() {
 #[test]
 fn rename_spans_empty_input() {
     let theme = test_theme();
-    let spans = build_rename_item_spans("", 0, false, ".cast", "ag", "0 B", &theme);
+    let spans = build_rename_item_spans(
+        &RenameRow {
+            input: "",
+            cursor: 0,
+            selected_all: false,
+            suffix: ".cast",
+            agent: "ag",
+            size_str: "0 B",
+        },
+        &theme,
+    );
     // Should not panic and must still produce a cursor block on "."
     assert!(spans.iter().any(|s| s.content == "."));
     assert!(spans.iter().any(|s| s.content == "cast"));
@@ -94,7 +174,17 @@ fn rename_spans_unicode_cursor() {
     // 'é' is two bytes (0xC3 0xA9) in UTF-8
     let input = "héllo";
     let cursor = 1; // byte position of 'é'
-    let spans = build_rename_item_spans(input, cursor, false, ".cast", "ag", "0 B", &theme);
+    let spans = build_rename_item_spans(
+        &RenameRow {
+            input,
+            cursor,
+            selected_all: false,
+            suffix: ".cast",
+            agent: "ag",
+            size_str: "0 B",
+        },
+        &theme,
+    );
     // "h" before cursor
     assert!(spans.iter().any(|s| s.content == "h"));
     // cursor char is "é"
@@ -109,7 +199,17 @@ fn rename_spans_cursor_beyond_end_does_not_panic() {
     let theme = test_theme();
     let input = "hi";
     // cursor=999 is way beyond the end; must be clamped to len()=2
-    let spans = build_rename_item_spans(input, 999, false, ".cast", "ag", "0 B", &theme);
+    let spans = build_rename_item_spans(
+        &RenameRow {
+            input,
+            cursor: 999,
+            selected_all: false,
+            suffix: ".cast",
+            agent: "ag",
+            size_str: "0 B",
+        },
+        &theme,
+    );
     // Should behave like cursor-at-end: "hi" before, "." cursor block, "cast" suffix
     assert!(spans.iter().any(|s| s.content == "hi"));
     assert!(spans.iter().any(|s| s.content == "."));
@@ -123,7 +223,17 @@ fn rename_spans_cursor_mid_multibyte_snaps_to_boundary() {
     let theme = test_theme();
     // 'é' occupies bytes 1..3; passing cursor=2 (middle of 'é') must not panic
     let input = "héllo";
-    let spans = build_rename_item_spans(input, 2, false, ".cast", "ag", "0 B", &theme);
+    let spans = build_rename_item_spans(
+        &RenameRow {
+            input,
+            cursor: 2,
+            selected_all: false,
+            suffix: ".cast",
+            agent: "ag",
+            size_str: "0 B",
+        },
+        &theme,
+    );
     // Snapped back to byte 1 (start of 'é'), so "h" is before and "é" is the cursor char
     assert!(spans.iter().any(|s| s.content == "h"));
     assert!(spans.iter().any(|s| s.content == "é"));
@@ -281,14 +391,16 @@ fn preview_lines_no_session_data_shows_fallback() {
         .unwrap();
 
     let lines = build_preview_lines(
-        "test.cast".to_string(),
-        "claude".to_string(),
-        2048,
-        modified,
-        "/sessions/test.cast".to_string(),
-        None,
-        None, // no session_preview_data
-        false,
+        PreviewInput {
+            name: "test.cast".to_string(),
+            agent: "claude".to_string(),
+            size: 2048,
+            modified,
+            path: "/sessions/test.cast".to_string(),
+            lock_data: None,
+            session: None,
+            has_backup: false,
+        },
         &theme,
     );
 

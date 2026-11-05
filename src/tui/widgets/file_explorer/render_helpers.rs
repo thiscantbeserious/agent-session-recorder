@@ -30,6 +30,16 @@ pub(super) type SessionData = (
     Option<String>,
 );
 
+/// Inputs of the inline rename row, `cursor` is a byte offset into `input`.
+pub(super) struct RenameRow<'a> {
+    pub input: &'a str,
+    pub cursor: usize,
+    pub selected_all: bool,
+    pub suffix: &'a str,
+    pub agent: &'a str,
+    pub size_str: &'a str,
+}
+
 /// Build spans for an item that is currently being renamed.
 ///
 /// Handles both `selected_all` mode (entire text highlighted) and normal edit mode
@@ -38,25 +48,21 @@ pub(super) type SessionData = (
 ///
 /// `cursor` is clamped to a valid UTF-8 boundary to prevent panics on caller error.
 pub(super) fn build_rename_item_spans<'a>(
-    input: &'a str,
-    cursor: usize,
-    selected_all: bool,
-    suffix: &'a str,
-    agent: &str,
-    size_str: &str,
+    row: &RenameRow<'a>,
     theme: &crate::theme::Theme,
 ) -> Vec<Span<'a>> {
-    let cursor = clamp_to_boundary(input, cursor);
-    let mut spans = if selected_all {
+    let (input, suffix) = (row.input, row.suffix);
+    let cursor = clamp_to_boundary(input, row.cursor);
+    let mut spans = if row.selected_all {
         let style = theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
         vec![Span::styled(input, style)]
     } else {
         edit_spans(input, cursor, suffix, theme)
     };
-    if selected_all || cursor < input.len() {
+    if row.selected_all || cursor < input.len() {
         spans.push(Span::styled(suffix, theme.text_secondary_style()));
     }
-    spans.extend(meta_spans(agent, size_str, theme));
+    spans.extend(meta_spans(row.agent, row.size_str, theme));
     spans
 }
 
@@ -158,29 +164,16 @@ pub(super) fn render_preview_panel(
     has_backup: bool,
     theme: &crate::theme::Theme,
 ) {
-    let preview_text = if let Some((name, agent, size, modified, path, lock_data)) = preview_data {
-        build_preview_lines(
-            name,
-            agent,
-            size,
-            modified,
-            path,
-            lock_data,
-            session_preview_data,
-            has_backup,
-            theme,
-        )
-    } else {
-        vec![Line::from("No file selected")]
-    };
-
-    let preview = Paragraph::new(preview_text).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Preview ")
-            .border_style(theme.text_secondary_style()),
-    );
-
+    let lines = preview_data.map(|data| {
+        let input = PreviewInput::new(data, session_preview_data, has_backup);
+        build_preview_lines(input, theme)
+    });
+    let preview_text = lines.unwrap_or_else(|| vec![Line::from("No file selected")]);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Preview ")
+        .border_style(theme.text_secondary_style());
+    let preview = Paragraph::new(preview_text).block(block);
     preview.render(area, buf);
 }
 
@@ -197,41 +190,53 @@ fn field_line(
     ])
 }
 
+/// Everything the preview panel shows about the selected item.
+pub(super) struct PreviewInput {
+    pub name: String,
+    pub agent: String,
+    pub size: u64,
+    pub modified: chrono::DateTime<chrono::Local>,
+    pub path: String,
+    pub lock_data: Option<LockInfo>,
+    pub session: Option<SessionData>,
+    pub has_backup: bool,
+}
+
+impl PreviewInput {
+    pub(super) fn new(data: PreviewData, session: Option<SessionData>, has_backup: bool) -> Self {
+        let (name, agent, size, modified, path, lock_data) = data;
+        Self {
+            name,
+            agent,
+            size,
+            modified,
+            path,
+            lock_data,
+            session,
+            has_backup,
+        }
+    }
+}
+
 /// Build the list of text lines shown inside the preview panel.
 ///
 /// Includes file name, agent, size (plus uncompressed size for compressed sessions),
 /// and conditionally duration, markers, backup status, lock status, modified time,
 /// and a terminal snapshot.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn build_preview_lines(
-    name: String,
-    agent: String,
-    size: u64,
-    modified: chrono::DateTime<chrono::Local>,
-    path: String,
-    lock_data: Option<LockInfo>,
-    session_preview_data: Option<SessionData>,
-    has_backup: bool,
+    input: PreviewInput,
     theme: &crate::theme::Theme,
 ) -> Vec<Line<'static>> {
-    let mut lines = head_lines(name, agent, size, theme);
-    let Some((duration, markers, styled_preview, uncompressed)) = session_preview_data else {
-        lines.extend(fallback_lines(modified, path, theme));
+    let mut lines = head_lines(input.name, input.agent, input.size, theme);
+    let Some((duration, markers, styled, uncompressed)) = input.session else {
+        lines.extend(fallback_lines(input.modified, input.path, theme));
         return lines;
     };
-    if let Some(uncompressed) = uncompressed {
-        let style = theme.text_style();
-        lines.push(field_line("Uncompressed: ", uncompressed, style, theme));
-    }
+    let style = theme.text_style();
+    lines.extend(uncompressed.map(|u| field_line("Uncompressed: ", u, style, theme)));
+    let (modified, lock, backup) = (input.modified, input.lock_data, input.has_backup);
     append_session_preview_lines(
-        &mut lines,
-        duration,
-        markers,
-        styled_preview,
-        modified,
-        lock_data,
-        has_backup,
-        theme,
+        &mut lines, duration, markers, styled, modified, lock, backup, theme,
     );
     lines
 }

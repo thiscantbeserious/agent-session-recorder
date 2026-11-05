@@ -92,6 +92,26 @@ fn row_prefix<'a>(
     spans
 }
 
+/// Spans of the row being renamed, suffix taken from the real file name.
+fn rename_spans<'a>(
+    (input, cursor, selected_all): (&'a str, usize, bool),
+    name: &'a str,
+    agent: &'a str,
+    size_str: &'a str,
+    theme: &crate::theme::Theme,
+) -> Vec<Span<'a>> {
+    let suffix = codec::session_suffix(std::path::Path::new(name));
+    let row = RenameRow {
+        input,
+        cursor,
+        selected_all,
+        suffix,
+        agent,
+        size_str,
+    };
+    build_rename_item_spans(&row, theme)
+}
+
 /// Build one list row, with the inline rename editor when it is the selected row.
 fn build_list_item<'a>(
     row: &'a Row,
@@ -103,12 +123,10 @@ fn build_list_item<'a>(
     let (name, agent, size_str, time_str, is_checked, has_bak, is_locked) = row;
     let checked = show_checkboxes.then_some(*is_checked);
     let mut spans = row_prefix(checked, time_str, *has_bak, theme);
-    spans.extend(match rename_state {
-        Some((input, cursor, all)) if is_selected => {
-            let suffix = codec::session_suffix(std::path::Path::new(name));
-            build_rename_item_spans(input, cursor, all, suffix, agent, size_str, theme)
-        }
-        _ => build_normal_item_spans(name, agent, size_str, *is_locked, theme),
+    let rename = rename_state.filter(|_| is_selected);
+    spans.extend(match rename {
+        Some(edit) => rename_spans(edit, name, agent, size_str, theme),
+        None => build_normal_item_spans(name, agent, size_str, *is_locked, theme),
     });
     ListItem::new(Line::from(spans))
 }
