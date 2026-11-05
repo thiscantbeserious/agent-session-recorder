@@ -105,10 +105,10 @@ Considerations:
 Goal: `~/.config/agr/state.toml` with `compress_offer_version`.
 Owner: implementer
 
-- [ ] RED: load from a missing file returns default (`None`).
-- [ ] RED: load from a malformed file returns default, does not error.
-- [ ] RED: save then load round-trips `"0.3.0"`, save is atomic (temp + rename).
-- [ ] GREEN: `src/config/state.rs` with `State { compress_offer_version: Option<String> }`,
+- [x] RED: load from a missing file returns default (`None`).
+- [x] RED: load from a malformed file returns default, does not error.
+- [x] RED: save then load round-trips `"0.3.0"`, save is atomic (temp + rename).
+- [x] GREEN: `src/config/state.rs` with `State { compress_offer_version: Option<String> }`,
       `load_from(path)`, `save_to(path)`, plus `load()` / `save()` using `config_dir()`.
 
 Files: `src/config/state.rs`, `src/config/mod.rs`, `tests/integration/config_test.rs`
