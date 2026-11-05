@@ -682,14 +682,14 @@ TOML when uncommented (CodeRabbit flagged the pattern on #162). `src/config/docs
 lines.
 Owner: implementer
 
-- [ ] Split `src/config/docs.rs` by responsibility (field tables, template insertion, markdown
+- [x] Split `src/config/docs.rs` by responsibility (field tables, template insertion, markdown
       generation) into modules within ~400 lines, pure move, identical sorted test names and
       snapshots.
-- [ ] RED/GREEN: every template line produced by `insert_optional_field_templates`, once
+- [x] RED/GREEN: every template line produced by `insert_optional_field_templates`, once
       uncommented, parses as valid TOML for its section (test iterates all fields).
-- [ ] RED/GREEN: generated docs show `unset` (or the real default) for optional fields, never
+- [x] RED/GREEN: generated docs show `unset` (or the real default) for optional fields, never
       the example value.
-- [ ] `FieldDoc` gains `example: Option<&'static str>` used for templates, `default_display`
+- [x] `FieldDoc` gains `example: Option<&'static str>` used for templates, `default_display`
       for docs. Regenerate with `cargo xtask gen-docs`.
 
 Files: `src/config/docs.rs`, `src/config/docs/`, `docs/`, `tests/integration/snapshots/`

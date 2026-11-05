@@ -146,4 +146,10 @@ mod tests {
             vec!["shell", "storage", "recording", "analysis", "agents"]
         );
     }
+
+    #[test]
+    fn generate_markdown_shows_unset_for_size_threshold() {
+        let md = generate_config_markdown();
+        assert!(md.contains("| `size_threshold_gb` | `unset` |"), "{md}");
+    }
 }

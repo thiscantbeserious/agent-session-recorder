@@ -110,7 +110,7 @@ fn insert_missing_for_section(lines: &mut Vec<String>, section_name: &str, missi
 
     let templates: Vec<String> = missing
         .iter()
-        .map(|f| format!("# {} = {}", f.name, f.default_display))
+        .map(|f| format!("# {} = {}", f.name, f.example.unwrap_or(f.default_display)))
         .collect();
 
     for (i, tmpl) in templates.into_iter().enumerate() {
@@ -208,6 +208,26 @@ mod tests {
         assert_eq!(
             once, twice,
             "insert_optional_field_templates must be idempotent"
+        );
+    }
+
+    #[test]
+    fn inserted_templates_parse_when_uncommented() {
+        let input = "[shell]\n[storage]\n[recording]\n[analysis]\n[agents]\n[agents.claude]\n[agents.codex]\n[agents.gemini]\n";
+        let output = insert_optional_field_templates(input);
+        let uncommented: String = output
+            .lines()
+            .map(|l| {
+                l.strip_prefix("# ")
+                    .filter(|r| r.contains(" = "))
+                    .unwrap_or(l)
+            })
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let parsed = toml::from_str::<crate::Config>(&uncommented);
+        assert!(
+            parsed.is_ok(),
+            "uncommented templates are invalid TOML: {parsed:?}\n{uncommented}"
         );
     }
 }

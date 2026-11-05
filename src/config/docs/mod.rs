@@ -32,4 +32,6 @@ pub struct FieldDoc {
     pub description: &'static str,
     /// Default value as a display string
     pub default_display: &'static str,
+    /// Valid TOML value for the commented template line (falls back to `default_display`)
+    pub example: Option<&'static str>,
 }

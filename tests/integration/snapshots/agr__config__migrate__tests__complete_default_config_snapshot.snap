@@ -22,8 +22,8 @@ directory_max_length = 14
 timeout = 120
 fast = false
 curate = true
-# agent = auto-detect
-# workers = auto
+# agent = "claude"
+# workers = 4
 
 [agents]
 enabled = [
@@ -38,18 +38,18 @@ extra_args = []
 analyze_extra_args = []
 curate_extra_args = []
 rename_extra_args = []
-# token_budget = auto
+# token_budget = 100000
 
 [agents.codex]
 extra_args = []
 analyze_extra_args = []
 curate_extra_args = []
 rename_extra_args = []
-# token_budget = auto
+# token_budget = 100000
 
 [agents.gemini]
 extra_args = []
 analyze_extra_args = []
 curate_extra_args = []
 rename_extra_args = []
-# token_budget = auto
+# token_budget = 100000
