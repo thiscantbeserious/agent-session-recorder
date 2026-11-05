@@ -137,12 +137,25 @@ Public surface (names are a first vision, implementer may adjust):
   verify)
 - `uncompressed_size(path) -> Result<UncompressedSize>` (gzip trailer ISIZE, plain file length)
 
-`UncompressedSize` is `Exact(u64)` or `Over4GiB`. ISIZE is modulo 2^32, so "may have wrapped" is
-decided as: wrap is plausible when `ISIZE + 2^32 <= on_disk * 64`, meaning a real size of 4GiB
-or more would still be within a 64x ratio. The user's 490MB to 52MB file (9.5x) stays exact, a
-real 4.5GiB session at ~10x (~450MB on disk) shows "4GiB+".
-`// ponytail:` ceiling is sessions over 4GiB compressing better than 64x, those show a wrong
-exact number. Upgrade path is storing the 64-bit size in the gzip FEXTRA field.
+`UncompressedSize` is `Exact(u64)` or `Over4GiB`. (Revised 2026-11-05 after pair review, see
+Decision History: the earlier 64x-ratio rule flagged every session over ~67MB on disk as
+"4GiB+".)
+
+Our writer stores the exact uncompressed size in the gzip header as an FEXTRA subfield
+(RFC 1952 2.3.1.1): subfield id `AG`, length 8, little-endian u64. Standard tools (`zcat`,
+`gzip -t`) ignore it, output stays deterministic (same content gives the same bytes).
+The size is only known after compressing, so `atomic_write` writes the subfield with a zero
+placeholder into the temp file, finishes the encoder, then seeks back and patches the 8 bytes
+at their fixed offset (no FHCRC, so nothing else depends on header bytes) before `sync_all`
+and rename. `uncompressed_size` reads the header via `GzDecoder::header().extra()`, which
+needs only the first bytes of the file.
+
+Fallback for `.cast.gz` files without the subfield (compressed by other tools): trust the
+4-byte trailer ISIZE as `Exact`, except `Over4GiB` when ISIZE is smaller than the on-disk
+size, which can only happen after a wrap for real recordings.
+`// ponytail:` ceiling is foreign gzip files over 4GiB uncompressed whose wrapped ISIZE is
+still larger than the on-disk size, they show a wrong number. `agr compress` never produces
+those, rewriting such a file through our writer fixes it.
 
 Writers do not need a "remember the source format" flag. `AsciicastFile::write(path)` writes
 gzip when `path` ends in `.cast.gz`, so rewriting a session in place keeps its format by
@@ -360,3 +373,4 @@ exact current path. Lives in a new `src/clipboard/plain_copy.rs` so `copy.rs` st
 4. Found that deleting the clipboard temp breaks file-reference paste, proposed replace on next
    copy instead (needs user sign-off).
 - 2026-11-05: Accepted by user. Clipboard: decompress to `<tmp>/agr-clipboard/<stem>.cast`, folder cleared before each copy (at most one leftover), removed on failure. Offer state in `~/.config/agr/state.toml`. Offer only on list/ls, status, cleanup with a TTY, never on record.
+- 2026-11-05: Uncompressed size rule revised (pair review found the 64x rule flagged sessions over ~67MB on disk as "4GiB+"). User chose: exact size stored in a gzip FEXTRA subfield by our writer, trailer fallback for foreign files.

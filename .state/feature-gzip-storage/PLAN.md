@@ -112,7 +112,7 @@ Owner: implementer
       `load_from(path)`, `save_to(path)`, plus `load()` / `save()` using `config_dir()`.
 
 Files: `src/config/state.rs`, `src/config/mod.rs`, `tests/integration/config_test.rs`
-Depends on: Stage 2
+Depends on: Stage 2, Stage 18
 
 Considerations:
 - Path-taking variants keep tests off the real home directory.
@@ -133,7 +133,7 @@ Owner: implementer
 
 Files: `src/asciicast/reader.rs`, `src/asciicast/writer.rs`, `src/asciicast/integrity.rs`,
        `tests/integration/asciicast_test.rs`, `tests/integration/markers_test.rs`
-Depends on: Stage 1
+Depends on: Stage 1, Stage 18
 
 Considerations:
 - Inline tests in `integrity.rs` and `transform_ops.rs` assert `with_extension("cast.tmp")`
@@ -181,7 +181,7 @@ Owner: implementer
 
 Files: `src/storage/sessions.rs`, `src/storage/import.rs`, `tests/integration/storage_test.rs`,
        `tests/integration/import_test.rs`
-Depends on: Stage 1, Stage 2, Stage 3, Stage 17
+Depends on: Stage 1, Stage 2, Stage 3, Stage 17, Stage 18
 
 Considerations:
 - `ImportError::WrongExtension` message becomes "Expected .cast or .cast.gz".
@@ -367,7 +367,7 @@ Owner: implementer
 
 Files: `src/clipboard/copy.rs`, `src/clipboard/plain_copy.rs`, `src/clipboard/mod.rs`,
        `tests/integration/clipboard_test.rs`
-Depends on: Stage 1
+Depends on: Stage 1, Stage 18
 
 Considerations:
 - Pending user decision on temp lifetime (ADR section 7). If the user insists on immediate
@@ -401,10 +401,6 @@ Goal: no deferred cleanup. Prove Batch 1 tests catch regressions, bring the stor
 file under the size limit, make clippy clean for all targets.
 Owner: implementer
 
-- [ ] Mutation check for Stage 1 and 2 tests: for each codec/v4 behavior, break the code
-      on purpose (e.g. set mtime, skip temp cleanup, drop path from error, wrong wrap rule,
-      v4 overwriting an existing value), confirm a test fails, revert. Record the
-      break/test pairs in this stage's notes. Add tests where nothing fails.
 - [ ] Split `tests/integration/storage_test.rs` (~1300 lines) by topic so every file is
       within ~400 lines, no test removed or renamed, identical test count.
 - [ ] Fix every `cargo clippy --all-targets -- -D warnings` error (lib test modules,
@@ -421,12 +417,44 @@ Files: `tests/integration/storage_test.rs`, `tests/integration/storage_*_test.rs
        `.github/workflows/ci.yml`
 Depends on: Stage 1, Stage 2, Stage 3
 
+### Stage 18: Batch 1 pair review fixes (user request, in this MR)
+
+Goal: fix every Batch 1 pair review finding. Exact uncompressed size per revised ADR.
+Owner: implementer
+
+- [ ] RED/GREEN: `atomic_write` to `.cast.gz` stores the exact uncompressed size in a gzip
+      FEXTRA subfield `AG` (len 8, u64 LE), placeholder then seek-and-patch before sync.
+      `zcat`/`GzDecoder` still decode, two writes stay byte-identical.
+- [ ] RED/GREEN: `uncompressed_size` reads the subfield (1GB/100MB-sized synthetic header
+      returns `Exact`), falls back to trailer for files without it, `Over4GiB` only when
+      ISIZE < on-disk size. Replace `size_from_trailer` rule and its tests, regression test
+      for 1GB at 10x returning `Exact`.
+- [ ] RED/GREEN: write-side errors (`File::create`, closure, `finish`, `sync_all`) carry the
+      path via `with_context`.
+- [ ] Replace the `Option::take` wrapper in `atomic_write` with a direct `FnOnce` pass.
+- [ ] fsync the parent directory after rename (unix), error carries the dir path.
+- [ ] `// ponytail:` comment on the fixed temp path (concurrent writers to the same target).
+- [ ] Remove unused `Write` import and `read_all` helper in `codec_test.rs`.
+- [ ] RED/GREEN: invalid `compression` value error names the config file path (ADR).
+- [ ] Verify Stage 3 moved tests: compare old inline `create_test_config` fixture
+      (threshold `Some(5.0)`, agents claude/codex, no_wrap) with the new one, restore the
+      original fixture values if any moved test depended on them.
+- [ ] Mutation check for Stage 1, 2 and 18 tests (after the fixes above): for each codec/v4 behavior, break the code
+      on purpose (e.g. set mtime, skip temp cleanup, drop path from error, wrong wrap rule,
+      v4 overwriting an existing value), confirm a test fails, revert. Record the
+      break/test pairs in this stage's notes. Add tests where nothing fails.
+
+Files: `src/files/codec.rs`, `tests/integration/codec_test.rs`, `src/config/io.rs`,
+       `tests/integration/config_test.rs`, `tests/integration/storage_test.rs`
+Depends on: Stage 17
+
 ## Dependencies
 
 - Stage 1, Stage 2, Stage 3 are independent foundations.
 - Stage 4 depends on Stage 2 (shares `config_test.rs`).
 - Stage 5 depends on Stage 1, Stage 6 on Stage 1 and Stage 5.
 - Stage 17 depends on Stage 1, Stage 2, Stage 3 (Batch 1 hardening, user request).
+- Stage 18 depends on Stage 17 (Batch 1 pair review fixes, shares codec and storage tests).
 - Stage 7 depends on Stage 1, Stage 2, Stage 3, Stage 17 (17 splits `storage_test.rs`). Stage 8 on Stage 7.
 - Stage 9 depends on Stage 1, Stage 3, Stage 6, Stage 7.
 - Stage 10 depends on Stage 2, Stage 9. Stage 11 on Stage 9. Stage 12 on Stage 4, 8, 11.
@@ -438,7 +466,8 @@ flowchart LR
   S1 --> S5 --> S6
   S1 --> S15
   S2 --> S4
-  S1 & S2 & S3 --> S17 --> S7 --> S8
+  S1 & S2 & S3 --> S17 --> S18 --> S7 --> S8
+  S18 --> S5 & S15 & S4
   S6 & S7 --> S9
   S9 --> S10
   S9 --> S11 --> S12

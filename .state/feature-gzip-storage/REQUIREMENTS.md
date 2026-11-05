@@ -40,7 +40,7 @@ After implementation:
 6. Clipboard always hands over plain asciicast, never gzip.
 7. The auto-migrate offer is made at most once per agr version while plain sessions remain.
 8. Import compresses when `compression = "gzip"`.
-9. Uncompressed size is read from the gzip trailer (ISIZE), no full decompress.
+9. Uncompressed size is read without decompressing: exact size stored in the gzip header (FEXTRA) by agr, gzip trailer (ISIZE) as fallback for files compressed elsewhere. (Revised 2026-11-05 by user.)
 
 ## Scope
 
@@ -112,8 +112,8 @@ After implementation:
 **Storage tracking**
 - `agr status`, stats and the list/ls TUI show on-disk size (what the disk actually uses).
 - Uncompressed size is shown additionally (status totals and list detail), read from the
-  gzip trailer (ISIZE) without decompressing. Because ISIZE wraps at 4GiB, sizes that may
-  have wrapped are shown as "4GiB+" instead of a wrong number. Plain sessions use their
+  exact size agr stores in the gzip header (FEXTRA) without decompressing. Files compressed
+  elsewhere fall back to the gzip trailer (ISIZE), shown as "4GiB+" when it clearly wrapped. Plain sessions use their
   file size.
 - Size-based features (size warning, cleanup selection and "space freed") use on-disk size.
 - `agr status` shows how many sessions are still plain and how much `agr compress` would
@@ -206,10 +206,10 @@ After implementation:
 - [ ] `agr status` total size equals the sum of on-disk sizes and does not count the
   decompressed size as used space.
 - [ ] Uncompressed size is shown next to the on-disk size in status and in list detail.
-- [ ] Uncompressed size for a `.cast.gz` is taken from the gzip trailer, without
-  decompressing the file.
-- [ ] Where the trailer value may have wrapped (4GiB or more), "4GiB+" is shown instead of
-  a number.
+- [ ] Uncompressed size for a `.cast.gz` written by agr is exact (from the gzip header
+  FEXTRA), without decompressing the file, also for sessions of 1GB or more.
+- [ ] For a `.cast.gz` without that header field, the trailer value is used, "4GiB+" is shown
+  only when the trailer value is smaller than the on-disk size.
 - [ ] After `agr compress`, status shows the reduced on-disk total and zero (or reduced)
   plain sessions.
 - [ ] The size warning (if enabled) and cleanup compare against on-disk size.
@@ -259,7 +259,7 @@ After implementation:
 4. **Clipboard**: always plain, temp decompressed file for the file reference, cleaned up.
 5. **Declined offer**: asked once per agr version, decline remembered per version.
 6. **Import**: compress when `compression = "gzip"`.
-7. **Uncompressed size**: from the gzip trailer, "4GiB+" when it can wrap.
+7. **Uncompressed size**: exact size stored by agr in the gzip header (FEXTRA), trailer fallback for foreign files. (Revised 2026-11-05.)
 
 ---
 **Sign-off:** Approved by user (2026-11-05)
