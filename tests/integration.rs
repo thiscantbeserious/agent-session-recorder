@@ -12,6 +12,9 @@ mod asciicast_test;
 #[path = "integration/branding_test.rs"]
 mod branding_test;
 
+#[path = "integration/codec_test.rs"]
+mod codec_test;
+
 #[path = "integration/config_test.rs"]
 mod config_test;
 
