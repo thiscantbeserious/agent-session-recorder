@@ -255,8 +255,9 @@ Depends on: Stage 2, Stage 9, Stage 24
 
 Considerations:
 - Live recording code (lock, inode, header recovery) stays untouched and plain.
-- Keep `recording.rs` under 400 lines, the helper is a few lines delegating to
-  `compress::compress_file`.
+- `recording.rs` is 380 lines: keep it under ~400, the helper is a few lines delegating to
+  `compress::compress_file`; if it would cross, move the helper to `src/recording/finalize.rs`.
+  `record` is long but changed here, so it ends within ~20 lines (extract steps).
 
 ### Stage 11: agr compress command
 
@@ -270,11 +271,15 @@ Owner: implementer
 - [ ] RED: `agr compress --yes` (assert_cmd, temp storage via config env or HOME) compresses
       and prints the report, without `--yes` and no TTY it prints the preview and changes
       nothing.
-- [ ] GREEN: `Commands::Compress` in `cli.rs`, dispatch in `main.rs`, handler in
+- [ ] GREEN: `Commands::Compress` in the cli module, dispatch in `src/dispatch.rs`, handler in
       `commands/compress.rs` (preview print, prompt, `compress::run`, report print).
+- [ ] First, as pure-move commits: split `src/cli.rs` (614) and `src/commands/config.rs` (599)
+      by responsibility into modules within ~400 lines (identical sorted test names, CLI help
+      snapshots byte-identical), since this stage touches both.
 
-Files: `src/cli.rs`, `src/dispatch.rs`, `src/commands/mod.rs`, `src/commands/compress.rs`,
-       `src/commands/prompt.rs`, `src/commands/config.rs`,
+Files: `src/cli.rs`, `src/cli/`, `src/dispatch.rs`, `src/commands/mod.rs`,
+       `src/commands/compress.rs`, `src/commands/prompt.rs`, `src/commands/config.rs`,
+       `src/commands/config/`, `tests/integration.rs`, `tests/integration/cli_compress_test.rs`,
        `tests/integration/snapshot_cli_test.rs`, `tests/integration/snapshots/`,
        `tests/integration/compress_test.rs`
 Depends on: Stage 9, Stage 21, Stage 23, Stage 24
