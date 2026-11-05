@@ -40,6 +40,7 @@ Commands:
   status    ESC[37mShow storage statisticsESC[0m
   cleanup   ESC[37mInteractive cleanup of old sessionsESC[0m
   list      ESC[37mList recorded sessions [aliases: ls]ESC[0m
+  compress  ESC[37mCompress plain sessions to .cast.gzESC[0m
   analyze   ESC[37mAnalyze a recording with AIESC[0m
   play      ESC[37mPlay a recording with the native playerESC[0m
   copy      ESC[37mCopy a recording to the clipboardESC[0m

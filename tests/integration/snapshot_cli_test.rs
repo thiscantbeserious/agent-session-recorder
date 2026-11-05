@@ -120,6 +120,16 @@ fn snapshot_cli_help_list() {
 }
 
 #[test]
+fn snapshot_cli_help_compress() {
+    let (stdout, stderr, exit_code) = run_agr(&["compress", "--help"]);
+    let output = format!(
+        "=== agr compress --help ===\nExit code: {}\n\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        exit_code, stdout, stderr
+    );
+    insta::assert_snapshot!("cli_help_compress", output);
+}
+
+#[test]
 fn snapshot_cli_help_status() {
     let (stdout, stderr, exit_code) = run_agr(&["status", "--help"]);
     let output = format!(
