@@ -346,7 +346,7 @@ Owner: implementer
 Files: `src/commands/play.rs`, `src/commands/analyze.rs`, `src/commands/transform.rs`,
        `src/commands/copy.rs`, `src/commands/marker.rs`, `tests/integration/play_test.rs`,
        `tests/integration/transform_test.rs`
-Depends on: Stage 1, Stage 5, Stage 6
+Depends on: Stage 1, Stage 5, Stage 6, Stage 19
 
 Considerations:
 - `analyze.rs` is over the limit, edits stay at call sites.
@@ -474,12 +474,38 @@ Notes:
 | `session_stem` not stripping `.gz` | `codec_test::session_stem_strips_known_suffixes` |
 | `same_content` ignores length | `codec_test::same_content_detects_length_mismatch` (new) |
 
+### Stage 19: Files touched by this branch within the size limit (user request, in this MR)
+
+Goal: every file this branch touched is within ~400 lines. Pure moves, no behavior change.
+Owner: implementer
+
+- [ ] Move inline `#[cfg(test)]` tests out of `src/config/migrate/mod.rs` (1055),
+      `src/commands/analyze.rs` (699), `src/analyzer/transforms/cleaner.rs` (536) into
+      `tests/integration/` where they only need the public API. Keep inline only tests that
+      need private items, and split the source file if it is still over the limit.
+- [ ] Split `tests/integration/snapshot_tui_test.rs` (1232) by widget/screen into files within
+      ~400 lines. Snapshot names must stay identical (pass the explicit name to
+      `assert_snapshot!`), no `.snap` file renamed or changed.
+- [ ] Bring `tests/integration/aggressive_transform_test.rs` (409),
+      `tests/integration/storage_import_test.rs` (404), `tests/integration/import_test.rs`
+      (404) within the limit.
+- [ ] Test names and counts identical before and after (diff of sorted test names).
+
+Files: `src/config/migrate/mod.rs`, `src/commands/analyze.rs`,
+       `src/analyzer/transforms/cleaner.rs`, `tests/integration/snapshot_tui_test.rs`,
+       `tests/integration/snapshot_tui_*_test.rs`, `tests/integration/aggressive_transform_test.rs`,
+       `tests/integration/storage_import_test.rs`, `tests/integration/import_test.rs`,
+       `tests/integration/config_migrate_test.rs`, `tests/integration/analyze_command_test.rs`,
+       `tests/integration/cleaner_test.rs`, `tests/integration.rs`
+Depends on: Stage 17, Stage 18
+
 ## Dependencies
 
 - Stage 1, Stage 2, Stage 3 are independent foundations.
 - Stage 4 depends on Stage 2 (shares `config_test.rs`).
 - Stage 5 depends on Stage 1, Stage 6 on Stage 1 and Stage 5.
 - Stage 17 depends on Stage 1, Stage 2, Stage 3 (Batch 1 hardening, user request).
+- Stage 19 depends on Stage 17, Stage 18 (size limit for files this branch touched).
 - Stage 18 depends on Stage 17 (Batch 1 pair review fixes, shares codec and storage tests).
 - Stage 7 depends on Stage 1, Stage 2, Stage 3, Stage 17 (17 splits `storage_test.rs`). Stage 8 on Stage 7.
 - Stage 9 depends on Stage 1, Stage 3, Stage 6, Stage 7.
