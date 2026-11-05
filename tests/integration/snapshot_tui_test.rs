@@ -2,12 +2,7 @@
 //!
 //! Uses insta for snapshot testing to ensure visual output is correct.
 
-use agr::theme::current_theme;
-
-/// These snapshots capture ANSI codes on purpose, so force colour before the first decision.
-fn force_color() {
-    std::env::set_var("AGR_FORCE_COLOR", "1");
-}
+use agr::theme::{current_theme, paint_if};
 use agr::tui::widgets::Logo;
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
@@ -169,7 +164,6 @@ fn logo_uses_secondary_color_for_dashes() {
 
 #[test]
 fn snapshot_cli_ansi_theme_colors() {
-    force_color();
     // Snapshot the ANSI color codes used by the theme for CLI output
     let theme = current_theme();
 
@@ -181,11 +175,11 @@ fn snapshot_cli_ansi_theme_colors() {
          secondary_text(\"test\"): {:?}\n\
          error_text(\"test\"): {:?}\n\
          success_text(\"test\"): {:?}",
-        theme.accent_text("test"),
-        theme.primary_text("test"),
-        theme.secondary_text("test"),
-        theme.error_text("test"),
-        theme.success_text("test"),
+        paint_if(true, theme.accent, "test"),
+        paint_if(true, theme.text_primary, "test"),
+        paint_if(true, theme.text_secondary, "test"),
+        paint_if(true, theme.error, "test"),
+        paint_if(true, theme.success, "test"),
     );
     insta::assert_snapshot!(snapshot);
 }
@@ -228,8 +222,7 @@ fn snapshot_branding_box_bottom() {
 
 #[test]
 fn snapshot_colorize_help_commands() {
-    force_color();
-    use agr::theme::colorize_help;
+    use agr::theme::colorize_help_with;
 
     // Test colorize_help with typical command list output
     let input = r#"
@@ -241,14 +234,13 @@ Commands:
   analyze  Analyze a recording with AI
 "#;
 
-    let output = colorize_help(input);
+    let output = colorize_help_with(true, input);
     insta::assert_snapshot!("colorize_help_commands", output);
 }
 
 #[test]
 fn snapshot_colorize_help_logo() {
-    force_color();
-    use agr::theme::colorize_help;
+    use agr::theme::colorize_help_with;
 
     // Test colorize_help with logo (should apply green to logo lines)
     let input = r#" █████╗  ██████╗ ██████╗
@@ -260,14 +252,13 @@ fn snapshot_colorize_help_logo() {
  ⏺ REC ─────────────────────────────────────────────────────────────────────────
 "#;
 
-    let output = colorize_help(input);
+    let output = colorize_help_with(true, input);
     insta::assert_snapshot!("colorize_help_logo", output);
 }
 
 #[test]
 fn snapshot_colorize_help_mixed() {
-    force_color();
-    use agr::theme::colorize_help;
+    use agr::theme::colorize_help_with;
 
     // Test colorize_help with mixed content (logo + commands)
     let input = r#" █████╗  ██████╗ ██████╗
@@ -288,7 +279,7 @@ Commands:
   status   Show storage statistics
 "#;
 
-    let output = colorize_help(input);
+    let output = colorize_help_with(true, input);
     insta::assert_snapshot!("colorize_help_mixed", output);
 }
 
@@ -323,7 +314,6 @@ fn snapshot_static_logo_width_120() {
 
 #[test]
 fn snapshot_theme_text_wrappers() {
-    force_color();
     let theme = current_theme();
 
     let snapshot = format!(
@@ -339,11 +329,11 @@ fn snapshot_theme_text_wrappers() {
          error_text(\"Hello World\"):\n{}\n\
          \n\
          success_text(\"Hello World\"):\n{}",
-        theme.accent_text("Hello World"),
-        theme.primary_text("Hello World"),
-        theme.secondary_text("Hello World"),
-        theme.error_text("Hello World"),
-        theme.success_text("Hello World"),
+        paint_if(true, theme.accent, "Hello World"),
+        paint_if(true, theme.text_primary, "Hello World"),
+        paint_if(true, theme.text_secondary, "Hello World"),
+        paint_if(true, theme.error, "Hello World"),
+        paint_if(true, theme.success, "Hello World"),
     );
     insta::assert_snapshot!(snapshot);
 }

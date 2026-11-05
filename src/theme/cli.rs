@@ -58,7 +58,8 @@ fn paint(color: Color, text: &str) -> String {
     paint_if(cli_colors(), color, text)
 }
 
-fn paint_if(on: bool, color: Color, text: &str) -> String {
+/// Like the `Theme::*_text` helpers but with the colour decision passed in.
+pub fn paint_if(on: bool, color: Color, text: &str) -> String {
     if on {
         format!("{}{}{}", color_to_ansi(color), text, ANSI_RESET)
     } else {
@@ -126,7 +127,12 @@ impl Theme {
 ///
 /// This post-processes clap's output to apply consistent theming.
 pub fn colorize_help(text: &str) -> String {
-    if !cli_colors() {
+    colorize_help_with(cli_colors(), text)
+}
+
+/// Like [`colorize_help`] but with the colour decision passed in.
+pub fn colorize_help_with(on: bool, text: &str) -> String {
+    if !on {
         return text.to_string();
     }
     let theme = super::current_theme();
