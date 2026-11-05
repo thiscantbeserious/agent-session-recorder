@@ -146,10 +146,11 @@ fn gzip_text_fallback_copies_decompressed_text() {
     let gz = write_gz(dir.path(), "x.cast.gz", SESSION);
     let rec = leak(Recorder::new(true, false));
 
-    let result = copier(rec, base.path()).file(&gz).unwrap();
+    let result = copier(rec, base.path()).file(&gz);
 
     assert!(
-        matches!(result, CopyResult::ContentCopied { size_bytes, .. } if size_bytes == SESSION.len())
+        matches!(result, Ok(CopyResult::ContentCopied { size_bytes, .. }) if size_bytes == SESSION.len()),
+        "{result:?}"
     );
     assert_eq!(rec.text.lock().unwrap().as_deref(), Some(SESSION));
 }
@@ -162,12 +163,16 @@ fn gzip_text_fallback_limit_uses_decompressed_size() {
     let gz = write_gz(dir.path(), "big.cast.gz", &big);
     assert!(std::fs::metadata(&gz).unwrap().len() < MAX_CONTENT_SIZE);
     let rec = leak(Recorder::new(true, false));
+    let clip = base.path().join("agr-clipboard");
+    std::fs::create_dir_all(&clip).unwrap();
+    std::fs::write(clip.join("marker"), "x").unwrap();
 
     let result = copier(rec, base.path()).file(&gz);
 
     assert!(matches!(result, Err(ClipboardError::FileTooLarge { .. })));
     assert!(rec.text.lock().unwrap().is_none());
-    assert!(leftovers(base.path()).is_empty());
+    // rejected before decompressing: temp dir untouched, not even cleared
+    assert_eq!(leftovers(base.path()), vec!["marker".to_string()]);
 }
 
 #[test]
