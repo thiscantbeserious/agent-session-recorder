@@ -51,31 +51,16 @@ impl std::error::Error for ImportError {}
 /// Returns the trimmed agent name on success.
 fn validate_agent_name(agent: &str) -> Result<String, ImportError> {
     let trimmed = agent.trim();
-
-    // Reject empty or whitespace-only names
-    if trimmed.is_empty() {
-        return Err(ImportError::InvalidAgentName(
-            "Agent name cannot be empty".to_string(),
-        ));
-    }
-
-    // Reject path separators
-    if trimmed.contains('/') || trimmed.contains('\\') {
-        return Err(ImportError::InvalidAgentName(format!(
-            "Agent name cannot contain path separators: {}",
-            agent
-        )));
-    }
-
-    // Reject path traversal attempts
-    if trimmed.contains("..") {
-        return Err(ImportError::InvalidAgentName(format!(
-            "Agent name cannot contain '..': {}",
-            agent
-        )));
-    }
-
-    Ok(trimmed.to_string())
+    let problem = if trimmed.is_empty() {
+        "Agent name cannot be empty".to_string()
+    } else if trimmed.contains('/') || trimmed.contains('\\') {
+        format!("Agent name cannot contain path separators: {}", agent)
+    } else if trimmed.contains("..") {
+        format!("Agent name cannot contain '..': {}", agent)
+    } else {
+        return Ok(trimmed.to_string());
+    };
+    Err(ImportError::InvalidAgentName(problem))
 }
 
 /// Map an open failure to `PermissionDenied` or `NotFound`.

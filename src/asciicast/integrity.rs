@@ -186,6 +186,21 @@ pub fn check_file_integrity(path: &Path) -> Result<()> {
         anyhow::bail!("Failed to parse file: {:?}", path);
     }
 
+    print_diagnosis(&diagnosis);
+    if confirm_removal(diagnosis.bad_lines.len())? {
+        let removed = repair(path)?;
+        println!("Removed {} corrupt line(s).", removed);
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "Aborting: file has corrupt lines. Run 'agr repair {:?}' to fix.",
+            path
+        );
+    }
+}
+
+#[cfg(not(tarpaulin_include))]
+fn print_diagnosis(diagnosis: &DiagnoseResult) {
     eprintln!(
         "File has {} corrupt line(s) ({} valid events):",
         diagnosis.bad_lines.len(),
@@ -197,25 +212,16 @@ pub fn check_file_integrity(path: &Path) -> Result<()> {
             diag.line_number, diag.reason, diag.byte_len
         );
     }
-    print!(
-        "Remove {} corrupt line(s) and continue? [y/N]: ",
-        diagnosis.bad_lines.len()
-    );
-    io::stdout().flush()?;
+}
 
+#[cfg(not(tarpaulin_include))]
+fn confirm_removal(count: usize) -> Result<bool> {
+    print!("Remove {} corrupt line(s) and continue? [y/N]: ", count);
+    io::stdout().flush()?;
     let mut input = String::new();
     io::stdin().lock().read_line(&mut input)?;
-
-    if input.trim().eq_ignore_ascii_case("y") || input.trim().eq_ignore_ascii_case("yes") {
-        let removed = repair(path)?;
-        println!("Removed {} corrupt line(s).", removed);
-        Ok(())
-    } else {
-        anyhow::bail!(
-            "Aborting: file has corrupt lines. Run 'agr repair {:?}' to fix.",
-            path
-        );
-    }
+    let answer = input.trim();
+    Ok(answer.eq_ignore_ascii_case("y") || answer.eq_ignore_ascii_case("yes"))
 }
 
 #[cfg(test)]
