@@ -194,15 +194,15 @@ Considerations:
 Goal: on-disk size stays primary, uncompressed size shown in status and list.
 Owner: implementer
 
-- [ ] RED: `SessionInfo` exposes `uncompressed_size()` via `codec::uncompressed_size` (AG
+- [x] RED: `SessionInfo` exposes `uncompressed_size()` via `codec::uncompressed_size` (AG
       header subfield since Stage 18, trailer fallback for foreign files). Test proves there
       is no decompress: a file with a valid header and garbage body still returns the size.
-- [ ] RED: `StorageStats.total_size` equals the sum of on-disk sizes, a new
+- [x] RED: `StorageStats.total_size` equals the sum of on-disk sizes, a new
       `uncompressed_total` is the sum of uncompressed sizes (or flags "4GiB+" when any part
       overflowed).
-- [ ] RED: `summary()` shows both numbers, plus plain session count.
-- [ ] RED: `exceeds_threshold` compares on-disk size.
-- [ ] GREEN: implement in `stats.rs`, `agr list` table gets an uncompressed column.
+- [x] RED: `summary()` shows both numbers, plus plain session count.
+- [x] RED: `exceeds_threshold` compares on-disk size.
+- [x] GREEN: implement in `stats.rs`, `agr list` table gets an uncompressed column.
 
 Files: `src/storage/stats.rs`, `src/commands/status.rs`, `src/commands/list.rs`,
        `src/commands/cleanup.rs`, `tests/integration/storage_stats_test.rs`

@@ -2,7 +2,8 @@
 
 use super::helpers::setup_test_sessions;
 use super::helpers::storage::{create_test_config, create_test_manager, create_test_session};
-use agr::storage::SessionInfo;
+use agr::files::codec::UncompressedSize;
+use agr::storage::{format_uncompressed, SessionInfo};
 use agr::{Config, StorageManager};
 use chrono::Local;
 use std::path::PathBuf;
@@ -261,4 +262,127 @@ fn exceeds_threshold_is_true_when_size_above_configured_threshold() {
     config.storage.size_threshold_gb = Some(0.0);
     let manager = StorageManager::new(config);
     assert!(manager.exceeds_threshold().unwrap());
+}
+
+// === Uncompressed size (header only, no decompress) ===
+
+fn gz_claiming(claimed: u64, body: &[u8]) -> Vec<u8> {
+    let mut extra = b"AG".to_vec();
+    extra.extend_from_slice(&8u16.to_le_bytes());
+    extra.extend_from_slice(&claimed.to_le_bytes());
+    let mut enc = flate2::GzBuilder::new()
+        .extra(extra)
+        .write(Vec::new(), flate2::Compression::default());
+    std::io::Write::write_all(&mut enc, body).unwrap();
+    enc.finish().unwrap()
+}
+
+fn put_gz(dir: &std::path::Path, agent: &str, name: &str, bytes: &[u8]) {
+    std::fs::create_dir_all(dir.join(agent)).unwrap();
+    std::fs::write(dir.join(agent).join(name), bytes).unwrap();
+}
+
+fn only_session(manager: &StorageManager) -> SessionInfo {
+    manager.list_sessions(None).unwrap().remove(0)
+}
+
+#[test]
+fn session_uncompressed_size_reads_header_without_decompressing() {
+    let temp = TempDir::new().unwrap();
+    let mut bytes = gz_claiming(4242, b"tiny");
+    let len = bytes.len();
+    bytes[len - 12..len - 8].fill(0xff); // corrupt the deflate body tail and CRC
+    put_gz(temp.path(), "claude", "a.cast.gz", &bytes);
+    let manager = StorageManager::new(create_test_config(&temp));
+    let size = only_session(&manager).uncompressed_size().unwrap();
+    assert_eq!(size, UncompressedSize::Exact(4242));
+}
+
+#[test]
+fn stats_total_is_on_disk_and_uncompressed_total_is_summed() {
+    let temp = TempDir::new().unwrap();
+    let a = gz_claiming(1000, b"a");
+    let b = gz_claiming(2000, b"b");
+    put_gz(temp.path(), "claude", "a.cast.gz", &a);
+    put_gz(temp.path(), "codex", "b.cast.gz", &b);
+    create_test_session(temp.path(), "codex", "c.cast", "12345");
+    let stats = StorageManager::new(create_test_config(&temp))
+        .get_stats()
+        .unwrap();
+    assert_eq!(stats.total_size, (a.len() + b.len() + 5) as u64);
+    assert_eq!(stats.uncompressed_total, UncompressedSize::Exact(3005));
+}
+
+#[test]
+fn stats_uncompressed_total_flags_over_4gib() {
+    let temp = TempDir::new().unwrap();
+    put_gz(temp.path(), "claude", "a.cast.gz", &gz_claiming(10, b"a"));
+    let mut foreign = vec![0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 3];
+    foreign.resize(10 + 4, 0);
+    foreign.extend_from_slice(&[0; 4]);
+    foreign.extend_from_slice(&1u32.to_le_bytes()); // wrapped ISIZE below on-disk size
+    put_gz(temp.path(), "claude", "b.cast.gz", &foreign);
+    let stats = StorageManager::new(create_test_config(&temp))
+        .get_stats()
+        .unwrap();
+    assert_eq!(stats.uncompressed_total, UncompressedSize::Over4GiB);
+    assert!(stats.summary().contains("4GiB+"), "{}", stats.summary());
+}
+
+#[test]
+fn summary_shows_on_disk_and_uncompressed() {
+    let temp = TempDir::new().unwrap();
+    put_gz(temp.path(), "claude", "a.cast.gz", &gz_claiming(2048, b"a"));
+    let summary = StorageManager::new(create_test_config(&temp))
+        .get_stats()
+        .unwrap()
+        .summary();
+    assert!(
+        summary.contains("2 KiB uncompressed"),
+        "expected '2 KiB uncompressed' in: {summary}"
+    );
+    assert!(
+        summary.contains("on disk"),
+        "expected 'on disk' in: {summary}"
+    );
+    assert!(
+        summary.contains("1 total"),
+        "expected '1 total' in: {summary}"
+    );
+}
+
+#[test]
+fn exceeds_threshold_compares_on_disk_size() {
+    let temp = TempDir::new().unwrap();
+    put_gz(
+        temp.path(),
+        "claude",
+        "a.cast.gz",
+        &gz_claiming(10 << 30, b"a"),
+    );
+    let mut config = create_test_config(&temp);
+    config.storage.size_threshold_gb = Some(1.0);
+    assert!(!StorageManager::new(config).exceeds_threshold().unwrap());
+}
+
+#[test]
+fn stats_over_700_sessions_stay_header_only() {
+    let temp = TempDir::new().unwrap();
+    for i in 0..700 {
+        let name = format!("s{i}.cast.gz");
+        put_gz(temp.path(), "claude", &name, &gz_claiming(100, b"x"));
+    }
+    let start = std::time::Instant::now();
+    let stats = StorageManager::new(create_test_config(&temp))
+        .get_stats()
+        .unwrap();
+    eprintln!("get_stats over 700 files: {:?}", start.elapsed());
+    assert_eq!(stats.session_count, 700);
+    assert_eq!(stats.uncompressed_total, UncompressedSize::Exact(70_000));
+}
+
+#[test]
+fn format_uncompressed_shows_human_or_4gib_plus() {
+    assert_eq!(format_uncompressed(UncompressedSize::Exact(1024)), "1 KiB");
+    assert_eq!(format_uncompressed(UncompressedSize::Over4GiB), "4GiB+");
 }

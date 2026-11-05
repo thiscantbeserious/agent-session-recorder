@@ -4,7 +4,7 @@ use std::io::IsTerminal;
 
 use anyhow::Result;
 
-use agr::storage::format_smart_time;
+use agr::storage::{format_smart_time, format_uncompressed};
 use agr::theme::current_theme;
 use agr::tui::app::TuiApp;
 use agr::tui::widgets::FileItem;
@@ -64,6 +64,26 @@ fn handle_tui(
     app.run()
 }
 
+const TABLE_HEADER: &str = "  #  | When  | Agent       | Size       | Uncompressed | Filename";
+const TABLE_RULE: &str =
+    "-----+-------+-------------+------------+--------------+---------------------------";
+
+/// One table row, the uncompressed size is read from the file header on demand.
+fn session_row(number: usize, session: &agr::storage::SessionInfo) -> String {
+    let uncompressed = session
+        .uncompressed_size()
+        .map_or_else(|_| "?".to_string(), format_uncompressed);
+    format!(
+        "{:>3}  | {:>5} | {:11} | {:>10} | {:>12} | {}",
+        number,
+        format_smart_time(&session.modified),
+        truncate_string(&session.agent, 11),
+        session.size_human(),
+        uncompressed,
+        session.filename
+    )
+}
+
 /// Handle list command with text output (piped mode fallback).
 fn handle_text(
     sessions: Vec<agr::storage::SessionInfo>,
@@ -110,30 +130,46 @@ fn handle_text(
     }
     println!();
 
-    // Print table header
-    println!(
-        "{}",
-        theme.primary_text("  #  | When  | Agent       | Size       | Filename")
-    );
-    println!(
-        "{}",
-        theme.primary_text("-----+-------+-------------+------------+---------------------------")
-    );
-
-    // Display sessions in formatted table
+    println!("{}", theme.primary_text(TABLE_HEADER));
+    println!("{}", theme.primary_text(TABLE_RULE));
     for (i, session) in sessions.iter().enumerate() {
-        println!(
-            "{}",
-            theme.primary_text(&format!(
-                "{:>3}  | {:>5} | {:11} | {:>10} | {}",
-                i + 1,
-                format_smart_time(&session.modified),
-                truncate_string(&session.agent, 11),
-                session.size_human(),
-                session.filename
-            ))
-        );
+        println!("{}", theme.primary_text(&session_row(i + 1, session)));
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agr::storage::SessionInfo;
+
+    fn session(path: &str, size: u64) -> SessionInfo {
+        SessionInfo {
+            path: path.into(),
+            agent: "claude".into(),
+            filename: "a.cast".into(),
+            size,
+            modified: chrono::Local::now(),
+            age_days: 0,
+            age_hours: 0,
+            age_minutes: 0,
+        }
+    }
+
+    #[test]
+    fn row_shows_uncompressed_next_to_on_disk_size() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("a.cast");
+        std::fs::write(&path, vec![b'x'; 2048]).unwrap();
+        let row = session_row(1, &session(path.to_str().unwrap(), 10));
+        assert!(row.contains("10 B | "), "{row}");
+        assert!(row.contains("2 KiB | a.cast"), "{row}");
+    }
+
+    #[test]
+    fn row_shows_question_mark_when_size_unreadable() {
+        let row = session_row(1, &session("/nonexistent/a.cast", 10));
+        assert!(row.contains("?"), "{row}");
+    }
 }

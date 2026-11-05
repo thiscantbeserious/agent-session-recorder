@@ -12,7 +12,7 @@ mod sessions;
 mod stats;
 
 pub use import::{validate_cast_header, ImportError};
-pub use sessions::{format_smart_time, SessionInfo};
+pub use sessions::{format_smart_time, format_uncompressed, SessionInfo};
 pub use stats::StorageStats;
 
 use anyhow::{Context, Result};
