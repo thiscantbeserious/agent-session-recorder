@@ -49,7 +49,8 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
             FieldDoc {
                 name: "size_threshold_gb",
                 description: "Warn after recording when storage exceeds this size in GB (unset = off)",
-                default_display: "unset",
+                // ponytail: example value so the commented template stays valid TOML when uncommented
+                default_display: "10.0",
             },
             FieldDoc {
                 name: "age_threshold_days",

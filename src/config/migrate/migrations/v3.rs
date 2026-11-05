@@ -3,7 +3,7 @@
 //! Removes `storage.size_threshold_gb` when it still holds the old default (5.0),
 //! which earlier migrations wrote into every config. Custom values are kept.
 
-use toml_edit::Table;
+use toml_edit::{Item, Table};
 
 use crate::config::MigrateResult;
 
@@ -19,7 +19,7 @@ pub fn migrate(root: &mut Table, result: &mut MigrateResult) {
 
 /// Drop `storage.size_threshold_gb` if it equals the old default.
 fn remove_default_size_threshold(root: &mut Table, result: &mut MigrateResult) {
-    let Some(storage) = root.get_mut("storage").and_then(|i| i.as_table_mut()) else {
+    let Some(storage) = root.get_mut("storage").and_then(Item::as_table_like_mut) else {
         return;
     };
     let is_old_default = storage
@@ -51,6 +51,14 @@ mod tests {
     #[test]
     fn v3_removes_old_default_threshold_written_as_integer() {
         let input = "config_version = 2\n\n[storage]\nsize_threshold_gb = 5\n";
+        let result = migrate_config(input).unwrap();
+        let parsed: Config = toml::from_str(&result.content).unwrap();
+        assert_eq!(parsed.storage.size_threshold_gb, None);
+    }
+
+    #[test]
+    fn v3_removes_old_default_threshold_in_inline_table() {
+        let input = "config_version = 2\nstorage = { size_threshold_gb = 5.0 }\n";
         let result = migrate_config(input).unwrap();
         let parsed: Config = toml::from_str(&result.content).unwrap();
         assert_eq!(parsed.storage.size_threshold_gb, None);

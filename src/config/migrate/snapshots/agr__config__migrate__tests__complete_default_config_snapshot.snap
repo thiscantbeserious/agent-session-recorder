@@ -10,7 +10,7 @@ auto_wrap = true
 [storage]
 directory = "~/recorded_agent_sessions"
 age_threshold_days = 30
-# size_threshold_gb = unset
+# size_threshold_gb = 10.0
 
 [recording]
 filename_template = "{directory}{?branch}_{id}"
