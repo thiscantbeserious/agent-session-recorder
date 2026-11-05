@@ -65,6 +65,12 @@ mod snapshot_terminal_test;
 #[path = "integration/transform_test.rs"]
 mod transform_test;
 
+#[path = "integration/transform_ops_test.rs"]
+mod transform_ops_test;
+
+#[path = "integration/transform_ops_cleanup_test.rs"]
+mod transform_ops_cleanup_test;
+
 #[path = "integration/terminal_test.rs"]
 mod terminal_test;
 
