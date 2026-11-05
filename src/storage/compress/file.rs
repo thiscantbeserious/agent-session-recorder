@@ -4,7 +4,7 @@
 use crate::files::{backup, codec, hidden_auxiliary_path};
 use anyhow::{bail, Context, Result};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// What `compress_file` did.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +28,7 @@ pub fn compress_file_with_verify(
     path: &Path,
     verify: impl Fn(&Path, &Path) -> Result<bool>,
 ) -> Result<Outcome> {
-    let gz = gzip_path(path);
+    let gz = codec::gzip_sibling(path);
     if gz.exists() {
         return finish_leftover(path, &gz, &verify);
     }
@@ -38,15 +38,6 @@ pub fn compress_file_with_verify(
         Ok(false) => discard(&gz, "verification failed, content differs"),
         Err(e) => discard(&gz, &format!("verification failed: {e:#}")),
     }
-}
-
-fn gzip_path(path: &Path) -> PathBuf {
-    let name = crate::files::filename_to_string(path);
-    path.with_file_name(format!(
-        "{}{}",
-        codec::session_stem(&name),
-        codec::GZIP_SUFFIX
-    ))
 }
 
 /// Remove the unverified gzip and report the failure, the plain file stays.

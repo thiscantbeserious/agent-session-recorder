@@ -1,9 +1,9 @@
 //! Import of external .cast files into managed storage
 
-use super::sessions::other_variant;
 use super::StorageManager;
 use crate::config::Compression;
 use crate::files::codec;
+use crate::files::codec::other_variant;
 use std::fs;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};

@@ -16,7 +16,7 @@ pub fn finalize_recording(path: &Path, config: &Config) -> PathBuf {
             if let Some(w) = warning {
                 eprintln!("  \u{26a0} {w}");
             }
-            path.with_extension("cast.gz")
+            crate::files::codec::gzip_sibling(path)
         }
         Ok(Outcome::Skipped(why)) => warn_keep(path, &why),
         Err(e) => warn_keep(path, &format!("{e:#}")),

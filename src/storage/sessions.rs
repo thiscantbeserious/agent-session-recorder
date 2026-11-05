@@ -49,21 +49,9 @@ pub fn format_smart_time(modified: &DateTime<Local>) -> String {
     }
 }
 
-/// The same session under the other suffix, `x.cast` <-> `x.cast.gz`.
-pub(super) fn other_variant(path: &Path) -> PathBuf {
-    let name = path.file_name().and_then(OsStr::to_str).unwrap_or("");
-    let stem = codec::session_stem(name);
-    let suffix = if codec::is_gzip_path(path) {
-        codec::SESSION_SUFFIX
-    } else {
-        codec::GZIP_SUFFIX
-    };
-    path.with_file_name(format!("{stem}{suffix}"))
-}
-
 /// The path itself when it exists, else its other variant when that exists.
 fn existing_variant(path: &Path) -> Option<PathBuf> {
-    [path.to_path_buf(), other_variant(path)]
+    [path.to_path_buf(), codec::other_variant(path)]
         .into_iter()
         .find(|p| p.exists())
 }
@@ -91,7 +79,7 @@ fn agent_sessions(agent_dir: &Path) -> Result<Vec<SessionInfo>> {
     for entry in fs::read_dir(agent_dir)? {
         let path = entry?.path();
         if codec::is_session_path(&path)
-            && (codec::is_gzip_path(&path) || !other_variant(&path).exists())
+            && (codec::is_gzip_path(&path) || !codec::other_variant(&path).exists())
         {
             sessions.push(session_info(path, agent)?);
         }

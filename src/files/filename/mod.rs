@@ -87,7 +87,7 @@ pub fn generate(
         format!("{}.cast", rendered)
     };
 
-    validate_length(&filename).map_err(GenerateError::from)?;
+    validate_length(&filename)?;
     Ok(filename)
 }
 
@@ -96,8 +96,11 @@ pub fn generate(
 /// If `dir/filename.cast` already exists, tries `dir/filenamea.cast` through
 /// `dir/filenamez.cast`. Returns `None` if all 26 suffixes are taken.
 pub fn resolve_collision(dir: &std::path::Path, filename: &str) -> Option<String> {
-    let path = dir.join(filename);
-    if !path.exists() {
+    let taken = |name: &str| {
+        let path = dir.join(name);
+        path.exists() || super::codec::other_variant(&path).exists()
+    };
+    if !taken(filename) {
         return Some(filename.to_string());
     }
 
@@ -109,7 +112,7 @@ pub fn resolve_collision(dir: &std::path::Path, filename: &str) -> Option<String
         } else {
             format!("{}{}.{}", stem, suffix as char, ext)
         };
-        if !dir.join(&candidate).exists() {
+        if !taken(&candidate) {
             return Some(candidate);
         }
     }

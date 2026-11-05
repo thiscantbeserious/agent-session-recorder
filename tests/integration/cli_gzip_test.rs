@@ -85,3 +85,13 @@ fn optimize_output_cast_writes_plain() {
     assert!(!starts_with_gzip_magic(&out));
     assert!(std::fs::read_to_string(&out).unwrap().starts_with('{'));
 }
+
+#[test]
+fn play_absolute_plain_path_finds_gzip_twin() {
+    let temp = TempDir::new().unwrap();
+    let gz = create_codec_session(temp.path(), "a", "x.cast.gz", CAST);
+    let asked = gz.with_file_name("x.cast");
+    let (out, stderr, _code) = run_agr(&temp, &["play", asked.to_str().unwrap()]);
+    let all = format!("{out}{stderr}");
+    assert!(!all.contains("File not found"), "{all}");
+}

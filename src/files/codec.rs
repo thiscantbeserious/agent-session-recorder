@@ -72,6 +72,20 @@ pub fn session_stem(name: &str) -> &str {
         .unwrap_or(name)
 }
 
+/// The `.cast.gz` path of the same session, `x.cast` and `x.cast.gz` both give `x.cast.gz`.
+pub fn gzip_sibling(path: &Path) -> PathBuf {
+    path.with_file_name(format!("{}{GZIP_SUFFIX}", session_stem(file_name(path))))
+}
+
+/// The same session under the other suffix, `x.cast` <-> `x.cast.gz`.
+pub fn other_variant(path: &Path) -> PathBuf {
+    if is_gzip_path(path) {
+        path.with_file_name(format!("{}{SESSION_SUFFIX}", session_stem(file_name(path))))
+    } else {
+        gzip_sibling(path)
+    }
+}
+
 /// Hidden temp path next to the target, `dir/.x.cast.gz.tmp`.
 pub fn temp_path_for(path: &Path) -> PathBuf {
     super::hidden_auxiliary_path(path, ".tmp")
