@@ -12,7 +12,7 @@ pub mod tui;
 
 // Re-exports from cli.rs
 pub use cli::ansi;
-pub use cli::{color_to_ansi, colorize_help, ANSI_RESET};
+pub use cli::{cli_colors, color_to_ansi, colorize_help, colors_enabled, gate, ANSI_RESET};
 
 // Re-exports from logo.rs
 pub use logo::{

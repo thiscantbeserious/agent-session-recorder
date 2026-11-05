@@ -1,6 +1,5 @@
 ---
-source: tests/integration/cli_test.rs
-assertion_line: 109
+source: tests/integration/snapshot_cli_test.rs
 expression: output
 ---
 === agr marker --help ===
@@ -21,11 +20,12 @@ EXAMPLES:
 Usage: agr marker <COMMAND>
 
 Commands:
-  add   [37mAdd a marker to a cast file at a specific timestamp[0m
-  list  [37mList all markers in a cast file[0m
-  help  [37mPrint this message or the help of the given subcommand(s)[0m
+  add   Add a marker to a cast file at a specific timestamp
+  list  List all markers in a cast file
+  help  Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
 --- stderr ---

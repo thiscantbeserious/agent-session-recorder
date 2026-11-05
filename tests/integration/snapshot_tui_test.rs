@@ -3,6 +3,11 @@
 //! Uses insta for snapshot testing to ensure visual output is correct.
 
 use agr::theme::current_theme;
+
+/// These snapshots capture ANSI codes on purpose, so force colour before the first decision.
+fn force_color() {
+    std::env::set_var("AGR_FORCE_COLOR", "1");
+}
 use agr::tui::widgets::Logo;
 use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
 
@@ -164,6 +169,7 @@ fn logo_uses_secondary_color_for_dashes() {
 
 #[test]
 fn snapshot_cli_ansi_theme_colors() {
+    force_color();
     // Snapshot the ANSI color codes used by the theme for CLI output
     let theme = current_theme();
 
@@ -222,6 +228,7 @@ fn snapshot_branding_box_bottom() {
 
 #[test]
 fn snapshot_colorize_help_commands() {
+    force_color();
     use agr::theme::colorize_help;
 
     // Test colorize_help with typical command list output
@@ -240,6 +247,7 @@ Commands:
 
 #[test]
 fn snapshot_colorize_help_logo() {
+    force_color();
     use agr::theme::colorize_help;
 
     // Test colorize_help with logo (should apply green to logo lines)
@@ -258,6 +266,7 @@ fn snapshot_colorize_help_logo() {
 
 #[test]
 fn snapshot_colorize_help_mixed() {
+    force_color();
     use agr::theme::colorize_help;
 
     // Test colorize_help with mixed content (logo + commands)
@@ -314,6 +323,7 @@ fn snapshot_static_logo_width_120() {
 
 #[test]
 fn snapshot_theme_text_wrappers() {
+    force_color();
     let theme = current_theme();
 
     let snapshot = format!(

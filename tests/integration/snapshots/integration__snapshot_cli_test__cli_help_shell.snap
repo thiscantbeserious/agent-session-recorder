@@ -1,6 +1,5 @@
 ---
-source: tests/integration/cli_test.rs
-assertion_line: 89
+source: tests/integration/snapshot_cli_test.rs
 expression: output
 ---
 === agr shell --help ===
@@ -14,21 +13,22 @@ record sessions when you run configured agents. It modifies your .zshrc
 or .bashrc with a clearly marked section.
 
 EXAMPLES:
-    agr shell status         [37mCheck if shell integration is installed[0m
-    agr shell install        [37mInstall shell integration[0m
-    agr shell uninstall      [37mRemove shell integration[0m
+    agr shell status         Check if shell integration is installed
+    agr shell install        Install shell integration
+    agr shell uninstall      Remove shell integration
 
 After installing, restart your shell or run: source ~/.zshrc
 
 Usage: agr shell <COMMAND>
 
 Commands:
-  status     [37mShow shell integration status[0m
-  install    [37mInstall shell integration to .zshrc/.bashrc[0m
-  uninstall  [37mRemove shell integration from .zshrc/.bashrc[0m
-  help       [37mPrint this message or the help of the given subcommand(s)[0m
+  status     Show shell integration status
+  install    Install shell integration to .zshrc/.bashrc
+  uninstall  Remove shell integration from .zshrc/.bashrc
+  help       Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
 --- stderr ---

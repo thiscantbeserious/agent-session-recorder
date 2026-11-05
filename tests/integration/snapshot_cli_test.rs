@@ -24,7 +24,7 @@ fn run_agr_with_colors(args: &[&str]) -> (String, String, i32) {
     let output = Command::new(env!("CARGO_BIN_EXE_agr"))
         .args(args)
         .env_remove("NO_COLOR") // Ensure colors are enabled
-        .env("FORCE_COLOR", "1") // Force colors even without TTY
+        .env("AGR_FORCE_COLOR", "1") // Force colors even without TTY
         .output()
         .expect("Failed to execute agr");
 

@@ -1,6 +1,6 @@
 //! Diff-style preview of config migration changes.
 
-use agr::theme::ansi;
+use agr::theme::{ansi, gate};
 
 /// Print a diff-style preview of the config changes.
 ///
@@ -46,9 +46,15 @@ pub(super) fn print_diff_preview(new_content: &str, added_fields: &[String], is_
         } else if is_new_file && !trimmed.is_empty() {
             // For new files, show comments too
             if let Some(header) = pending_section_header.take() {
-                println!("{}+{} {}{}", ansi::GREEN, ansi::RESET, ansi::GREEN, header);
+                println!(
+                    "{}+{} {}{}",
+                    gate(ansi::GREEN),
+                    gate(ansi::RESET),
+                    gate(ansi::GREEN),
+                    header
+                );
             }
-            println!("{}+ {}{}", ansi::GREEN, line, ansi::RESET);
+            println!("{}+ {}{}", gate(ansi::GREEN), line, gate(ansi::RESET));
         }
     }
 }
@@ -101,9 +107,15 @@ fn print_field_line(
 
     if is_new_file || is_added {
         if let Some(header) = pending_section_header.take() {
-            println!("{}+{} {}{}", ansi::GREEN, ansi::RESET, ansi::GREEN, header);
+            println!(
+                "{}+{} {}{}",
+                gate(ansi::GREEN),
+                gate(ansi::RESET),
+                gate(ansi::GREEN),
+                header
+            );
         }
-        println!("{}+ {}{}", ansi::GREEN, line, ansi::RESET);
+        println!("{}+ {}{}", gate(ansi::GREEN), line, gate(ansi::RESET));
     } else if section_has_additions {
         // Show context: flush pending section header once we know there are additions
         if let Some(header) = pending_section_header.take() {

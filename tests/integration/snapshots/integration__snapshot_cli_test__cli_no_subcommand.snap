@@ -6,13 +6,13 @@ expression: output
 Exit code: 2
 
 --- stdout ---
-[92m █████╗  ██████╗ ██████╗[0m
-[92m██╔══██╗██╔════╝ ██╔══██╗[0m
-[92m███████║██║  ███╗██████╔╝[0m
-[92m██╔══██║██║   ██║██╔══██╗[0m
-[92m██║  ██║╚██████╔╝██║  ██║[0m
-[92m╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[0m
-[92m ⏺ REC [0m[90m─────────────────────────────────────────────────────────────────────────[0m
+ █████╗  ██████╗ ██████╗
+██╔══██╗██╔════╝ ██╔══██╗
+███████║██║  ███╗██████╔╝
+██╔══██║██║   ██║██╔══██╗
+██║  ██║╚██████╔╝██║  ██║
+╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝
+ ⏺ REC ─────────────────────────────────────────────────────────────────────────
 
 
 [ Agent Session Recorder ] - Record, replay, and understand AI agent sessions.
@@ -20,22 +20,23 @@ Exit code: 2
 Usage: agr <COMMAND>
 
 Commands:
-  record    [37mStart recording a session[0m
-  status    [37mShow storage statistics[0m
-  cleanup   [37mInteractive cleanup of old sessions[0m
-  list      [37mList recorded sessions [aliases: ls][0m
-  compress  [37mCompress plain sessions to .cast.gz[0m
-  analyze   [37mAnalyze a recording with AI[0m
-  play      [37mPlay a recording with the native player[0m
-  copy      [37mCopy a recording to the clipboard[0m
-  marker    [37mManage markers in cast files[0m
-  agents    [37mManage configured agents[0m
-  config    [37mConfiguration management[0m
-  shell     [37mManage shell integration[0m
-  optimize  [37mOptimize asciicast recordings (removes silence)[0m
-  help      [37mPrint this message or the help of the given subcommand(s)[0m
+  record    Start recording a session
+  status    Show storage statistics
+  cleanup   Interactive cleanup of old sessions
+  list      List recorded sessions [aliases: ls]
+  compress  Compress plain sessions to .cast.gz
+  analyze   Analyze a recording with AI
+  play      Play a recording with the native player
+  copy      Copy a recording to the clipboard
+  marker    Manage markers in cast files
+  agents    Manage configured agents
+  config    Configuration management
+  shell     Manage shell integration
+  optimize  Optimize asciicast recordings (removes silence)
+  help      Print this message or the help of the given subcommand(s)
 
 Options:
   -h, --help     Print help (see more with '--help')
   -V, --version  Print version
+
 --- stderr ---

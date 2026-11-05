@@ -1,6 +1,5 @@
 ---
 source: tests/integration/play_test.rs
-assertion_line: 46
 expression: output
 ---
 === agr play --help ===
@@ -14,17 +13,17 @@ Recordings can be specified by absolute path, short format (agent/file.cast),
 or just filename (fuzzy matches across all agents).
 
 EXAMPLES:
-    agr play session.cast                 [37mPlay by filename (fuzzy match)[0m
-    agr play claude/session.cast          [37mPlay using short format[0m
-    agr play /path/to/session.cast        [37mPlay by absolute path[0m
+    agr play session.cast                 Play by filename (fuzzy match)
+    agr play claude/session.cast          Play using short format
+    agr play /path/to/session.cast        Play by absolute path
 
 PLAYER CONTROLS:
-    q, Esc      [37mQuit[0m
-    Space       [37mPause/resume[0m
-    +/-         [37mAdjust playback speed[0m
+    q, Esc      Quit
+    Space       Pause/resume
+    +/-         Adjust playback speed
     <, > or ,, .  Seek backward/forward 5s
-    m           [37mJump to next marker[0m
-    ?           [37mShow help overlay[0m
+    m           Jump to next marker
+    ?           Show help overlay
 
 Usage: agr play <FILE>
 
@@ -35,4 +34,5 @@ Arguments:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
 --- stderr ---

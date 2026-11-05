@@ -14,9 +14,9 @@ recorded are skipped. Without a TTY nothing is prompted and nothing is
 rewritten, use --yes to apply.
 
 EXAMPLES:
-    agr compress                    [37mPreview and ask for confirmation[0m
-    agr compress --agent claude     [37mOnly compress Claude sessions[0m
-    agr compress --yes              [37mCompress without confirmation[0m
+    agr compress                    Preview and ask for confirmation
+    agr compress --agent claude     Only compress Claude sessions
+    agr compress --yes              Compress without confirmation
 
 Usage: agr compress [OPTIONS]
 
@@ -29,4 +29,5 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+
 --- stderr ---
