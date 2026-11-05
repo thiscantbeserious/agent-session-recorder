@@ -4,6 +4,7 @@ pub mod analysis;
 pub mod docs;
 mod io;
 mod migrate;
+pub mod state;
 mod types;
 
 pub use analysis::*;

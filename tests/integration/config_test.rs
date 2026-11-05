@@ -262,3 +262,38 @@ fn load_from_missing_file_returns_defaults() {
     let config = Config::load_from(&dir.path().join("nope.toml")).unwrap();
     assert_eq!(config.storage.directory, "~/recorded_agent_sessions");
 }
+
+mod state {
+    use agr::config::state::State;
+
+    #[test]
+    fn load_from_missing_file_returns_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = State::load_from(&dir.path().join("state.toml"));
+        assert_eq!(state.compress_offer_version, None);
+    }
+
+    #[test]
+    fn load_from_malformed_file_returns_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        std::fs::write(&path, "compress_offer_version = [not toml").unwrap();
+        assert_eq!(State::load_from(&path), State::default());
+    }
+
+    #[test]
+    fn save_then_load_round_trips_and_leaves_no_temp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sub").join("state.toml");
+        let state = State {
+            compress_offer_version: Some("0.3.0".into()),
+        };
+        state.save_to(&path).unwrap();
+        assert_eq!(State::load_from(&path), state);
+        let names: Vec<_> = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("state.toml")]);
+    }
+}
