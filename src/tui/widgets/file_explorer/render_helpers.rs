@@ -56,12 +56,19 @@ pub(super) fn build_rename_item_spans<'a>(
     if selected_all || cursor < input.len() {
         spans.push(Span::styled(suffix, theme.text_secondary_style()));
     }
-    spans.push(Span::raw("  "));
-    spans.push(Span::styled(
-        format!("({}, {})", agent, size_str),
-        theme.text_secondary_style(),
-    ));
+    spans.extend(meta_spans(agent, size_str, theme));
     spans
+}
+
+/// Two spaces then the dimmed `(agent, size)` tail of a list row.
+fn meta_spans<'a>(agent: &str, size_str: &str, theme: &crate::theme::Theme) -> [Span<'a>; 2] {
+    [
+        Span::raw("  "),
+        Span::styled(
+            format!("({}, {})", agent, size_str),
+            theme.text_secondary_style(),
+        ),
+    ]
 }
 
 /// Clamp `cursor` to `input` and snap it back to a UTF-8 boundary.
@@ -207,29 +214,14 @@ pub(super) fn build_preview_lines(
     has_backup: bool,
     theme: &crate::theme::Theme,
 ) -> Vec<Line<'static>> {
-    let mut lines = vec![
-        field_line("Name: ", name, theme.text_style(), theme),
-        field_line("Agent: ", agent, theme.accent_style(), theme),
-        field_line("Size: ", format_size(size), theme.text_style(), theme),
-    ];
+    let mut lines = head_lines(name, agent, size, theme);
     let Some((duration, markers, styled_preview, uncompressed)) = session_preview_data else {
-        let time = modified.format("%Y-%m-%d %H:%M").to_string();
-        lines.push(field_line("Modified: ", time, theme.text_style(), theme));
-        lines.push(field_line(
-            "Path: ",
-            path,
-            theme.text_secondary_style(),
-            theme,
-        ));
+        lines.extend(fallback_lines(modified, path, theme));
         return lines;
     };
     if let Some(uncompressed) = uncompressed {
-        lines.push(field_line(
-            "Uncompressed: ",
-            uncompressed,
-            theme.text_style(),
-            theme,
-        ));
+        let style = theme.text_style();
+        lines.push(field_line("Uncompressed: ", uncompressed, style, theme));
     }
     append_session_preview_lines(
         &mut lines,
@@ -242,6 +234,33 @@ pub(super) fn build_preview_lines(
         theme,
     );
     lines
+}
+
+/// Name, agent and on-disk size lines.
+fn head_lines(
+    name: String,
+    agent: String,
+    size: u64,
+    theme: &crate::theme::Theme,
+) -> Vec<Line<'static>> {
+    vec![
+        field_line("Name: ", name, theme.text_style(), theme),
+        field_line("Agent: ", agent, theme.accent_style(), theme),
+        field_line("Size: ", format_size(size), theme.text_style(), theme),
+    ]
+}
+
+/// Modified and path lines shown when no session preview is loaded.
+fn fallback_lines(
+    modified: chrono::DateTime<chrono::Local>,
+    path: String,
+    theme: &crate::theme::Theme,
+) -> Vec<Line<'static>> {
+    let time = modified.format("%Y-%m-%d %H:%M").to_string();
+    vec![
+        field_line("Modified: ", time, theme.text_style(), theme),
+        field_line("Path: ", path, theme.text_secondary_style(), theme),
+    ]
 }
 
 /// Append duration, markers, backup/lock status, modified time, and terminal

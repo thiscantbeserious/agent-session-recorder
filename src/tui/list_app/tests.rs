@@ -283,3 +283,15 @@ fn rename_stem_limit_uses_full_suffix() {
         255 - ".cast.gz".len()
     );
 }
+
+#[test]
+fn newest_session_in_finds_gzip_session() {
+    use super::session_actions::newest_session_in;
+    let dir = tempfile::tempdir().unwrap();
+    let gz = dir.path().join("renamed.cast.gz");
+    std::fs::write(&gz, b"x").unwrap();
+    std::fs::write(dir.path().join(".renamed.cast.gz.bak"), b"x").unwrap();
+    std::fs::write(dir.path().join("notes.txt"), b"x").unwrap();
+
+    assert_eq!(newest_session_in(Some(dir.path())), Some(gz));
+}

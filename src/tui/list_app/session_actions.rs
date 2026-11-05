@@ -7,7 +7,7 @@ use anyhow::Result;
 use super::*;
 use crate::asciicast::apply_transforms;
 use crate::files::backup::{create_backup, has_backup, restore_from_backup};
-use crate::files::remove_auxiliary_files;
+use crate::files::{codec, remove_auxiliary_files};
 
 impl ListApp {
     /// Play the selected session with asciinema.
@@ -37,11 +37,10 @@ impl ListApp {
         if let Some(item) = self.shared.explorer.selected_item() {
             let path = Path::new(&item.path);
 
-            // Extract filename without .cast extension
             let filename = path
-                .file_stem()
+                .file_name()
                 .and_then(|s| s.to_str())
-                .unwrap_or("recording");
+                .map_or("recording", codec::session_stem);
 
             match copy_file_to_clipboard(path) {
                 Ok(result) => {
@@ -140,86 +139,62 @@ impl ListApp {
 
     /// Analyze the selected session using the analyze subcommand.
     pub(super) fn analyze_session(&mut self) -> Result<()> {
-        if let Some(item) = self.shared.explorer.selected_item() {
-            let path = item.path.clone();
-
-            // Create backup before analysis
-            let file_path = std::path::Path::new(&path);
-            if let Err(e) = create_backup(file_path) {
-                self.shared.status_message =
-                    Some(format!("ERROR: Backup failed for {}: {}", path, e));
-                return Ok(());
-            }
-
-            // Suspend TUI - restores normal terminal mode
-            self.app.suspend()?;
-
-            // Run the analyze subcommand (--wait pauses before returning to TUI)
-            let status = std::process::Command::new(std::env::current_exe()?)
-                .args(["analyze", &path, "--wait"])
-                .status();
-
-            // Resume TUI - re-enters alternate screen and raw mode
-            self.app.resume()?;
-
-            match status {
-                Ok(s) if s.success() => {
-                    // Check if the original file was renamed by the analyze command
-                    if !file_path.exists() {
-                        // File was renamed — find the newest .cast file in the same directory
-                        // (the renamed file will have the most recent mtime)
-                        let new_file = file_path.parent().and_then(|parent| {
-                            std::fs::read_dir(parent).ok().and_then(|entries| {
-                                entries
-                                    .flatten()
-                                    .filter(|e| {
-                                        e.path().extension().and_then(|ext| ext.to_str())
-                                            == Some("cast")
-                                    })
-                                    .max_by_key(|e| {
-                                        e.metadata()
-                                            .and_then(|m| m.modified())
-                                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                                    })
-                                    .map(|e| e.path())
-                            })
-                        });
-
-                        if let Some(new_path) = new_file {
-                            let new_path_str = new_path.to_string_lossy().to_string();
-                            self.shared.preview_cache.invalidate(&new_path_str);
-                            self.shared.explorer.update_item_path(&path, &new_path_str);
-                            self.shared.status_message = Some(format!(
-                                "Analysis complete (renamed to {})",
-                                new_path
-                                    .file_name()
-                                    .and_then(|n| n.to_str())
-                                    .unwrap_or("unknown")
-                            ));
-                        } else {
-                            // Couldn't find any .cast file — remove the stale item
-                            self.shared.explorer.remove_item(&path);
-                            self.shared.status_message =
-                                Some("Analysis complete (file was renamed)".to_string());
-                        }
-                    } else {
-                        // File still exists at original path — just invalidate cache
-                        self.shared.preview_cache.invalidate(&path);
-                        self.shared.explorer.update_item_metadata(&path);
-                        self.shared.status_message = Some("Analysis complete".to_string());
-                    }
-                }
-                Ok(s) => {
-                    self.shared.status_message = Some(format!(
-                        "Analyze exited with code {}",
-                        s.code().unwrap_or(-1)
-                    ));
-                }
-                Err(e) => {
-                    self.shared.status_message = Some(format!("Failed to run analyze: {}", e));
-                }
-            }
+        let Some(item) = self.shared.explorer.selected_item() else {
+            return Ok(());
+        };
+        let path = item.path.clone();
+        if let Err(e) = create_backup(Path::new(&path)) {
+            self.shared.status_message = Some(format!("ERROR: Backup failed for {}: {}", path, e));
+            return Ok(());
         }
+        self.app.suspend()?;
+        // --wait pauses before returning to TUI
+        let status = std::process::Command::new(std::env::current_exe()?)
+            .args(["analyze", &path, "--wait"])
+            .status();
+        self.app.resume()?;
+        self.shared.status_message = Some(match status {
+            Ok(s) if s.success() => self.after_analyze(&path),
+            Ok(s) => format!("Analyze exited with code {}", s.code().unwrap_or(-1)),
+            Err(e) => format!("Failed to run analyze: {}", e),
+        });
         Ok(())
     }
+
+    /// Sync explorer and preview cache after a successful analyze, returns the status text.
+    fn after_analyze(&mut self, path: &str) -> String {
+        if Path::new(path).exists() {
+            self.shared.preview_cache.invalidate(&path.to_string());
+            self.shared.explorer.update_item_metadata(path);
+            return "Analysis complete".to_string();
+        }
+        // Renamed by analyze: the renamed session has the most recent mtime
+        let Some(new_path) = newest_session_in(Path::new(path).parent()) else {
+            self.shared.explorer.remove_item(path);
+            return "Analysis complete (file was renamed)".to_string();
+        };
+        let new_path_str = new_path.to_string_lossy().to_string();
+        self.shared.preview_cache.invalidate(&new_path_str);
+        self.shared.explorer.update_item_path(path, &new_path_str);
+        let name = new_path.file_name().and_then(|n| n.to_str());
+        format!(
+            "Analysis complete (renamed to {})",
+            name.unwrap_or("unknown")
+        )
+    }
+}
+
+/// Newest `.cast` / `.cast.gz` session in `dir` by modification time.
+pub(super) fn newest_session_in(dir: Option<&Path>) -> Option<std::path::PathBuf> {
+    let mtime = |e: &std::fs::DirEntry| {
+        e.metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+    };
+    std::fs::read_dir(dir?)
+        .ok()?
+        .flatten()
+        .filter(|e| codec::is_session_path(&e.path()))
+        .max_by_key(mtime)
+        .map(|e| e.path())
 }

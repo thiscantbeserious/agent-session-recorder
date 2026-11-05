@@ -71,27 +71,27 @@ impl ListApp {
         if !filename::is_valid_filename_char(c) {
             return false;
         }
-        let max_stem_len = self
-            .shared
-            .explorer
-            .selected_item()
-            .map_or(0, |item| max_stem_len(std::path::Path::new(&item.path)));
-
+        let max = self.max_rename_stem_len();
+        let len = c.len_utf8();
         if self.rename_selected_all {
-            if c.len_utf8() > max_stem_len {
+            if len > max {
                 return false;
             }
             self.rename_input.clear();
-            self.rename_input.push(c);
-            self.rename_cursor = c.len_utf8();
+            self.rename_cursor = 0;
             self.rename_selected_all = false;
-        } else if self.rename_input.len().saturating_add(c.len_utf8()) <= max_stem_len {
-            self.rename_input.insert(self.rename_cursor, c);
-            self.rename_cursor += c.len_utf8();
-        } else {
+        } else if self.rename_input.len().saturating_add(len) > max {
             return false;
         }
+        self.rename_input.insert(self.rename_cursor, c);
+        self.rename_cursor += len;
         true
+    }
+
+    /// Longest stem allowed for the selected session, by its real suffix.
+    fn max_rename_stem_len(&self) -> usize {
+        let item = self.shared.explorer.selected_item();
+        item.map_or(0, |i| max_stem_len(std::path::Path::new(&i.path)))
     }
 
     /// Handle keys in rename input mode.

@@ -10,6 +10,7 @@ use ratatui::{
 
 use super::render_helpers::*;
 use super::{FileExplorer, SessionPreview};
+use crate::files::codec;
 use crate::theme::current_theme;
 
 /// Stateless widget for rendering the file explorer
@@ -69,21 +70,53 @@ impl<'a> FileExplorerWidget<'a> {
     }
 }
 
-impl Widget for FileExplorerWidget<'_> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let theme = current_theme();
+/// Display values of one list row: name, agent, size, age, checked, backup, locked.
+type Row = (String, String, String, String, bool, bool, bool);
 
-        // Layout: list on left, preview on right (if enabled)
-        let chunks = if self.show_preview && area.width >= 60 {
-            Layout::horizontal([Constraint::Percentage(60), Constraint::Percentage(40)]).split(area)
-        } else {
-            Layout::horizontal([Constraint::Percentage(100)]).split(area)
-        };
+/// Checkbox (when shown), age and `[opt]` marker spans in front of a row.
+fn row_prefix<'a>(
+    checked: Option<bool>,
+    time_str: &str,
+    has_backup: bool,
+    theme: &crate::theme::Theme,
+) -> Vec<Span<'a>> {
+    let dim = theme.text_secondary_style();
+    let mut spans = vec![];
+    if let Some(checked) = checked {
+        spans.push(Span::styled(if checked { "[x] " } else { "[ ] " }, dim));
+    }
+    spans.push(Span::styled(format!("{:>5}: ", time_str), dim));
+    if has_backup {
+        spans.push(Span::styled("[opt] ", theme.accent_style()));
+    }
+    spans
+}
 
-        // Build list items (collect data first to avoid borrow issues)
-        // Note: has_backup and lock_info are cached in FileItem
-        let item_data: Vec<(String, String, String, String, bool, bool, bool)> = self
-            .explorer
+/// Build one list row, with the inline rename editor when it is the selected row.
+fn build_list_item<'a>(
+    row: &'a Row,
+    is_selected: bool,
+    show_checkboxes: bool,
+    rename_state: Option<(&'a str, usize, bool)>,
+    theme: &crate::theme::Theme,
+) -> ListItem<'a> {
+    let (name, agent, size_str, time_str, is_checked, has_bak, is_locked) = row;
+    let checked = show_checkboxes.then_some(*is_checked);
+    let mut spans = row_prefix(checked, time_str, *has_bak, theme);
+    spans.extend(match rename_state {
+        Some((input, cursor, all)) if is_selected => {
+            let suffix = codec::session_suffix(std::path::Path::new(name));
+            build_rename_item_spans(input, cursor, all, suffix, agent, size_str, theme)
+        }
+        _ => build_normal_item_spans(name, agent, size_str, *is_locked, theme),
+    });
+    ListItem::new(Line::from(spans))
+}
+
+impl FileExplorerWidget<'_> {
+    /// Collect row display data first to avoid borrow issues.
+    fn rows(&self) -> Vec<Row> {
+        self.explorer
             .visible_items()
             .map(|(_, item, is_checked)| {
                 (
@@ -96,108 +129,95 @@ impl Widget for FileExplorerWidget<'_> {
                     item.lock_info.is_some(),
                 )
             })
-            .collect();
+            .collect()
+    }
 
-        let show_checkboxes = self.show_checkboxes;
-        let selected_idx = self.explorer.selected();
-        let rename_state = self.rename_state;
-        let items: Vec<ListItem> = item_data
-            .iter()
-            .enumerate()
-            .map(
-                |(idx, (name, agent, size_str, time_str, is_checked, has_bak, is_locked))| {
-                    let mut spans = vec![];
-                    if show_checkboxes {
-                        let checkbox = if *is_checked { "[x] " } else { "[ ] " };
-                        spans.push(Span::styled(checkbox, theme.text_secondary_style()));
-                    }
-                    spans.push(Span::styled(
-                        format!("{:>5}: ", time_str),
-                        theme.text_secondary_style(),
-                    ));
-                    if *has_bak {
-                        spans.push(Span::styled("[opt] ", theme.accent_style()));
-                    }
-
-                    if idx == selected_idx {
-                        if let Some((input, cursor, selected_all)) = rename_state {
-                            let mut rename_spans = build_rename_item_spans(
-                                input,
-                                cursor,
-                                selected_all,
-                                crate::files::codec::session_suffix(std::path::Path::new(name)),
-                                agent,
-                                size_str,
-                                &theme,
-                            );
-                            spans.append(&mut rename_spans);
-                            return ListItem::new(Line::from(spans));
-                        }
-                    }
-
-                    let mut normal_spans =
-                        build_normal_item_spans(name, agent, size_str, *is_locked, &theme);
-                    spans.append(&mut normal_spans);
-                    ListItem::new(Line::from(spans))
-                },
+    /// Metadata of the selected item, cloned for the preview panel.
+    fn selected_preview_data(&self) -> Option<PreviewData> {
+        self.explorer.selected_item().map(|item| {
+            (
+                item.name.clone(),
+                item.agent.clone(),
+                item.size,
+                item.modified,
+                item.path.clone(),
+                item.lock_info.clone(),
             )
-            .collect();
+        })
+    }
 
-        // Get preview data before mutable borrow
-        let preview_data = if self.show_preview && chunks.len() > 1 {
-            self.explorer.selected_item().map(|item| {
-                (
-                    item.name.clone(),
-                    item.agent.clone(),
-                    item.size,
-                    item.modified,
-                    item.path.clone(),
-                    item.lock_info.clone(),
-                )
-            })
-        } else {
-            None
-        };
-
-        // Clone session preview data to avoid lifetime issues
-        let session_preview_data = self.session_preview.map(|p| {
+    /// Session preview values, cloned to avoid lifetime issues.
+    fn session_data(&self) -> Option<SessionData> {
+        self.session_preview.map(|p| {
             (
                 p.format_duration(),
                 p.marker_count,
                 p.styled_preview.clone(),
                 p.uncompressed_size.map(crate::storage::format_uncompressed),
             )
+        })
+    }
+}
+
+/// The styled sessions list around the already built rows.
+fn sessions_list<'a>(items: Vec<ListItem<'a>>, theme: &crate::theme::Theme) -> List<'a> {
+    let highlight = Style::default()
+        .bg(theme.accent)
+        .fg(ratatui::style::Color::Black)
+        .add_modifier(Modifier::BOLD);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Sessions ")
+        .border_style(theme.text_secondary_style());
+    List::new(items)
+        .block(block)
+        .highlight_style(highlight)
+        .highlight_symbol("> ")
+}
+
+/// List on the left, preview on the right when enabled and wide enough.
+fn split_area(area: Rect, with_preview: bool) -> std::rc::Rc<[Rect]> {
+    if with_preview {
+        Layout::horizontal([Constraint::Percentage(60), Constraint::Percentage(40)]).split(area)
+    } else {
+        Layout::horizontal([Constraint::Percentage(100)]).split(area)
+    }
+}
+
+impl FileExplorerWidget<'_> {
+    /// Render the sessions list (with inline rename editor) into `area`.
+    fn render_list(&mut self, area: Rect, buf: &mut Buffer, theme: &crate::theme::Theme) {
+        let selected_idx = self.explorer.selected();
+        let rows = self.rows();
+        let items = rows.iter().enumerate().map(|(idx, row)| {
+            let rename = self.rename_state;
+            build_list_item(
+                row,
+                idx == selected_idx,
+                self.show_checkboxes,
+                rename,
+                theme,
+            )
         });
+        let list = sessions_list(items.collect(), theme);
+        ratatui::widgets::StatefulWidget::render(list, area, buf, self.explorer.list_state());
+    }
+}
 
-        // Capture backup status
-        let has_backup = self.has_backup;
-
-        // Render list
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Sessions ")
-                    .border_style(theme.text_secondary_style()),
-            )
-            .highlight_style(
-                Style::default()
-                    .bg(theme.accent)
-                    .fg(ratatui::style::Color::Black)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("> ");
-
-        // Render with state (mutable borrow here)
-        ratatui::widgets::StatefulWidget::render(list, chunks[0], buf, self.explorer.list_state());
-
-        // Render preview panel if enabled
-        if self.show_preview && chunks.len() > 1 {
+impl Widget for FileExplorerWidget<'_> {
+    fn render(mut self, area: Rect, buf: &mut Buffer) {
+        let theme = current_theme();
+        let with_preview = self.show_preview && area.width >= 60;
+        let chunks = split_area(area, with_preview);
+        let preview_data = with_preview.then(|| self.selected_preview_data()).flatten();
+        let (session_data, has_backup) = (self.session_data(), self.has_backup);
+        self.render_list(chunks[0], buf, &theme);
+        if with_preview {
             render_preview_panel(
                 buf,
                 chunks[1],
                 preview_data,
-                session_preview_data,
+                session_data,
                 has_backup,
                 &theme,
             );
