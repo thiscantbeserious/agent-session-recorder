@@ -223,6 +223,7 @@ fn snapshot_file_explorer_with_session_preview() {
                     .collect(),
             },
         ],
+        uncompressed_size: None,
     };
 
     let output = render_explorer_with_preview(&mut explorer, Some(&preview), 100, 20);
@@ -249,6 +250,7 @@ fn snapshot_file_explorer_preview_with_backup() {
                 })
                 .collect(),
         }],
+        uncompressed_size: None,
     };
 
     // Render with backup indicator
@@ -277,10 +279,35 @@ fn snapshot_file_explorer_preview_without_backup() {
                 })
                 .collect(),
         }],
+        uncompressed_size: None,
     };
 
     // Render without backup indicator
     let output =
         render_explorer_with_preview_and_backup(&mut explorer, Some(&preview), false, 100, 20);
     assert_explorer_snapshot("file_explorer_preview_without_backup", &output);
+}
+
+#[test]
+fn snapshot_file_explorer_preview_gzip_sizes() {
+    use agr::files::codec::UncompressedSize;
+    use agr::tui::widgets::SessionPreview;
+
+    let mut explorer = FileExplorer::new(vec![FileItem::new(
+        "/sessions/claude/20240115-session1.cast.gz",
+        "20240115-session1.cast.gz",
+        "claude",
+        1024 * 5, // 5 KB on disk
+        Local.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap(),
+    )]);
+    let preview = SessionPreview {
+        duration_secs: 60.0,
+        marker_count: 1,
+        styled_preview: Vec::new(),
+        uncompressed_size: Some(UncompressedSize::Exact(1024 * 50)),
+    };
+
+    let output = render_explorer_with_preview(&mut explorer, Some(&preview), 100, 12);
+    assert!(output.contains("Uncompressed: 50 KiB"), "{output}");
+    assert_explorer_snapshot("file_explorer_preview_gzip_sizes", &output);
 }

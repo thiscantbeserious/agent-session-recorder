@@ -4,19 +4,25 @@ use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 
 use super::*;
-use crate::files::filename;
+use crate::files::{codec, filename};
 use crate::tui::import;
+
+/// Rename input pre-filled for a session path: its stem without `.cast` / `.cast.gz`.
+pub(super) fn rename_stem(path: &std::path::Path) -> String {
+    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    codec::session_stem(name).to_string()
+}
+
+/// Longest stem that still fits `MAX_FILENAME_LENGTH` with the path's real suffix.
+pub(super) fn max_stem_len(path: &std::path::Path) -> usize {
+    filename::MAX_FILENAME_LENGTH.saturating_sub(codec::session_suffix(path).len())
+}
 
 impl ListApp {
     /// Enter rename input mode with current filename stem pre-filled.
     pub(super) fn enter_rename_mode(&mut self) {
         if let Some(item) = self.shared.explorer.selected_item() {
-            let path = std::path::Path::new(&item.path);
-            let stem = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_string();
+            let stem = rename_stem(std::path::Path::new(&item.path));
             self.rename_cursor = stem.len();
             self.rename_input = stem;
             self.rename_selected_all = true;
@@ -65,34 +71,27 @@ impl ListApp {
         if !filename::is_valid_filename_char(c) {
             return false;
         }
-        let ext_len = self
-            .shared
-            .explorer
-            .selected_item()
-            .map(|item| {
-                std::path::Path::new(&item.path)
-                    .extension()
-                    .map(|e| e.len() + 1) // +1 for the dot
-                    .unwrap_or(0)
-            })
-            .unwrap_or(0);
-        let max_stem_len = filename::MAX_FILENAME_LENGTH.saturating_sub(ext_len);
-
+        let max = self.max_rename_stem_len();
+        let len = c.len_utf8();
         if self.rename_selected_all {
-            if c.len_utf8() > max_stem_len {
+            if len > max {
                 return false;
             }
             self.rename_input.clear();
-            self.rename_input.push(c);
-            self.rename_cursor = c.len_utf8();
+            self.rename_cursor = 0;
             self.rename_selected_all = false;
-        } else if self.rename_input.len().saturating_add(c.len_utf8()) <= max_stem_len {
-            self.rename_input.insert(self.rename_cursor, c);
-            self.rename_cursor += c.len_utf8();
-        } else {
+        } else if self.rename_input.len().saturating_add(len) > max {
             return false;
         }
+        self.rename_input.insert(self.rename_cursor, c);
+        self.rename_cursor += len;
         true
+    }
+
+    /// Longest stem allowed for the selected session, by its real suffix.
+    fn max_rename_stem_len(&self) -> usize {
+        let item = self.shared.explorer.selected_item();
+        item.map_or(0, |i| max_stem_len(std::path::Path::new(&i.path)))
     }
 
     /// Handle keys in rename input mode.

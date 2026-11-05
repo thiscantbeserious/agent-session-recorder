@@ -21,72 +21,104 @@ pub(super) type PreviewData = (
     Option<LockInfo>,
 );
 
+/// Session preview values for the panel: duration, markers, terminal snapshot and the
+/// formatted uncompressed size (only for compressed sessions).
+pub(super) type SessionData = (
+    String,
+    usize,
+    Vec<crate::terminal::StyledLine>,
+    Option<String>,
+);
+
+/// Inputs of the inline rename row, `cursor` is a byte offset into `input`.
+pub(super) struct RenameRow<'a> {
+    pub input: &'a str,
+    pub cursor: usize,
+    pub selected_all: bool,
+    pub suffix: &'a str,
+    pub agent: &'a str,
+    pub size_str: &'a str,
+}
+
 /// Build spans for an item that is currently being renamed.
 ///
 /// Handles both `selected_all` mode (entire text highlighted) and normal edit mode
 /// with a block cursor rendered at the byte position `cursor` within `input`.
+/// `suffix` is the real session suffix (`.cast` or `.cast.gz`).
 ///
 /// `cursor` is clamped to a valid UTF-8 boundary to prevent panics on caller error.
 pub(super) fn build_rename_item_spans<'a>(
-    input: &'a str,
-    cursor: usize,
-    selected_all: bool,
-    agent: &str,
-    size_str: &str,
+    row: &RenameRow<'a>,
     theme: &crate::theme::Theme,
 ) -> Vec<Span<'a>> {
-    // Clamp cursor to valid UTF-8 boundary to prevent panic on caller error
-    let cursor = cursor.min(input.len());
-    let cursor = if input.is_char_boundary(cursor) {
-        cursor
+    let (input, suffix) = (row.input, row.suffix);
+    let cursor = clamp_to_boundary(input, row.cursor);
+    let mut spans = if row.selected_all {
+        let style = theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
+        vec![Span::styled(input, style)]
     } else {
-        input
-            .char_indices()
-            .map(|(idx, _)| idx)
-            .take_while(|&idx| idx < cursor)
-            .last()
-            .unwrap_or(0)
+        edit_spans(input, cursor, suffix, theme)
     };
-
-    let cursor_style = theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
-    let mut spans: Vec<Span<'a>> = vec![];
-
-    if selected_all {
-        spans.push(Span::styled(input, cursor_style));
-        spans.push(Span::styled(".cast", theme.text_secondary_style()));
-    } else {
-        let before = &input[..cursor];
-        if !before.is_empty() {
-            spans.push(Span::styled(before, theme.text_style()));
-        }
-        if cursor < input.len() {
-            let char_len = input[cursor..]
-                .chars()
-                .next()
-                .map(|c| c.len_utf8())
-                .unwrap_or(1);
-            spans.push(Span::styled(
-                &input[cursor..cursor + char_len],
-                cursor_style,
-            ));
-            let after = &input[cursor + char_len..];
-            if !after.is_empty() {
-                spans.push(Span::styled(after, theme.text_style()));
-            }
-            spans.push(Span::styled(".cast", theme.text_secondary_style()));
-        } else {
-            // Cursor at end: style the "." of ".cast" as cursor
-            spans.push(Span::styled(".", cursor_style));
-            spans.push(Span::styled("cast", theme.text_secondary_style()));
-        }
+    if row.selected_all || cursor < input.len() {
+        spans.push(Span::styled(suffix, theme.text_secondary_style()));
     }
-
-    spans.push(Span::raw("  "));
-    spans.push(Span::styled(
-        format!("({}, {})", agent, size_str),
-        theme.text_secondary_style(),
-    ));
+    spans.extend(meta_spans(row.agent, row.size_str, theme));
     spans
+}
+
+/// Two spaces then the dimmed `(agent, size)` tail of a list row.
+fn meta_spans<'a>(agent: &str, size_str: &str, theme: &crate::theme::Theme) -> [Span<'a>; 2] {
+    [
+        Span::raw("  "),
+        Span::styled(
+            format!("({}, {})", agent, size_str),
+            theme.text_secondary_style(),
+        ),
+    ]
+}
+
+/// Clamp `cursor` to `input` and snap it back to a UTF-8 boundary.
+fn clamp_to_boundary(input: &str, cursor: usize) -> usize {
+    let cursor = cursor.min(input.len());
+    if input.is_char_boundary(cursor) {
+        return cursor;
+    }
+    input
+        .char_indices()
+        .map(|(idx, _)| idx)
+        .take_while(|&idx| idx < cursor)
+        .last()
+        .unwrap_or(0)
+}
+
+/// Spans for edit mode: text before, cursor block, text after.
+///
+/// With the cursor at the end the first suffix char (the dot) is the cursor block and
+/// the rest of the suffix follows, otherwise the caller appends the whole suffix.
+fn edit_spans<'a>(
+    input: &'a str,
+    cursor: usize,
+    suffix: &'a str,
+    theme: &crate::theme::Theme,
+) -> Vec<Span<'a>> {
+    let cursor_style = theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
+    let mut spans = vec![];
+    push_text(&mut spans, &input[..cursor], theme);
+    let Some(c) = input[cursor..].chars().next() else {
+        spans.push(Span::styled(&suffix[..1], cursor_style));
+        spans.push(Span::styled(&suffix[1..], theme.text_secondary_style()));
+        return spans;
+    };
+    let end = cursor + c.len_utf8();
+    spans.push(Span::styled(&input[cursor..end], cursor_style));
+    push_text(&mut spans, &input[end..], theme);
+    spans
+}
+
+fn push_text<'a>(spans: &mut Vec<Span<'a>>, text: &'a str, theme: &crate::theme::Theme) {
+    if !text.is_empty() {
+        spans.push(Span::styled(text, theme.text_style()));
+    }
 }
 
 /// Build spans for a normal (non-rename) list item.
@@ -128,93 +160,112 @@ pub(super) fn render_preview_panel(
     buf: &mut Buffer,
     area: Rect,
     preview_data: Option<PreviewData>,
-    session_preview_data: Option<(String, usize, Vec<crate::terminal::StyledLine>)>,
+    session_preview_data: Option<SessionData>,
     has_backup: bool,
     theme: &crate::theme::Theme,
 ) {
-    let preview_text = if let Some((name, agent, size, modified, path, lock_data)) = preview_data {
-        build_preview_lines(
+    let lines = preview_data.map(|data| {
+        let input = PreviewInput::new(data, session_preview_data, has_backup);
+        build_preview_lines(input, theme)
+    });
+    let preview_text = lines.unwrap_or_else(|| vec![Line::from("No file selected")]);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Preview ")
+        .border_style(theme.text_secondary_style());
+    let preview = Paragraph::new(preview_text).block(block);
+    preview.render(area, buf);
+}
+
+/// One `Label: value` line, label dimmed.
+fn field_line(
+    label: &str,
+    value: String,
+    value_style: Style,
+    theme: &crate::theme::Theme,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(label.to_string(), theme.text_secondary_style()),
+        Span::styled(value, value_style),
+    ])
+}
+
+/// Everything the preview panel shows about the selected item.
+pub(super) struct PreviewInput {
+    pub name: String,
+    pub agent: String,
+    pub size: u64,
+    pub modified: chrono::DateTime<chrono::Local>,
+    pub path: String,
+    pub lock_data: Option<LockInfo>,
+    pub session: Option<SessionData>,
+    pub has_backup: bool,
+}
+
+impl PreviewInput {
+    pub(super) fn new(data: PreviewData, session: Option<SessionData>, has_backup: bool) -> Self {
+        let (name, agent, size, modified, path, lock_data) = data;
+        Self {
             name,
             agent,
             size,
             modified,
             path,
             lock_data,
-            session_preview_data,
+            session,
             has_backup,
-            theme,
-        )
-    } else {
-        vec![Line::from("No file selected")]
-    };
-
-    let preview = Paragraph::new(preview_text).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" Preview ")
-            .border_style(theme.text_secondary_style()),
-    );
-
-    preview.render(area, buf);
+        }
+    }
 }
 
 /// Build the list of text lines shown inside the preview panel.
 ///
-/// Includes file name, agent, size, and conditionally duration, markers,
-/// backup status, lock status, modified time, and a terminal snapshot.
-#[allow(clippy::too_many_arguments)]
+/// Includes file name, agent, size (plus uncompressed size for compressed sessions),
+/// and conditionally duration, markers, backup status, lock status, modified time,
+/// and a terminal snapshot.
 pub(super) fn build_preview_lines(
+    input: PreviewInput,
+    theme: &crate::theme::Theme,
+) -> Vec<Line<'static>> {
+    let mut lines = head_lines(input.name, input.agent, input.size, theme);
+    let Some((duration, markers, styled, uncompressed)) = input.session else {
+        lines.extend(fallback_lines(input.modified, input.path, theme));
+        return lines;
+    };
+    let style = theme.text_style();
+    lines.extend(uncompressed.map(|u| field_line("Uncompressed: ", u, style, theme)));
+    let (modified, lock, backup) = (input.modified, input.lock_data, input.has_backup);
+    append_session_preview_lines(
+        &mut lines, duration, markers, styled, modified, lock, backup, theme,
+    );
+    lines
+}
+
+/// Name, agent and on-disk size lines.
+fn head_lines(
     name: String,
     agent: String,
     size: u64,
-    modified: chrono::DateTime<chrono::Local>,
-    path: String,
-    lock_data: Option<LockInfo>,
-    session_preview_data: Option<(String, usize, Vec<crate::terminal::StyledLine>)>,
-    has_backup: bool,
     theme: &crate::theme::Theme,
 ) -> Vec<Line<'static>> {
-    let mut lines = vec![
-        Line::from(vec![
-            Span::styled("Name: ", theme.text_secondary_style()),
-            Span::styled(name, theme.text_style()),
-        ]),
-        Line::from(vec![
-            Span::styled("Agent: ", theme.text_secondary_style()),
-            Span::styled(agent, theme.accent_style()),
-        ]),
-        Line::from(vec![
-            Span::styled("Size: ", theme.text_secondary_style()),
-            Span::styled(format_size(size), theme.text_style()),
-        ]),
-    ];
+    vec![
+        field_line("Name: ", name, theme.text_style(), theme),
+        field_line("Agent: ", agent, theme.accent_style(), theme),
+        field_line("Size: ", format_size(size), theme.text_style(), theme),
+    ]
+}
 
-    if let Some((duration, markers, styled_preview)) = session_preview_data {
-        append_session_preview_lines(
-            &mut lines,
-            duration,
-            markers,
-            styled_preview,
-            modified,
-            lock_data,
-            has_backup,
-            theme,
-        );
-    } else {
-        lines.push(Line::from(vec![
-            Span::styled("Modified: ", theme.text_secondary_style()),
-            Span::styled(
-                modified.format("%Y-%m-%d %H:%M").to_string(),
-                theme.text_style(),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Path: ", theme.text_secondary_style()),
-            Span::styled(path, theme.text_secondary_style()),
-        ]));
-    }
-
-    lines
+/// Modified and path lines shown when no session preview is loaded.
+fn fallback_lines(
+    modified: chrono::DateTime<chrono::Local>,
+    path: String,
+    theme: &crate::theme::Theme,
+) -> Vec<Line<'static>> {
+    let time = modified.format("%Y-%m-%d %H:%M").to_string();
+    vec![
+        field_line("Modified: ", time, theme.text_style(), theme),
+        field_line("Path: ", path, theme.text_secondary_style(), theme),
+    ]
 }
 
 /// Append duration, markers, backup/lock status, modified time, and terminal

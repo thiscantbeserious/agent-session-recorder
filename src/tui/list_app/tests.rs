@@ -261,3 +261,37 @@ fn footer_text_import_done_phase() {
     let text = footer_text_for_mode(Mode::Import, &opt);
     assert!(text.contains("dismiss"));
 }
+
+// ── rename on compressed sessions ────────────────────────────────────
+
+#[test]
+fn rename_stem_strips_full_session_suffix() {
+    use super::input::rename_stem;
+    assert_eq!(rename_stem(std::path::Path::new("/s/a/x.cast.gz")), "x");
+    assert_eq!(rename_stem(std::path::Path::new("/s/a/x.cast")), "x");
+}
+
+#[test]
+fn rename_stem_limit_uses_full_suffix() {
+    use super::input::max_stem_len;
+    assert_eq!(
+        max_stem_len(std::path::Path::new("/s/a/x.cast")),
+        255 - ".cast".len()
+    );
+    assert_eq!(
+        max_stem_len(std::path::Path::new("/s/a/x.cast.gz")),
+        255 - ".cast.gz".len()
+    );
+}
+
+#[test]
+fn newest_session_in_finds_gzip_session() {
+    use super::session_actions::newest_session_in;
+    let dir = tempfile::tempdir().unwrap();
+    let gz = dir.path().join("renamed.cast.gz");
+    std::fs::write(&gz, b"x").unwrap();
+    std::fs::write(dir.path().join(".renamed.cast.gz.bak"), b"x").unwrap();
+    std::fs::write(dir.path().join("notes.txt"), b"x").unwrap();
+
+    assert_eq!(newest_session_in(Some(dir.path())), Some(gz));
+}

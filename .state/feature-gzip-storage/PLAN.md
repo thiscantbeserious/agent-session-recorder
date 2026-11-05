@@ -310,14 +310,14 @@ Considerations:
 Goal: ls/cleanup TUI preview, rename, analyze follow-up and detail pane work on `.cast.gz`.
 Owner: implementer
 
-- [ ] RED: `SessionPreview::load` on `.cast.gz` equals the plain twin (duration, markers,
+- [x] RED: `SessionPreview::load` on `.cast.gz` equals the plain twin (duration, markers,
       preview lines).
-- [ ] RED: rename spans show the real suffix (`.cast.gz`) instead of a hardcoded `.cast`.
-- [ ] RED: rename stem length limit uses the full suffix.
-- [ ] RED: detail pane shows on-disk size and uncompressed size (snapshot).
-- [ ] RED: cleanup TUI deletes a `.cast.gz` with its hidden backup and reports on-disk size
+- [x] RED: rename spans show the real suffix (`.cast.gz`) instead of a hardcoded `.cast`.
+- [x] RED: rename stem length limit uses the full suffix.
+- [x] RED: detail pane shows on-disk size and uncompressed size (snapshot).
+- [x] RED: cleanup TUI deletes a `.cast.gz` with its hidden backup and reports on-disk size
       freed.
-- [ ] GREEN: `load_streaming` via `codec::open_reader`, suffix via `codec::session_suffix`,
+- [x] GREEN: `load_streaming` via `codec::open_reader`, suffix via `codec::session_suffix`,
       newest-session lookup after analyze via `codec::is_session_path`, rename stem via
       `codec::session_stem`, cleanup glob hint mentions `*.cast*`.
 
