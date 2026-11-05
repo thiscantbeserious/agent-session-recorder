@@ -179,18 +179,10 @@ fn write_plain(file: File, write_fn: impl FnOnce(&mut dyn Write) -> Result<()>) 
     Ok(out.into_inner().map_err(io::IntoInnerError::into_error)?)
 }
 
-fn write_target(
-    path: &Path,
-    tmp: &Path,
-    write_fn: impl FnOnce(&mut dyn Write) -> Result<()>,
-) -> Result<()> {
+/// Fill the temp file via `fill`, then fsync, rename over `path` and sync the directory.
+fn write_target(path: &Path, tmp: &Path, fill: impl FnOnce(File) -> Result<File>) -> Result<()> {
     let file = File::create(tmp).with_context(|| format!("Failed to create {}", tmp.display()))?;
-    let file = if is_gzip_path(path) {
-        write_gzip(file, write_fn)
-    } else {
-        write_plain(file, write_fn)
-    }
-    .with_context(|| format!("Failed to write {}", path.display()))?;
+    let file = fill(file).with_context(|| format!("Failed to write {}", path.display()))?;
     file.sync_all()
         .with_context(|| format!("Failed to sync {}", tmp.display()))?;
     std::fs::rename(tmp, path)
@@ -223,8 +215,24 @@ pub fn atomic_write(
     path: &Path,
     write_fn: impl FnOnce(&mut dyn Write) -> Result<()>,
 ) -> Result<()> {
+    commit(path, |file| {
+        if is_gzip_path(path) {
+            write_gzip(file, write_fn)
+        } else {
+            write_plain(file, write_fn)
+        }
+    })
+}
+
+/// Write `bytes` verbatim via the same temp and rename path, never gzip-encoding.
+pub fn atomic_write_raw(path: &Path, bytes: &[u8]) -> Result<()> {
+    commit(path, |file| write_plain(file, |w| Ok(w.write_all(bytes)?)))
+}
+
+/// Run `write_target` on the hidden temp path and remove the temp on failure.
+fn commit(path: &Path, fill: impl FnOnce(File) -> Result<File>) -> Result<()> {
     let tmp = temp_path_for(path);
-    let result = write_target(path, &tmp, write_fn);
+    let result = write_target(path, &tmp, fill);
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
