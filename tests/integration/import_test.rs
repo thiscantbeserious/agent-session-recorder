@@ -19,6 +19,7 @@ fn create_valid_cast(path: &Path) {
 /// Helper to create test config with temp directory
 fn create_test_config(temp_dir: &TempDir) -> Config {
     let mut config = Config::default();
+    config.storage.compression = agr::config::Compression::None;
     config.storage.directory = temp_dir.path().to_string_lossy().to_string();
     config
 }

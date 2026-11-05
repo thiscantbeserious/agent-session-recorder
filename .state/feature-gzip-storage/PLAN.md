@@ -166,17 +166,17 @@ Considerations:
 Goal: sessions listed once by stem, lookup accepts either name, import compresses per config.
 Owner: implementer
 
-- [ ] RED: `list_sessions` returns `x.cast` and `y.cast.gz`, never hidden `.y.cast.gz.bak`
+- [x] RED: `list_sessions` returns `x.cast` and `y.cast.gz`, never hidden `.y.cast.gz.bak`
       or `.y.cast.gz.tmp`.
-- [ ] RED: with both `x.cast` and `x.cast.gz` present only `x.cast.gz` is listed.
-- [ ] RED: `resolve_cast_path("agent/x.cast")` finds `x.cast.gz` when only that exists, and
+- [x] RED: with both `x.cast` and `x.cast.gz` present only `x.cast.gz` is listed.
+- [x] RED: `resolve_cast_path("agent/x.cast")` finds `x.cast.gz` when only that exists, and
       the other way round, same for `find_cast_file_by_name` and absolute paths.
-- [ ] RED: completions (`list_cast_files_short`) include `.cast.gz` sessions.
-- [ ] RED: import of `.cast.gz` with valid content succeeds, with non-asciicast content fails
+- [x] RED: completions (`list_cast_files_short`) include `.cast.gz` sessions.
+- [x] RED: import of `.cast.gz` with valid content succeeds, with non-asciicast content fails
       `InvalidFormat`, a plain `.cast` under gzip config lands as `<name>.cast.gz`, a
       `.cast.gz` under `none` lands as plain `<name>.cast`.
-- [ ] RED: conflict suffixing works on `.cast.gz` (`x-1.cast.gz`) and checks both variants.
-- [ ] GREEN: `is_session_path` in listing, dedupe by stem, resolve fallbacks, header check via
+- [x] RED: conflict suffixing works on `.cast.gz` (`x-1.cast.gz`) and checks both variants.
+- [x] GREEN: `is_session_path` in listing, dedupe by stem, resolve fallbacks, header check via
       `open_reader`, import via `codec::transcode` (or `fs::copy` when formats match).
 
 Files: `src/storage/sessions.rs`, `src/storage/import.rs`,

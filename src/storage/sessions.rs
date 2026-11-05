@@ -1,11 +1,13 @@
 //! Session listing and lookup
 
 use super::StorageManager;
+use crate::files::codec;
 use anyhow::Result;
 use chrono::{DateTime, Datelike, Local};
 use humansize::{format_size, BINARY};
+use std::ffi::OsStr;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Format a timestamp as a smart time prefix:
 /// - Today:      `14:05` (H:MM)
@@ -47,6 +49,76 @@ pub fn format_smart_time(modified: &DateTime<Local>) -> String {
     }
 }
 
+/// The same session under the other suffix, `x.cast` <-> `x.cast.gz`.
+pub(super) fn other_variant(path: &Path) -> PathBuf {
+    let name = path.file_name().and_then(OsStr::to_str).unwrap_or("");
+    let stem = codec::session_stem(name);
+    let suffix = if codec::is_gzip_path(path) {
+        codec::SESSION_SUFFIX
+    } else {
+        codec::GZIP_SUFFIX
+    };
+    path.with_file_name(format!("{stem}{suffix}"))
+}
+
+/// The path itself when it exists, else its other variant when that exists.
+fn existing_variant(path: &Path) -> Option<PathBuf> {
+    [path.to_path_buf(), other_variant(path)]
+        .into_iter()
+        .find(|p| p.exists())
+}
+
+/// Agent directories to scan, one when filtered, else all subdirectories.
+fn agent_dirs(storage_dir: &Path, agent: Option<&str>) -> Result<Vec<PathBuf>> {
+    if let Some(name) = agent {
+        let dir = storage_dir.join(name);
+        return Ok(if dir.exists() { vec![dir] } else { vec![] });
+    }
+    Ok(fs::read_dir(storage_dir)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir())
+        .collect())
+}
+
+/// Sessions of one agent directory, hiding a `.cast` that has a `.cast.gz` sibling.
+fn agent_sessions(agent_dir: &Path) -> Result<Vec<SessionInfo>> {
+    let agent = agent_dir
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or("unknown");
+    let mut sessions = Vec::new();
+    for entry in fs::read_dir(agent_dir)? {
+        let path = entry?.path();
+        if codec::is_session_path(&path)
+            && (codec::is_gzip_path(&path) || !other_variant(&path).exists())
+        {
+            sessions.push(session_info(path, agent)?);
+        }
+    }
+    Ok(sessions)
+}
+
+fn session_info(path: PathBuf, agent: &str) -> Result<SessionInfo> {
+    let metadata = fs::metadata(&path)?;
+    let modified: DateTime<Local> = metadata.modified()?.into();
+    let duration = Local::now() - modified;
+    Ok(SessionInfo {
+        filename: path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .unwrap_or("")
+            .to_string(),
+        agent: agent.to_string(),
+        size: metadata.len(),
+        modified,
+        age_days: duration.num_days(),
+        age_hours: duration.num_hours(),
+        age_minutes: duration.num_minutes(),
+        path,
+    })
+}
+
 /// Information about a recorded session
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
@@ -85,110 +157,35 @@ impl SessionInfo {
 }
 
 impl StorageManager {
-    /// List all sessions, optionally filtered by agent
+    /// List all sessions, optionally filtered by agent.
+    ///
+    /// `x.cast` and `x.cast.gz` are one session, only the `.cast.gz` is listed.
     pub fn list_sessions(&self, agent: Option<&str>) -> Result<Vec<SessionInfo>> {
         let storage_dir = self.storage_dir();
         if !storage_dir.exists() {
             return Ok(Vec::new());
         }
-
         let mut sessions = Vec::new();
-        let now = Local::now();
-
-        // If agent specified, only check that directory
-        let agent_dirs: Vec<PathBuf> = if let Some(agent_name) = agent {
-            let agent_dir = storage_dir.join(agent_name);
-            if agent_dir.exists() {
-                vec![agent_dir]
-            } else {
-                vec![]
-            }
-        } else {
-            // Check all subdirectories
-            fs::read_dir(&storage_dir)?
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .filter(|path| path.is_dir())
-                .collect()
-        };
-
-        for agent_dir in agent_dirs {
-            let agent_name = agent_dir
-                .file_name()
-                .and_then(std::ffi::OsStr::to_str)
-                .unwrap_or("unknown")
-                .to_string();
-
-            for entry in fs::read_dir(&agent_dir)? {
-                let entry = entry?;
-                let path = entry.path();
-
-                if path.extension().is_some_and(|ext| ext == "cast") {
-                    let metadata = fs::metadata(&path)?;
-                    let modified: DateTime<Local> = metadata.modified()?.into();
-                    let duration = now - modified;
-                    let age_days = duration.num_days();
-                    let age_hours = duration.num_hours();
-                    let age_minutes = duration.num_minutes();
-
-                    sessions.push(SessionInfo {
-                        filename: path
-                            .file_name()
-                            .and_then(std::ffi::OsStr::to_str)
-                            .unwrap_or("")
-                            .to_string(),
-                        agent: agent_name.clone(),
-                        size: metadata.len(),
-                        modified,
-                        age_days,
-                        age_hours,
-                        age_minutes,
-                        path,
-                    });
-                }
-            }
+        for agent_dir in agent_dirs(&storage_dir, agent)? {
+            sessions.extend(agent_sessions(&agent_dir)?);
         }
-
         // Sort by modification time, newest first
         sessions.sort_by_key(|s| std::cmp::Reverse(s.modified));
-
         Ok(sessions)
     }
 
     /// Resolve a short path like "agent/file.cast" to a full path
     ///
-    /// Returns None if the file doesn't exist at the resolved path.
+    /// Returns None if neither the `.cast` nor the `.cast.gz` variant exists.
     /// If the input is already an absolute path or exists as-is, returns it directly.
     pub fn resolve_cast_path(&self, path: &str) -> Option<PathBuf> {
         let path_buf = PathBuf::from(path);
-
-        // If absolute path, return as-is if it exists
-        if path_buf.is_absolute() {
-            return if path_buf.exists() {
-                Some(path_buf)
-            } else {
-                None
-            };
+        if path_buf.is_absolute() || path_buf.exists() {
+            return existing_variant(&path_buf);
         }
-
-        // If it exists as a relative path from current directory, return it
-        if path_buf.exists() {
-            return Some(path_buf);
-        }
-
         // Try to resolve as "agent/file.cast" format
-        // Split on the first '/' to get agent and filename
-        let parts: Vec<&str> = path.splitn(2, '/').collect();
-        if parts.len() == 2 {
-            let agent = parts[0];
-            let filename = parts[1];
-            let full_path = self.storage_dir().join(agent).join(filename);
-            if full_path.exists() {
-                return Some(full_path);
-            }
-        }
-
-        None
+        let (agent, filename) = path.split_once('/')?;
+        existing_variant(&self.storage_dir().join(agent).join(filename))
     }
 
     /// Find a cast file by filename only, searching across all agents
@@ -206,7 +203,14 @@ impl StorageManager {
         let sessions = self.list_sessions(None).ok()?;
 
         // Find all sessions with matching filename
-        let mut matches: Vec<_> = sessions.iter().filter(|s| s.filename == filename).collect();
+        if !codec::is_session_path(Path::new(filename)) {
+            return None;
+        }
+        let stem = codec::session_stem(filename);
+        let mut matches: Vec<_> = sessions
+            .iter()
+            .filter(|s| codec::session_stem(&s.filename) == stem)
+            .collect();
 
         // Sort by modification time (newest first) and return the first match
         matches.sort_by_key(|s| std::cmp::Reverse(s.modified));

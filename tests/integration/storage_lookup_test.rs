@@ -1,6 +1,6 @@
 //! Storage tests: path resolution, lookup and auxiliary file cleanup
 
-use super::helpers::storage::{create_test_config, create_test_session};
+use super::helpers::storage::{create_codec_session, create_test_config, create_test_session};
 use agr::StorageManager;
 use std::fs;
 use tempfile::TempDir;
@@ -261,4 +261,51 @@ fn delete_sessions_removes_auxiliary_files_both_formats() {
     assert!(!old_lock.exists(), "old-format lock should be removed");
     assert!(!new_backup.exists(), "new-format backup should be removed");
     assert!(!old_backup.exists(), "old-format backup should be removed");
+}
+
+// === Gzip sessions (Stage 7) ===
+
+const CAST: &str = "{\"version\":3}\n[0.1,\"o\",\"x\"]\n";
+
+fn manager_with(agent: &str, file: &str) -> (TempDir, StorageManager, std::path::PathBuf) {
+    let temp = TempDir::new().unwrap();
+    let manager = StorageManager::new(create_test_config(&temp));
+    let path = create_codec_session(temp.path(), agent, file, CAST);
+    (temp, manager, path)
+}
+
+#[test]
+fn resolve_cast_path_finds_gzip_for_plain_name() {
+    let (_t, manager, gz) = manager_with("claude", "x.cast.gz");
+    assert_eq!(manager.resolve_cast_path("claude/x.cast"), Some(gz));
+}
+
+#[test]
+fn resolve_cast_path_finds_plain_for_gzip_name() {
+    let (_t, manager, plain) = manager_with("claude", "x.cast");
+    assert_eq!(manager.resolve_cast_path("claude/x.cast.gz"), Some(plain));
+}
+
+#[test]
+fn resolve_cast_path_absolute_falls_back_to_other_variant() {
+    let (_t, manager, gz) = manager_with("claude", "x.cast.gz");
+    let asked = gz.with_file_name("x.cast");
+    assert_eq!(manager.resolve_cast_path(asked.to_str().unwrap()), Some(gz));
+}
+
+#[test]
+fn find_cast_file_by_name_matches_either_variant() {
+    let (_t, manager, gz) = manager_with("claude", "x.cast.gz");
+    assert_eq!(manager.find_cast_file_by_name("x.cast"), Some(gz));
+    let (_t2, manager2, plain) = manager_with("claude", "y.cast");
+    assert_eq!(manager2.find_cast_file_by_name("y.cast.gz"), Some(plain));
+}
+
+#[test]
+fn list_cast_files_short_includes_gzip_sessions() {
+    let (_t, manager, _) = manager_with("claude", "x.cast.gz");
+    assert_eq!(
+        manager.list_cast_files_short(None).unwrap(),
+        vec!["claude/x.cast.gz"]
+    );
 }

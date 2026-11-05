@@ -51,3 +51,19 @@ pub fn create_test_manager() -> (TempDir, StorageManager) {
     let manager = StorageManager::new(config);
     (temp_dir, manager)
 }
+
+/// Write a session through the codec, gzip or plain by the file suffix.
+pub fn create_codec_session(dir: &Path, agent: &str, filename: &str, content: &str) -> PathBuf {
+    let agent_dir = dir.join(agent);
+    fs::create_dir_all(&agent_dir).unwrap();
+    let path = agent_dir.join(filename);
+    agr::files::codec::atomic_write(&path, |w| Ok(w.write_all(content.as_bytes())?)).unwrap();
+    path
+}
+
+/// Config with a storage directory and the given compression.
+pub fn compression_config(temp_dir: &TempDir, compression: agr::config::Compression) -> Config {
+    let mut config = create_test_config(temp_dir);
+    config.storage.compression = compression;
+    config
+}
