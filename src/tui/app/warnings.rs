@@ -58,8 +58,6 @@ mod tests {
         dir.path().display().to_string()
     }
 
-    use std::io::Write;
-
     #[test]
     fn guard_queues_warnings_and_restores_on_drop() {
         let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
