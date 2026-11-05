@@ -9,10 +9,9 @@ max 3. New tests go in `tests/integration/`.
 
 ## Open Questions
 
-1. Exact projected-size sample length (ADR says 64KiB), tune in Stage 9 if the estimate is
-   more than ~20% off on the fixture set.
-2. Whether `SessionPreview` or `FileItem` carries the uncompressed size for the detail pane
-   (Stage 13, see ADR "To verify").
+1. Projected-size sample length: resolved, 64KiB sample, tested within 2x of the real size.
+2. Uncompressed size in the detail pane: resolved, `SessionPreview` carries it, read from the
+   header once per selection.
 
 ## Stages
 
@@ -695,6 +694,25 @@ Owner: implementer
 Files: `src/config/docs.rs`, `src/config/docs/`, `docs/`, `tests/integration/snapshots/`
 Depends on: Stage 16
 
+### Stage 27: Batch 5 follow-ups (architect review, user requests, in this MR)
+
+Goal: collision and path resolution for both suffixes, compress UX (progress, Ctrl+C,
+`--dry-run`), orphaned backups and stale locks, cheap offer gate, backup ordering, Sonar and
+coverage fixes, docs.
+Owner: implementer
+
+- [x] `resolve_collision` and `resolve_file_path` handle the other suffix.
+- [x] Progress callback and stop flag on `storage::compress::run`, `--dry-run`.
+- [x] `storage::orphans`, `agr status` line, `agr cleanup` removal.
+- [x] Offer gate before `plan`, no offer for `compression = "none"`.
+- [x] Backup converted before the plain file is removed, existing `.gz.bak` never overwritten.
+- [x] One codec helper for the gzip sibling path.
+- [x] SonarCloud issues fixed, in-process tests for Codecov patch coverage.
+- [x] ADR, PLAN, REQUIREMENTS, README updated.
+
+Files: `src/storage/`, `src/files/`, `src/commands/`, `src/tui/`, `tests/`, docs
+Depends on: Stage 9, 11, 12, 16, 26
+
 ## Dependencies
 
 - Stage 1, Stage 2, Stage 3 are independent foundations.
@@ -702,6 +720,7 @@ Depends on: Stage 16
 - Stage 5 depends on Stage 1, Stage 6 on Stage 1 and Stage 5.
 - Stage 17 depends on Stage 1, Stage 2, Stage 3 (Batch 1 hardening, user request).
 - Stage 20 depends on Stage 4, 5, 7, 15, 19 (Batch 4 review fixes).
+- Stage 27 depends on Stage 9, 11, 12, 16, 26 (Batch 5 follow-ups).
 - Stage 26 depends on Stage 16 (config docs example values, docs.rs size).
 - Stage 25 depends on Stage 11 (CLI colour on terminal only, NO_COLOR).
 - Stage 24 depends on Stage 9, 13, 14, 15 (real MSRV enforced in CI).
@@ -737,19 +756,30 @@ Legend: arrows point from prerequisite to dependent stage.
 
 | Stage | Status | Notes |
 |-------|--------|-------|
-| 1 | pending | |
-| 2 | pending | |
-| 3 | pending | |
-| 4 | pending | |
-| 5 | pending | |
-| 6 | pending | |
-| 7 | pending | |
-| 8 | pending | |
-| 9 | pending | |
-| 10 | pending | |
-| 11 | pending | |
-| 12 | pending | |
-| 13 | pending | |
-| 14 | pending | |
-| 15 | pending | |
-| 16 | pending | |
+| 1 | done | |
+| 2 | done | |
+| 3 | done | |
+| 4 | done | |
+| 5 | done | |
+| 6 | done | |
+| 7 | done | |
+| 8 | done | |
+| 9 | done | |
+| 10 | done | |
+| 11 | done | |
+| 12 | done | |
+| 13 | done | |
+| 14 | done | |
+| 15 | done | |
+| 16 | done | |
+| 17 | done | |
+| 18 | done | |
+| 19 | done | |
+| 20 | done | |
+| 21 | done | |
+| 22 | done | |
+| 23 | done | |
+| 24 | done | |
+| 25 | done | |
+| 26 | done | |
+| 27 | done | |

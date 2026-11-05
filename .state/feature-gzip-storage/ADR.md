@@ -73,7 +73,7 @@ module gets split first (Stage 3) because most new storage logic belongs next to
 
 **Option A: `flate2` with `rust_backend` (miniz_oxide)**
 - Pros: de facto standard, pure Rust with the backend, no C toolchain, MSRV 1.67 (we declare
-  1.70). `GzBuilder` writes mtime 0, no filename and OS 255 unless told otherwise, as such the
+  1.88, the real minimum, enforced in CI). `GzBuilder` writes mtime 0, no filename and OS 255 unless told otherwise, as such the
   header is deterministic by default. Stream types (`GzEncoder<W: Write>`, `GzDecoder<R: Read>`)
   plug straight into `BufReader` and the existing `parse_reader`.
 - Cons: miniz_oxide is a bit slower than zlib-ng (irrelevant at our sizes, compress runs once
@@ -90,7 +90,7 @@ module gets split first (Stage 3) because most new storage logic belongs next to
 
 **Decision: Option A.** `flate2 = { version = "1.1", default-features = false, features =
 ["rust_backend"] }`. Encoder built with `GzBuilder::new()` (no name, no mtime, no comment) and
-`Compression::new(6)`. Decoder is `GzDecoder` (single member, matches what we write).
+`Compression::default()` (level 6). Decoder is `MultiGzDecoder` (foreign multi-member gzip reads fully, trailing non-gzip bytes are an error with the path).
 
 Determinism note for #164: same content and same miniz_oxide version gives the same bytes. A
 future miniz_oxide upgrade could change the deflate output. If sync hashes must survive that,
@@ -295,20 +295,19 @@ exited. Deleting the temp right after copy (as written in REQUIREMENTS) makes th
 **Option A: delete immediately** (as written). Paste of a `.cast.gz` session is broken on macOS.
 
 **Option B: fixed per-user location, replaced on the next copy.** Decompress to
-`<tmp>/agr-clipboard/<stem>.cast`, the directory is cleared before each copy (so at most one
+`<tmp>/agr-clipboard-<uid>/<stem>.cast` (refused if a symlink or not owned by the user, 0700), the directory is cleared before each copy (so at most one
 leftover), and removed on any failure. The OS cleans `<tmp>` on reboot.
 
 **Option C: text copy only for gzip sessions.** Breaks paste-as-attachment, which is the main
 reason `agr copy` exists.
 
 **Decision: Option B**, pending user confirmation since it changes an acceptance criterion
-("temporary decompressed file is removed after copy"). The text fallback reads through
-`open_reader` and checks `MAX_CONTENT_SIZE` against `uncompressed_size`. Plain sessions keep the
+("temporary decompressed file is removed after copy"). The size check against `MAX_CONTENT_SIZE` only applies to the text fallback (using `uncompressed_size`), a file reference is handed over at any size. Plain sessions keep the
 exact current path. Lives in a new `src/clipboard/plain_copy.rs` so `copy.rs` stays small.
 
 ## Decision
 
-1. `flate2` with `rust_backend`, deterministic `GzBuilder` header, level 6.
+1. `flate2` with `rust_backend`, deterministic `GzBuilder` header, `Compression::default()`.
 2. Free-function codec module `src/files/codec.rs`, format decided by suffix, every reader and
    writer routes through it, `transcode` is the single format-changing primitive.
 3. `<name>.cast.gz`, stem identity, aux files from the full filename, `.cast.gz` wins on
@@ -326,7 +325,10 @@ exact current path. Lives in a new `src/clipboard/plain_copy.rs` so `copy.rs` st
   `stats.rs` (StorageStats, disk percentage), `import.rs` (ImportError, validation, import),
   `mod.rs` keeps `StorageManager` struct, `new`, dirs, delete, threshold. Inline tests move to
   `tests/integration/storage_test.rs`.
-- `src/storage/compress.rs` (new): plan, estimate, compress_file, run, report.
+- `src/storage/compress/` (new): `mod.rs` (run, report, progress callback and stop flag), `plan.rs`, `file.rs`.
+- `src/storage/orphans.rs` (new): orphaned `.bak` and stale lock detection for `agr status` and `agr cleanup`.
+- `src/recording/finalize.rs` (new): compress a finished recording per `storage.compression`.
+- `src/tui/app/warnings.rs` (new): `WarningGuard`, routes codec warnings to the status line.
 - `src/config/state.rs` (new): offer state.
 - `src/config/migrate/migrations/v4.rs` (new).
 - `src/commands/compress.rs` (new): `agr compress` handler and preview/report printing.
@@ -334,6 +336,8 @@ exact current path. Lives in a new `src/clipboard/plain_copy.rs` so `copy.rs` st
 - `src/commands/prompt.rs` (new): `should_proceed` moved out of `commands/config.rs` so config
   migrate, config reset and compress share one confirm prompt.
 - `src/clipboard/plain_copy.rs` (new): decompress-to-temp for file references.
+- `src/files/codec.rs` also owns `gzip_sibling` and `other_variant`, the single place that builds the `.cast.gz` sibling path.
+- `AGR_FORCE_COLOR` is a test-only env var that forces CLI colour on regardless of tty.
 
 ### Quality guards for implementers
 
@@ -354,8 +358,7 @@ exact current path. Lives in a new `src/clipboard/plain_copy.rs` so `copy.rs` st
   add and transform (fine at our sizes).
 - **Follow-ups:** `agr decompress` (out of scope). Oversized files this branch touches are
   split in this MR (Stages 19, 21), not deferred.
-  FEXTRA size field if the 64x wrap heuristic ever bites.
-
+  
 ## To verify during implementation
 
 - Stage 1: `GzDecoder` returns an error (not `Ok(0)`) on a truncated stream with the flate2
@@ -382,3 +385,4 @@ exact current path. Lives in a new `src/clipboard/plain_copy.rs` so `copy.rs` st
 - 2026-11-05: Long functions: user chose to split only functions that gzip stages change, moved-but-untouched TUI functions stay as they are. Windows: compile check in CI (`cargo check` for x86_64-pc-windows-msvc), Windows stays unsupported at runtime. `repair` removes invalid-UTF-8 lines (confirmed by the user's prompt, matches `diagnose`). Pre-uid `<tmp>/agr-clipboard` dirs are left alone (one stale copy at most).
 - 2026-11-05: Stage 23. `repair` dropping invalid-UTF-8 lines is pinned by a test. Dir fsync warnings go through a process-wide sink in `files::codec` (`set_warning_sink`), `tui::app::warnings::WarningGuard` (held by `App`) queues them for the status line and restores stderr on drop. `uncompressed_size` on foreign multi-member gzip reports the last member only. Trailing non-gzip bytes after the last member make `open_reader` error with the path, no silent truncation (pinned by a test, a single-member `GzDecoder` would swallow them).
 - 2026-11-05: MSRV: declared 1.70 was never enforced and the code already needs newer APIs. User chose: bump `rust-version` to the real minimum and enforce it with a CI job on that toolchain.
+- 2026-11-05: Batch 5. `agr compress` shows a live progress line on stderr (terminal only), Ctrl+C stops after the current file, `--dry-run` only previews. Orphaned `.bak` files and stale locks are reported by `agr status` and removed by `agr cleanup` after confirmation. Collision and absolute-path resolution treat `x.cast` and `x.cast.gz` as one name. Offer gates on tty, version and config before planning. Compress converts the backup before removing the plain file and never overwrites an existing `.x.cast.gz.bak`.

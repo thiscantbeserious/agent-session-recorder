@@ -205,9 +205,12 @@ compression = "gzip"   # or "none" to keep writing plain .cast
 agr compress                  # Preview sessions, current vs projected size, then ask
 agr compress --agent claude   # Only one agent
 agr compress --yes            # Skip the confirmation
+agr compress --dry-run        # Only show the preview, never prompt or change anything
 ```
 
-Sessions that are currently being recorded are skipped. Without a TTY nothing is rewritten unless you pass `--yes`.
+Sessions that are currently being recorded are skipped. Without a TTY nothing is rewritten unless you pass `--yes`. On a terminal a progress line shows the current file and the size done so far on stderr. Ctrl+C stops after the current file and prints what was done.
+
+Orphaned backups (a hidden `.bak` whose session is gone) and stale lock files are shown by `agr status` and removed by `agr cleanup` after a preview and confirmation (`--yes` skips it).
 
 After an upgrade, `agr list`, `agr ls`, `agr status` and `agr cleanup` offer the same preview once per version, interactive terminals only. The last version that showed the offer is kept in `~/.config/agr/state.toml`. Nothing is rewritten without confirmation.
 

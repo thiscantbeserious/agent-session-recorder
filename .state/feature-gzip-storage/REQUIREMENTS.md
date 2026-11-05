@@ -156,7 +156,7 @@ After implementation:
 - [ ] Running it again compresses nothing and reports zero changes.
 - [ ] A session with a live lock (running PID) is skipped and listed as skipped. A session
   with a stale lock is compressed.
-- [ ] If both `x.cast` and `x.cast.gz` exist, neither is touched and a warning names both.
+- [ ] If both `x.cast` and `x.cast.gz` exist: equal content means the plain file is removed as a crash leftover, differing content means both are left untouched and skipped with a reason naming both. (Clarification 2026-11-05, matches the ADR decision, replaces "neither is touched and a warning names both".)
 - [ ] A failure on one file does not stop the others and is reported in the summary.
 
 **Auto-migrate offer**
