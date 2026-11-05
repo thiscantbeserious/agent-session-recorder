@@ -156,7 +156,7 @@ Owner: implementer
 
 Files: `src/files/backup.rs`, `src/files/filename.rs`, `src/asciicast/transform_ops.rs`,
        `tests/integration/filename_test.rs`
-Depends on: Stage 1, Stage 5, Stage 20
+Depends on: Stage 1, Stage 5, Stage 20, Stage 23
 
 Considerations:
 - `transform_ops` writes through `AsciicastFile::write`, as such its gzip test needs Stage 5.
@@ -205,7 +205,7 @@ Owner: implementer
 
 Files: `src/storage/stats.rs`, `src/commands/status.rs`, `src/commands/list.rs`,
        `src/commands/cleanup.rs`, `tests/integration/storage_stats_test.rs`
-Depends on: Stage 7, Stage 20
+Depends on: Stage 7, Stage 20, Stage 23
 
 Considerations:
 - `commands/cleanup.rs` builds a mock `StorageStats`, add the new field there in the same
@@ -233,7 +233,7 @@ Owner: implementer
 
 Files: `src/storage/compress.rs`, `src/storage/mod.rs`, `tests/integration/compress_test.rs`,
        `tests/integration.rs`
-Depends on: Stage 1, Stage 3, Stage 6, Stage 7, Stage 20
+Depends on: Stage 1, Stage 3, Stage 6, Stage 7, Stage 20, Stage 23
 
 Considerations:
 - No printing in this module, it returns data, commands do the output.
@@ -276,10 +276,11 @@ Files: `src/cli.rs`, `src/dispatch.rs`, `src/commands/mod.rs`, `src/commands/com
        `src/commands/prompt.rs`, `src/commands/config.rs`,
        `tests/integration/snapshot_cli_test.rs`, `tests/integration/snapshots/`,
        `tests/integration/compress_test.rs`
-Depends on: Stage 9, Stage 21
+Depends on: Stage 9, Stage 21, Stage 23
 
 Considerations:
-- Dispatch lives in `src/dispatch.rs` since Stage 21, add the arm there.
+- Dispatch lives in `src/dispatch.rs` since Stage 21, add the arm there. Every function this
+  stage changes ends within ~20 lines (`dispatch` is a dispatch-only match, allowed).
 
 ### Stage 12: Auto-migrate offer and status savings line
 
@@ -322,11 +323,12 @@ Owner: implementer
 Files: `src/tui/widgets/file_explorer/`, `src/tui/list_app/`, `src/tui/cleanup_app/`,
        `tests/integration/preview_test.rs`, `tests/integration/file_explorer_test.rs`,
        `tests/integration/snapshot_tui_test.rs`
-Depends on: Stage 1, Stage 7, Stage 8, Stage 21
+Depends on: Stage 1, Stage 7, Stage 8, Stage 21, Stage 23
 
 Considerations:
-- These three are module directories since Stage 21. Every file and every function touched
-  here ends within ~400 lines / ~20 lines.
+- These three are module directories since Stage 21. Every file touched here stays within
+  ~400 lines. Every function this stage changes ends within ~20 lines (user decision
+  2026-11-05: only functions gzip touches, untouched moved functions stay as they are).
 
 ### Stage 14: CLI single-file commands
 
@@ -346,7 +348,7 @@ Owner: implementer
 Files: `src/commands/play.rs`, `src/commands/analyze.rs`, `src/commands/transform.rs`,
        `src/commands/copy.rs`, `src/commands/marker.rs`, `tests/integration/play_test.rs`,
        `tests/integration/transform_test.rs`
-Depends on: Stage 1, Stage 5, Stage 6, Stage 19, Stage 20
+Depends on: Stage 1, Stage 5, Stage 6, Stage 19, Stage 20, Stage 23
 
 Considerations:
 - `analyze.rs` is within the limit since Stage 19 (392 lines), keep it there.
@@ -569,6 +571,41 @@ Owner: implementer
 Files: `tests/performance/silence_removal_test.rs`
 Depends on: Stage 20, Stage 21
 
+### Stage 23: Stage 20/21 review fixes and Windows check (user request, in this MR)
+
+Goal: fix every Stage 20/21 review finding, add a Windows compile check to CI.
+Owner: implementer
+
+- [ ] `#[cfg(not(tarpaulin_include))]` on `dispatch::dispatch` (was covered by the excluded
+      `main` before the split).
+- [ ] RED/GREEN: `repair` drops invalid-UTF-8 lines (deliberate since Stage 20, matches
+      `diagnose`), test pins it: file with one invalid-UTF-8 line, repair removes exactly it,
+      valid lines byte-identical. ADR note.
+- [ ] RED/GREEN: dir fsync warning is returned to the caller instead of `eprintln!` while a
+      TUI may own the terminal. Design: a process-wide warning sink in `src/files/codec.rs`
+      (`set_warning_sink(fn(&str))` / default stderr), the TUI app installs a sink that queues
+      the message for its status line while it owns the terminal and restores stderr on exit.
+      Keeps `atomic_write`'s signature for its many callers. Test: install a test sink, force
+      a dir fsync failure, assert the sink got the message and nothing hit stderr.
+- [ ] `is_owned_by` becomes `pub(crate)`, test moved accordingly (inline test module if
+      needed).
+- [ ] Comment on the non-unix `fresh_temp_dir` (fixed name, no ownership check, Windows is
+      out of scope). ADR note on leftover `<tmp>/agr-clipboard` dirs from before the uid name.
+- [ ] RED/GREEN: `uncompressed_size` on a foreign multi-member `.cast.gz`: documented trailer
+      limit (last member ISIZE), and `open_reader` behavior on trailing non-gzip bytes after
+      the last member pinned by a test (error with path, no silent truncation).
+- [ ] Windows: fix `cargo check --target x86_64-pc-windows-msvc --all-targets` errors
+      (`libc::getuid` in `tests/integration/clipboard_gzip_test.rs` without `#[cfg(unix)]`,
+      unused `inode` in `src/recording.rs` on non-unix), then add a CI job
+      `cargo check --target x86_64-pc-windows-msvc --all-targets` with `RUSTFLAGS=-D warnings`
+      on `windows-latest` or cross from ubuntu.
+
+Files: `src/dispatch.rs`, `src/asciicast/integrity.rs`, `src/files/codec.rs`,
+       `src/clipboard/plain_copy.rs`, `src/recording.rs`, `src/tui/list_app/session_actions.rs`,
+       `tests/integration/asciicast_test.rs`, `tests/integration/clipboard_gzip_test.rs`,
+       `tests/integration/codec_test.rs`, `.github/workflows/ci.yml`
+Depends on: Stage 20, Stage 21, Stage 22
+
 ## Dependencies
 
 - Stage 1, Stage 2, Stage 3 are independent foundations.
@@ -576,6 +613,7 @@ Depends on: Stage 20, Stage 21
 - Stage 5 depends on Stage 1, Stage 6 on Stage 1 and Stage 5.
 - Stage 17 depends on Stage 1, Stage 2, Stage 3 (Batch 1 hardening, user request).
 - Stage 20 depends on Stage 4, 5, 7, 15, 19 (Batch 4 review fixes).
+- Stage 23 depends on Stage 20, 21, 22 (review fixes, Windows check).
 - Stage 22 depends on Stage 20, Stage 21 (flaky timing perf tests).
 - Stage 21 depends on Stage 19 (pure-move split of TUI files and main.rs).
 - Stage 19 depends on Stage 17, Stage 18 (size limit for files this branch touched).
