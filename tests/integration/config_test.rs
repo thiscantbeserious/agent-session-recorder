@@ -300,6 +300,7 @@ mod state {
         let path = dir.path().join("sub").join("state.toml");
         let state = State {
             compress_offer_version: Some("0.3.0".into()),
+            ..Default::default()
         };
         state.save_to(&path).unwrap();
         assert_eq!(State::load_from(&path), state);

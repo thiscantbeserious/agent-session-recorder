@@ -143,7 +143,14 @@ mod tests {
         let names: Vec<&str> = CONFIG_SECTIONS.iter().map(|s| s.name).collect();
         assert_eq!(
             names,
-            vec!["shell", "storage", "recording", "analysis", "agents"]
+            vec![
+                "shell",
+                "storage",
+                "recording",
+                "analysis",
+                "agents",
+                "sync"
+            ]
         );
     }
 

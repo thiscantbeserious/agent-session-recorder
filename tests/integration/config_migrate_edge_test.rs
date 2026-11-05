@@ -48,8 +48,8 @@ fn invalid_toml_returns_error() {
 #[test]
 fn whitespace_only_input_treated_as_empty() {
     let result = migrate_config("   \n\n   ").unwrap();
-    // v2 migration creates [recording], so only 4 sections added
-    assert_eq!(result.sections_added.len(), 4);
+    // v2 migration creates [recording], so only 4 sections added, plus sync
+    assert_eq!(result.sections_added.len(), 5);
 }
 
 #[test]

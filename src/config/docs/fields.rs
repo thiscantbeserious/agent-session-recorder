@@ -122,6 +122,24 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
             },
         ],
     },
+    SectionDoc {
+        name: "sync",
+        description: "Session sync settings (off until a backend is set)",
+        fields: &[
+            FieldDoc {
+                name: "backend",
+                description: "Sync backend: \"gist\" (GitHub Gists via gh). Unset = sync off",
+                default_display: "unset",
+                example: Some("\"gist\""),
+            },
+            FieldDoc {
+                name: "auto_push",
+                description: "Push new sessions automatically after recording (needs a backend)",
+                default_display: "true",
+                example: None,
+            },
+        ],
+    },
 ];
 
 /// Per-agent sub-section fields (applies to [agents.claude], [agents.codex], etc.)
