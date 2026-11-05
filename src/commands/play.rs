@@ -5,7 +5,6 @@ use anyhow::Result;
 use agr::{play_session, Config};
 
 use agr::asciicast::integrity::check_file_integrity;
-use agr::files::resolve::resolve_file_path;
 
 /// Play a recording file using the native player.
 ///
@@ -15,19 +14,7 @@ use agr::files::resolve::resolve_file_path;
 pub fn handle(file: &str) -> Result<()> {
     let config = Config::load()?;
 
-    // Resolve file path (supports short format like "claude/session.cast")
-    let filepath = resolve_file_path(file, &config)?;
-    if !filepath.exists() {
-        anyhow::bail!(
-            "File not found: {}\nHint: Use format 'agent/file.cast'. Run 'agr list' to see available sessions.",
-            file
-        );
-    }
-
-    // Check file has .cast extension
-    if filepath.extension().and_then(|e| e.to_str()) != Some("cast") {
-        eprintln!("Warning: File does not have .cast extension");
-    }
+    let filepath = super::resolve_existing_session(file, &config)?;
 
     // Check for file corruption before playing
     check_file_integrity(&filepath)?;

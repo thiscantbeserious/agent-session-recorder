@@ -78,6 +78,9 @@ mod snapshot_completions_test;
 #[path = "integration/play_test.rs"]
 mod play_test;
 
+#[path = "integration/cli_gzip_test.rs"]
+mod cli_gzip_test;
+
 #[path = "integration/preview_test.rs"]
 mod preview_test;
 

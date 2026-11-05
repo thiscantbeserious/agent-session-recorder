@@ -4,8 +4,6 @@ use anyhow::Result;
 
 use agr::{clipboard::copy_file_to_clipboard, Config};
 
-use agr::files::resolve::resolve_file_path;
-
 /// Copy a recording file to the system clipboard.
 ///
 /// On macOS, copies as a file reference for paste-as-attachment.
@@ -13,19 +11,7 @@ use agr::files::resolve::resolve_file_path;
 pub fn handle(file: &str) -> Result<()> {
     let config = Config::load()?;
 
-    // Resolve file path (supports short format like "claude/session.cast")
-    let filepath = resolve_file_path(file, &config)?;
-    if !filepath.exists() {
-        anyhow::bail!(
-            "File not found: {}\nHint: Use format 'agent/file.cast'. Run 'agr list' to see available sessions.",
-            file
-        );
-    }
-
-    // Check file has .cast extension
-    if filepath.extension().and_then(|e| e.to_str()) != Some("cast") {
-        eprintln!("Warning: File does not have .cast extension");
-    }
+    let filepath = super::resolve_existing_session(file, &config)?;
 
     // Copy to clipboard
     let result = copy_file_to_clipboard(&filepath)?;
@@ -43,6 +29,7 @@ pub fn handle(file: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use agr::files::resolve::resolve_file_path;
     use std::fs;
     use tempfile::TempDir;
 
