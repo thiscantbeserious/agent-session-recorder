@@ -251,7 +251,7 @@ Owner: implementer
       its result for the final box line and `maybe_auto_analyze`, print a warning on failure.
 
 Files: `src/recording.rs`, `tests/integration/recording_test.rs`
-Depends on: Stage 2, Stage 9
+Depends on: Stage 2, Stage 9, Stage 24
 
 Considerations:
 - Live recording code (lock, inode, header recovery) stays untouched and plain.
@@ -277,7 +277,7 @@ Files: `src/cli.rs`, `src/dispatch.rs`, `src/commands/mod.rs`, `src/commands/com
        `src/commands/prompt.rs`, `src/commands/config.rs`,
        `tests/integration/snapshot_cli_test.rs`, `tests/integration/snapshots/`,
        `tests/integration/compress_test.rs`
-Depends on: Stage 9, Stage 21, Stage 23
+Depends on: Stage 9, Stage 21, Stage 23, Stage 24
 
 Considerations:
 - Dispatch lives in `src/dispatch.rs` since Stage 21, add the arm there. Every function this
@@ -613,6 +613,26 @@ Files: `src/dispatch.rs`, `src/asciicast/integrity.rs`, `src/files/codec.rs`,
        `tests/integration/codec_test.rs`, `.github/workflows/ci.yml`
 Depends on: Stage 20, Stage 21, Stage 22
 
+### Stage 24: Real MSRV, enforced in CI (user decision 2026-11-05, in this MR)
+
+Goal: `rust-version` in Cargo.toml matches what the code needs, CI builds with exactly that
+toolchain, no `#[allow(clippy::incompatible_msrv)]` or pre-1.74 workarounds remain.
+Owner: implementer
+
+- [ ] Find the real minimum: build `cargo check --all-targets` with older rustup toolchains
+      (binary search, e.g. 1.75, 1.80, 1.85 ...) or `cargo msrv find` if installable. Dependencies
+      count too (`cargo tree` crates with their own rust-version).
+- [ ] Set `rust-version` to that version.
+- [ ] Remove `#[allow(clippy::incompatible_msrv)]` and its ponytail comment in
+      `src/storage/compress/file.rs`, use `std::io::Error::other` instead of
+      `Error::new(ErrorKind::Other, ..)` in `src/clipboard/plain_copy.rs` if the new MSRV allows.
+- [ ] CI job `msrv`: `dtolnay/rust-toolchain@<msrv>` and `cargo check --all-targets`.
+- [ ] Gates on stable and on the MSRV toolchain.
+
+Files: `Cargo.toml`, `.github/workflows/ci.yml`, `src/storage/compress/file.rs`,
+       `src/clipboard/plain_copy.rs`
+Depends on: Stage 9, Stage 13, Stage 14, Stage 15
+
 ## Dependencies
 
 - Stage 1, Stage 2, Stage 3 are independent foundations.
@@ -620,6 +640,7 @@ Depends on: Stage 20, Stage 21, Stage 22
 - Stage 5 depends on Stage 1, Stage 6 on Stage 1 and Stage 5.
 - Stage 17 depends on Stage 1, Stage 2, Stage 3 (Batch 1 hardening, user request).
 - Stage 20 depends on Stage 4, 5, 7, 15, 19 (Batch 4 review fixes).
+- Stage 24 depends on Stage 9, 13, 14, 15 (real MSRV enforced in CI).
 - Stage 23 depends on Stage 20, 21, 22 (review fixes, Windows check).
 - Stage 22 depends on Stage 20, Stage 21 (flaky timing perf tests).
 - Stage 21 depends on Stage 19 (pure-move split of TUI files and main.rs).
