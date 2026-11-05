@@ -67,8 +67,9 @@ fn empty_input_returns_full_default_config() {
     let result = migrate_config("").unwrap();
 
     // v2 migration creates [recording] with filename_template,
-    // so recording is no longer in sections_added (only 4 sections added by default-fill)
-    assert_eq!(result.sections_added.len(), 4);
+    // so recording is no longer in sections_added (only 4 sections added by default-fill, plus sync)
+    assert_eq!(result.sections_added.len(), 5);
+    assert!(result.sections_added.contains(&"sync".to_string()));
     assert!(result.sections_added.contains(&"storage".to_string()));
     assert!(result.sections_added.contains(&"agents".to_string()));
     assert!(result.sections_added.contains(&"shell".to_string()));
@@ -89,8 +90,8 @@ directory = "~/my-recordings"
 
     let result = migrate_config(input).unwrap();
 
-    // v2 migration creates [recording] with filename_template, so only 3 sections added
-    assert_eq!(result.sections_added.len(), 3);
+    // v2 migration creates [recording] with filename_template, so only 3 sections added, plus sync
+    assert_eq!(result.sections_added.len(), 4);
     assert!(result.sections_added.contains(&"agents".to_string()));
     assert!(result.sections_added.contains(&"shell".to_string()));
     assert!(result.sections_added.contains(&"analysis".to_string()));
@@ -127,7 +128,8 @@ auto_analyze = true
 
     let result = migrate_config(input).unwrap();
 
-    assert_eq!(result.sections_added.len(), 1);
+    assert_eq!(result.sections_added.len(), 2);
+    assert!(result.sections_added.contains(&"sync".to_string()));
     assert!(result.sections_added.contains(&"analysis".to_string()));
 
     // v2 migration sets filename_template, so it's not in added_fields

@@ -50,15 +50,15 @@ Goal: `[sync] backend` / `auto_push`, migration v5, `State` gets `sync_privacy_a
 `last_auto_push_error`.
 Owner: implementer
 
-- [ ] RED: `migrate_config("config_version = 4\n")` yields `[sync]` with `auto_push = true`, a
+- [x] RED: `migrate_config("config_version = 4\n")` yields `[sync]` with `auto_push = true`, a
       commented `# backend = "gist"` line, `config_version = 5`, sync stays off.
-- [ ] RED: running v5 twice changes nothing, an existing `backend = "gist"` and
+- [x] RED: running v5 twice changes nothing, an existing `backend = "gist"` and
       `auto_push = false` are kept.
-- [ ] RED: `backend = "s3"` fails with a message naming `gist`.
-- [ ] GREEN: `SyncConfig`, `SyncBackendKind { Gist }` (`rename_all = "lowercase"`),
+- [x] RED: `backend = "s3"` fails with a message naming `gist`.
+- [x] GREEN: `SyncConfig`, `SyncBackendKind { Gist }` (`rename_all = "lowercase"`),
       `migrations/v5.rs`, register it, `CURRENT_VERSION = 5`.
-- [ ] RED/GREEN: `State` round-trips the two new fields, an old `state.toml` without them loads.
-- [ ] Field docs for `sync.backend` and `sync.auto_push`, accept the default-config snapshot
+- [x] RED/GREEN: `State` round-trips the two new fields, an old `state.toml` without them loads.
+- [x] Field docs for `sync.backend` and `sync.auto_push`, accept the default-config snapshot
       (only the new section may change).
 
 Files: `src/config/types.rs`, `src/config/mod.rs`, `src/config/state.rs`,
