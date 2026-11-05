@@ -122,12 +122,12 @@ Considerations:
 Goal: parse, write, diagnose and repair work on `.cast.gz`, and writes keep the format.
 Owner: implementer
 
-- [ ] RED: `AsciicastFile::parse(x.cast.gz)` equals parse of the plain twin.
-- [ ] RED: `write(x.cast.gz)` produces gzip, `write(x.cast)` plain, no `x.cast.cast.tmp` left.
-- [ ] RED: `diagnose` and `repair` on a gzip file with a corrupt line, the repaired file is
+- [x] RED: `AsciicastFile::parse(x.cast.gz)` equals parse of the plain twin.
+- [x] RED: `write(x.cast.gz)` produces gzip, `write(x.cast)` plain, no `x.cast.cast.tmp` left.
+- [x] RED: `diagnose` and `repair` on a gzip file with a corrupt line, the repaired file is
       still gzip and the bad line is gone.
-- [ ] RED: `MarkerManager::add_marker` on `.cast.gz` keeps the file gzip.
-- [ ] GREEN: `parse` uses `codec::open_reader`, `write` uses `codec::atomic_write`, `diagnose`
+- [x] RED: `MarkerManager::add_marker` on `.cast.gz` keeps the file gzip.
+- [x] GREEN: `parse` uses `codec::open_reader`, `write` uses `codec::atomic_write`, `diagnose`
       uses `open_reader`, `repair` streams `open_reader` into `atomic_write` (drops
       `read_to_string`).
 

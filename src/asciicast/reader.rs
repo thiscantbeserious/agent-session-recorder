@@ -35,11 +35,12 @@
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 
-use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::BufRead;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+
+use crate::files::codec;
 
 use super::types::{AsciicastFile, Event, EventType, Header};
 
@@ -99,11 +100,7 @@ impl AsciicastFile {
     /// Returns an error if the file cannot be opened or parsed.
     pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
-        let file =
-            fs::File::open(path).with_context(|| format!("Failed to open file: {:?}", path))?;
-        let reader = BufReader::new(file);
-
-        Self::parse_reader(reader)
+        Self::parse_reader(codec::open_reader(path)?)
     }
 
     /// Parse an asciicast v3 file from any buffered reader.
@@ -163,8 +160,7 @@ impl AsciicastFile {
     ///
     /// Returns an error if parsing fails (see `parse_reader`).
     pub fn parse_str(content: &str) -> Result<Self> {
-        let reader = BufReader::new(content.as_bytes());
-        Self::parse_reader(reader)
+        Self::parse_reader(content.as_bytes())
     }
 }
 
