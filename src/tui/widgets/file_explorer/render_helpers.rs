@@ -25,68 +25,78 @@ pub(super) type PreviewData = (
 ///
 /// Handles both `selected_all` mode (entire text highlighted) and normal edit mode
 /// with a block cursor rendered at the byte position `cursor` within `input`.
+/// `suffix` is the real session suffix (`.cast` or `.cast.gz`).
 ///
 /// `cursor` is clamped to a valid UTF-8 boundary to prevent panics on caller error.
 pub(super) fn build_rename_item_spans<'a>(
     input: &'a str,
     cursor: usize,
     selected_all: bool,
+    suffix: &'a str,
     agent: &str,
     size_str: &str,
     theme: &crate::theme::Theme,
 ) -> Vec<Span<'a>> {
-    // Clamp cursor to valid UTF-8 boundary to prevent panic on caller error
-    let cursor = cursor.min(input.len());
-    let cursor = if input.is_char_boundary(cursor) {
-        cursor
+    let cursor = clamp_to_boundary(input, cursor);
+    let mut spans = if selected_all {
+        let style = theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
+        vec![Span::styled(input, style)]
     } else {
-        input
-            .char_indices()
-            .map(|(idx, _)| idx)
-            .take_while(|&idx| idx < cursor)
-            .last()
-            .unwrap_or(0)
+        edit_spans(input, cursor, suffix, theme)
     };
-
-    let cursor_style = theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
-    let mut spans: Vec<Span<'a>> = vec![];
-
-    if selected_all {
-        spans.push(Span::styled(input, cursor_style));
-        spans.push(Span::styled(".cast", theme.text_secondary_style()));
-    } else {
-        let before = &input[..cursor];
-        if !before.is_empty() {
-            spans.push(Span::styled(before, theme.text_style()));
-        }
-        if cursor < input.len() {
-            let char_len = input[cursor..]
-                .chars()
-                .next()
-                .map(|c| c.len_utf8())
-                .unwrap_or(1);
-            spans.push(Span::styled(
-                &input[cursor..cursor + char_len],
-                cursor_style,
-            ));
-            let after = &input[cursor + char_len..];
-            if !after.is_empty() {
-                spans.push(Span::styled(after, theme.text_style()));
-            }
-            spans.push(Span::styled(".cast", theme.text_secondary_style()));
-        } else {
-            // Cursor at end: style the "." of ".cast" as cursor
-            spans.push(Span::styled(".", cursor_style));
-            spans.push(Span::styled("cast", theme.text_secondary_style()));
-        }
+    if selected_all || cursor < input.len() {
+        spans.push(Span::styled(suffix, theme.text_secondary_style()));
     }
-
     spans.push(Span::raw("  "));
     spans.push(Span::styled(
         format!("({}, {})", agent, size_str),
         theme.text_secondary_style(),
     ));
     spans
+}
+
+/// Clamp `cursor` to `input` and snap it back to a UTF-8 boundary.
+fn clamp_to_boundary(input: &str, cursor: usize) -> usize {
+    let cursor = cursor.min(input.len());
+    if input.is_char_boundary(cursor) {
+        return cursor;
+    }
+    input
+        .char_indices()
+        .map(|(idx, _)| idx)
+        .take_while(|&idx| idx < cursor)
+        .last()
+        .unwrap_or(0)
+}
+
+/// Spans for edit mode: text before, cursor block, text after.
+///
+/// With the cursor at the end the first suffix char (the dot) is the cursor block and
+/// the rest of the suffix follows, otherwise the caller appends the whole suffix.
+fn edit_spans<'a>(
+    input: &'a str,
+    cursor: usize,
+    suffix: &'a str,
+    theme: &crate::theme::Theme,
+) -> Vec<Span<'a>> {
+    let cursor_style = theme.highlight_style().add_modifier(Modifier::SLOW_BLINK);
+    let mut spans = vec![];
+    push_text(&mut spans, &input[..cursor], theme);
+    let Some(c) = input[cursor..].chars().next() else {
+        spans.push(Span::styled(&suffix[..1], cursor_style));
+        spans.push(Span::styled(&suffix[1..], theme.text_secondary_style()));
+        return spans;
+    };
+    let end = cursor + c.len_utf8();
+    spans.push(Span::styled(&input[cursor..end], cursor_style));
+    push_text(&mut spans, &input[end..], theme);
+    spans
+}
+
+fn push_text<'a>(spans: &mut Vec<Span<'a>>, text: &'a str, theme: &crate::theme::Theme) {
+    if !text.is_empty() {
+        spans.push(Span::styled(text, theme.text_style()));
+    }
 }
 
 /// Build spans for a normal (non-rename) list item.

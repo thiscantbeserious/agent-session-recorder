@@ -261,3 +261,25 @@ fn footer_text_import_done_phase() {
     let text = footer_text_for_mode(Mode::Import, &opt);
     assert!(text.contains("dismiss"));
 }
+
+// ── rename on compressed sessions ────────────────────────────────────
+
+#[test]
+fn rename_stem_strips_full_session_suffix() {
+    use super::input::rename_stem;
+    assert_eq!(rename_stem(std::path::Path::new("/s/a/x.cast.gz")), "x");
+    assert_eq!(rename_stem(std::path::Path::new("/s/a/x.cast")), "x");
+}
+
+#[test]
+fn rename_stem_limit_uses_full_suffix() {
+    use super::input::max_stem_len;
+    assert_eq!(
+        max_stem_len(std::path::Path::new("/s/a/x.cast")),
+        255 - ".cast".len()
+    );
+    assert_eq!(
+        max_stem_len(std::path::Path::new("/s/a/x.cast.gz")),
+        255 - ".cast.gz".len()
+    );
+}

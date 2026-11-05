@@ -125,6 +125,7 @@ impl Widget for FileExplorerWidget<'_> {
                                 input,
                                 cursor,
                                 selected_all,
+                                crate::files::codec::session_suffix(std::path::Path::new(name)),
                                 agent,
                                 size_str,
                                 &theme,
