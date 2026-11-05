@@ -35,20 +35,64 @@ pub struct DiagnoseResult {
     pub bad_lines: Vec<LineDiagnostic>,
 }
 
-/// Diagnose an asciicast file for corrupt or unparseable lines.
-///
-/// Scans the entire file without failing, collecting information about
-/// every line that cannot be parsed as a valid event.
-pub fn diagnose<P: AsRef<Path>>(path: P) -> Result<DiagnoseResult> {
-    let path = path.as_ref();
-    let mut lines = codec::open_reader(path)?.lines();
+/// Verdict on one raw line, shared by `diagnose` and `repair` so they agree.
+enum Verdict {
+    Blank,
+    Valid,
+    Bad(String),
+}
 
-    // Validate header
-    let header_line = lines
-        .next()
-        .context("File is empty")?
-        .context("Failed to read header line")?;
+fn classify(raw: &[u8]) -> Verdict {
+    let Ok(line) = std::str::from_utf8(raw) else {
+        return Verdict::Bad("invalid UTF-8".to_string());
+    };
+    if line.trim().is_empty() {
+        Verdict::Blank
+    } else if line.contains('\0') {
+        Verdict::Bad("contains null bytes (file corruption)".to_string())
+    } else {
+        match Event::from_json(line) {
+            Ok(_) => Verdict::Valid,
+            Err(e) => Verdict::Bad(e.to_string()),
+        }
+    }
+}
 
+/// Line reader over raw bytes. A read error is a decoder error and terminal, a gzip stream
+/// cannot resume after one, so callers stop on the first `Err`.
+struct RawLines {
+    reader: Box<dyn BufRead>,
+    buf: Vec<u8>,
+}
+
+impl RawLines {
+    fn next_line(&mut self) -> io::Result<Option<&[u8]>> {
+        self.buf.clear();
+        if self.reader.read_until(b'\n', &mut self.buf)? == 0 {
+            return Ok(None);
+        }
+        let mut end = self.buf.len();
+        if self.buf[..end].ends_with(b"\n") {
+            end -= 1;
+            if self.buf[..end].ends_with(b"\r") {
+                end -= 1;
+            }
+        }
+        Ok(Some(&self.buf[..end]))
+    }
+}
+
+/// Open a v3 cast file, returning the line reader positioned after the header and the header.
+fn open_v3(path: &Path) -> Result<(RawLines, String)> {
+    let mut lines = RawLines {
+        reader: codec::open_reader(path)?,
+        buf: Vec::new(),
+    };
+    let raw = lines
+        .next_line()
+        .context("Failed to read header line")?
+        .context("File is empty")?;
+    let header_line = String::from_utf8(raw.to_vec()).context("Header line is not valid UTF-8")?;
     let header: Header = serde_json::from_str(&header_line).context("Failed to parse header")?;
     if header.version != 3 {
         bail!(
@@ -56,96 +100,74 @@ pub fn diagnose<P: AsRef<Path>>(path: P) -> Result<DiagnoseResult> {
             header.version
         );
     }
+    Ok((lines, header_line))
+}
 
-    let mut total_lines = 1; // header
-    let mut valid_event_lines = 0;
-    let mut bad_lines = Vec::new();
-
-    for (line_num, line_result) in lines.enumerate() {
-        total_lines += 1;
-        let file_line = line_num + 2; // 1-based, header is line 1
-
-        let line = match line_result {
-            Ok(l) => l,
+/// Diagnose an asciicast file for corrupt or unparseable lines.
+///
+/// Scans the entire file without failing, collecting information about
+/// every line that cannot be parsed as a valid event. A decoder error ends
+/// the scan and is recorded once.
+pub fn diagnose<P: AsRef<Path>>(path: P) -> Result<DiagnoseResult> {
+    let (mut lines, _) = open_v3(path.as_ref())?;
+    let mut result = DiagnoseResult {
+        total_lines: 1, // header
+        valid_event_lines: 0,
+        bad_lines: Vec::new(),
+    };
+    loop {
+        let line_number = result.total_lines + 1;
+        match lines.next_line() {
+            Ok(None) => break,
+            Ok(Some(raw)) => result.record(line_number, classify(raw), raw.len()),
             Err(e) => {
-                bad_lines.push(LineDiagnostic {
-                    line_number: file_line,
-                    reason: format!("I/O error: {}", e),
-                    byte_len: 0,
-                });
-                continue;
+                let reason = format!("I/O error: {}", e);
+                result.record(line_number, Verdict::Bad(reason), 0);
+                break;
             }
-        };
-
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        if line.contains('\0') {
-            bad_lines.push(LineDiagnostic {
-                line_number: file_line,
-                reason: "contains null bytes (file corruption)".to_string(),
-                byte_len: line.len(),
-            });
-            continue;
-        }
-
-        if let Err(e) = Event::from_json(&line) {
-            bad_lines.push(LineDiagnostic {
-                line_number: file_line,
-                reason: format!("{}", e),
-                byte_len: line.len(),
-            });
-        } else {
-            valid_event_lines += 1;
         }
     }
+    Ok(result)
+}
 
-    Ok(DiagnoseResult {
-        total_lines,
-        valid_event_lines,
-        bad_lines,
-    })
+impl DiagnoseResult {
+    fn record(&mut self, line_number: usize, verdict: Verdict, byte_len: usize) {
+        self.total_lines += 1;
+        match verdict {
+            Verdict::Blank => {}
+            Verdict::Valid => self.valid_event_lines += 1,
+            Verdict::Bad(reason) => self.bad_lines.push(LineDiagnostic {
+                line_number,
+                reason,
+                byte_len,
+            }),
+        }
+    }
 }
 
 /// Repair an asciicast file by removing corrupt/unparseable lines.
 ///
 /// Streams the file through the codec, keeps only the header and valid event
 /// lines, and writes the result back atomically in the same format. Returns
-/// the number of lines removed.
+/// the number of lines removed. A decoder error aborts and leaves the file as is.
 pub fn repair<P: AsRef<Path>>(path: P) -> Result<usize> {
     let path = path.as_ref();
-    let mut lines = codec::open_reader(path)?.lines();
-
-    let header_line = lines
-        .next()
-        .context("File is empty")?
-        .context("Failed to read header line")?;
-    let header: Header = serde_json::from_str(&header_line).context("Failed to parse header")?;
-    if header.version != 3 {
-        bail!(
-            "Only asciicast v3 format is supported (got version {})",
-            header.version
-        );
-    }
-
+    let (mut lines, header_line) = open_v3(path)?;
     let mut removed = 0;
     codec::atomic_write(path, |w| {
         writeln!(w, "{}", header_line)?;
-        for line in lines {
-            let line = line.context("Failed to read line")?;
-            if line.trim().is_empty() {
-                continue;
+        while let Some(raw) = lines.next_line().context("Failed to read line")? {
+            match classify(raw) {
+                Verdict::Blank => {}
+                Verdict::Bad(_) => removed += 1,
+                Verdict::Valid => {
+                    w.write_all(raw)?;
+                    writeln!(w)?;
+                }
             }
-            if line.contains('\0') || Event::from_json(&line).is_err() {
-                removed += 1;
-                continue;
-            }
-            writeln!(w, "{}", line)?;
         }
         Ok(())
     })?;
-
     Ok(removed)
 }
 
