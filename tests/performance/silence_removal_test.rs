@@ -219,57 +219,69 @@ fn verify_constant_space_complexity() {
 // Scalability Edge Cases
 // ========================================================================
 
+/// Fastest of `runs` timed transforms over `count` fresh events, in seconds.
+///
+/// The minimum is the run least disturbed by other load on the machine.
+fn min_transform_time(count: usize, runs: usize) -> f64 {
+    (0..runs)
+        .map(|_| {
+            let mut events = generate_synthetic_events(count);
+            measure_transform_time(&mut events, 2.0)
+        })
+        .fold(f64::INFINITY, f64::min)
+}
+
+/// Assert that 10x more events cost far less than 100x time (quadratic).
+///
+/// Linear growth gives a ratio near 10, quadratic near 100, so 30 separates
+/// them with room for noise and does not depend on absolute machine speed.
+fn assert_not_quadratic(small: usize) {
+    let t_small = min_transform_time(small, 7);
+    let t_large = min_transform_time(small * 10, 7);
+    let ratio = t_large / t_small.max(1e-9);
+
+    println!(
+        "{small} events: {t_small:.6}s, {} events: {t_large:.6}s, ratio {ratio:.1}x",
+        small * 10
+    );
+    assert!(
+        ratio < 30.0,
+        "10x events cost {ratio:.1}x time, expected < 30x (linear ~10x, quadratic ~100x)"
+    );
+}
+
 /// Test: File with 1 event (no overhead issues)
 #[test]
 fn single_event_no_overhead() {
     let mut events = vec![Event::output(5.0, "only event")];
 
-    let start = Instant::now();
-    let mut transform = SilenceRemoval::new(2.0);
-    transform.transform(&mut events);
-    let duration = start.elapsed();
+    SilenceRemoval::new(2.0).transform(&mut events);
 
-    // Should complete in microseconds, not milliseconds
-    assert!(
-        duration.as_micros() < 1000,
-        "Single event took {}us, expected < 1000us",
-        duration.as_micros()
-    );
+    assert_eq!(events.len(), 1);
     assert!((events[0].time - 2.0).abs() < 0.001);
 }
 
-/// Test: File with 100 events (small file fast path)
+/// Test: File with 100 events (small file, scaling stays linear)
 #[test]
 fn hundred_events_fast() {
     let mut events = generate_synthetic_events(100);
 
-    let start = Instant::now();
-    let mut transform = SilenceRemoval::new(2.0);
-    transform.transform(&mut events);
-    let duration = start.elapsed();
+    SilenceRemoval::new(2.0).transform(&mut events);
 
-    // Should complete in microseconds
-    assert!(
-        duration.as_micros() < 1000,
-        "100 events took {}us, expected < 1000us",
-        duration.as_micros()
-    );
+    // every 10th event had a 5.0s gap, clamped to 2.0, the rest stay at 0.1
+    assert_eq!(events.len(), 100);
+    assert!(events.iter().all(|e| e.time <= 2.0 + 0.001));
+    assert_not_quadratic(1_000);
 }
 
-/// Test: File with 10,000 events (medium file)
+/// Test: File with 10,000 events (medium file, scaling stays linear)
 #[test]
 fn ten_thousand_events_reasonable_time() {
     let mut events = generate_synthetic_events(10_000);
 
-    let start = Instant::now();
-    let mut transform = SilenceRemoval::new(2.0);
-    transform.transform(&mut events);
-    let duration = start.elapsed();
+    SilenceRemoval::new(2.0).transform(&mut events);
 
-    // Should complete in under 100ms
-    assert!(
-        duration.as_millis() < 100,
-        "10K events took {}ms, expected < 100ms",
-        duration.as_millis()
-    );
+    assert_eq!(events.len(), 10_000);
+    assert!(events.iter().all(|e| e.time <= 2.0 + 0.001));
+    assert_not_quadratic(10_000);
 }
