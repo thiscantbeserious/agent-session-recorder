@@ -80,18 +80,18 @@ Considerations:
 Goal: bring `src/storage/mod.rs` (1012 lines) under the limit before adding logic.
 Owner: implementer
 
-- [ ] Move `SessionInfo`, `format_smart_time`, `list_sessions`, `resolve_cast_path`,
+- [x] Move `SessionInfo`, `format_smart_time`, `list_sessions`, `resolve_cast_path`,
       `find_cast_file_by_name`, `list_cast_files_short` to `src/storage/sessions.rs`
       (as `impl StorageManager` blocks where they are methods).
-- [ ] Move `StorageStats`, `get_stats`, `calculate_disk_percentage`, `query_disk_total_bytes`
+- [x] Move `StorageStats`, `get_stats`, `calculate_disk_percentage`, `query_disk_total_bytes`
       to `src/storage/stats.rs`.
-- [ ] Move `ImportError`, `validate_agent_name`, `validate_cast_header`,
+- [x] Move `ImportError`, `validate_agent_name`, `validate_cast_header`,
       `resolve_filename_conflict`, `import_cast_file` to `src/storage/import.rs`.
-- [ ] Re-export from `mod.rs` so every existing `crate::storage::X` / `agr::storage::X` import
+- [x] Re-export from `mod.rs` so every existing `crate::storage::X` / `agr::storage::X` import
       still resolves.
-- [ ] Move the inline `#[cfg(test)]` tests to `tests/integration/storage_test.rs` (private
+- [x] Move the inline `#[cfg(test)]` tests to `tests/integration/storage_test.rs` (private
       helpers they need become `pub(crate)` or are tested through the public API).
-- [ ] `cargo test` passes with zero changes outside `src/storage/` and the test file.
+- [x] `cargo test` passes with zero changes outside `src/storage/` and the test file.
 
 Files: `src/storage/mod.rs`, `src/storage/sessions.rs`, `src/storage/stats.rs`,
        `src/storage/import.rs`, `tests/integration/storage_test.rs`
