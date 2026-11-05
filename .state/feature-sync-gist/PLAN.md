@@ -74,9 +74,9 @@ Goal: `codec::atomic_write_raw(path, bytes)`, same temp, fsync, rename and dir s
 `atomic_write`, never encodes.
 Owner: implementer
 
-- [ ] RED: writing gzip bytes to `x.cast.gz` leaves the exact bytes (no double gzip), the temp
+- [x] RED: writing gzip bytes to `x.cast.gz` leaves the exact bytes (no double gzip), the temp
       is hidden and removed, a failing write leaves no temp and no target.
-- [ ] GREEN: share `write_target` internals, no copy-paste of the rename logic.
+- [x] GREEN: share `write_target` internals, no copy-paste of the rename logic.
 
 Files: `src/files/codec.rs`, `tests/integration/codec_test.rs`
 Depends on: none
