@@ -168,3 +168,22 @@ fn import_cast_file_accepts_valid_agent_names() {
         );
     }
 }
+
+/// Dot-dot without a separator is rejected, surrounding whitespace is trimmed on success.
+#[test]
+fn import_cast_file_rejects_bare_dotdot_and_trims_valid_names() {
+    let temp = TempDir::new().unwrap();
+    let source = temp.path().join("test.cast");
+    fs::write(&source, "{\"version\":3}\n[0.1,\"o\",\"t\"]\n").unwrap();
+    let manager = StorageManager::new(create_dir_config(temp.path()));
+
+    for name in ["..", "a..b"] {
+        let r = manager.import_cast_file(&source, name);
+        assert!(
+            matches!(r, Err(ImportError::InvalidAgentName(_))),
+            "{name}: {r:?}"
+        );
+    }
+    let ok = manager.import_cast_file(&source, "  claude ").unwrap();
+    assert!(ok.to_string_lossy().contains("/claude/"), "{ok:?}");
+}

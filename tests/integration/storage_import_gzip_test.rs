@@ -115,3 +115,23 @@ fn import_foreign_gz_is_rewritten_with_size_subfield() {
     assert_eq!(size, CAST.len() as u64);
     assert!(codec::same_content(&src, &out).unwrap());
 }
+
+#[test]
+fn import_errors_when_all_conflict_suffixes_are_taken() {
+    let temp = TempDir::new().unwrap();
+    let src = create_codec_session(temp.path(), "src", "a.cast", CAST);
+    let m = import_manager(&temp, Compression::None);
+    let dir = m.ensure_agent_dir("claude").unwrap();
+    fs::write(dir.join("a.cast"), "keep").unwrap();
+    for i in 1..=999 {
+        fs::write(dir.join(format!("a-{i}.cast")), "keep").unwrap();
+    }
+
+    let result = m.import_cast_file(&src, "claude");
+
+    assert!(
+        matches!(result, Err(ImportError::CopyFailed(_))),
+        "{result:?}"
+    );
+    assert_eq!(fs::read_to_string(dir.join("a-999.cast")).unwrap(), "keep");
+}

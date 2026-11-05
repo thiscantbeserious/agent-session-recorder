@@ -1,6 +1,7 @@
 //! Clipboard tests for `.cast.gz` sources. Fake tools only, the system clipboard is never touched.
 
 use agr::clipboard::copy::Copy;
+use agr::clipboard::plain_copy::is_owned_by;
 use agr::clipboard::tool::{CopyTool, CopyToolError};
 use agr::clipboard::{ClipboardError, CopyMethod, CopyResult, MAX_CONTENT_SIZE};
 use agr::files::codec;
@@ -68,8 +69,17 @@ fn copier(rec: &'static Recorder, base: &Path) -> Copy {
     Copy::with_tools(vec![Box::new(rec)]).with_temp_base(base.to_path_buf())
 }
 
+fn temp_dir(base: &Path) -> PathBuf {
+    base.join(format!("agr-clipboard-{}", my_uid()))
+}
+
+fn my_uid() -> u32 {
+    // SAFETY: getuid has no preconditions and cannot fail.
+    unsafe { libc::getuid() }
+}
+
 fn leftovers(base: &Path) -> Vec<String> {
-    let dir = base.join("agr-clipboard");
+    let dir = temp_dir(base);
     match std::fs::read_dir(dir) {
         Ok(rd) => rd
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
@@ -89,7 +99,7 @@ fn gzip_file_copy_hands_tool_plain_cast_with_decompressed_content() {
 
     assert!(matches!(result, CopyResult::FileCopied { .. }));
     let (path, content) = rec.file.lock().unwrap().clone().unwrap();
-    assert_eq!(path, base.path().join("agr-clipboard").join("x.cast"));
+    assert_eq!(path, temp_dir(base.path()).join("x.cast"));
     assert_eq!(content, SESSION);
 }
 
@@ -163,16 +173,69 @@ fn gzip_text_fallback_limit_uses_decompressed_size() {
     let gz = write_gz(dir.path(), "big.cast.gz", &big);
     assert!(std::fs::metadata(&gz).unwrap().len() < MAX_CONTENT_SIZE);
     let rec = leak(Recorder::new(true, false));
-    let clip = base.path().join("agr-clipboard");
-    std::fs::create_dir_all(&clip).unwrap();
-    std::fs::write(clip.join("marker"), "x").unwrap();
 
     let result = copier(rec, base.path()).file(&gz);
 
     assert!(matches!(result, Err(ClipboardError::FileTooLarge { .. })));
     assert!(rec.text.lock().unwrap().is_none());
-    // rejected before decompressing: temp dir untouched, not even cleared
-    assert_eq!(leftovers(base.path()), vec!["marker".to_string()]);
+    assert!(leftovers(base.path()).is_empty());
+}
+
+#[test]
+fn gzip_file_reference_has_no_size_limit() {
+    let dir = TempDir::new().unwrap();
+    let base = TempDir::new().unwrap();
+    let big = "a".repeat(MAX_CONTENT_SIZE as usize + 1);
+    let gz = write_gz(dir.path(), "big.cast.gz", &big);
+    let rec = leak(Recorder::new(true, true));
+
+    let result = copier(rec, base.path()).file(&gz);
+
+    assert!(
+        matches!(result, Ok(CopyResult::FileCopied { .. })),
+        "{result:?}"
+    );
+    assert_eq!(leftovers(base.path()), vec!["big.cast".to_string()]);
+}
+
+#[cfg(unix)]
+#[test]
+fn gzip_temp_dir_is_created_0700() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = TempDir::new().unwrap();
+    let base = TempDir::new().unwrap();
+    let gz = write_gz(dir.path(), "x.cast.gz", SESSION);
+    let rec = leak(Recorder::new(true, true));
+
+    copier(rec, base.path()).file(&gz).unwrap();
+
+    let mode = std::fs::metadata(temp_dir(base.path()))
+        .map(|m| m.permissions().mode() & 0o777)
+        .ok();
+    assert_eq!(mode, Some(0o700));
+}
+
+#[cfg(unix)]
+#[test]
+fn gzip_temp_dir_symlink_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let base = TempDir::new().unwrap();
+    let elsewhere = TempDir::new().unwrap();
+    std::os::unix::fs::symlink(elsewhere.path(), temp_dir(base.path())).unwrap();
+    let gz = write_gz(dir.path(), "x.cast.gz", SESSION);
+    let rec = leak(Recorder::new(true, true));
+
+    let result = copier(rec, base.path()).file(&gz);
+
+    assert!(result.is_err(), "{result:?}");
+    assert!(rec.file.lock().unwrap().is_none());
+    assert_eq!(std::fs::read_dir(elsewhere.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn temp_dir_owner_must_be_current_user() {
+    assert!(is_owned_by(1000, 1000));
+    assert!(!is_owned_by(0, 1000));
 }
 
 #[test]

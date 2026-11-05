@@ -249,3 +249,41 @@ fn session_path_rejects_hidden_even_with_session_suffix() {
     assert!(!codec::is_session_path(Path::new("d/.x.cast")));
     assert!(!codec::is_session_path(Path::new("d/x.cast.gz.bak")));
 }
+
+fn gz_member(body: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    enc.write_all(body).unwrap();
+    enc.finish().unwrap()
+}
+
+#[test]
+fn open_reader_decodes_concatenated_gzip_members() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("m.cast.gz");
+    let mut bytes = gz_member(b"{\"version\":3}\n");
+    bytes.extend(gz_member(b"[0.1,\"o\",\"hi\"]\n"));
+    std::fs::write(&path, bytes).unwrap();
+
+    let mut text = String::new();
+    let read = codec::open_reader(&path).unwrap().read_to_string(&mut text);
+
+    assert!(read.is_ok(), "{read:?}");
+    assert_eq!(text, "{\"version\":3}\n[0.1,\"o\",\"hi\"]\n");
+}
+
+#[cfg(unix)]
+#[test]
+fn failed_dir_fsync_after_rename_still_returns_ok() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = TempDir::new().unwrap();
+    // write+exec without read: rename works, opening the dir for fsync does not
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o300)).unwrap();
+    let path = dir.path().join("s.cast");
+
+    let result = codec::atomic_write(&path, |w| Ok(w.write_all(b"x")?));
+
+    std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(std::fs::read(&path).unwrap(), b"x");
+}

@@ -51,46 +51,34 @@ impl std::error::Error for ImportError {}
 /// Returns the trimmed agent name on success.
 fn validate_agent_name(agent: &str) -> Result<String, ImportError> {
     let trimmed = agent.trim();
+    let problem = if trimmed.is_empty() {
+        "Agent name cannot be empty".to_string()
+    } else if trimmed.contains('/') || trimmed.contains('\\') {
+        format!("Agent name cannot contain path separators: {}", agent)
+    } else if trimmed.contains("..") {
+        format!("Agent name cannot contain '..': {}", agent)
+    } else {
+        return Ok(trimmed.to_string());
+    };
+    Err(ImportError::InvalidAgentName(problem))
+}
 
-    // Reject empty or whitespace-only names
-    if trimmed.is_empty() {
-        return Err(ImportError::InvalidAgentName(
-            "Agent name cannot be empty".to_string(),
-        ));
+/// Map an open failure to `PermissionDenied` or `NotFound`.
+fn open_error(path: &Path, e: &anyhow::Error) -> ImportError {
+    let denied = e
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|io| io.kind() == std::io::ErrorKind::PermissionDenied);
+    let msg = format!("{}: {:#}", path.display(), e);
+    if denied {
+        ImportError::PermissionDenied(msg)
+    } else {
+        ImportError::NotFound(msg)
     }
-
-    // Reject path separators
-    if trimmed.contains('/') || trimmed.contains('\\') {
-        return Err(ImportError::InvalidAgentName(format!(
-            "Agent name cannot contain path separators: {}",
-            agent
-        )));
-    }
-
-    // Reject path traversal attempts
-    if trimmed.contains("..") {
-        return Err(ImportError::InvalidAgentName(format!(
-            "Agent name cannot contain '..': {}",
-            agent
-        )));
-    }
-
-    Ok(trimmed.to_string())
 }
 
 /// First decoded line of a session, gunzipping `.cast.gz`.
 fn read_first_line(path: &Path) -> Result<String, ImportError> {
-    let mut reader = codec::open_reader(path).map_err(|e| {
-        let denied = e
-            .downcast_ref::<std::io::Error>()
-            .is_some_and(|io| io.kind() == std::io::ErrorKind::PermissionDenied);
-        let msg = format!("{}: {:#}", path.display(), e);
-        if denied {
-            ImportError::PermissionDenied(msg)
-        } else {
-            ImportError::NotFound(msg)
-        }
-    })?;
+    let mut reader = codec::open_reader(path).map_err(|e| open_error(path, &e))?;
     let mut line = String::new();
     reader
         .read_line(&mut line)
@@ -106,56 +94,45 @@ fn read_first_line(path: &Path) -> Result<String, ImportError> {
 /// - First line is valid JSON with a "version" field
 /// - Version is 2 or 3
 pub fn validate_cast_header(path: &Path) -> Result<(), ImportError> {
-    // Check if file exists
     if !path.exists() {
         return Err(ImportError::NotFound(format!("{}", path.display())));
     }
-
     if !codec::is_session_path(path) {
         return Err(ImportError::WrongExtension(format!(
             "Expected .cast or .cast.gz extension, got: {}",
             path.display()
         )));
     }
+    check_version(read_first_line(path)?.trim())
+}
 
-    let first_line = read_first_line(path)?;
-
-    // Parse as JSON and check for version field
-    let json: serde_json::Value = serde_json::from_str(first_line.trim())
+/// First line must be JSON with a `version` of 2 or 3.
+fn check_version(first_line: &str) -> Result<(), ImportError> {
+    let json: serde_json::Value = serde_json::from_str(first_line)
         .map_err(|e| ImportError::InvalidFormat(format!("First line is not valid JSON: {}", e)))?;
-
-    // Check for version field
     let version = json.get("version").ok_or_else(|| {
         ImportError::InvalidFormat("Missing 'version' field in header".to_string())
     })?;
-
-    // Accept version 2 or 3
-    if let Some(v) = version.as_u64() {
-        if v == 2 || v == 3 {
-            return Ok(());
-        }
+    match version.as_u64() {
+        Some(2 | 3) => Ok(()),
+        _ => Err(ImportError::InvalidFormat(format!(
+            "Unsupported asciicast version: {}",
+            version
+        ))),
     }
-
-    Err(ImportError::InvalidFormat(format!(
-        "Unsupported asciicast version: {}",
-        version
-    )))
 }
 
 /// Resolve the target path for `stem` with `suffix`, adding `-1`, `-2`, ... on conflict.
 ///
-/// A conflict is either variant (`.cast` or `.cast.gz`) already existing.
-fn resolve_target(dir: &Path, stem: &str, suffix: &str) -> PathBuf {
+/// A conflict is either variant (`.cast` or `.cast.gz`) already existing. Errors when every
+/// candidate is taken, an existing session is never overwritten.
+fn resolve_target(dir: &Path, stem: &str, suffix: &str) -> Result<PathBuf, ImportError> {
     let taken = |p: &Path| p.exists() || other_variant(p).exists();
-    let target = dir.join(format!("{stem}{suffix}"));
-    if !taken(&target) {
-        return target;
-    }
-    (1..=999)
-        .map(|i| dir.join(format!("{stem}-{i}{suffix}")))
+    let first = dir.join(format!("{stem}{suffix}"));
+    std::iter::once(first)
+        .chain((1..=999).map(|i| dir.join(format!("{stem}-{i}{suffix}"))))
         .find(|c| !taken(c))
-        // Fallback - return original target (should be very rare)
-        .unwrap_or(target)
+        .ok_or_else(|| ImportError::CopyFailed(format!("Too many conflicting names for {stem}")))
 }
 
 /// Defense in depth: verify the target path is within the storage directory.
@@ -225,7 +202,7 @@ impl StorageManager {
             Compression::Gzip => codec::GZIP_SUFFIX,
             Compression::None => codec::SESSION_SUFFIX,
         };
-        let target = resolve_target(&agent_dir, codec::session_stem(filename), suffix);
+        let target = resolve_target(&agent_dir, codec::session_stem(filename), suffix)?;
         ensure_inside(&self.storage_dir(), &target)?;
         store(source, &target)?;
         Ok(target)

@@ -282,6 +282,19 @@ mod state {
     }
 
     #[test]
+    fn malformed_file_warns_naming_the_path_and_missing_file_does_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        assert_eq!(State::load_checked(&path).1, None);
+        std::fs::write(&path, "compress_offer_version = [not toml").unwrap();
+        let warning = State::load_checked(&path).1;
+        assert!(
+            warning.is_some_and(|w| w.contains("state.toml")),
+            "no warning for broken state"
+        );
+    }
+
+    #[test]
     fn save_then_load_round_trips_and_leaves_no_temp() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sub").join("state.toml");

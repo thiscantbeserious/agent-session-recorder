@@ -158,3 +158,17 @@ fn trailer_fallback_over_4gib_when_isize_below_on_disk() {
     let got = codec::uncompressed_size(&p).unwrap();
     assert_eq!(got, UncompressedSize::Over4GiB);
 }
+
+#[test]
+fn trailer_fallback_on_multi_member_gzip_reports_last_member_only() {
+    // Documented limit: foreign multi-member gzip shows the last member's ISIZE.
+    let dir = TempDir::new().unwrap();
+    let mut bytes = foreign_gz(0, 1000);
+    bytes.extend(foreign_gz(0, 1000));
+    let path = put(&dir, "m.cast.gz", &bytes);
+
+    assert_eq!(
+        codec::uncompressed_size(&path).unwrap(),
+        UncompressedSize::Exact(1000)
+    );
+}
