@@ -7,9 +7,9 @@ use std::path::Path;
 mod diff;
 use diff::print_diff_preview;
 
-use super::prompt::should_proceed;
+use super::prompt::{ask_with_default, should_proceed};
 
-use agr::config::{migrate_config, MigrateResult};
+use agr::config::{apply_prompts, migrate_config, MigrateResult};
 use agr::theme::{ansi, gate};
 use agr::theme::{current_theme, Theme};
 use agr::Config;
@@ -111,8 +111,11 @@ pub fn handle_migrate(auto_confirm: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Write the updated config atomically
-    atomic_write(&config_path, &result.content)?;
+    // Ask post-migrate questions first so the file is written once
+    let content = apply_prompts(&result, |p| {
+        ask_with_default(p.question, p.default, auto_confirm)
+    })?;
+    atomic_write(&config_path, &content)?;
     println!("{}", theme.success_text("Config updated successfully."));
 
     Ok(())
@@ -139,10 +142,13 @@ fn handle_new_config_creation(
         return Ok(());
     }
 
+    let content = apply_prompts(result, |p| {
+        ask_with_default(p.question, p.default, auto_confirm)
+    })?;
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    atomic_write(config_path, &result.content)?;
+    atomic_write(config_path, &content)?;
     println!(
         "{}",
         theme.success_text("Config file created successfully.")

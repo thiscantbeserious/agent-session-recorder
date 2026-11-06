@@ -36,3 +36,61 @@ pub fn should_proceed(message: &str, auto_confirm: bool) -> Result<bool> {
     let response = input.trim().to_lowercase();
     Ok(response == "y" || response == "yes")
 }
+
+/// Parse a yes/no answer. Empty or unknown input keeps `default`.
+pub fn parse_answer(input: &str, default: bool) -> bool {
+    match input.trim().to_lowercase().as_str() {
+        "y" | "yes" => true,
+        "n" | "no" => false,
+        _ => default,
+    }
+}
+
+/// Ask a yes/no question with a default answer.
+///
+/// `auto_confirm` or a non-TTY stdin returns `default` silently.
+#[cfg(not(tarpaulin_include))]
+pub fn ask_with_default(message: &str, default: bool, auto_confirm: bool) -> Result<bool> {
+    if auto_confirm || !io::IsTerminal::is_terminal(&io::stdin()) {
+        return Ok(default);
+    }
+    let hint = if default { "[Y/n]" } else { "[y/N]" };
+    print!("{} {} ", current_theme().primary_text(message), hint);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().lock().read_line(&mut input)?;
+    Ok(parse_answer(&input, default))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_keeps_default() {
+        assert!(parse_answer("", true));
+        assert!(!parse_answer("", false));
+        assert!(parse_answer("  \n", true));
+    }
+
+    #[test]
+    fn no_answers_are_false() {
+        assert!(!parse_answer("n", true));
+        assert!(!parse_answer("no", true));
+        assert!(!parse_answer("NO\n", true));
+    }
+
+    #[test]
+    fn yes_answers_are_true() {
+        assert!(parse_answer("y", false));
+        assert!(parse_answer("YES", false));
+        assert!(parse_answer(" yes \n", false));
+    }
+
+    #[test]
+    fn unknown_keeps_default() {
+        assert!(parse_answer("x", true));
+        assert!(!parse_answer("x", false));
+    }
+}
