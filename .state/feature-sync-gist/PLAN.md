@@ -681,6 +681,172 @@ Owner: implementer
 Files: `.state/feature-sync-gist/PLAN.md`
 Depends on: Stage 11, Stage 22, Stage 23, Stage 30, Stage 31
 
+### Stage 32: Module refactor, crypto layer move
+
+Goal: `src/sync/crypto/` exists, pure move, nothing else changes. Starts the module structure
+refinement (ADR "Module structure (refinement 2026-11-06)"), only after the user approved it.
+Owner: implementer
+
+Rules for Stages 32 to 41: no behavior change. Before each stage, on the parent commit, save the
+sorted test leaf names (`cargo test --all-targets -- --list 2>/dev/null | grep ': test$' | sed
+'s/: test$//; s/.*:://' | sort`, duplicates kept) and `shasum tests/integration/snapshots/*.snap
+tests/integration/snapshots/*/*.snap` to `/tmp`, after the stage both must be identical (only
+Stage 40 adds one test name). Every stage ends with the full gates from the sdlc rules
+(fmt, clippy all-targets, test, Windows check, MSRV 1.88). Moves use `git mv` so history follows.
+
+- [ ] `git mv src/sync/crypto.rs src/sync/crypto/mod.rs`, `git mv src/sync/blob.rs src/sync/crypto/blob.rs`.
+- [ ] `crypto/mod.rs` declares `pub mod blob;`, `crypto/blob.rs` imports `super::{CryptoError, Key}`.
+- [ ] `sync/mod.rs`: `pub use crypto::blob;` shim, as such every `sync::blob` path still compiles.
+- [ ] Test names and snap hashes identical.
+
+Files: `src/sync/mod.rs`, `src/sync/crypto.rs`, `src/sync/crypto/mod.rs`, `src/sync/blob.rs`, `src/sync/crypto/blob.rs`
+Depends on: Stage 24
+
+### Stage 33: Module refactor, backend layer move
+
+Goal: `src/sync/backend/` with the trait, the fakes and `gist/`, pure move.
+Owner: implementer
+
+- [ ] `git mv`: `backend.rs` to `backend/mod.rs`, `memory.rs` and `file.rs` to `backend/`,
+      `gist.rs` to `backend/gist/mod.rs`, `gist_parse.rs` to `backend/gist/parse.rs`,
+      `parts.rs`, `pace.rs` and `runner.rs` to `backend/gist/`.
+- [ ] Moved files fix their own `super::` paths (no `super::super` across layers, see ADR rule 6).
+- [ ] `sync/mod.rs` shims: `pub use backend::{file, gist, memory};` and
+      `pub use backend::gist::{pace, parse as gist_parse, parts, runner};`.
+- [ ] Grep: no file in `src/sync/backend/` names `crypto`, `engine` or `app`.
+- [ ] Test names and snap hashes identical.
+
+Files: `src/sync/mod.rs`, `src/sync/backend.rs`, `src/sync/backend/mod.rs`, `src/sync/memory.rs`, `src/sync/backend/memory.rs`, `src/sync/file.rs`, `src/sync/backend/file.rs`, `src/sync/gist.rs`, `src/sync/backend/gist/mod.rs`, `src/sync/gist_parse.rs`, `src/sync/backend/gist/parse.rs`, `src/sync/parts.rs`, `src/sync/backend/gist/parts.rs`, `src/sync/pace.rs`, `src/sync/backend/gist/pace.rs`, `src/sync/runner.rs`, `src/sync/backend/gist/runner.rs`
+Depends on: Stage 32
+
+### Stage 34: Module refactor, engine layer move
+
+Goal: `src/sync/engine/` with plan, scan, run, push, pull, fail, record, index and lock, pure move.
+Owner: implementer
+
+- [ ] `git mv` the nine files to `src/sync/engine/`, new `engine/mod.rs` declares them with the
+      visibility they have today (`pub` for plan, scan, run, index, lock, private for the rest).
+- [ ] Cross-layer imports in the moved files use `crate::sync::crypto` and `crate::sync::backend`.
+- [ ] `sync/mod.rs` shims: `pub use engine::{index, lock, plan, run, scan};`.
+- [ ] Test names and snap hashes identical.
+
+Files: `src/sync/mod.rs`, `src/sync/engine/mod.rs`, `src/sync/plan.rs`, `src/sync/engine/plan.rs`, `src/sync/scan.rs`, `src/sync/engine/scan.rs`, `src/sync/run.rs`, `src/sync/engine/run.rs`, `src/sync/push.rs`, `src/sync/engine/push.rs`, `src/sync/pull.rs`, `src/sync/engine/pull.rs`, `src/sync/fail.rs`, `src/sync/engine/fail.rs`, `src/sync/record.rs`, `src/sync/engine/record.rs`, `src/sync/index.rs`, `src/sync/engine/index.rs`, `src/sync/lock.rs`, `src/sync/engine/lock.rs`
+Depends on: Stage 33
+
+### Stage 35: Module refactor, app layer move
+
+Goal: `src/sync/app/` with setup, key, auto and format, pure move. After this stage `src/sync/`
+holds only `mod.rs` and the four layer folders.
+Owner: implementer
+
+- [ ] `git mv` `setup.rs`, `key.rs`, `auto.rs`, `format.rs` to `src/sync/app/`, new `app/mod.rs`.
+- [ ] `sync/mod.rs` shims: `pub use app::{auto, format, key, setup};`.
+- [ ] `ls src/sync` shows `mod.rs crypto backend engine app` only.
+- [ ] Test names and snap hashes identical.
+
+Files: `src/sync/mod.rs`, `src/sync/app/mod.rs`, `src/sync/setup.rs`, `src/sync/app/setup.rs`, `src/sync/key.rs`, `src/sync/app/key.rs`, `src/sync/auto.rs`, `src/sync/app/auto.rs`, `src/sync/format.rs`, `src/sync/app/format.rs`
+Depends on: Stage 34
+
+### Stage 36: Module refactor, crypto split
+
+Goal: every crypto file about 400 lines or less, paths unchanged through re-exports.
+Owner: implementer
+
+- [ ] `crypto/mod.rs` keeps Key, CryptoError, hashes and their tests, `seal.rs` gets the v1
+      one-shot seal and open plus the meta token and their tests, `phrase.rs` the phrase and its tests.
+- [ ] `crypto/mod.rs` re-exports `seal`, `open`, `seal_meta`, `open_meta`, `Meta`,
+      `export_phrase`, `import_phrase`, `PhraseError`, every `crypto::x` path stays valid.
+- [ ] `crypto/blob.rs` to `crypto/blob/mod.rs` (`git mv`), its tests move unchanged to
+      `crypto/blob/tests.rs` (`#[cfg(test)] mod tests;`).
+- [ ] `wc -l` of every file in `src/sync/crypto/` about 400 or less, test names and snap hashes identical.
+
+Files: `src/sync/crypto/mod.rs`, `src/sync/crypto/seal.rs`, `src/sync/crypto/phrase.rs`, `src/sync/crypto/blob.rs`, `src/sync/crypto/blob/mod.rs`, `src/sync/crypto/blob/tests.rs`
+Depends on: Stage 35
+
+### Stage 37: Module refactor, gist split
+
+Goal: `backend/gist/mod.rs` holds production code only, its tests split by topic.
+Owner: implementer
+
+- [ ] `gist/mod.rs` keeps the 336 production lines and declares `#[cfg(test)] mod fake;`,
+      `#[cfg(test)] mod push_tests;`, `#[cfg(test)] mod pull_tests;`.
+- [ ] `fake.rs`: fake runner, `ok`, `fail`, `backend`, `scrub`, `data_files`, `remote_parts`,
+      `source_of` as `pub(super)`, plus the check, list, create, describe, delete, pacer and
+      stderr mapping tests.
+- [ ] `push_tests.rs`: push, compare-and-swap, parts, commit date and source tests.
+      `pull_tests.rs`: pull, missing part and clone lifetime tests.
+- [ ] Every file about 400 lines or less, test names and snap hashes identical.
+
+Files: `src/sync/backend/gist/mod.rs`, `src/sync/backend/gist/fake.rs`, `src/sync/backend/gist/push_tests.rs`, `src/sync/backend/gist/pull_tests.rs`
+Depends on: Stage 35
+
+### Stage 38: Module refactor, app split
+
+Goal: auto and format under 400 lines, the detached child spawn sits with auto push.
+Owner: implementer
+
+- [ ] `app/auto.rs` to `app/auto/mod.rs` (`git mv`): decide, blocker, after_recording, on_path
+      and their tests stay, `app/auto/child.rs` gets run, error_line, take_error_line and their
+      tests, re-exported from `auto/mod.rs`.
+- [ ] `spawn_detached` moves from `backend/gist/runner.rs` to `app/auto/mod.rs` unchanged,
+      `src/recording/auto_push.rs` calls `auto::spawn_detached` (`runner` is not a public name after Stage 39).
+- [ ] `app/format.rs` to `app/format/mod.rs` (`git mv`): label, status lines, totals, shared
+      helpers and the test fixtures stay, `app/format/summary.rs` gets preview, privacy,
+      problem, delete preview, rate limit and summary lines and their tests, re-exported.
+- [ ] Every file about 400 lines or less, test names and snap hashes identical.
+
+Files: `src/sync/app/auto.rs`, `src/sync/app/auto/mod.rs`, `src/sync/app/auto/child.rs`, `src/sync/app/format.rs`, `src/sync/app/format/mod.rs`, `src/sync/app/format/summary.rs`, `src/sync/backend/gist/runner.rs`, `src/recording/auto_push.rs`
+Depends on: Stage 35
+
+### Stage 39: Module refactor, facade and testing module
+
+Goal: outside code sees only `agr::sync::<item>` and `agr::sync::testing::<item>`, the shims are gone.
+Owner: implementer
+
+- [ ] `sync/mod.rs`: layers are private `mod`, the facade re-exports exactly the list in the
+      ADR, `#[doc(hidden)] pub mod testing` re-exports the test list, shims from Stages 32 to 35 removed.
+- [ ] Every cross-layer import inside `src/sync/` written as `crate::sync::<layer>::...`.
+- [ ] `src/commands/sync/{run,key}.rs` and `src/recording/auto_push.rs` use facade paths only,
+      the integration tests and `sync_gist_live.rs` use facade or `testing` paths only.
+- [ ] Grep: no `sync::(crypto|backend|engine|app|blob|gist|memory|index|plan|scan|run)::`
+      outside `src/sync/`.
+- [ ] `cargo test --test sync_gist_live --no-run` compiles (ignored live test), test names and snap hashes identical.
+
+Files: `src/sync/mod.rs`, `src/sync/crypto/mod.rs`, `src/sync/backend/mod.rs`, `src/sync/engine/mod.rs`, `src/sync/app/mod.rs`, `src/sync/engine/run.rs`, `src/sync/engine/scan.rs`, `src/sync/engine/push.rs`, `src/sync/engine/pull.rs`, `src/sync/app/setup.rs`, `src/sync/app/key.rs`, `src/sync/app/auto/mod.rs`, `src/sync/app/auto/child.rs`, `src/sync/app/format/mod.rs`, `src/sync/app/format/summary.rs`, `src/commands/sync/run.rs`, `src/commands/sync/key.rs`, `src/recording/auto_push.rs`, `tests/integration/sync_engine_test.rs`, `tests/integration/sync_index_fields_test.rs`, `tests/integration/sync_multi_machine_test.rs`, `tests/integration/helpers/sync_net.rs`, `tests/sync_gist_live.rs`
+Depends on: Stage 36, Stage 37, Stage 38
+
+### Stage 40: Module refactor, item visibility and layer check
+
+Goal: nothing is wider than it needs to be, the dependency rules are tested.
+Owner: implementer
+
+- [ ] Every item in `src/sync/` gets the narrowest visibility that compiles (`pub` only when
+      re-exported, `pub(in crate::sync)` across layers, `pub(super)` inside a layer). Items that
+      `dead_code` reports now are deleted, not allowed.
+- [ ] RED: `layer_rules_hold` in `sync/mod.rs` (`#[cfg(test)]`, reads `src/sync/**/*.rs` from
+      `CARGO_MANIFEST_DIR`) fails on a temporary `use crate::sync::engine` in
+      `backend/memory.rs`, on `chacha20poly1305` named in `engine/push.rs`, on
+      `Command::new` in `engine/run.rs` and on `crate::sync::app` in `engine/scan.rs`. Mutants are not committed.
+- [ ] GREEN: the test passes on the real tree. Test names identical plus `layer_rules_hold`.
+
+Files: `src/sync/mod.rs`, `src/sync/crypto/mod.rs`, `src/sync/crypto/seal.rs`, `src/sync/crypto/phrase.rs`, `src/sync/crypto/blob/mod.rs`, `src/sync/backend/mod.rs`, `src/sync/backend/memory.rs`, `src/sync/backend/file.rs`, `src/sync/backend/gist/mod.rs`, `src/sync/backend/gist/parse.rs`, `src/sync/backend/gist/parts.rs`, `src/sync/backend/gist/pace.rs`, `src/sync/backend/gist/runner.rs`, `src/sync/engine/mod.rs`, `src/sync/engine/plan.rs`, `src/sync/engine/scan.rs`, `src/sync/engine/run.rs`, `src/sync/engine/push.rs`, `src/sync/engine/pull.rs`, `src/sync/engine/fail.rs`, `src/sync/engine/record.rs`, `src/sync/engine/index.rs`, `src/sync/engine/lock.rs`, `src/sync/app/mod.rs`, `src/sync/app/setup.rs`, `src/sync/app/key.rs`, `src/sync/app/auto/mod.rs`, `src/sync/app/auto/child.rs`, `src/sync/app/format/mod.rs`, `src/sync/app/format/summary.rs`
+Depends on: Stage 39
+
+### Stage 41: Module refactor, docs and final verification
+
+Goal: docs match the tree, all gates green.
+Owner: implementer
+
+- [ ] ADR "Module layout" table marked superseded by the refinement, refinement status Accepted.
+- [ ] Stage 24 rules re-run with the new paths: no `println!` or `eprintln!` in `src/sync/`,
+      `Command::new` only in `backend/gist/runner.rs` and `app/auto/mod.rs`, no `--force` in git push args.
+- [ ] Full gates plus `cargo build --release && ./tests/e2e_test.sh`, Codecov patch coverage
+      not lower than before Stage 32, `wc -l` of every file in `src/sync/` about 400 or less.
+- [ ] Changed files vs origin/main recorded in the progress notes (expected 100, see ADR PR size).
+
+Files: `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
+Depends on: Stage 40
+
 ## Batches
 
 1. Stage 1, Stage 2, Stage 3 (parallel, no shared files)
@@ -703,6 +869,14 @@ Depends on: Stage 11, Stage 22, Stage 23, Stage 30, Stage 31
 18. Stage 29
 19. Stage 30, Stage 31 (parallel)
 20. Stage 24
+21. Stage 32
+22. Stage 33
+23. Stage 34
+24. Stage 35
+25. Stage 36, Stage 37, Stage 38 (parallel, crypto vs gist vs app files)
+26. Stage 39
+27. Stage 40
+28. Stage 41
 
 Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 
@@ -742,3 +916,13 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 29 | done | |
 | 30 | done | peak RSS (release, macOS, file backend): push 64 MiB 8077312 B, push 512 MiB 8044544 B, pull 64 MiB 7979008 B, pull 512 MiB 7880704 B, growth about 0, all under 64 MiB |
 | 31 | done | README, ADR drift, REQUIREMENTS cap wording. Measured RSS numbers come from Stage 30 |
+| 32 | todo | module refactor, waits for ADR approval |
+| 33 | todo | module refactor, waits for ADR approval |
+| 34 | todo | module refactor, waits for ADR approval |
+| 35 | todo | module refactor, waits for ADR approval |
+| 36 | todo | module refactor, waits for ADR approval |
+| 37 | todo | module refactor, waits for ADR approval |
+| 38 | todo | module refactor, waits for ADR approval |
+| 39 | todo | module refactor, waits for ADR approval |
+| 40 | todo | module refactor, waits for ADR approval |
+| 41 | todo | module refactor, waits for ADR approval |

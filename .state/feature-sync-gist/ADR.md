@@ -785,3 +785,212 @@ created, edited or deleted, the ignored `tests/sync_gist_live.rs` was not run):*
 - 2026-11-06: D9 design accepted by user: STREAM over XChaCha20-Poly1305 via `aead::stream`, 64 KiB chunks, plaintext SHA-256 check kept as sync identity.
 - 2026-11-06: D11 by user (D9 batch 1 review): the B1 description repair re-reads the gist manifest right before describing and only describes if it still equals the token it adopts. GitHub has no conditional description update, so a millisecond window remains in which a concurrent newer describe can be overwritten; documented as a known limit, it self-heals when the newer machine runs again.
 - 2026-11-06: D9 measured (Stage 30, release build, macOS, file backend): peak RSS push 64 MiB 7.7 MiB, push 512 MiB 7.7 MiB, pull 64 MiB 7.6 MiB, pull 512 MiB 7.5 MiB. Memory does not grow with session size.
+
+## Module structure (refinement 2026-11-06)
+
+**Status**: Proposed by the architect, waits for user approval. Nothing moves before that.
+
+**Problem**: `src/sync/` is 24 flat files (about 6.6k lines), almost every module is `pub mod`, five
+files are over 400 lines (`gist.rs` 1028, `blob.rs` 551, `format.rs` 511, `crypto.rs` 434,
+`auto.rs` 429) and the layering only exists in our heads. Commands, recording and tests reach
+into any module they like, as such every internal rename is a public API change.
+
+**Approach**: four layers as folders, a small facade in `sync/mod.rs`, one hidden `testing`
+module for the integration tests, and a unit test that fails when a layer imports what it must
+not. Pure moves first, then splits, then visibility.
+
+### Target tree
+
+```
+src/sync/
+  mod.rs            facade: layer declarations, public re-exports, `testing`, layer check test
+  crypto/           depends on nothing in sync
+    mod.rs          Key, CryptoError, sha256_hex, sha256_reader
+    seal.rs         one-shot `AGR1 || 0x01` seal and open, metadata token (Meta, seal_meta, open_meta)
+    phrase.rs       recovery phrase export and import, checksum, PhraseError
+    blob/
+      mod.rs        streamed blob v2, STREAM over XChaCha20-Poly1305, 64 KiB frames (D9)
+      tests.rs      cfg(test): truncation, reorder, bit flip, nonce layout and known-answer tests
+  backend/          opaque bytes and tokens only, never crypto
+    mod.rs          SyncBackend trait, RemoteEntry, BackendError, BlobSource, push_bytes, pull_bytes
+    memory.rs       MemoryBackend, in-memory fake with failure hooks
+    file.rs         FileBackend, directory fake behind AGR_SYNC_TEST_BACKEND_DIR (D10)
+    gist/
+      mod.rs        GistBackend, SyncBackend impl, scratch clone, stage, commit and push
+      parse.rs      list parsing, stderr mapping, scope check (was gist_parse.rs)
+      parts.rs      data.NNN part writer and chaining reader
+      pace.rs       clock and pacer for mutating GitHub calls
+      runner.rs     Runner trait and ProcessRunner, spawns gh and git
+      fake.rs       cfg(test): fake runner, helpers, gh side tests (check, list, create, describe, delete)
+      push_tests.rs cfg(test): push, parts and compare-and-swap tests
+      pull_tests.rs cfg(test): pull, missing part and clone lifetime tests
+  engine/           uses crypto, the backend trait and its own bookkeeping, never prints
+    mod.rs          layer declarations
+    plan.rs         pure decision table
+    scan.rs         plan inputs from storage, index and remote list
+    run.rs          Engine, Options, Report, Item, Outcome, SyncError
+    push.rs         push of one session, compare-and-swap, pending resume
+    pull.rs         pull of one session, verify, backup rotation, atomic write
+    fail.rs         Fail and Stop, why one push or pull did not finish
+    record.rs       index entry written after a push, refresh or pull
+    index.rs        .agr-sync.json load and save, INDEX_FILE, LOCK_FILE
+    lock.rs         .agr-sync.lock, pid inside, stale pid reclaimed
+  app/              command-facing glue, the only place that picks a concrete backend
+    mod.rs          layer declarations
+    setup.rs        backend choice, key resolution, error explanations, key import and export
+    key.rs          sync.key file, 0600, load, save_new, import
+    auto/
+      mod.rs        hook side: decide, after_recording, on_path, spawn_detached
+      child.rs      child side: run, error_line, take_error_line
+    format/
+      mod.rs        label, status lines, shared helpers, test fixtures
+      summary.rs    preview, privacy, problem, delete preview, rate limit, summary lines
+```
+
+### Dependency rules
+
+1. **crypto** uses no `crate::sync` path, and no file outside `crypto/` names
+   `chacha20poly1305`, `aead` or `sha2`. As such the open #167 decision (0.10
+   `stream` or 0.11 plus our own STREAM layer) touches `crypto/` and `Cargo.toml` only, and the
+   known-answer and nonce layout tests in `crypto/blob/tests.rs` prove the wire format stayed.
+   `data_encoding` (base32 in `key.rs`) is plain encoding, not part of #167, and stays allowed.
+2. **backend** uses nothing from crypto, engine or app (D-rule from Variant A, backends only ever
+   see opaque tokens and sealed bytes). `gist/` uses `backend/mod.rs` and its own files.
+3. **engine** uses crypto, `crate::sync::backend` (the trait module root only, never `gist`,
+   `memory` or `file`), plus `crate::files` and `crate::storage`. Never app.
+4. **app** may use every layer and `crate::config`. `setup.rs` is the only file that builds a
+   concrete backend.
+5. **Outside sync** (`src/commands`, `src/recording`, `tests/`) uses `agr::sync::<item>` or
+   `agr::sync::testing::<item>` only, never a layer path.
+6. Cross-layer imports are written `crate::sync::<layer>::...`, inside a layer `super::...`,
+   never `super::super` (keeps the check below a plain text match).
+7. `Command::new` only in `backend/gist/runner.rs` (gh, git) and `app/auto/mod.rs` (the
+   detached `agr sync push --auto` child). Today both sit in `runner.rs`, but the detached child
+   is the auto push feature and not gist transport.
+
+Rust has no visibility between sibling modules of one crate that could enforce rules 1 to 4, as
+such `sync/mod.rs` carries one `#[cfg(test)]` test that reads `src/sync/<layer>/**/*.rs` and
+fails on a forbidden path (rules 1 to 3, 6 and 7). About 40 lines, runs
+in `cargo test --lib`, counted by Codecov.
+
+```mermaid
+flowchart TD
+    ext[commands, recording, tests] --> facade[sync facade]
+    facade --> app
+    facade --> engine
+    facade --> trait
+    facade --> crypto
+    app --> engine
+    app --> gist
+    app --> crypto
+    engine --> crypto
+    engine --> trait[backend trait]
+    gist[gist, memory, file] --> trait
+```
+Legend: an edge means "may import" (facade edges are re-exports only), anything without an edge is forbidden and fails the layer check test.
+
+### Public facade
+
+`agr::sync` (always compiled):
+- **engine**: `Engine`, `Options`, `Report`, `Item`, `Outcome`, `SyncError`, `Decision`,
+  `SkipReason`, `Duplicate` (the last three are pub fields of `Item` and `Report`).
+- **backend**: `SyncBackend`, `BackendError`, `RemoteEntry`, `BlobSource`.
+- **crypto**: `Key`, `PhraseError` (inside `setup::ImportError`).
+- **app namespaces**, kept as modules because commands call them as `format::status_lines` and so on:
+  `auto` (after_recording, spawn_detached, run, error_line, take_error_line),
+  `format` (label, status_lines, preview_lines, privacy_lines, problem_lines,
+  delete_preview_lines, rate_limit_lines, summary_lines),
+  `setup` (default_key_path, resolve_key, explain, open_backend, needs_privacy_ack, import_key,
+  export_key, KeyNeed, KeyState, SetupError, ImportError, IMPORT_HINT),
+  `key` (save_new, Imported, KeyError).
+
+`agr::sync::testing` (`#[doc(hidden)]`, always compiled, for `tests/` only):
+- **backends**: `MemoryBackend`, `GistBackend` (live test), `push_bytes`, `pull_bytes`.
+- **crypto**: `seal`, `seal_meta`, `open_meta`, `sha256_hex`, `Meta`, `CryptoError`,
+  `seal_stream`, `open_stream`, `BlobError`.
+- **engine internals**: `index` (module: load, path_for, Index, IndexEntry, LOCK_FILE),
+  `decide`, `resolve`, `Command`, `Remote`, `scan`, `Row`.
+
+Layer modules are private (`mod crypto`) in `sync/mod.rs`. Items are `pub` only when the facade
+or `testing` re-exports them, `pub(in crate::sync)` when another layer uses them, `pub(super)`
+inside a layer, private otherwise. A `pub` item that names a `pub(in crate::sync)` type fails
+`private_interfaces` under `-D warnings`, and with the layers private `dead_code` now reports
+items nobody uses (delete them, no deferral).
+
+### Options weighed
+
+1. **Five layers as drafted** (crypto with the key file, backend, `state/` with index, record
+   and lock, engine, app). Rejected for three reasons:
+   1. `record.rs` uses `engine::fail` and `lock.rs` returns `engine::run::SyncError`, so a state
+      layer below the engine needs two code changes only to justify the folder.
+   2. The key file does disk IO and permission checks, in crypto it would make the #167 folder
+      depend on `crate::files` and the filesystem. Only setup and the commands read the key file,
+      the engine gets a `&Key`, as such it belongs to app.
+   3. `state` collides with `crate::config::state::State`, which app already imports.
+2. **Four layers, engine owns its bookkeeping** (chosen). index, record and lock are only used by
+   the engine and its tests, they move with it and every move is a plain rename. The
+   crypto folder isolates #167, nothing outside it names a crypto crate.
+3. **Stay flat, tighten visibility and split the five big files**. Least churn, but the user
+   asked for structure, and with 34 files after the splits flat is worse than today.
+4. **Separate `agr-sync` crate in a workspace**. The compiler would enforce the layers, but the
+   engine needs `StorageManager`, `files::codec` and config from the main crate, Codecov runs on
+   `--lib --test integration`, and CI, MSRV and release setup would all change. Too much for a
+   folder problem.
+5. **A `cipher.rs` inside crypto that owns every AEAD call** (one file for #167 instead of one
+   folder). Weighed and dropped: it needs a new frame sealer type between `blob` and the cipher,
+   which is a behavior refactor of the most sensitive code in the PR, only to shrink #167 from
+   four files to one. The folder boundary already keeps #167 away from the rest of sync.
+
+For the test access, a cargo feature `testing` with a self dev-dependency was weighed against
+the always-on hidden module. The feature hides test helpers from release builds, but
+`MemoryBackend` and `FileBackend` ship in release today anyway (D10), tarpaulin and the e2e build
+would need the feature too, and a self dev-dependency confuses `cargo +1.88 check --locked`.
+Chosen: `#[doc(hidden)] pub mod testing`.
+
+### How the big files split
+
+- **`gist.rs` 1028**: production code (about 336 lines) stays whole in `gist/mod.rs`, the 690
+  lines of tests split into `fake.rs` (fake runner, helpers, gh side tests), `push_tests.rs` and
+  `pull_tests.rs`. All three are `#[cfg(test)]`.
+- **`blob.rs` 551**: production code (about 190 lines) stays in `blob/mod.rs`, the 360 lines of
+  tests move unchanged to `blob/tests.rs` (`#[cfg(test)] mod tests;`).
+- **`crypto.rs` 434**: `mod.rs` (Key, CryptoError, hashes and their tests), `seal.rs` (v1 header,
+  one-shot seal and open, meta token and their tests), `phrase.rs` (phrase and its tests).
+- **`format.rs` 511**: status lines in `format/mod.rs`, everything printed around a push, pull
+  or delete in `format/summary.rs`.
+- **`auto.rs` 429**: hook side (runs in the recording process) in `auto/mod.rs`, child side
+  (runs in `agr sync push --auto`) in `auto/child.rs`.
+
+Every file ends up at about 400 lines or less, `run.rs` (369) and `memory.rs` (371) stay as
+they are.
+
+### Migration
+
+1. **Moves** (one stage per layer, crypto, backend, engine, app): `git mv`, moved files switch
+   their imports, `sync/mod.rs` gets temporary `pub use` shims for the old paths, as such
+   commands, recording, tests and unmoved files compile untouched.
+2. **Splits** (crypto, gist, app, parallel, disjoint files): layer `mod.rs` re-exports keep
+   every path stable.
+3. **Facade**: layers private, shims removed, consumers switch to the facade and `testing`.
+4. **Visibility and layer check**: item visibility tightened, the layer check test added.
+5. **Docs and final verification**.
+
+Every stage compares, against its own parent commit, the sorted test leaf names
+(`cargo test --all-targets -- --list`, module path stripped, duplicates kept) and the `shasum`
+of every `.snap` file. Both must be identical, the only allowed difference in the whole
+refactor is the one new layer check test in Stage 40. Module prefixes of test names do change
+with the moves, that is the point of the moves.
+
+### Consequences and open points
+
+- **PR size**: #166 is at 90 changed files vs main, 24 of them in `src/sync/`. None of the sync
+  files is on main, as such a move does not add a file, but the target tree has 34 files (the
+  layer check and `testing` live in `sync/mod.rs`), so #166 lands at exactly 100, the CodeRabbit
+  limit with zero headroom. Options: (a) review Stages 32 to 41 as a stacked PR
+  `refactor/sync-modules` against `feature/sync-gist` (about 45 files), so CodeRabbit sees the
+  refactor on its own whatever #166 ends at, (b) stay on #166 and drop `gist/fake.rs` by keeping
+  the fake runner in `push_tests.rs` (one file of headroom). Architect recommendation: (a).
+  **Open for the user.**
+- **#167**: whichever way it goes, the change stays in `crypto/` plus `Cargo.toml` and `Cargo.lock`.
+- **ADR Module layout table** above is superseded once this is accepted, Stage 41 marks it.
+- **Stage 24 grep rule** (`Command::new` only in `runner.rs`) becomes rule 7 above.
