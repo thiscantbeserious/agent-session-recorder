@@ -11,6 +11,7 @@ pub mod index;
 pub mod key;
 pub mod lock;
 pub mod memory;
+pub mod pace;
 pub mod parts;
 pub mod plan;
 mod pull;

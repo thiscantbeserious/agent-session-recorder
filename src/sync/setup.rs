@@ -90,6 +90,10 @@ pub fn explain(error: &BackendError) -> (String, Option<String>) {
             "the gh token has no gist scope".into(),
             Some("Run `gh auth refresh -s gist`".into()),
         ),
+        BackendError::RateLimited => (
+            "GitHub rate limit reached, sync stopped".into(),
+            Some("Please run again later".into()),
+        ),
         other => (other.to_string(), None),
     }
 }
@@ -238,6 +242,9 @@ mod tests {
         assert!(hint.unwrap().contains("gh auth login"));
         let (_, hint) = explain(&BackendError::MissingScope);
         assert!(hint.unwrap().contains("gh auth refresh -s gist"));
+        let (msg, hint) = explain(&BackendError::RateLimited);
+        assert!(!msg.contains('\n') && msg.contains("rate limit"), "{msg}");
+        assert_eq!(hint.as_deref(), Some("Please run again later"));
         assert_eq!(
             explain(&BackendError::Other("x".into())),
             ("x".into(), None)
