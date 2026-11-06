@@ -413,14 +413,14 @@ Depends on: Stage 17
 Goal: rows know the last gen, token and pending state, the listing is never the only source.
 Owner: implementer
 
-- [ ] RED: an old index without `gen`, `token`, `pending` still loads (serde defaults).
-- [ ] RED: a path in the index with a `remote_id` that the listing misses gets that id and the
+- [x] RED: an old index without `gen`, `token`, `pending` still loads (serde defaults).
+- [x] RED: a path in the index with a `remote_id` that the listing misses gets that id and the
       index token as the planned remote, a pending entry gets its id and no token.
-- [ ] RED: two remote entries for one path pick the oldest `created_at`, id as tie-break, the
+- [x] RED: two remote entries for one path pick the oldest `created_at`, id as tie-break, the
       same on every machine. Same SHA-256 means the others are listed in a note, different
       SHA-256 is `Decision::Duplicate`, never acted on, also not with `--overwrite` (D1).
-- [ ] RED: a description gen lower than the index gen marks the row for description repair.
-- [ ] GREEN: `index.rs`, `scan.rs`, `plan.rs`, text in `format.rs`.
+- [x] RED: a description gen lower than the index gen marks the row for description repair.
+- [x] GREEN: `index.rs`, `scan.rs`, `plan.rs`, text in `format.rs`.
 
 Files: `src/sync/index.rs`, `src/sync/scan.rs`, `src/sync/plan.rs`, `src/sync/format.rs`
 Depends on: Stage 17

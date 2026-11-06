@@ -8,7 +8,7 @@ use super::index::{self, Index, IndexEntry};
 use super::lock::SyncLock;
 use super::plan::{decide, resolve, Command, Decision, Local, Remote, SkipReason};
 use super::pull::pull_one;
-use super::scan::{scan, select, Row};
+use super::scan::{scan, select, Duplicate, Row};
 use crate::StorageManager;
 
 /// Engine compare-and-swap comes later, every push seals generation 1 for now.
@@ -60,6 +60,12 @@ pub struct Item {
     pub remote_hash: Option<String>,
     /// Plaintext size of the remote copy, 0 when unknown.
     pub remote_size: u64,
+    /// Id of the picked or resumed remote gist.
+    pub remote_id: Option<String>,
+    /// Created but never pushed, the next push resumes `remote_id`.
+    pub pending: bool,
+    /// Other gists for this path, never deleted automatically.
+    pub duplicates: Vec<Duplicate>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -214,11 +220,15 @@ impl Engine<'_> {
             decision,
             outcome,
             size: local.or(remote).unwrap_or(0),
-            on_remote: row.remote_id.is_some(),
+            // a fallback id from the index is not a listed remote copy
+            on_remote: row.input.remote != Remote::Absent,
             on_local: local.is_some(),
             local_hash: hash_of(&row.input.local),
             remote_hash: remote_hash_of(&row.input.remote),
             remote_size: remote.unwrap_or(0),
+            remote_id: row.remote_id.clone(),
+            pending: row.pending,
+            duplicates: row.duplicates.clone(),
         }
     }
 
@@ -293,6 +303,7 @@ fn passive(decision: Decision) -> Outcome {
         Decision::Skip(reason) => Outcome::Skipped(skip_text(reason).into()),
         Decision::OtherKey => Outcome::Skipped("sealed with another key".into()),
         Decision::UnknownVersion => Outcome::Skipped("unknown remote version".into()),
+        Decision::Duplicate => Outcome::Skipped("duplicate remote copies".into()),
         _ => Outcome::Nothing,
     }
 }
@@ -303,6 +314,7 @@ fn record(index: &mut Index, path: &str, sha256: String, remote_id: String) {
         sha256,
         remote_id,
         synced_at,
+        ..IndexEntry::default()
     };
     index.entries.insert(path.to_string(), entry);
 }
@@ -318,6 +330,9 @@ fn not_found(name: String) -> Item {
         local_hash: None,
         remote_hash: None,
         remote_size: 0,
+        remote_id: None,
+        pending: false,
+        duplicates: Vec::new(),
     }
 }
 

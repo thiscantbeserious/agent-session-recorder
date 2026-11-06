@@ -261,6 +261,9 @@ mod tests {
             local_hash: None,
             remote_hash: None,
             remote_size: 0,
+            remote_id: None,
+            pending: false,
+            duplicates: Vec::new(),
         }
     }
 

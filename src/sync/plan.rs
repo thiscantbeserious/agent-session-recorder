@@ -25,6 +25,8 @@ pub enum Remote {
     Hash(String),
     OtherKey,
     UnknownVersion,
+    /// Several remote entries for one path with different content.
+    Duplicate,
 }
 
 /// Facts about one `agent/name.cast.gz` path.
@@ -47,6 +49,8 @@ pub enum Decision {
     Conflict,
     OtherKey,
     UnknownVersion,
+    /// Never acted on, also not with `--overwrite`.
+    Duplicate,
     Skip(SkipReason),
 }
 
@@ -63,6 +67,7 @@ pub fn decide(input: &Input) -> Decision {
         (Local::Skipped(reason), _) => Decision::Skip(*reason),
         (_, Remote::OtherKey) => Decision::OtherKey,
         (_, Remote::UnknownVersion) => Decision::UnknownVersion,
+        (_, Remote::Duplicate) => Decision::Duplicate,
         (Local::Absent, Remote::Absent) => Decision::InSync {
             refresh_index: false,
         },
