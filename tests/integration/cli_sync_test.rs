@@ -521,6 +521,7 @@ fn phrase_of(m: &Machine) -> String {
     line.trim().to_string()
 }
 
+#[cfg(unix)]
 fn all_files(dir: &Path, found: &mut Vec<PathBuf>) {
     for entry in fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
