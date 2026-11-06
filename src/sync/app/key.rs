@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use data_encoding::BASE32_NOPAD;
 use thiserror::Error;
 
-use super::crypto::Key;
+use crate::sync::crypto::Key;
 
 /// Errors from reading or writing the key file, never carry key bytes.
 #[derive(Debug, Error, PartialEq, Eq)]

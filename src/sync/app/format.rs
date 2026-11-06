@@ -2,9 +2,9 @@
 
 use humansize::{format_size, BINARY};
 
-use super::plan::Decision;
-use super::run::{Item, Outcome, Report};
-use super::scan::Duplicate;
+use crate::sync::engine::plan::Decision;
+use crate::sync::engine::run::{Item, Outcome, Report};
+use crate::sync::engine::scan::Duplicate;
 
 const ORDER: [&str; 8] = [
     "in sync",
@@ -232,8 +232,8 @@ fn size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync::plan::SkipReason;
-    use crate::sync::scan::Duplicate;
+    use crate::sync::engine::plan::SkipReason;
+    use crate::sync::engine::scan::Duplicate;
 
     fn item(path: &str, decision: Decision, outcome: Outcome) -> Item {
         Item {

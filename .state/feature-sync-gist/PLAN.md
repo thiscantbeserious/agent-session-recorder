@@ -739,10 +739,10 @@ Goal: `src/sync/app/` with setup, key, auto and format, pure move. After this st
 holds only `mod.rs` and the four layer folders.
 Owner: implementer
 
-- [ ] `git mv` `setup.rs`, `key.rs`, `auto.rs`, `format.rs` to `src/sync/app/`, new `app/mod.rs`.
-- [ ] `sync/mod.rs` shims: `pub use app::{auto, format, key, setup};`.
-- [ ] `ls src/sync` shows `mod.rs crypto backend engine app` only.
-- [ ] Test names and snap hashes identical.
+- [x] `git mv` `setup.rs`, `key.rs`, `auto.rs`, `format.rs` to `src/sync/app/`, new `app/mod.rs`.
+- [x] `sync/mod.rs` shims: `pub use app::{auto, format, key, setup};`.
+- [x] `ls src/sync` shows `mod.rs crypto backend engine app` only.
+- [x] Test names and snap hashes identical.
 
 Files: `src/sync/mod.rs`, `src/sync/app/mod.rs`, `src/sync/setup.rs`, `src/sync/app/setup.rs`, `src/sync/key.rs`, `src/sync/app/key.rs`, `src/sync/auto.rs`, `src/sync/app/auto.rs`, `src/sync/format.rs`, `src/sync/app/format.rs`
 Depends on: Stage 34

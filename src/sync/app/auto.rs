@@ -3,10 +3,10 @@
 
 use std::path::Path;
 
-use super::run::{Engine, Options, Outcome, Report, SyncError};
 use crate::config::state::State;
 use crate::config::Config;
 use crate::files::{codec, lock};
+use crate::sync::engine::run::{Engine, Options, Outcome, Report, SyncError};
 
 /// What to do with a finished recording.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,8 +144,8 @@ pub fn run(engine: &Engine<'_>, session: &str) -> Result<Report, SyncError> {
 mod tests {
     use super::*;
     use crate::config::SyncBackendKind;
-    use crate::sync::plan::Decision;
-    use crate::sync::run::{Item, Outcome};
+    use crate::sync::engine::plan::Decision;
+    use crate::sync::engine::run::{Item, Outcome};
     use std::fs;
 
     fn config(backend: bool, auto_push: bool) -> Config {
@@ -281,10 +281,10 @@ mod tests {
 
     #[test]
     fn auto_run_pushes_only_the_session_never_pulls_and_skips_conflicts() {
+        use crate::sync::backend::memory::MemoryBackend;
         use crate::sync::backend::SyncBackend;
-        use crate::sync::blob::seal_blob;
+        use crate::sync::crypto::blob::seal_blob;
         use crate::sync::crypto::{seal_meta, sha256_hex, Key, Meta};
-        use crate::sync::memory::MemoryBackend;
         let dir = tempfile::tempdir().unwrap();
         let mut cfg = Config::default();
         cfg.storage.directory = dir.path().to_string_lossy().into_owned();

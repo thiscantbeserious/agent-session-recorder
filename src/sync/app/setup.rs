@@ -4,12 +4,12 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use super::backend::{BackendError, SyncBackend};
-use super::crypto::{export_phrase, import_phrase, Key, PhraseError};
-use super::file::FileBackend;
-use super::gist::GistBackend;
 use super::key::{self, Imported, KeyError};
 use crate::config::SyncBackendKind;
+use crate::sync::backend::file::FileBackend;
+use crate::sync::backend::gist::GistBackend;
+use crate::sync::backend::{BackendError, SyncBackend};
+use crate::sync::crypto::{export_phrase, import_phrase, Key, PhraseError};
 use crate::Config;
 
 /// Whether a missing key may be created.
@@ -139,7 +139,7 @@ pub fn export_key(path: &Path) -> Result<Option<String>, KeyError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sync::memory::MemoryBackend;
+    use crate::sync::backend::memory::MemoryBackend;
 
     #[test]
     fn privacy_ack_is_due_once_for_creating_pushes() {
