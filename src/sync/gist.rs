@@ -995,8 +995,9 @@ mod tests {
         };
         let base = tempfile::tempdir().unwrap();
         let pulled = backend(&fake, base.path()).pull("abc123");
-        assert!(pulled.is_ok(), "{:?}", pulled.as_ref().err());
-        let (_, mut reader) = pulled.unwrap();
+        let Ok((_, mut reader)) = pulled else {
+            panic!("pull failed: {:?}", pulled.err());
+        };
         assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 1);
         let mut all = Vec::new();
         reader.read_to_end(&mut all).unwrap();
