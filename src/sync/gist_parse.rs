@@ -9,6 +9,8 @@ pub const DESC_PREFIX: &str = "agr:v1 ";
 struct Gist {
     id: String,
     description: Option<String>,
+    #[serde(default)]
+    created_at: Option<String>,
 }
 
 /// GitHub stops listing after this many gists, see https://docs.github.com/en/rest/gists/gists.
@@ -36,15 +38,12 @@ pub fn parse_list(json: &str) -> Result<Vec<RemoteEntry>, BackendError> {
 }
 
 fn to_entry(gist: Gist) -> Option<RemoteEntry> {
-    let token = gist
-        .description?
-        .strip_prefix(DESC_PREFIX)?
-        .trim()
-        .to_string();
+    let desc = gist.description?;
+    let token = desc.strip_prefix(DESC_PREFIX)?.trim().to_string();
     Some(RemoteEntry {
         id: gist.id,
         meta_token: token,
-        created_at: String::new(),
+        created_at: gist.created_at.unwrap_or_default(),
     })
 }
 
@@ -73,6 +72,7 @@ const RATE_LIMIT: [&str; 4] = [
     "http 429",
     "error: 429",
 ];
+const NOT_FOUND: [&str; 3] = ["http 404", "repository not found", "not found (http"];
 const REJECTED: [&str; 3] = ["! [rejected]", "non-fast-forward", "fetch first"];
 
 /// Map a failed `gh` or `git` run to one clear error, never echoes raw stderr.
@@ -87,6 +87,8 @@ pub fn map_failure(tool: &'static str, stderr: &str, code: Option<i32>) -> Backe
         BackendError::NotLoggedIn
     } else if text.contains("scope") {
         BackendError::MissingScope
+    } else if has(&NOT_FOUND) {
+        BackendError::NotFound
     } else if has(&NETWORK) {
         BackendError::Unreachable("no connection to github.com".into())
     } else if tool == "git" && has(&CREDENTIALS) {
@@ -116,6 +118,21 @@ mod tests {
             meta_token: token.into(),
             created_at: String::new(),
         }
+    }
+
+    #[test]
+    fn list_reads_created_at() {
+        let json = r#"[{"id":"a1","description":"agr:v1 T","created_at":"2026-01-02T03:04:05Z"}]"#;
+        let got = parse_list(json).unwrap();
+        assert_eq!(got[0].created_at, "2026-01-02T03:04:05Z");
+    }
+
+    #[test]
+    fn a_404_is_not_found() {
+        let gh = "gh: Not Found (HTTP 404)";
+        assert_eq!(map_failure("gh", gh, Some(1)), BackendError::NotFound);
+        let git = "remote: Repository not found.\nfatal: repository 'x' not found";
+        assert_eq!(map_failure("git", git, Some(128)), BackendError::NotFound);
     }
 
     #[test]
