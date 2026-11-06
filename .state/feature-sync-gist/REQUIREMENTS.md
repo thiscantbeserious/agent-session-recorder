@@ -208,6 +208,21 @@ Sessions only live on one machine. We want to sync them between machines, with G
 - [ ] Hash-based conflict detection and the index use the plaintext hash, so deterministic
   gzip output still yields stable comparisons despite random nonces in the ciphertext.
 
+**Large sessions and listing limit** (user decision 2026-11-06)
+- [ ] The gist backend splits the sealed blob into parts of at most 45 MiB
+  (`session.agr.000`, `session.agr.001`, ...), all in the SAME gist as the session, pushed in
+  one commit. A blob under 45 MiB is a single part `session.agr.000`.
+- [ ] Pull fetches all parts of the gist, joins them in order and only then opens and verifies
+  the blob; a missing, extra or reordered part is rejected, nothing is written.
+- [ ] Re-pushing a session whose part count shrinks removes the stale higher parts in the same
+  commit.
+- [ ] The per-session cap is 1 GiB of sealed size (was 100 MB), sessions above are skipped
+  with a reason. Splitting lives only in the gist backend, the engine and `SyncBackend` trait
+  still move one blob.
+- [ ] If the gist listing returns 3000 or more entries, sync aborts before any change with a
+  clear error (GitHub documents a 3000 gist pagination cap), never treats unlisted gists as
+  missing.
+
 ## Constraints
 
 - Sync works on `.cast.gz` bytes as stored, no recompression, so the hash stays stable.
