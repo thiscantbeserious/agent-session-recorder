@@ -96,3 +96,13 @@ pub fn apply_transforms(path: &Path) -> Result<TransformResult> {
         backup_created,
     })
 }
+
+/// Stub, replaced in GREEN.
+pub fn remove_silence(_path: &Path) -> Result<TransformResult> {
+    Ok(TransformResult {
+        original_duration: 0.0,
+        new_duration: 0.0,
+        backup_path: None,
+        backup_created: false,
+    })
+}

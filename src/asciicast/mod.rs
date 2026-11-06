@@ -33,7 +33,7 @@ pub use silence_removal::{SilenceRemoval, DEFAULT_SILENCE_THRESHOLD};
 pub use transform::{Transform, TransformChain};
 
 // Re-export transform_ops types for convenience
-pub use transform_ops::{apply_transforms, TransformResult};
+pub use transform_ops::{apply_transforms, remove_silence, TransformResult};
 
 // Re-export integrity types
 pub use integrity::{check_file_integrity, diagnose, repair, DiagnoseResult, LineDiagnostic};
