@@ -180,23 +180,23 @@ Depends on: Stage 6
 Goal: `agr sync status|push|pull|delete` and `agr sync key export|import`.
 Owner: implementer
 
-- [ ] RED: clap parse tests for every subcommand, `--dry-run`, `--yes`, `--overwrite`,
+- [x] RED: clap parse tests for every subcommand, `--dry-run`, `--yes`, `--overwrite`,
       `[session...]`, `key import --force`, hidden `push --auto`.
-- [ ] RED: sync unset prints how to enable `[sync] backend = "gist"`, exits non-zero, no `gh`
+- [x] RED: sync unset prints how to enable `[sync] backend = "gist"`, exits non-zero, no `gh`
       spawned (PATH without `gh` in the test proves it).
-- [ ] RED: `gh` missing and not logged in give the two hint lines, exit non-zero, nothing
+- [x] RED: `gh` missing and not logged in give the two hint lines, exit non-zero, nothing
       changes (fake `gh` script on PATH in a temp dir).
-- [ ] RED: no TTY without `--yes` aborts push and pull, `status` and `--dry-run` work.
-- [ ] RED: first creating push shows the privacy and key backup warning, needs confirmation,
+- [x] RED: no TTY without `--yes` aborts push and pull, `status` and `--dry-run` work.
+- [x] RED: first creating push shows the privacy and key backup warning, needs confirmation,
       stores `sync_privacy_ack`, not asked again. No key and remote agr gists present aborts
       with the import hint.
-- [ ] RED: `status` output per state with totals, backend name, remote count, `NO_COLOR` gives
+- [x] RED: `status` output per state with totals, backend name, remote count, `NO_COLOR` gives
       no escape codes, prints and clears `last_auto_push_error`.
-- [ ] RED: `key export` prints the phrase, `key import` reads it from stdin or argument.
-- [ ] GREEN: `SyncCommands` and `SyncKeyCommands` in `src/cli/subcommands.rs`, one `Sync`
+- [x] RED: `key export` prints the phrase, `key import` reads it from stdin or argument.
+- [x] GREEN: `SyncCommands` and `SyncKeyCommands` in `src/cli/subcommands.rs`, one `Sync`
       variant in `src/cli.rs`, handlers in `src/commands/sync/`, output via theme helpers,
       prompts via `should_proceed`.
-- [ ] Accept new help and completions snapshots (only sync additions may change).
+- [x] Accept new help and completions snapshots (only sync additions may change).
 
 Files: `src/cli.rs`, `src/cli/subcommands.rs`, `src/dispatch.rs`, `src/commands/mod.rs`,
        `src/commands/sync/mod.rs`, `src/commands/sync/key.rs`,
@@ -283,7 +283,7 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 5 | done | |
 | 6 | done | |
 | 7 | done | live test written but not run, see ADR "To verify" |
-| 8 | pending | |
+| 8 | done | test-only `AGR_SYNC_TEST_BACKEND_DIR` file backend (`src/sync/file.rs`) |
 | 9 | pending | |
 | 10 | pending | |
 | 11 | pending | |

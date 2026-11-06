@@ -8,7 +8,8 @@ mod subcommands;
 
 pub use styles::build_cli_styles;
 pub use subcommands::{
-    AgentCommands, ConfigCommands, MarkerCommands, NoWrapCommands, ShellCommands,
+    AgentCommands, ConfigCommands, MarkerCommands, NoWrapCommands, ShellCommands, SyncCommands,
+    SyncKeyCommands,
 };
 
 use clap::{Parser, Subcommand};
@@ -348,6 +349,10 @@ EXAMPLES:
 After installing, restart your shell or run: source ~/.zshrc"
     )]
     Shell(ShellCommands),
+
+    /// Sync encrypted sessions to a remote (secret gists)
+    #[command(subcommand)]
+    Sync(SyncCommands),
 
     /// Optimize asciicast recordings (removes silence)
     #[command(long_about = "Optimize asciicast recording files by removing silence.

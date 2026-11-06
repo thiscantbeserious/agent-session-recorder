@@ -197,3 +197,9 @@ mod cli_color_test;
 
 #[path = "integration/sync_engine_test.rs"]
 mod sync_engine_test;
+
+#[path = "integration/cli_sync_parse_test.rs"]
+mod cli_sync_parse_test;
+
+#[path = "integration/cli_sync_test.rs"]
+mod cli_sync_test;

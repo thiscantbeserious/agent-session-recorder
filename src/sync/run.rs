@@ -6,7 +6,7 @@ use super::backend::{BackendError, SyncBackend};
 use super::crypto::{blob_aad, seal, seal_meta, sha256_hex, Key, Meta};
 use super::index::{self, Index, IndexEntry};
 use super::lock::SyncLock;
-use super::plan::{decide, resolve, Command, Decision, Local, SkipReason};
+use super::plan::{decide, resolve, Command, Decision, Local, Remote, SkipReason};
 use super::pull::pull_one;
 use super::scan::{scan, select, Row};
 use crate::StorageManager;
@@ -47,6 +47,16 @@ pub struct Item {
     pub path: String,
     pub decision: Decision,
     pub outcome: Outcome,
+    /// Local file size, else the remote plaintext size, 0 when unknown.
+    pub size: u64,
+    /// A remote entry exists for this path.
+    pub on_remote: bool,
+    /// The file exists on this machine.
+    pub on_local: bool,
+    pub local_hash: Option<String>,
+    pub remote_hash: Option<String>,
+    /// Plaintext size of the remote copy, 0 when unknown.
+    pub remote_size: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -124,11 +134,7 @@ impl Engine<'_> {
         for row in std::mem::take(&mut loaded.rows) {
             let outcome = self.delete_one(&row, &mut loaded.index);
             let done = matches!(outcome, Outcome::Done(_));
-            let item = Item {
-                path: row.path.clone(),
-                decision: decide(&row.input),
-                outcome,
-            };
+            let item = self.item(&row, decide(&row.input), outcome);
             loaded.report.deleted += usize::from(done);
             loaded.report.add(Command::Push, strip_done(item));
         }
@@ -145,11 +151,7 @@ impl Engine<'_> {
         for row in std::mem::take(&mut loaded.rows) {
             let decision = resolve(decide(&row.input), command, opts.overwrite);
             let outcome = self.step(command, opts, decision, &row, &mut loaded.index);
-            let item = Item {
-                path: row.path,
-                decision,
-                outcome,
-            };
+            let item = self.item(&row, decision, outcome);
             loaded.report.add(command, item);
         }
         Ok(loaded.report)
@@ -211,6 +213,24 @@ impl Engine<'_> {
             (Decision::OtherKey, _) => Outcome::Skipped("sealed with another key".into()),
             (Decision::UnknownVersion, _) => Outcome::Skipped("unknown remote version".into()),
             _ => Outcome::Nothing,
+        }
+    }
+
+    fn item(&self, row: &Row, decision: Decision, outcome: Outcome) -> Item {
+        let local = std::fs::metadata(self.storage.storage_dir().join(&row.path))
+            .map(|m| m.len())
+            .ok();
+        let remote = row.meta.as_ref().map(|m| m.size);
+        Item {
+            path: row.path.clone(),
+            decision,
+            outcome,
+            size: local.or(remote).unwrap_or(0),
+            on_remote: row.remote_id.is_some(),
+            on_local: local.is_some(),
+            local_hash: hash_of(&row.input.local),
+            remote_hash: remote_hash_of(&row.input.remote),
+            remote_size: remote.unwrap_or(0),
         }
     }
 
@@ -282,6 +302,12 @@ fn not_found(name: String) -> Item {
         path: name,
         decision: Decision::Skip(SkipReason::NotFound),
         outcome: Outcome::Failed("no such session".into()),
+        size: 0,
+        on_remote: false,
+        on_local: false,
+        local_hash: None,
+        remote_hash: None,
+        remote_size: 0,
     }
 }
 
@@ -293,6 +319,20 @@ fn strip_done(item: Item) -> Item {
             ..item
         },
         _ => item,
+    }
+}
+
+fn hash_of(local: &Local) -> Option<String> {
+    match local {
+        Local::Hash(h) => Some(h.clone()),
+        _ => None,
+    }
+}
+
+fn remote_hash_of(remote: &Remote) -> Option<String> {
+    match remote {
+        Remote::Hash(h) => Some(h.clone()),
+        _ => None,
     }
 }
 
