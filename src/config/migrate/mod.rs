@@ -13,7 +13,7 @@ use toml_edit::{value, DocumentMut, Item, Table};
 
 use super::Config;
 
-pub use prompts::{apply_prompt_list, apply_prompts, PostMigratePrompt, PROMPTS};
+pub use prompts::{apply_prompt_list, apply_prompts, parse_answer, PostMigratePrompt, PROMPTS};
 
 /// The latest config schema version.
 /// Bump this and add a migration file when the schema changes.

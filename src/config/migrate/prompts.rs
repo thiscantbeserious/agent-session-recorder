@@ -8,6 +8,7 @@ use toml_edit::{DocumentMut, Item, Value};
 use super::MigrateResult;
 
 /// A question asked once after a field was added by migration.
+// ponytail: supports bool settings only, grows a value type when a non-bool prompt is needed.
 pub struct PostMigratePrompt {
     pub key: &'static str,
     pub question: &'static str,
@@ -79,4 +80,45 @@ fn set_dotted_bool(doc: &mut DocumentMut, key: &str, val: bool) -> bool {
     }
     table.insert(leaf, Item::Value(new));
     true
+}
+
+/// Parse a yes/no answer. Empty or unknown input keeps `default`.
+pub fn parse_answer(input: &str, default: bool) -> bool {
+    match input.trim().to_lowercase().as_str() {
+        "y" | "yes" => true,
+        "n" | "no" => false,
+        _ => default,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_keeps_default() {
+        assert!(parse_answer("", true));
+        assert!(!parse_answer("", false));
+        assert!(parse_answer("  \n", true));
+    }
+
+    #[test]
+    fn no_answers_are_false() {
+        assert!(!parse_answer("n", true));
+        assert!(!parse_answer("no", true));
+        assert!(!parse_answer("NO\n", true));
+    }
+
+    #[test]
+    fn yes_answers_are_true() {
+        assert!(parse_answer("y", false));
+        assert!(parse_answer("YES", false));
+        assert!(parse_answer(" yes \n", false));
+    }
+
+    #[test]
+    fn unknown_keeps_default() {
+        assert!(parse_answer("x", true));
+        assert!(!parse_answer("x", false));
+    }
 }
