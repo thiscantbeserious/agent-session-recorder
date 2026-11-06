@@ -73,7 +73,10 @@ Owner: implementer
 - [ ] RED: `auto_optimize = false` leaves the file byte-identical, returns `None`.
 - [ ] RED: `auto_optimize = true`, a 5s gap is clamped to 2.0s, no `.x.cast.bak`, returns `None`.
 - [ ] RED: unparsable file stays byte-identical, returns
-      `Some("Auto-optimize failed, kept original: ...")`.
+      `Some(format!("Auto-optimize failed, kept original: {e:#}"))` (`{e:#}` like
+      `finalize_recording`, so the context chain is in the one line).
+- [ ] RED: header `idle_time_limit: 0` returns `Some("Auto-optimize failed, ...")`, file
+      byte-identical (guard from Stage 1 reaches the recording path).
 - [ ] RED: missing file returns `None` (path recovery already warned).
 - [ ] RED (interplay, ADR section 3): `optimize_recording` then `finalize_recording` with gzip
       leaves only `x.cast.gz` (optimized duration), no `x.cast`, no `.x.cast.bak`, no
@@ -109,8 +112,22 @@ Depends on: Stage 3
 
 ### Stage 5: Post-migrate prompt registry
 
-Goal: `src/config/migrate/prompts.rs` with `PostMigratePrompt { key, question, default }`,
-`PROMPTS` (auto_optimize first), `apply_prompts(result, ask) -> Result<String>`.
+Goal: `src/config/migrate/prompts.rs` with:
+
+```rust
+pub struct PostMigratePrompt { pub key: &'static str, pub question: &'static str, pub default: bool }
+pub const PROMPTS: &[PostMigratePrompt] = &[PostMigratePrompt {
+    key: "recording.auto_optimize",
+    question: "Optimize recordings automatically after each session?",
+    default: true,
+}];
+pub fn apply_prompts(result: &MigrateResult, ask: impl FnMut(&PostMigratePrompt) -> Result<bool>) -> Result<String>;
+pub fn apply_prompt_list(result: &MigrateResult, prompts: &[PostMigratePrompt], ask: impl FnMut(&PostMigratePrompt) -> Result<bool>) -> Result<String>;
+```
+
+`apply_prompts` is `apply_prompt_list(result, PROMPTS, ask)`. Both parse `result.content` as
+`toml_edit::DocumentMut`, return the new content string and never touch the disk (writing stays
+in `handle_migrate`, Stage 6).
 Owner: implementer
 
 - [ ] RED: `"recording.auto_optimize"` in `added_fields`, `ask` returns false, content has
@@ -120,8 +137,11 @@ Owner: implementer
       equals `result.content`.
 - [ ] RED: a test-only prompt list with two entries asks both in order and writes both (runner
       takes the list as a parameter, `apply_prompts` passes `PROMPTS`).
-- [ ] RED: `ask` error is returned, no partial write.
-- [ ] GREEN: dotted key walk with `toml_edit`, set `value(bool)`. Export from `config`.
+- [ ] RED: `ask` error is returned as `Err` (no content returned, so nothing can be written).
+- [ ] RED: fresh config (`migrate_config("")`, whole `[recording]` section added) also asks,
+      `added_fields` then holds `"recording.auto_optimize"` via `track_added_fields`.
+- [ ] GREEN: dotted key walk with `toml_edit`, set `value(bool)`. `pub mod prompts;` plus
+      `pub use prompts::*;` in `src/config/migrate/mod.rs` (`config` re-exports `migrate::*`).
 
 Files: `src/config/migrate/prompts.rs`, `src/config/migrate/mod.rs`, `tests/integration/config_prompts_test.rs`, `tests/integration.rs`
 Depends on: Stage 2
