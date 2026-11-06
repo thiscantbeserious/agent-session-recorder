@@ -768,14 +768,14 @@ Depends on: Stage 35
 Goal: `backend/gist/mod.rs` holds production code only, its tests split by topic.
 Owner: implementer
 
-- [ ] `gist/mod.rs` keeps the 336 production lines and declares `#[cfg(test)] mod fake;`,
+- [x] `gist/mod.rs` keeps the 336 production lines and declares `#[cfg(test)] mod fake;`,
       `#[cfg(test)] mod push_tests;`, `#[cfg(test)] mod pull_tests;`.
-- [ ] `fake.rs`: fake runner, `ok`, `fail`, `backend`, `scrub`, `data_files`, `remote_parts`,
+- [x] `fake.rs`: fake runner, `ok`, `fail`, `backend`, `scrub`, `data_files`, `remote_parts`,
       `source_of` as `pub(super)`, plus the check, list, create, describe, delete, pacer and
       stderr mapping tests.
-- [ ] `push_tests.rs`: push, compare-and-swap, parts, commit date and source tests.
+- [x] `push_tests.rs`: push, compare-and-swap, parts, commit date and source tests.
       `pull_tests.rs`: pull, missing part and clone lifetime tests.
-- [ ] Every file about 400 lines or less, test names and snap hashes identical.
+- [x] Every file about 400 lines or less, test names and snap hashes identical.
 
 Files: `src/sync/backend/gist/mod.rs`, `src/sync/backend/gist/fake.rs`, `src/sync/backend/gist/push_tests.rs`, `src/sync/backend/gist/pull_tests.rs`
 Depends on: Stage 35
