@@ -81,3 +81,37 @@ fn gist_round_trip_binary_blob() {
         .unwrap();
     assert_eq!(backend.pull(&id).unwrap().1, blob2);
 }
+
+#[test]
+#[ignore = "creates a real secret gist, run by hand"]
+fn gist_compare_and_swap_and_manifest() {
+    use agr::sync::backend::BackendError;
+    let backend = GistBackend::new();
+    backend.check().unwrap();
+    let id = backend.create().unwrap();
+    let _cleanup = Cleanup(&backend, id.clone());
+    let blob1 = binary_blob(2048);
+    backend.push(&id, None, "gen-1", &blob1).unwrap();
+    assert_eq!(gist_files(&id), [".keep", "data.000", "manifest"]);
+    assert_eq!(
+        backend.pull(&id).unwrap(),
+        (Some("gen-1".into()), blob1.clone())
+    );
+    let stale = backend.push(&id, Some("gen-0"), "gen-2", b"lost");
+    assert_eq!(stale, Err(BackendError::Changed(Some("gen-1".into()))));
+    let none = backend.push(&id, None, "gen-2", b"lost");
+    assert_eq!(none, Err(BackendError::Changed(Some("gen-1".into()))));
+    assert_eq!(backend.pull(&id).unwrap(), (Some("gen-1".into()), blob1));
+    let blob2 = binary_blob(512);
+    backend.push(&id, Some("gen-1"), "gen-2", &blob2).unwrap();
+    assert_eq!(backend.pull(&id).unwrap(), (Some("gen-2".into()), blob2));
+    backend.describe(&id, "tok").unwrap();
+    let listed = backend.list().unwrap();
+    assert!(listed
+        .iter()
+        .any(|e| e.id == id && !e.created_at.is_empty()));
+    assert_eq!(
+        backend.pull("0000000000000000000000000000dead"),
+        Err(BackendError::NotFound)
+    );
+}

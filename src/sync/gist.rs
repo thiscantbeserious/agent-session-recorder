@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use super::backend::{BackendError, RemoteEntry, SyncBackend};
 use super::gist_parse::{check_auth, id_from_create_output, map_failure, parse_list, DESC_PREFIX};
@@ -13,6 +13,8 @@ use super::runner::{Output, ProcessRunner, Runner};
 /// Neutral dotfile, only there because `gh gist create` refuses an empty gist.
 const STUB_FILE: &str = ".keep";
 const STUB_BODY: &str = "\n";
+/// Holds the sealed manifest token the compare-and-swap checks.
+const MANIFEST_FILE: &str = "manifest";
 /// Placeholder until the blob is pushed, no `agr:v1 ` prefix so `parse_list` skips it.
 const PENDING_DESC: &str = "agr:pending";
 const LIST_ENDPOINT: &str = "gists?per_page=100";
@@ -41,8 +43,7 @@ pub struct GistBackend<R: Runner = ProcessRunner> {
     part_size: usize,
     clock: Arc<dyn Clock>,
     /// Behind a mutex so `&self` trait methods can pace, boxed clock so no generic leaks out.
-    /// Stage 18 calls `wait` before each mutating call.
-    #[allow(dead_code)]
+    /// `wait` runs before each mutating call.
     pacer: Mutex<Pacer>,
 }
 
@@ -108,6 +109,15 @@ fn part_files(repo: &Path) -> Result<Vec<String>, BackendError> {
     Ok(names)
 }
 
+/// The stored manifest of a clone, `None` when the gist has none yet.
+fn read_manifest(repo: &Path) -> Result<Option<String>, BackendError> {
+    match std::fs::read_to_string(repo.join(MANIFEST_FILE)) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(BackendError::Other(format!("read manifest: {e}"))),
+    }
+}
+
 impl<R: Runner> GistBackend<R> {
     pub fn with_runner(runner: R, temp_base: PathBuf) -> Self {
         let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
@@ -131,6 +141,14 @@ impl<R: Runner> GistBackend<R> {
     pub fn with_part_size(mut self, part_size: usize) -> Self {
         self.part_size = part_size;
         self
+    }
+
+    /// Block until the next mutating call is allowed.
+    fn pace(&self) {
+        self.pacer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .wait();
     }
 
     fn run(
@@ -185,7 +203,12 @@ impl<R: Runner> GistBackend<R> {
     }
 
     /// Write the parts and drop stale higher ones, returns every touched file name.
-    fn stage_parts(&self, repo: &Path, blob: &[u8]) -> Result<Vec<String>, BackendError> {
+    fn stage_parts(
+        &self,
+        repo: &Path,
+        manifest: &str,
+        blob: &[u8],
+    ) -> Result<Vec<String>, BackendError> {
         let parts = split(blob, self.part_size);
         let mut names = Vec::new();
         for (i, part) in parts.iter().enumerate() {
@@ -199,11 +222,19 @@ impl<R: Runner> GistBackend<R> {
                 .map_err(|e| BackendError::Other(format!("remove stale part: {e}")))?;
             names.push(old);
         }
+        std::fs::write(repo.join(MANIFEST_FILE), manifest)
+            .map_err(|e| BackendError::Other(format!("write manifest: {e}")))?;
+        names.push(MANIFEST_FILE.to_string());
         Ok(names)
     }
 
-    fn commit_and_push(&self, repo: &Path, blob: &[u8]) -> Result<(), BackendError> {
-        let names = self.stage_parts(repo, blob)?;
+    fn commit_and_push(
+        &self,
+        repo: &Path,
+        manifest: &str,
+        blob: &[u8],
+    ) -> Result<(), BackendError> {
+        let names = self.stage_parts(repo, manifest, blob)?;
         let mut add = vec!["add", "--all", "--"];
         add.extend(names.iter().map(String::as_str));
         self.run_ok("git", &add, Some(repo))?;
@@ -216,6 +247,8 @@ impl<R: Runner> GistBackend<R> {
         ];
         env.extend(IDENTITY_ENV.iter().map(|(k, v)| (*k, v.to_string())));
         self.run_ok_env("git", &commit, Some(repo), &env)?;
+        // Plain push, never forced and never retried, a rejection is `Changed(None)`.
+        self.pace();
         self.run_ok("git", &["push"], Some(repo))?;
         Ok(())
     }
@@ -226,6 +259,7 @@ impl<R: Runner> GistBackend<R> {
         std::fs::write(&stub, STUB_BODY)
             .map_err(|e| BackendError::Other(format!("write stub: {e}")))?;
         let stub = stub.to_string_lossy().into_owned();
+        self.pace();
         let out = self.run_ok(
             "gh",
             &["gist", "create", &stub, "--desc", PENDING_DESC],
@@ -238,6 +272,7 @@ impl<R: Runner> GistBackend<R> {
     fn set_description(&self, id: &str, token: &str) -> Result<(), BackendError> {
         let desc = format!("description={DESC_PREFIX}{token}");
         let endpoint = format!("gists/{id}");
+        self.pace();
         self.run_ok("gh", &["api", "-X", "PATCH", &endpoint, "-f", &desc], None)?;
         Ok(())
     }
@@ -267,28 +302,33 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
         self.create_gist()
     }
 
-    /// Stage 17: `expected` and `manifest` are not used yet, the gist is overwritten as
-    /// before. Stage 18 adds the clone side compare and the manifest file.
+    /// Clone, compare the stored manifest to `expected` before writing anything, then one
+    /// commit and one plain push.
     fn push(
         &self,
         id: &str,
-        _expected: Option<&str>,
-        _manifest: &str,
+        expected: Option<&str>,
+        manifest: &str,
         blob: &[u8],
     ) -> Result<(), BackendError> {
         let scratch = Scratch::create(&self.temp_base)?;
         let repo = self.clone_gist(id, &scratch)?;
-        self.commit_and_push(&repo, blob)
+        let current = read_manifest(&repo)?;
+        if current.as_deref() != expected {
+            return Err(BackendError::Changed(current));
+        }
+        self.commit_and_push(&repo, manifest, blob)
     }
 
     fn describe(&self, id: &str, token: &str) -> Result<(), BackendError> {
         self.set_description(id, token)
     }
 
-    /// Stage 17: no manifest is stored yet, so it is always `None`.
+    /// Manifest and parts come from one clone, so they belong together.
     fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
         let scratch = Scratch::create(&self.temp_base)?;
         let repo = self.clone_gist(id, &scratch)?;
+        let manifest = read_manifest(&repo)?;
         let names = part_files(&repo)?;
         check_sequence(&names).map_err(|e| BackendError::Other(format!("gist {id} {e}")))?;
         let mut parts = Vec::new();
@@ -297,10 +337,11 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
                 BackendError::Other(format!("gist {id} part {name} unreadable: {e}"))
             })?);
         }
-        Ok((None, join(&parts)))
+        Ok((manifest, join(&parts)))
     }
 
     fn delete(&self, id: &str) -> Result<(), BackendError> {
+        self.pace();
         self.run_ok("gh", &["gist", "delete", id, "--yes"], None)?;
         Ok(())
     }
@@ -324,6 +365,9 @@ mod tests {
         stub_seen: RefCell<Option<String>>,
         clone_dirs: RefCell<Vec<PathBuf>>,
         envs: RefCell<Vec<Vec<(String, String)>>>,
+        pushed_manifest: RefCell<Option<String>>,
+        stamps: RefCell<Vec<(String, Duration)>>,
+        clock: Option<Arc<FakeClock>>,
         remote: Files,
     }
 
@@ -389,6 +433,8 @@ mod tests {
             }
             if program == "git" && args.last().map(String::as_str) == Some("push") {
                 *self.pushed.borrow_mut() = Some(data_files(cwd.unwrap()));
+                let manifest = std::fs::read_to_string(cwd.unwrap().join(MANIFEST_FILE)).ok();
+                *self.pushed_manifest.borrow_mut() = manifest;
             }
         }
     }
@@ -406,9 +452,11 @@ mod tests {
                     .map(|(k, v)| (k.to_string(), v.clone()))
                     .collect(),
             );
-            self.calls
-                .borrow_mut()
-                .push(format!("{program} {}", args.join(" ")));
+            let call = format!("{program} {}", args.join(" "));
+            if let Some(clock) = &self.clock {
+                self.stamps.borrow_mut().push((call.clone(), clock.mono()));
+            }
+            self.calls.borrow_mut().push(call);
             self.side_effects(program, args, cwd);
             self.replies
                 .borrow_mut()
@@ -527,7 +575,7 @@ mod tests {
             calls,
             [
                 "gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1",
-                "git add --all -- data.000",
+                "git add --all -- data.000 manifest",
                 "git -c user.name=agr -c user.email=agr@localhost -c commit.gpgsign=false commit -m agr sync",
                 "git push",
             ]
@@ -538,15 +586,116 @@ mod tests {
         );
     }
 
-    /// Stage 18 flips this: a mismatching `expected` must return `Changed(Some(..))` and run
-    /// no `git add`, `commit` or `push`.
+    fn with_manifest(manifest: &str) -> Fake {
+        Fake {
+            remote: vec![(MANIFEST_FILE.to_string(), manifest.as_bytes().to_vec())],
+            ..Fake::default()
+        }
+    }
+
     #[test]
-    fn stage_17_push_does_not_compare_expected_yet() {
+    fn a_stale_expected_is_changed_and_nothing_is_written() {
+        let base = tempfile::tempdir().unwrap();
+        let cases = [
+            (with_manifest("CUR"), Some("stale"), Some("CUR")),
+            (with_manifest("CUR"), None, Some("CUR")),
+            (Fake::default(), Some("stale"), None),
+        ];
+        for (fake, expected, current) in cases {
+            let got = backend(&fake, base.path()).push("abc123", expected, "NEW", b"x");
+            let want = BackendError::Changed(current.map(str::to_string));
+            assert_eq!(got, Err(want));
+            let calls = scrub(&fake.calls(), base.path());
+            assert_eq!(calls.len(), 1, "{calls:?}");
+            assert!(calls[0].starts_with("gh gist clone"), "{calls:?}");
+            assert!(fake.pushed.borrow().is_none());
+        }
+    }
+
+    #[test]
+    fn a_matching_expected_pushes_blob_and_manifest() {
+        let fake = with_manifest("CUR");
+        let base = tempfile::tempdir().unwrap();
+        backend(&fake, base.path())
+            .push("abc123", Some("CUR"), "NEW", b"blob")
+            .unwrap();
+        assert_eq!(fake.pushed_manifest.borrow().as_deref(), Some("NEW"));
+        assert_eq!(
+            fake.pushed.borrow().clone().unwrap(),
+            [("data.000".to_string(), b"blob".to_vec())]
+        );
+    }
+
+    #[test]
+    fn push_never_forces_and_a_rejection_is_not_retried() {
+        let base = tempfile::tempdir().unwrap();
+        for stderr in [
+            "! [rejected] main -> main (fetch first)",
+            "error: failed to push some refs (non-fast-forward)",
+            "hint: Updates were rejected, fetch first",
+        ] {
+            let fake = Fake::with(vec![ok(""), ok(""), ok(""), fail(stderr)]);
+            let got = backend(&fake, base.path()).push("abc123", None, "M", b"x");
+            assert_eq!(got, Err(BackendError::Changed(None)), "{stderr}");
+            let calls = fake.calls();
+            let pushes: Vec<_> = calls.iter().filter(|c| c.contains("push")).collect();
+            assert_eq!(pushes, ["git push"], "one push, no retry");
+            let forced = |a: &str| a == "--force" || a == "-f" || a.starts_with('+');
+            assert!(!calls.iter().flat_map(|c| c.split(' ')).any(forced));
+        }
+    }
+
+    #[test]
+    fn the_manifest_is_staged_and_committed_with_the_parts() {
         let fake = Fake::default();
         let base = tempfile::tempdir().unwrap();
-        let got = backend(&fake, base.path()).push("abc123", Some("stale"), "M", b"x");
-        assert_eq!(got, Ok(()));
-        assert!(fake.calls().iter().any(|c| c == "git push"));
+        backend(&fake, base.path())
+            .push("abc123", None, "M", b"x")
+            .unwrap();
+        let calls = fake.calls();
+        let adds: Vec<_> = calls.iter().filter(|c| c.starts_with("git add")).collect();
+        assert_eq!(adds, ["git add --all -- data.000 manifest"]);
+        assert_eq!(calls.iter().filter(|c| c.contains(" commit ")).count(), 1);
+        assert_eq!(fake.pushed_manifest.borrow().as_deref(), Some("M"));
+    }
+
+    #[test]
+    fn pull_returns_the_manifest_from_the_same_clone() {
+        let mut fake = with_manifest("CUR");
+        fake.remote.push((part_name(0), b"blob".to_vec()));
+        let base = tempfile::tempdir().unwrap();
+        let got = backend(&fake, base.path()).pull("abc123").unwrap();
+        assert_eq!(got, (Some("CUR".to_string()), b"blob".to_vec()));
+        assert_eq!(fake.calls().len(), 1, "one clone");
+    }
+
+    #[test]
+    fn every_mutating_call_waits_one_second_on_the_pacer() {
+        let clock = Arc::new(FakeClock::new(Duration::from_secs(10), 1_700_000_000));
+        let fake = Fake {
+            clock: Some(clock.clone()),
+            ..Fake::with(vec![ok("https://gist.github.com/me/abc123")])
+        };
+        let base = tempfile::tempdir().unwrap();
+        let b = backend(&fake, base.path()).with_clock(clock.clone());
+        b.create().unwrap();
+        b.push("abc123", None, "M", b"x").unwrap();
+        b.describe("abc123", "T").unwrap();
+        b.delete("abc123").unwrap();
+        let mutating = |c: &str| {
+            c.starts_with("gh gist create")
+                || c == "git push"
+                || c.contains("PATCH")
+                || c.contains("delete")
+        };
+        let stamps = fake.stamps.borrow();
+        let times: Vec<_> = stamps.iter().filter(|(c, _)| mutating(c)).collect();
+        assert_eq!(times.len(), 4, "{stamps:?}");
+        for pair in times.windows(2) {
+            let gap = pair[1].1 - pair[0].1;
+            assert!(gap >= Duration::from_secs(1), "{pair:?}");
+        }
+        assert_eq!(clock.slept().len(), 3);
     }
 
     #[test]
@@ -635,6 +784,7 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         let got = backend(&fake, base.path()).pull("abc123").unwrap();
         assert_eq!(got, (None, vec![0, 159, 146, 150]));
+        assert_eq!(fake.calls().len(), 1, "one clone, nothing else");
         let calls = scrub(&fake.calls(), base.path());
         assert_eq!(
             calls,
@@ -668,7 +818,10 @@ mod tests {
         assert_eq!(pushed[2].1, &blob[20..]);
         let calls = fake.calls();
         let adds: Vec<_> = calls.iter().filter(|c| c.starts_with("git add")).collect();
-        assert_eq!(adds, ["git add --all -- data.000 data.001 data.002"]);
+        assert_eq!(
+            adds,
+            ["git add --all -- data.000 data.001 data.002 manifest"]
+        );
         assert_eq!(calls.iter().filter(|c| c.contains("commit")).count(), 1);
     }
 
@@ -724,7 +877,7 @@ mod tests {
         let adds: Vec<_> = calls.iter().filter(|c| c.starts_with("git add")).collect();
         assert_eq!(
             adds,
-            ["git add --all -- data.000 data.001 data.002 data.003"]
+            ["git add --all -- data.000 data.001 data.002 data.003 manifest"]
         );
     }
 

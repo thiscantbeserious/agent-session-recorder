@@ -394,15 +394,15 @@ Depends on: Stage 14, Stage 15, Stage 16b
 Goal: the real backend does what the memory backend models.
 Owner: implementer
 
-- [ ] RED (fake runner): push clones, reads `manifest`, a mismatch returns `Changed(Some(..))`
+- [x] RED (fake runner): push clones, reads `manifest`, a mismatch returns `Changed(Some(..))`
       with no `git add`, `commit` or `push` call after the clone.
-- [ ] RED: the push args never contain `--force`, `-f` or a `+` refspec, and a rejected push
+- [x] RED: the push args never contain `--force`, `-f` or a `+` refspec, and a rejected push
       (`! [rejected]`, `non-fast-forward`, `fetch first`) maps to `Changed(None)` with no retry.
-- [ ] RED: `manifest` is staged in the same `git add` and commit as the parts.
-- [ ] RED: pull returns the manifest from the same clone as the parts, missing manifest is `None`.
-- [ ] RED: `parse_list` reads `created_at`, a 404 maps to `NotFound`.
-- [ ] RED: every mutating call (create, `git push`, PATCH, delete) goes through the pacer.
-- [ ] GREEN, then extend the ignored live test: create, push, stale push gets `Changed`,
+- [x] RED: `manifest` is staged in the same `git add` and commit as the parts.
+- [x] RED: pull returns the manifest from the same clone as the parts, missing manifest is `None`.
+- [x] RED: `parse_list` reads `created_at`, a 404 maps to `NotFound`.
+- [x] RED: every mutating call (create, `git push`, PATCH, delete) goes through the pacer.
+- [x] GREEN, then extend the ignored live test: create, push, stale push gets `Changed`,
       description lags and is repaired.
 
 Files: `src/sync/gist.rs`, `src/sync/gist_parse.rs`, `tests/sync_gist_live.rs`
