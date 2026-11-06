@@ -206,3 +206,6 @@ mod cli_sync_parse_test;
 
 #[path = "integration/cli_sync_test.rs"]
 mod cli_sync_test;
+
+#[path = "integration/sync_multi_machine_test.rs"]
+mod sync_multi_machine_test;

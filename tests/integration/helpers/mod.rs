@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 
 pub mod storage;
+pub mod sync_net;
 pub mod tui_snapshot;
 
 use std::fs;
