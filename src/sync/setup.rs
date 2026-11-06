@@ -244,7 +244,7 @@ mod tests {
         assert!(hint.unwrap().contains("gh auth refresh -s gist"));
         let (msg, hint) = explain(&BackendError::RateLimited);
         assert!(!msg.contains('\n') && msg.contains("rate limit"), "{msg}");
-        assert!(hint.unwrap().contains("run again later"));
+        assert_eq!(hint.as_deref(), Some("Please run again later"));
         assert_eq!(
             explain(&BackendError::Other("x".into())),
             ("x".into(), None)
