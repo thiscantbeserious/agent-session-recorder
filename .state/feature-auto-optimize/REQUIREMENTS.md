@@ -88,6 +88,13 @@ After implementation:
 - [ ] `cargo test`, `cargo clippy` and `cargo fmt --check` pass.
 - [ ] README and `src/config/docs.rs` describe the new key and the flow order.
 
+**Default and post-migrate prompt** (user decision 2026-11-06, replaces the opt-in default)
+- [ ] `[recording] auto_optimize` is a setting whose default answer is yes.
+- [ ] After `agr config migrate` adds the key, agr asks "Optimize recordings automatically after each session? [Y/n]"; Enter keeps the default yes, "n" writes false.
+- [ ] Without a TTY or with `agr config migrate --yes` the default (yes) is written without asking.
+- [ ] The question is asked only once: never again once the key exists in the config.
+- [ ] The post-migrate question is a general mechanism (a registry of post-migrate prompts with key, question, default, condition and how the answer is written), auto-optimize is its first entry, later features (sync auto push, compression offer) can add entries without changing the runner.
+
 ## Constraints
 
 - Config changes go through the versioned migrations. Current version on main is 4, the sync branch (#166) adds v5. This feature is meant to merge first, so it takes v5 and sync renumbers to v6. If sync lands first instead, this branch renumbers to v6. Whoever merges second renumbers.
