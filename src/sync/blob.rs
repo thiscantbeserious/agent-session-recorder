@@ -5,6 +5,7 @@ use super::crypto::{CryptoError, Key};
 use chacha20poly1305::aead::rand_core::RngCore;
 use chacha20poly1305::aead::stream::{DecryptorBE32, EncryptorBE32};
 use chacha20poly1305::aead::OsRng;
+use chacha20poly1305::XChaCha20Poly1305;
 use data_encoding::HEXLOWER;
 use sha2::{Digest as _, Sha256};
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -62,6 +63,44 @@ pub fn seal_stream(
     seal_with_prefix(key, path, gen, &prefix, src, dst)
 }
 
+/// `encrypt_last` consumes the encryptor, so the Option makes a second last frame impossible.
+fn seal_frame(
+    enc: &mut Option<EncryptorBE32<XChaCha20Poly1305>>,
+    last: bool,
+    aad: &[u8],
+    buf: &mut Vec<u8>,
+) -> Result<(), CryptoError> {
+    let res = if last {
+        enc.take()
+            .expect("one last frame")
+            .encrypt_last_in_place(aad, buf)
+    } else {
+        enc.as_mut()
+            .expect("not yet last")
+            .encrypt_next_in_place(aad, buf)
+    };
+    res.map_err(|_| CryptoError::Authentication)
+}
+
+/// Mirror of `seal_frame`.
+fn open_frame(
+    dec: &mut Option<DecryptorBE32<XChaCha20Poly1305>>,
+    last: bool,
+    aad: &[u8],
+    buf: &mut Vec<u8>,
+) -> Result<(), CryptoError> {
+    let res = if last {
+        dec.take()
+            .expect("one last frame")
+            .decrypt_last_in_place(aad, buf)
+    } else {
+        dec.as_mut()
+            .expect("not yet last")
+            .decrypt_next_in_place(aad, buf)
+    };
+    res.map_err(|_| CryptoError::Authentication)
+}
+
 fn seal_with_prefix(
     key: &Key,
     path: &str,
@@ -71,7 +110,7 @@ fn seal_with_prefix(
     mut dst: impl Write,
 ) -> Result<Digest, BlobError> {
     dst.write_all(&[MAGIC, &[VERSION], prefix].concat())?;
-    let mut enc = EncryptorBE32::from_aead(key.cipher(), prefix.into());
+    let mut enc = Some(EncryptorBE32::from_aead(key.cipher(), prefix.into()));
     let (aad, mut src) = (aad(path, gen), BufReader::new(src));
     let (mut hasher, mut size, mut buf) =
         (Sha256::new(), 0u64, Vec::with_capacity(FRAME + TAG_LEN));
@@ -79,15 +118,11 @@ fn seal_with_prefix(
         let last = read_frame(&mut src, &mut buf, FRAME)?;
         hasher.update(&buf);
         size += buf.len() as u64;
+        seal_frame(&mut enc, last, &aad, &mut buf)?;
+        dst.write_all(&buf)?;
         if last {
-            enc.encrypt_last_in_place(&aad, &mut buf)
-                .map_err(|_| CryptoError::Authentication)?;
-            dst.write_all(&buf)?;
             return Ok((HEXLOWER.encode(&hasher.finalize()), size));
         }
-        enc.encrypt_next_in_place(&aad, &mut buf)
-            .map_err(|_| CryptoError::Authentication)?;
-        dst.write_all(&buf)?;
     }
 }
 
@@ -117,7 +152,7 @@ pub fn open_stream(
 ) -> Result<Digest, BlobError> {
     let mut src = BufReader::new(src);
     let prefix = read_header(&mut src)?;
-    let mut dec = DecryptorBE32::from_aead(key.cipher(), (&prefix).into());
+    let mut dec = Some(DecryptorBE32::from_aead(key.cipher(), (&prefix).into()));
     let aad = aad(path, gen);
     let (mut hasher, mut size, mut buf) =
         (Sha256::new(), 0u64, Vec::with_capacity(FRAME + TAG_LEN));
@@ -126,19 +161,13 @@ pub fn open_stream(
         if buf.len() < TAG_LEN {
             return Err(CryptoError::Truncated.into());
         }
-        if last {
-            dec.decrypt_last_in_place(&aad, &mut buf)
-                .map_err(|_| CryptoError::Authentication)?;
-            hasher.update(&buf);
-            size += buf.len() as u64;
-            dst.write_all(&buf)?;
-            return Ok((HEXLOWER.encode(&hasher.finalize()), size));
-        }
-        dec.decrypt_next_in_place(&aad, &mut buf)
-            .map_err(|_| CryptoError::Authentication)?;
+        open_frame(&mut dec, last, &aad, &mut buf)?;
         hasher.update(&buf);
         size += buf.len() as u64;
         dst.write_all(&buf)?;
+        if last {
+            return Ok((HEXLOWER.encode(&hasher.finalize()), size));
+        }
     }
 }
 
