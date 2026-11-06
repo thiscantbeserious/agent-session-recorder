@@ -224,4 +224,26 @@ mod optimize {
         assert_eq!(names(dir.path()), vec!["x.cast.gz"]);
         assert_eq!(read_gz(&result), BROKEN);
     }
+
+    #[test]
+    fn empty_file_returns_none() {
+        let (_dir, plain) = setup("");
+        assert_eq!(
+            optimize_recording(&plain, &config(true, Compression::None)),
+            None
+        );
+        assert_eq!(fs::read_to_string(&plain).unwrap(), "");
+    }
+
+    #[test]
+    fn no_gap_over_threshold_returns_none_and_keeps_events() {
+        let quiet = "{\"version\":3}\n[0.1,\"o\",\"a\"]\n[0.2,\"o\",\"b\"]\n";
+        let (_dir, plain) = setup(quiet);
+        assert_eq!(
+            optimize_recording(&plain, &config(true, Compression::None)),
+            None
+        );
+        let out = fs::read_to_string(&plain).unwrap();
+        assert!(out.contains("[0.1,") && out.contains("[0.2,"), "{out}");
+    }
 }
