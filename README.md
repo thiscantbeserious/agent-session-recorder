@@ -226,6 +226,65 @@ Use `gzip -dc` and not `zcat`, on macOS `zcat` is the legacy `.Z` tool.
 
 Set `NO_COLOR=1` to disable colored output.
 
+## Syncing Sessions
+
+Sync copies your compressed sessions to a second place so another machine can pull them. Right now the only backend is secret GitHub gists through the `gh` CLI, as such `gh` and `git` need to be on your PATH and `gh auth login` done (the token needs the `gist` scope, `gh auth refresh -s gist` adds it). agr never reads or stores your GitHub token.
+
+> **Not verified against real GitHub yet.** The gist transport (`gh gist create`, the `git` push of the binary file, the list call and the error mapping) is only tested with a fake process runner and a fake backend in this PR. No real gist was created, edited or deleted. Treat the first real run as a test and see the "To verify" list in `.state/feature-sync-gist/ADR.md`.
+
+### Setup
+
+Sync is off until you set a backend in `~/.config/agr/config.toml`:
+
+```toml
+[sync]
+backend = "gist"
+auto_push = true   # default, only has an effect once a backend is set
+```
+
+```bash
+agr sync status                 # What push and pull would do, per session, read only
+agr sync push                   # Upload new and changed sessions
+agr sync pull                   # Download new and changed sessions
+agr sync delete claude/a.cast.gz  # Remove the remote copy, the local file stays
+agr sync push --dry-run         # Preview, never prompts or changes anything
+agr sync push --yes             # Skip the confirmation (needed without a terminal)
+```
+
+Every session is its own gist (`agent/name.cast.gz`). Plain `.cast` files are skipped with a hint to run `agr compress`, sessions that are still recording are skipped, and so are sessions above 100MB on disk. A conflict (both sides changed, decided by content hash and never by file time) is skipped and reported, `--overwrite` makes the local side win on push and the remote side win on pull (the replaced local file is kept as a hidden `.bak`). Deleting a session locally never deletes it remotely and the other way round, only `agr sync delete` removes the remote copy.
+
+### Encryption and the key
+
+Secret gists are not listed anywhere, but **anyone who has the link can read them**, and recordings can hold secrets you typed in the terminal. That is why agr encrypts every session on your machine before it uploads (XChaCha20-Poly1305). The gist only holds ciphertext, and its description only holds an opaque token, so session names are not readable either.
+
+The first push that creates gists shows this notice and asks for a confirmation once per machine (stored in `~/.config/agr/state.toml`). The key is created then, in `~/.config/agr/sync.key` with mode 0600, but only if the remote has no agr gists yet. If it has, agr stops and asks you to import the key of your other machine.
+
+**Losing every copy of the key makes your synced sessions unrecoverable.** Back it up right after the first push:
+
+```bash
+agr sync key export             # Prints the recovery phrase (agr1-XXXXX-...)
+```
+
+On a second machine:
+
+```bash
+agr sync key import             # Paste the phrase, or pass it as an argument
+agr sync pull
+```
+
+`key import` refuses to replace a different existing key unless you pass `--force`.
+
+### Auto push
+
+Once a backend is set, a finished recording is pushed in the background by default. Only that one session is pushed, never a pull or a delete, and a failure never changes the exit status of the recording. Auto push waits until you confirmed the privacy notice with one manual `agr sync push`, until then the recording prints one hint line. A failed background push is stored in `state.toml`, shown as one warning on the next recording and by `agr sync status`.
+
+To turn it off:
+
+```toml
+[sync]
+auto_push = false
+```
+
 ## Documentation
 
 | Resource | Description |

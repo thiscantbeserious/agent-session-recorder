@@ -128,13 +128,13 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
         fields: &[
             FieldDoc {
                 name: "backend",
-                description: "Sync backend: \"gist\" (GitHub Gists via gh). Unset = sync off",
+                description: "Sync backend: \"gist\" (secret GitHub Gists via gh, link holders can read them but sessions are encrypted locally, losing the key makes them unrecoverable). Unset = sync off",
                 default_display: "unset",
                 example: Some("\"gist\""),
             },
             FieldDoc {
                 name: "auto_push",
-                description: "Push new sessions automatically after recording (needs a backend)",
+                description: "Push new sessions automatically after recording, on by default once a backend is set (needs one manual push first to confirm the privacy notice)",
                 default_display: "true",
                 example: None,
             },

@@ -234,12 +234,12 @@ Depends on: Stage 8
 Goal: README, config docs and generated docs describe sync, encryption and auto push.
 Owner: implementer
 
-- [ ] README section "Syncing Sessions": `[sync]`, the commands, key export and import, one
+- [x] README section "Syncing Sessions": `[sync]`, the commands, key export and import, one
       gist per session, 100MB cap, `gh` and `git` needed, auto push default.
-- [ ] Privacy statement in README and config docs: secret gists are readable with the link,
+- [x] Privacy statement in README and config docs: secret gists are readable with the link,
       uploads are encrypted locally, gist descriptions hold only an opaque token, losing every
       copy of the key makes synced sessions unrecoverable.
-- [ ] `cargo xtask gen-docs`, commit the regenerated files.
+- [x] `cargo xtask gen-docs`, commit the regenerated files.
 
 Files: `README.md`, `src/config/docs/templates.rs`, `docs/COMMANDS.md`, `docs/man/`, `docs/wiki/`
 Depends on: Stage 8
@@ -285,5 +285,5 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 7 | done | live test written but not run, see ADR "To verify" |
 | 8 | done | test-only `AGR_SYNC_TEST_BACKEND_DIR` file backend (`src/sync/file.rs`) |
 | 9 | done | |
-| 10 | pending | |
+| 10 | done | README marks the gist transport as not verified live |
 | 11 | pending | |
