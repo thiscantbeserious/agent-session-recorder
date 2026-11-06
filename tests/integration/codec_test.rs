@@ -188,6 +188,72 @@ fn same_content_compares_decoded_bytes() {
     assert!(!codec::same_content(&a, &c).unwrap());
 }
 
+fn no_temp(path: &Path) -> bool {
+    !codec::temp_path_for(path).exists()
+}
+
+#[test]
+fn raw_with_writes_bytes_exactly() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("a.cast.gz");
+    let result = codec::atomic_write_raw_with(&path, |w| Ok(w.write_all(b"\x1f\x8bnot gzip")?));
+    assert_eq!(
+        std::fs::read(&path).ok().as_deref(),
+        Some(&b"\x1f\x8bnot gzip"[..])
+    );
+    assert!(result.is_ok());
+    assert!(no_temp(&path));
+}
+
+#[test]
+fn raw_with_fill_error_leaves_no_target_and_no_temp() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("a.cast");
+    let result = codec::atomic_write_raw_with(&path, |_| anyhow::bail!("boom"));
+    assert!(result.is_err());
+    assert!(!path.exists());
+    assert!(no_temp(&path));
+}
+
+#[test]
+fn raw_with_replaces_existing_only_on_success() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("a.cast");
+    write_bytes(&path, b"old");
+    codec::atomic_write_raw_with(&path, |w| Ok(w.write_all(b"new")?)).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), b"new");
+}
+
+#[test]
+fn raw_with_error_carries_path() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("a.cast");
+    let result = codec::atomic_write_raw_with(&path, |_| anyhow::bail!("boom"));
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        chain(&err).contains(&path.display().to_string()),
+        "{}",
+        chain(&err)
+    );
+    assert!(chain(&err).contains("boom"));
+}
+
+#[test]
+fn raw_with_partial_write_then_error_keeps_old_target() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("a.cast");
+    write_bytes(&path, b"old content");
+    let result = codec::atomic_write_raw_with(&path, |w| {
+        w.write_all(&vec![7u8; 200_000])?;
+        w.flush()?;
+        anyhow::bail!("late failure")
+    });
+    assert!(result.is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), b"old content");
+    assert!(no_temp(&path));
+}
+
 fn chain(err: &anyhow::Error) -> String {
     format!("{err:#}")
 }
