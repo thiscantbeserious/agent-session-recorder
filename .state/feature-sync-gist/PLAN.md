@@ -491,16 +491,16 @@ Depends on: Stage 20
 Goal: prove the invariants with interleaved runs, memory backend only.
 Owner: implementer
 
-- [ ] Three storage dirs and indexes (A, B, C), one shared `MemoryBackend`, one key.
-- [ ] A test-only wrapper backend runs a closure before the first `push` or `describe` of a
+- [x] Three storage dirs and indexes (A, B, C), one shared `MemoryBackend`, one key.
+- [x] A test-only wrapper backend runs a closure before the first `push` or `describe` of a
       run, so B's whole push lands between A's listing and A's push, and a dropped `describe`
       models a stalled PATCH.
-- [ ] Scenarios: A and B edit the same session, both push (one wins, the other is
+- [x] Scenarios: A and B edit the same session, both push (one wins, the other is
       `Changed`, after pull and `--overwrite` the result is the one the user chose).
       Interrupted create on A resumed on A (one gist, not two). C with a lost index pulls
       the newest gen. Rollback of the manifest to an older gen is rejected on A and B.
       Stalled description heals on the next run. Rate limit in the middle of a run of three.
-- [ ] Assertions after every scenario: no lost update (every acknowledged push is either the
+- [x] Assertions after every scenario: no lost update (every acknowledged push is either the
       remote content or reported as conflict on the loser), no stuck gist (each path ends with
       one listed gist and nothing pending after one more run), no silent overwrite (a local file
       only changes through a reported pull with a `.bak`).

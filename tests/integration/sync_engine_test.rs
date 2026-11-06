@@ -1141,9 +1141,9 @@ fn manifest_newer_than_the_description_wins_and_the_description_is_repaired() {
 fn pull_records_the_manifest_token_and_gen_not_the_description_ones() {
     let (backend, key, _id, t2) = manifest_newer_than_description();
     let b = machine();
-    b.engine(&backend, &key).pull(&opts()).unwrap();
-    let entry = only_entry(&b, A);
-    assert_eq!((entry.gen, entry.token), (2, Some(t2)));
+    assert!(b.engine(&backend, &key).pull(&opts()).is_ok());
+    let entry = index::load(b.dir()).0.entries.get(A).cloned();
+    assert_eq!(entry.map(|e| (e.gen, e.token)), Some((2, Some(t2))));
 }
 
 #[test]
@@ -1153,8 +1153,8 @@ fn rate_limit_during_delete_stops_the_run_and_keeps_earlier_deletes() {
     let names: Vec<String> = [A, "claude/b.cast.gz", "codex/c.cast.gz"]
         .map(String::from)
         .to_vec();
-    let err = m.engine(&spy, &key).delete(&names).unwrap_err();
-    assert_eq!(err, SyncError::RateLimited { left: 2 });
+    let result = m.engine(&spy, &key).delete(&names);
+    assert_eq!(result.err(), Some(SyncError::RateLimited { left: 2 }));
     let (index, _) = index::load(m.dir());
     assert!(!index.entries.contains_key(A));
     assert!(index.entries.contains_key("claude/b.cast.gz"));
