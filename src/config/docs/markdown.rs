@@ -99,7 +99,8 @@ pub fn generate_config_markdown() -> String {
     md.push_str("[recording]\n");
     md.push_str("auto_analyze = false\n");
     md.push_str("filename_template = \"{directory}_{date:%Y%m%d}_{time:%H%M}\"\n");
-    md.push_str("directory_max_length = 40\n\n");
+    md.push_str("directory_max_length = 40\n");
+    md.push_str("auto_optimize = true\n\n");
     md.push_str("[analysis]\n");
     md.push_str("agent = \"claude\"\n");
     md.push_str("timeout = 120\n\n");

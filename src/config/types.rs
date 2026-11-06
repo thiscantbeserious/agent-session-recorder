@@ -84,7 +84,7 @@ pub struct RecordingConfig {
 }
 
 pub fn default_auto_optimize() -> bool {
-    false // STUB
+    true
 }
 
 pub fn default_filename_template() -> String {
