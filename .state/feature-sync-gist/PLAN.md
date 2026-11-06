@@ -305,12 +305,12 @@ Depends on: Stage 12
 Goal: `Meta { v: 2, path, sha256, size, gen }`, blob bound to header, path and gen.
 Owner: implementer
 
-- [ ] RED: `blob_aad(path, gen)` is `AGR1 || 0x01 || agr:blob: || path || : || gen`, a blob
+- [x] RED: `blob_aad(path, gen)` is `AGR1 || 0x01 || agr:blob: || path || : || gen`, a blob
       sealed for gen 3 does not open with gen 2 or with another path.
-- [ ] RED: a v1 token is `UnknownVersion` in `scan`, never touched (D5).
-- [ ] GREEN: `Meta` gets `gen`, `v` is 2, push seals gen 1 for now (engine CAS comes in
+- [x] RED: a v1 token is `UnknownVersion` in `scan`, never touched (D5).
+- [x] GREEN: `Meta` gets `gen`, `v` is 2, push seals gen 1 for now (engine CAS comes in
       Stage 20), pull opens with the manifest gen. KAT vector for `seal` unchanged.
-- [ ] Update the engine test helpers that build tokens and blobs by hand.
+- [x] Update the engine test helpers that build tokens and blobs by hand.
 
 Files: `src/sync/crypto.rs`, `src/sync/scan.rs`, `src/sync/run.rs`, `src/sync/pull.rs`,
        `tests/integration/sync_engine_test.rs`

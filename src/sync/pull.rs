@@ -12,7 +12,8 @@ pub(super) fn pull_one(engine: &Engine<'_>, row: &Row, index: &mut Index) -> Res
         return Err("remote entry is missing".into());
     };
     let blob = engine.backend.pull(id).map_err(|e| e.to_string())?;
-    let plain = open(engine.key, &blob_aad(&meta.path), &blob).map_err(|e| e.to_string())?;
+    let plain =
+        open(engine.key, &blob_aad(&meta.path, meta.gen), &blob).map_err(|e| e.to_string())?;
     if sha256_hex(&plain) != meta.sha256 {
         return Err("downloaded session does not match its recorded hash".into());
     }

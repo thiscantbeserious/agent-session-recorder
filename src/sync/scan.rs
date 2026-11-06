@@ -13,6 +13,9 @@ use crate::files::{codec, lock};
 use crate::storage::SessionInfo;
 use crate::StorageManager;
 
+/// Manifest version this build reads, older tokens are never touched.
+const META_VERSION: u8 = 2;
+
 /// On-disk size cap per session, from GitHub repository size guidance.
 pub const MAX_BYTES: u64 = 1024 * 1024 * 1024;
 
@@ -76,7 +79,9 @@ fn local_state(session: &SessionInfo) -> Local {
 
 fn merge_remote(rows: &mut BTreeMap<String, Row>, key: &Key, entry: &RemoteEntry, index: &Index) {
     match open_meta(key, &entry.meta_token) {
-        Ok(meta) if meta.v == 1 && valid_path(&meta.path) => attach(rows, entry, meta, index),
+        Ok(meta) if meta.v == META_VERSION && valid_path(&meta.path) => {
+            attach(rows, entry, meta, index)
+        }
         Ok(_) | Err(CryptoError::UnsupportedVersion(_) | CryptoError::BadMeta) => {
             opaque(rows, entry, Remote::UnknownVersion, index)
         }
