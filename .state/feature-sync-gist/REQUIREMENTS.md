@@ -225,7 +225,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
 
 **Robust multi-machine sync, Variant A** (user decision 2026-11-06, after adversarial review)
 - [ ] Each session gist holds an encrypted `manifest` in the same commit as its parts:
-  `{v: 2, path, sha256, size, parts, gen}`; the commit is the source of truth, the description
+  `{v: 2, path, sha256, size, gen}` (no part count, D2); the commit is the source of truth, the description
   is only a listing hint and is repaired from the manifest when they disagree.
 - [ ] `gen` starts at 1 and increments on every push; parts are bound to path and gen (AAD),
   so old parts can never be paired with a newer manifest. The blob header is part of the AAD.
@@ -237,11 +237,11 @@ Sessions only live on one machine. We want to sync them between machines, with G
 - [ ] Interrupted pushes recover: data pushed but description stale -> repaired on next run;
   new gist left as `agr:pending` -> found via the index remote id and completed, never orphaned.
 - [ ] Duplicates are prevented by pushing to the remembered index remote id when the listing
-  misses it; remaining duplicates are only deleted after the kept gist's manifest is cloned and
-  verified, decided by server `created_at` with id as tie-break; otherwise reported as conflict.
+  misses it; remaining duplicates are never deleted automatically (D1): the oldest by server `created_at`
+  (id as tie-break) is used, the others are reported in status.
 - [ ] Rate limits: GitHub 403/429/"rate limit" responses map to a distinct error that stops
-  the whole run cleanly with "N left, run again later", honouring retry-after; new gist
-  creation is throttled (at most 60 per minute).
+  the whole run cleanly with "N left, run again later", no automatic retry (D4); mutating
+  calls are paced to at most 60 per minute, no own hourly budget (D3).
 - [ ] Commit author and committer dates are written in UTC (+0000), identity stays neutral.
 - [ ] Known limits documented, not fixed: 3000 gist listing cap, session count and timing
   visible, rename leaves the old name on other machines until `agr sync delete`, key compromise

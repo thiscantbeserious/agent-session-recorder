@@ -319,6 +319,199 @@ the table with `auto_push = true` and the commented backend line, idempotent. `S
    total (all gists, not only agr ones) the backend errors and the engine aborts before any
    change, so unlisted gists are never treated as missing.
 
+### Variant A: manifest, generation and compare-and-swap (2026-11-06, proposed)
+
+**Status**: Accepted (user decisions D1 to D5 on 2026-11-06), the points marked
+**USER DECISION** below change or narrow the requirement and wait for the user.
+
+**Problem**: push today is clone, commit, `git push`, then a separate description PATCH
+(`src/sync/gist.rs` `upload`), and the engine never checks that the remote is still the state
+it planned against (`src/sync/run.rs` `push_one`). Two machines pushing the same session can
+lose an update, an interrupted create leaves an orphan, a rollback through gist history is not
+detected, 403/429 are a generic `Other` and the run keeps going, and commit dates carry the
+local timezone.
+
+#### Rejected: HMAC and ciphertext hash in the file names
+
+The earlier proposal named the gist files after an HMAC of the path plus the ciphertext hash.
+**Rejected**, because:
+1. A git commit is already atomic, the parts and their metadata land together or not at all,
+   file names add nothing to that.
+2. A stable HMAC of the path is the same on every push, as such it links gists and revisions
+   to one session for anyone who can read the gist list (linkability leak), and it needs a
+   second key derived from the sync key (key separation) that we do not have today.
+3. It does not fix the real races (plan against a stale listing, two pushes in the same
+   seconds, the separate description PATCH).
+
+#### Decision
+
+1. **Manifest file**: every session gist holds a file `manifest` in the same commit as its
+   `data.NNN` parts. Its content is the sealed metadata token, the same string that goes into
+   the description, `Meta { v: 2, path, sha256, size, gen }`. The commit is the truth, the
+   description is a listing hint, and repairing the description is copying the manifest token
+   into it.
+2. **Generation**: `gen` starts at 1 and is planned gen + 1 on every push. Because every push
+   is a compare-and-swap (point 3) two machines can never both commit the same gen on one gist.
+3. **Compare-and-swap push**: the engine passes the token it planned against (`expected`,
+   `None` for a new or pending gist). The gist backend clones, reads `manifest` (missing means
+   `None`), and when it is not byte-equal to `expected` it returns `BackendError::Changed` with
+   the current token and writes nothing. Otherwise it writes the parts and the new manifest,
+   commits and runs a plain `git push`. Never `--force`, never a `+` refspec, never a pull or
+   rebase retry. A non-fast-forward rejection maps to `Changed(None)`.
+4. **Blob AAD**: `b"AGR1" || 0x01 || b"agr:blob:" || path || ":" || gen`, header and gen
+   bound, the core `seal` and `open` (and the KAT vector) stay untouched.
+5. **Push order**: `create` (pending gist) then the index entry with the id and
+   `pending = true`, then the compare-and-swap push, then the index entry with token and gen,
+   then the description PATCH. A failing step keeps the gist, nothing is deleted on error any
+   more, the next run resumes it through the index id.
+6. **Pull**: the backend returns the manifest token and the joined blob from the same clone.
+   The engine opens the manifest, requires the row path, and rejects it when its gen is lower
+   than the index gen or lower than the planned gen (rollback or stale copy, local file
+   untouched). The blob is opened with the manifest gen and checked against the manifest
+   SHA-256. A manifest newer than the description is accepted (manifest wins), the pull was
+   only planned because the local file equals the last synced state, as such nothing local is
+   lost.
+7. **Description repair**: the description is only ever rewritten to the newest known token,
+   that is the index token when the index gen is higher than the description gen, or a
+   `Changed` token whose gen is at least the index gen and the description gen. It never moves
+   to a lower gen.
+8. **Adopt own commit**: `Changed(Some(t))` where `t` opens and its SHA-256 equals the local
+   file is our own earlier push (crash after the commit, before the index save), the engine
+   records it and repairs the description instead of reporting a conflict.
+9. **Index id fallback**: when the listing misses a path but the index has a remote id, the
+   push goes to that id with the index token as `expected`. `BackendError::NotFound` (gist
+   deleted elsewhere) drops the index entry and creates a new gist, same as today.
+10. **Duplicates**: `RemoteEntry` gets the server `created_at`. Several gists for one path
+    resolve to the oldest `created_at`, id as tie-break, so every machine picks the same one.
+    Same SHA-256 means the others are reported with a hint, a different SHA-256 makes the path
+    `Duplicate`, skipped and reported with both ids, also with `--overwrite`.
+11. **Rate limits**: 403 or 429 with `rate limit` in the text, or `secondary rate limit`, map
+    to `BackendError::RateLimited`. The engine stops the run at the first one, keeps what is
+    done (index is saved per session) and the report says "N left, run again later". Every
+    mutating call (create, `git push`, PATCH, delete) is paced to at most one per second.
+12. **UTC dates**: `git commit` runs with `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE` set to
+    `@<unix seconds> +0000`. `Runner::run` gets an `env` argument for exactly that, the process
+    env of the tests is never touched.
+13. **Compatibility**: nothing is released. A gist with a v1 token (no manifest) opens as
+    `v != 2` and becomes the existing `UnknownVersion` row, reported and never touched, the
+    maintainer deletes the test gists by hand. **USER DECISION** D5, the task allowed "treated
+    as needing a push", this is the zero code option.
+
+#### Trait (changes, and why)
+
+```rust
+pub struct RemoteEntry { pub id: String, pub meta_token: String, pub created_at: String }
+
+pub trait SyncBackend {
+    fn name(&self) -> &'static str;
+    fn check(&self) -> Result<(), BackendError>;
+    fn list(&self) -> Result<Vec<RemoteEntry>, BackendError>;
+    fn create(&self) -> Result<String, BackendError>;                  // pending, unlisted
+    fn push(&self, id: &str, expected: Option<&str>, manifest: &str, blob: &[u8])
+        -> Result<(), BackendError>;                                    // compare-and-swap
+    fn describe(&self, id: &str, token: &str) -> Result<(), BackendError>;
+    fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError>;
+    fn delete(&self, id: &str) -> Result<(), BackendError>;
+}
+```
+`BackendError` gains `Changed(Option<String>)`, `NotFound`, `RateLimited`.
+Why: `create` is split out so the engine stores the id before any upload (no orphans),
+`expected` is the compare-and-swap, `describe` is split out because repair and the crash
+window need it on its own, `pull` returns the manifest so it is checked from the same commit
+as the blob. The backend still only sees opaque tokens and bytes, the comparison is plain
+string equality.
+
+```mermaid
+sequenceDiagram
+  participant E as engine
+  participant I as index
+  participant B as backend
+  E->>B: create (new only)
+  E->>I: id, pending
+  E->>B: push(id, expected, manifest, blob)
+  B-->>E: ok or Changed
+  E->>I: token, gen
+  E->>B: describe(id, token)
+```
+Legend: one push of one session, every arrow after `create` is safe to repeat on the next run.
+
+Index entry: `{sha256, remote_id, synced_at, gen, token, pending}`, the three new fields with
+`serde(default)`, index version stays 1 (nothing released).
+
+#### Design review (architect)
+
+1. **Is the compare-and-swap race free?** There are three windows.
+   - Plan to clone (listing at t0, clone at t1): closed by the manifest equality check in the
+     clone.
+   - Clone to push (two pushes within seconds): closed by git itself, the server updates the
+     ref only when our parent is still the tip, the second push gets non-fast-forward and maps
+     to `Changed`. This holds only while we never force and never auto retry, both get a test
+     on the argument list.
+   - Commit to description PATCH: **not closed**, the gist API has no conditional PATCH. A
+     stalled PATCH can land after a newer push and its PATCH, the description then shows an
+     older gen than the manifest. Nothing is lost (every push and pull checks the manifest in
+     the clone), it only hides the newer version from listings until it heals. It heals when
+     the newest writer runs again (index gen higher than description gen, point 7) or when any
+     machine pushes that session (`Changed` with a newer token, point 7). Documented as a
+     known limit, the window is the length of one stalled HTTP call.
+2. **Is `gen` safe with concurrent writers?** Yes on the gist, two machines planning N+1 from
+   N both clone gen N, one push wins, the other is non-fast-forward. It is only safe because of
+   point 3, a backend without a ref compare-and-swap would need another mechanism, the memory
+   backend models it with one mutex. A lost index on a machine means trust on first use, the
+   fresh index accepts whatever gen the remote has, so a rollback done before that machine
+   syncs again is not detected there. Documented as a known limit, the other machines still
+   detect it.
+3. **Does gen in the blob AAD create a recovery problem?** No, manifest and parts are in one
+   commit, they cannot get out of step through a partial failure. Honest note: it is
+   redundant, the authenticated manifest SHA-256 already rejects an old blob with a new
+   manifest. It costs one line, as such we keep it as the requirement asks.
+4. **Is "manifest wins, description repaired" safe with a rolled back manifest?** Only with
+   the gen rule of point 7, a manifest with a lower gen than the index or the description is
+   rejected and never copied into the description. Without an index (fresh machine) a rolled
+   back manifest wins, same trust on first use limit as above.
+5. **Can dedupe delete the only good copy?** Yes, the duplicate that is not the oldest can hold
+   the newer content, and deleting after verifying the kept gist does not change that. Report
+   only is simpler and loses nothing, duplicates are rare once the index id fallback and the
+   pending resume exist. **USER DECISION** D1: drop the automatic delete, keep the
+   deterministic pick by `created_at` and id, report duplicates with both ids. Recommended.
+6. **Throttle numbers**: GitHub documents at most 80 content-generating requests per minute
+   and 500 per hour (https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api),
+   whether gist git pushes count is not documented. A new session costs up to three mutating
+   calls (create, `git push`, PATCH), an existing one two. Pacing every mutating call to one
+   per second gives at most 60 per minute even if git pushes count, which leaves 20 for other
+   `gh` use, that is at most 20 to 30 sessions per minute. The hourly 500 is reached after about
+   eight minutes of a large first push, as such a big first sync will stop with "N left" and
+   needs two or three runs. **USER DECISION** D3 (decided 2026-11-06): pace only, no own
+   hourly stop. agr spaces mutating calls one second apart and stops the run cleanly as soon as
+   GitHub reports a rate limit, it never retries automatically after that (the architect had
+   recommended an extra stop after 450 calls, the user chose pace only). Auto push moves one session per recording, it never runs into the hourly
+   limit by itself, when it is rate limited the error line is stored and shown after the next
+   recording, the next recording tries again with the same one or two calls.
+7. **retry-after**: `gh gist create` and `git push` never show response headers, only `gh api`
+   with `--include` would, and that output is not verified. **USER DECISION** D4: honour
+   retry-after by never retrying automatically, the stop message says "run again later", no
+   header parsing. Recommended.
+8. **`parts` in the manifest**: the engine seals the manifest before the backend splits the
+   blob, it does not know the part size, and a missing or extra part already fails the
+   contiguity check and the AEAD tag. **USER DECISION** D2: drop `parts` from the manifest.
+   Recommended.
+9. **What else is over-engineered for one user with 2 to 3 machines?** Dropped already: file
+   name HMAC, automatic dedupe delete (D1), header parsing (D4), `parts` (D2), a separate
+   manifest AAD (the token AAD is enough), an index version bump. Kept because they are cheap
+   and close a real loss: compare-and-swap, pending resume, index id fallback, gen check,
+   description repair, `created_at` pick, rate limit stop, pacing, UTC dates.
+
+#### Known limits (documented, not fixed)
+
+- GitHub lists at most 3000 gists, sync aborts at that size.
+- Session count, sizes and push times are visible to anyone who can see the gists.
+- A rename leaves the old name on other machines until `agr sync delete`, and
+  `agr sync delete` racing a push elsewhere is not a compare-and-swap, the other machine
+  re-creates the gist from its local copy on its next push.
+- A leaked key exposes every old revision in the gist history.
+- The description can lag behind the manifest after a stalled PATCH, until it heals (review 1).
+- Rollback detection is trust on first use for a machine without an index (review 2).
+
 ## Consequences
 
 - New deps: `chacha20poly1305`, `sha2`, `data-encoding` (all pure Rust, small).
@@ -327,7 +520,9 @@ the table with `auto_push = true` and the commented backend line, idempotent. `S
 - Losing every copy of the key makes the remote unreadable. Docs and the first key generation
   say so.
 - Help and completions snapshots change, docs regenerated with `cargo xtask gen-docs`.
-- Expected PR size about 45 files, under the 100 file limit.
+- Expected PR size about 45 files, under the 100 file limit. Variant A adds about 3 files
+  (`src/sync/push.rs`, `src/sync/pace.rs`, `tests/integration/sync_multi_machine_test.rs`),
+  the branch is at 77 today.
 
 ## To verify during implementation
 1. Binary git push to a gist round-trips (Stage 7, ignored live test).
@@ -366,4 +561,8 @@ created, edited or deleted, the ignored `tests/sync_gist_live.rs` was not run):*
    current local file (rotate), a stale backup must not fail every later pull.
 4. 2026-11-06 (fix round): decision 10, push order is blob first and token last with a
    placeholder description at create, so an orphan gist never advertises a hash without a blob.
-5. All other decisions in this ADR: decided autonomously (review in PR).
+5. 2026-11-06 (after adversarial review): user chose Variant A (manifest, gen, compare-and-swap),
+   the HMAC file name proposal is rejected, D1 to D5 decided by the user on 2026-11-06: D1 report only, D2 drop
+   `parts`, D3 pace only, D4 no retry-after parsing, D5 v1 gists left alone.
+6. All other decisions in this ADR: decided autonomously (review in PR).
+- 2026-11-06: Variant A decisions by user: D1 duplicates report only, no auto delete; D2 no `parts` in the manifest; D3 pace only (60 mutating calls per minute), no own hourly stop, stop when GitHub reports a rate limit; D4 no retry-after parsing, "run again later"; D5 unreleased v1 gists shown as unknown and left alone.

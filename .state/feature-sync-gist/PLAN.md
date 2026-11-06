@@ -14,6 +14,10 @@ max 3. Library code never prints (commands do). Library unit tests sit inline in
 1. Binary git push to a gist round-trips byte-identical: verify in Stage 7 (live, ignored).
 2. Gist description length fits `agr:v1 <token>` (~260 chars): verify in Stage 7.
 3. Error text of a git push without credential helper (https protocol): verify in Stage 7.
+4. Resolved 2026-11-06 by the user: D1 dedupe report only, D2 no `parts` in the manifest,
+   D3 pace only (no stop after 450 calls), D4 no retry-after parsing, "run again later",
+   D5 v1 gists left alone.
+5. Real non-fast-forward and 404 stderr of `git push` and `gh` against a gist: Stage 18 live.
 
 ## Stages
 
@@ -296,6 +300,201 @@ Files: `src/sync/parts.rs`, `src/sync/gist.rs`, `src/sync/gist_parse.rs`, `src/s
        `tests/sync_gist_live.rs`, `tests/integration/sync_engine_test.rs`
 Depends on: Stage 12
 
+### Stage 14: Manifest v2 and gen in the blob AAD
+
+Goal: `Meta { v: 2, path, sha256, size, gen }`, blob bound to header, path and gen.
+Owner: implementer
+
+- [ ] RED: `blob_aad(path, gen)` is `AGR1 || 0x01 || agr:blob: || path || : || gen`, a blob
+      sealed for gen 3 does not open with gen 2 or with another path.
+- [ ] RED: a v1 token is `UnknownVersion` in `scan`, never touched (D5).
+- [ ] GREEN: `Meta` gets `gen`, `v` is 2, push seals gen 1 for now (engine CAS comes in
+      Stage 20), pull opens with the manifest gen. KAT vector for `seal` unchanged.
+- [ ] Update the engine test helpers that build tokens and blobs by hand.
+
+Files: `src/sync/crypto.rs`, `src/sync/scan.rs`, `src/sync/run.rs`, `src/sync/pull.rs`,
+       `tests/integration/sync_engine_test.rs`
+Depends on: Stage 9, Stage 13
+
+### Stage 15: UTC commit dates through the runner
+
+Goal: no timezone in gist commits, still no env mutation in tests.
+Owner: implementer
+
+- [ ] RED (fake runner): `git commit` gets `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE` as
+      `@<secs> +0000`, every other call gets no extra env.
+- [ ] GREEN: `Runner::run` takes `env: &[(&str, String)]`, `ProcessRunner` passes it with
+      `Command::env`, the date comes from a clock argument so the test is fixed.
+- [ ] Commit identity stays `agr` / `agr@localhost`.
+
+Files: `src/sync/runner.rs`, `src/sync/gist.rs`
+Depends on: Stage 9, Stage 13
+
+### Stage 16: Rate limit error and pacer
+
+Goal: a distinct error that stops the run, and a pure pacer for mutating calls.
+Owner: implementer
+
+- [ ] RED: `map_failure` maps `HTTP 403` or `HTTP 429` with `rate limit`, and
+      `secondary rate limit`, to `BackendError::RateLimited`, a plain 403 stays as it is.
+- [ ] RED: `explain(RateLimited)` gives one line plus "run again later".
+- [ ] RED: `Pacer` with an injected clock and sleeper waits so two mutating calls are at least
+      one second apart (D3: pace only, no call budget per run).
+- [ ] GREEN: `src/sync/pace.rs` (pure, no thread sleep in tests), new variant, mapping.
+
+Files: `src/sync/backend.rs`, `src/sync/gist_parse.rs`, `src/sync/pace.rs`, `src/sync/mod.rs`,
+       `src/sync/setup.rs`
+Depends on: Stage 9, Stage 13
+
+### Stage 17: Backend trait reshape and memory compare-and-swap
+
+Goal: `create`, `push(id, expected, manifest, blob)`, `describe`, `pull` with manifest,
+`created_at`, `Changed` and `NotFound`, memory and file backends implement the swap.
+Owner: implementer
+
+- [ ] RED (memory): push with the current token as `expected` stores blob and manifest, the
+      description stays until `describe`. Push with a stale `expected` returns
+      `Changed(Some(current))` and stores nothing. `create` gives a pending, unlisted id.
+      Unknown id is `NotFound`. `created_at` grows with each create.
+- [ ] RED (memory): test hooks to change the stored manifest, blob or description by hand
+      (tamper, rollback, stalled description).
+- [ ] GREEN: trait as in the ADR, memory under one mutex (models git's ref check), file
+      backend gets the same rules (`<id>.manifest`, `<id>.desc`).
+- [ ] Engine call sites adapted without new behaviour: create then push with `expected` from
+      the listing, then describe. Gist backend adapted mechanically (`create_gist` and
+      `set_description` become `create` and `describe`, no delete on error), its compare-and-swap
+      follows in Stage 18 right after this one.
+
+Files: `src/sync/backend.rs`, `src/sync/memory.rs`, `src/sync/file.rs`, `src/sync/run.rs`,
+       `src/sync/pull.rs`, `src/sync/gist.rs`, `tests/integration/sync_engine_test.rs`
+Depends on: Stage 14, Stage 15, Stage 16
+
+### Stage 18: Gist compare-and-swap, manifest, created_at and pacing
+
+Goal: the real backend does what the memory backend models.
+Owner: implementer
+
+- [ ] RED (fake runner): push clones, reads `manifest`, a mismatch returns `Changed(Some(..))`
+      with no `git add`, `commit` or `push` call after the clone.
+- [ ] RED: the push args never contain `--force`, `-f` or a `+` refspec, and a rejected push
+      (`! [rejected]`, `non-fast-forward`, `fetch first`) maps to `Changed(None)` with no retry.
+- [ ] RED: `manifest` is staged in the same `git add` and commit as the parts.
+- [ ] RED: pull returns the manifest from the same clone as the parts, missing manifest is `None`.
+- [ ] RED: `parse_list` reads `created_at`, a 404 maps to `NotFound`.
+- [ ] RED: every mutating call (create, `git push`, PATCH, delete) goes through the pacer.
+- [ ] GREEN, then extend the ignored live test: create, push, stale push gets `Changed`,
+      description lags and is repaired.
+
+Files: `src/sync/gist.rs`, `src/sync/gist_parse.rs`, `tests/sync_gist_live.rs`
+Depends on: Stage 17
+
+### Stage 19: Index fields, index id fallback and duplicate pick
+
+Goal: rows know the last gen, token and pending state, the listing is never the only source.
+Owner: implementer
+
+- [ ] RED: an old index without `gen`, `token`, `pending` still loads (serde defaults).
+- [ ] RED: a path in the index with a `remote_id` that the listing misses gets that id and the
+      index token as the planned remote, a pending entry gets its id and no token.
+- [ ] RED: two remote entries for one path pick the oldest `created_at`, id as tie-break, the
+      same on every machine. Same SHA-256 means the others are listed in a note, different
+      SHA-256 is `Decision::Duplicate`, never acted on, also not with `--overwrite` (D1).
+- [ ] RED: a description gen lower than the index gen marks the row for description repair.
+- [ ] GREEN: `index.rs`, `scan.rs`, `plan.rs`, text in `format.rs`.
+
+Files: `src/sync/index.rs`, `src/sync/scan.rs`, `src/sync/plan.rs`, `src/sync/format.rs`
+Depends on: Stage 17
+
+### Stage 20: Engine push as compare-and-swap, pending resume, rate limit stop
+
+Goal: no lost update, no orphan, no stuck gist on push.
+Owner: implementer
+
+- [ ] RED: push uses gen = planned gen + 1 and the planned token as `expected`, `Changed` is
+      reported as "changed remotely, pull first" and nothing is recorded.
+- [ ] RED: `Changed(Some(t))` where `t` is our local hash is adopted (index and description
+      repaired), not a conflict.
+- [ ] RED: a new session stores the id with `pending` before the push, a failed push leaves
+      the index entry and the next run resumes the same id, the backend never gets a second
+      `create` for that path.
+- [ ] RED: `NotFound` on the index id drops the entry and creates once.
+- [ ] RED: describe failing after a good push still records the push, the next run repairs the
+      description, the description is never set to a lower gen.
+- [ ] RED: `RateLimited` stops the run with `SyncError::RateLimited { left }`, earlier
+      sessions stay recorded, the command prints "N left, run again later", auto push stores
+      the same line.
+- [ ] GREEN: push logic moves to `src/sync/push.rs` (keeps `run.rs` under ~400 lines).
+
+Files: `src/sync/push.rs`, `src/sync/run.rs`, `src/sync/mod.rs`, `src/sync/auto.rs`,
+       `src/commands/sync/run.rs`, `tests/integration/sync_engine_test.rs`
+Depends on: Stage 18, Stage 19
+
+### Stage 21: Engine pull with manifest and gen check
+
+Goal: rollback and stale copies are rejected, the manifest wins over the description.
+Owner: implementer
+
+- [ ] RED: a manifest gen lower than the index gen is rejected ("older than the last sync"),
+      the local file and the `.bak` are untouched.
+- [ ] RED: a manifest for another path, or a blob that does not open with the manifest gen,
+      is rejected.
+- [ ] RED: a manifest newer than the description is pulled and the description repaired.
+- [ ] RED: pull records gen and token in the index.
+- [ ] GREEN in `pull.rs`.
+
+Files: `src/sync/pull.rs`, `tests/integration/sync_engine_test.rs`
+Depends on: Stage 20
+
+### Stage 22: Concurrency test, three machines on one remote
+
+Goal: prove the invariants with interleaved runs, memory backend only.
+Owner: implementer
+
+- [ ] Three storage dirs and indexes (A, B, C), one shared `MemoryBackend`, one key.
+- [ ] A test-only wrapper backend runs a closure before the first `push` or `describe` of a
+      run, so B's whole push lands between A's listing and A's push, and a dropped `describe`
+      models a stalled PATCH.
+- [ ] Scenarios: A and B edit the same session, both push (one wins, the other is
+      `Changed`, after pull and `--overwrite` the result is the one the user chose).
+      Interrupted create on A resumed on A (one gist, not two). C with a lost index pulls
+      the newest gen. Rollback of the manifest to an older gen is rejected on A and B.
+      Stalled description heals on the next run. Rate limit in the middle of a run of three.
+- [ ] Assertions after every scenario: no lost update (every acknowledged push is either the
+      remote content or reported as conflict on the loser), no stuck gist (each path ends with
+      one listed gist and nothing pending after one more run), no silent overwrite (a local file
+      only changes through a reported pull with a `.bak`).
+
+Files: `tests/integration/sync_multi_machine_test.rs`, `tests/integration.rs`
+Depends on: Stage 21
+
+### Stage 23: Docs for Variant A
+
+Goal: users know what sync guarantees and what it does not.
+Owner: implementer
+
+- [ ] README sync section: changed remotely, duplicates, rate limit stop, known limits list
+      from the ADR.
+- [ ] ADR "To verify" gets the live checks of Stage 18, ADR status stays Proposed until the
+      user settles D1 to D5.
+- [ ] `cargo xtask gen-docs` if help text changed.
+
+Files: `README.md`, `docs/`, `.state/feature-sync-gist/ADR.md`
+Depends on: Stage 21
+
+### Stage 24: Final verification for Variant A
+
+Goal: green, within limits, rules hold.
+Owner: implementer
+
+- [ ] `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`.
+- [ ] `cargo check --target x86_64-pc-windows-msvc`.
+- [ ] Grep: no `println!` or `eprintln!` in `src/sync/`, no `Command::new` outside
+      `src/sync/runner.rs`, no `--force` in `src/sync/`.
+- [ ] `git diff --stat main` under 100 files.
+
+Files: `.state/feature-sync-gist/PLAN.md`
+Depends on: Stage 11, Stage 22, Stage 23
+
 ## Batches
 
 1. Stage 1, Stage 2, Stage 3 (parallel, no shared files)
@@ -306,6 +505,13 @@ Depends on: Stage 12
 6. Stage 8
 7. Stage 9, Stage 10 (parallel)
 8. Stage 11
+9. Stage 14, Stage 15, Stage 16 (parallel, no shared files)
+10. Stage 17
+11. Stage 18, Stage 19 (parallel, gist files vs index, scan and plan)
+12. Stage 20
+13. Stage 21
+14. Stage 22, Stage 23 (parallel)
+15. Stage 24
 
 Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 
@@ -326,3 +532,14 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 11 | pending | final gates, see Stage 12 for the fix round |
 | 12 | done | fix round before the PR |
 | 13 | done | parts, 1 GiB cap, listing limit |
+| 14 | pending | Variant A |
+| 15 | pending | |
+| 16 | pending | |
+| 17 | pending | |
+| 18 | pending | |
+| 19 | pending | |
+| 20 | pending | |
+| 21 | pending | |
+| 22 | pending | three machine concurrency test |
+| 23 | pending | |
+| 24 | pending | |
