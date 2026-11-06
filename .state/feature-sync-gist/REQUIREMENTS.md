@@ -223,6 +223,30 @@ Sessions only live on one machine. We want to sync them between machines, with G
   clear error (GitHub documents a 3000 gist pagination cap), never treats unlisted gists as
   missing.
 
+**Robust multi-machine sync, Variant A** (user decision 2026-11-06, after adversarial review)
+- [ ] Each session gist holds an encrypted `manifest` in the same commit as its parts:
+  `{v: 2, path, sha256, size, parts, gen}`; the commit is the source of truth, the description
+  is only a listing hint and is repaired from the manifest when they disagree.
+- [ ] `gen` starts at 1 and increments on every push; parts are bound to path and gen (AAD),
+  so old parts can never be paired with a newer manifest. The blob header is part of the AAD.
+- [ ] Push is a compare-and-swap: the manifest in the fresh clone must match the remote state
+  the plan was based on, otherwise the session is reported as changed remotely and nothing is
+  written; git push is never forced, a non-fast-forward rejection is reported as a conflict.
+- [ ] Pull rejects a manifest whose gen is lower than the last synced gen in the index
+  (rollback from gist history), the local file stays untouched.
+- [ ] Interrupted pushes recover: data pushed but description stale -> repaired on next run;
+  new gist left as `agr:pending` -> found via the index remote id and completed, never orphaned.
+- [ ] Duplicates are prevented by pushing to the remembered index remote id when the listing
+  misses it; remaining duplicates are only deleted after the kept gist's manifest is cloned and
+  verified, decided by server `created_at` with id as tie-break; otherwise reported as conflict.
+- [ ] Rate limits: GitHub 403/429/"rate limit" responses map to a distinct error that stops
+  the whole run cleanly with "N left, run again later", honouring retry-after; new gist
+  creation is throttled (at most 60 per minute).
+- [ ] Commit author and committer dates are written in UTC (+0000), identity stays neutral.
+- [ ] Known limits documented, not fixed: 3000 gist listing cap, session count and timing
+  visible, rename leaves the old name on other machines until `agr sync delete`, key compromise
+  exposes gist history.
+
 ## Constraints
 
 - Sync works on `.cast.gz` bytes as stored, no recompression, so the hash stays stable.
