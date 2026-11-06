@@ -280,6 +280,22 @@ Files: `src/sync/*`, `src/commands/sync/run.rs`, `src/cli/subcommands.rs`,
        `tests/integration/cli_sync_test.rs`, `tests/integration/sync_engine_test.rs`
 Depends on: Stage 10
 
+### Stage 13: Large sessions and listing limit
+
+Goal: parts in the same gist, 1 GiB cap, listing abort at 3000, neutral file names.
+Owner: implementer
+
+- [x] `sync::parts` pure split, join, sequence check, stale parts.
+- [x] Gist backend writes `data.NNN` in one commit, removes stale parts, pull joins and
+      rejects gaps before returning anything. Stub is `.keep`.
+- [x] `MAX_BYTES` 1 GiB, skip text, listing of 3000 or more gists is an error.
+- [x] Docs: ADR, README, field docs. Live test for parts, stub and shrink (not run).
+
+Files: `src/sync/parts.rs`, `src/sync/gist.rs`, `src/sync/gist_parse.rs`, `src/sync/scan.rs`,
+       `src/sync/run.rs`, `src/sync/auto.rs`, `src/config/docs/fields.rs`, `README.md`, `docs/`,
+       `tests/sync_gist_live.rs`, `tests/integration/sync_engine_test.rs`
+Depends on: Stage 12
+
 ## Batches
 
 1. Stage 1, Stage 2, Stage 3 (parallel, no shared files)
@@ -309,3 +325,4 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 10 | done | README marks the gist transport as not verified live |
 | 11 | pending | final gates, see Stage 12 for the fix round |
 | 12 | done | fix round before the PR |
+| 13 | done | parts, 1 GiB cap, listing limit |

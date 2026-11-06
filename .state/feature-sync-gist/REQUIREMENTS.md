@@ -55,7 +55,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
 - Default is one gist per session, not one per agent. Reasons: 1. a single big session cannot block or fail the others, 2. per-session conflict and delete handling stays simple, 3. a per-agent gist would grow without bound and hit the size and file count limits sooner.
 - Gists store text. The API does not take binary content, so the `.cast.gz` bytes cannot go in as a normal gist file. Default: push and pull through the gist's git repository (`gh gist clone`, then plain git), which holds binary files, so the file stays a real `.cast.gz` on the remote and `gzip -dc` works on a cloned gist. Fallback if the Architect finds that unworkable (for example git credentials for gists): base64 text in chunked files, about 33% larger, hash is always calculated over the original `.cast.gz` bytes either way.
 - Known limits to verify and document: API responses truncate large files (raw content has to be fetched separately), git pushes reject single files over 100MB and warn from 50MB, and a gist has a file count limit. Our own limit is a hard cap per session on on-disk size, default 100MB. Larger sessions are skipped and reported with the reason, never half uploaded. (On the maintainer's data the largest session is 52MB compressed, so this covers the known data.)
-- Each gist contains the session file plus one small metadata file (`agr-session.json`: format version, agent, name, sha256 of the `.cast.gz` bytes, uncompressed size).
+- Each gist contains the session file plus one small metadata file (`.keep`, a neutral placeholder, the metadata itself is the sealed description token).
 
 **Identity and discovery (second machine)**
 - Every agr gist gets a fixed description marker, `agr:v1 <agent>/<name>`. `list remote` finds the user's agr gists by listing the authenticated user's gists and filtering on that prefix. No separate registry gist.
@@ -125,7 +125,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
 - [ ] No agr output, log or file contains the GitHub token.
 
 **Push**
-- [ ] `agr sync push` creates one secret gist per new session, with description `agr:v1 <agent>/<name>`, the `.cast.gz` bytes and `agr-session.json`.
+- [ ] `agr sync push` creates one secret gist per new session, with description `agr:v1 <agent>/<name>`, the `.cast.gz` bytes as `data.NNN` parts and a `.keep` placeholder.
 - [ ] The remote file is the byte-identical `.cast.gz` (hash equal to the local hash) or, on the base64 fallback, decodes to it.
 - [ ] After a push the index holds path, hash and remote id, and a second push reports nothing to do.
 - [ ] A session changed locally after the last sync updates the existing gist, no second gist is created.
@@ -210,8 +210,8 @@ Sessions only live on one machine. We want to sync them between machines, with G
 
 **Large sessions and listing limit** (user decision 2026-11-06)
 - [ ] The gist backend splits the sealed blob into parts of at most 45 MiB
-  (`session.agr.000`, `session.agr.001`, ...), all in the SAME gist as the session, pushed in
-  one commit. A blob under 45 MiB is a single part `session.agr.000`.
+  (`data.000`, `data.001`, ...), all in the SAME gist as the session, pushed in
+  one commit. A blob under 45 MiB is a single part `data.000`.
 - [ ] Pull fetches all parts of the gist, joins them in order and only then opens and verifies
   the blob; a missing, extra or reordered part is rejected, nothing is written.
 - [ ] Re-pushing a session whose part count shrinks removes the stale higher parts in the same

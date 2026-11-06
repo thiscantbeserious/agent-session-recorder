@@ -144,9 +144,11 @@ wrong prefix, wrong length or bad checksum.
 - Cons: the gist UI shows only an opaque token, description length to verify (fallback above).
 
 **Decision: Option B**, decided autonomously (review in PR). `token = base64url(sealed JSON)`,
-JSON is `{"v":1,"path":"claude/x.cast.gz","sha256":"<hex>","size":123}`. `agr-session.json` in
-the gist holds only `{"format":1}` (gists need one text file at create time, `gh gist create`
-cannot create the binary file), the blob is `session.agr`.
+JSON is `{"v":1,"path":"claude/x.cast.gz","sha256":"<hex>","size":123}`. `.keep` in the gist
+holds only a newline (gists need one text file at create time, `gh gist create` cannot create
+the binary file), the blob lives in `data.000`, `data.001`, ... (see "Large sessions").
+File names reveal neither the tool nor the content, only the `agr:v1 ` description prefix does
+(second machines find their gists by it).
 
 ### 5. Auto push latency
 
@@ -214,7 +216,7 @@ in the engine, as such a later S3 or git backend gets it for free.
 
 `b"AGR1" || version u8 (1) || nonce [24] || ciphertext+tag`. AAD is `b"agr:blob:" || path` for
 the blob and `b"agr:meta"` for the token, so a blob moved to another session's gist fails to
-open. Whole session in memory, bounded by the 100MB cap.
+open. Whole session in memory, bounded by the 1 GiB cap.
 `// ponytail:` in-memory seal, a streaming STREAM construction if the cap ever goes up.
 
 ### Key file
@@ -243,7 +245,7 @@ Inputs per path: local hash (or skip reason), remote hash and id, last synced ha
 4. both differ from last (or no last and local != remote): conflict, skipped unless
    `--overwrite`, which picks push or pull by command.
 5. remote entry sealed with another key or unknown version: reported, never touched.
-6. local plain `.cast`, live lock, over 100MB: skipped with reason.
+6. local plain `.cast`, live lock, over 1 GiB: skipped with reason.
 
 ### Safety rules
 - Pull: download, open (auth), SHA-256 equals the sealed metadata hash, then
@@ -301,11 +303,27 @@ auto_push = true
 the table with `auto_push = true` and the commented backend line, idempotent. `State` gets
 `sync_privacy_ack: bool` and `last_auto_push_error: Option<String>`.
 
+### Large sessions and listing limit (2026-11-06, user decision)
+
+1. **Parts in the same gist**: the sealed blob is cut into parts of at most 45 MiB, named
+   `data.000`, `data.001`, ..., all in the session's own gist and pushed in one commit with the
+   rest. 45 MiB stays under git's 50 MiB warning. A re-push removes stale higher parts in the
+   same commit. Pull reads every `data.NNN`, requires them contiguous from 000 (no gap, no
+   extra, no reorder) and joins them before anything is opened. Split and join are pure
+   (`sync::parts`), the engine and `SyncBackend` still move one blob.
+2. **1 GiB cap** per session (was 100MB), from GitHub's repository size guidance
+   (https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits).
+   Whole session still sits in memory, as such the cap is also a memory bound.
+3. **Listing abort at 3000**: GitHub documents a 3000 gist pagination cap
+   (https://docs.github.com/en/rest/gists/gists). If the listing has 3000 or more gists in
+   total (all gists, not only agr ones) the backend errors and the engine aborts before any
+   change, so unlisted gists are never treated as missing.
+
 ## Consequences
 
 - New deps: `chacha20poly1305`, `sha2`, `data-encoding` (all pure Rust, small).
 - New runtime requirement for sync only: `gh` and `git` on PATH.
-- Gist UI shows only `agr:v1 <token>` and an opaque `session.agr`, which is the point.
+- Gist UI shows only `agr:v1 <token>` and opaque `data.NNN` files, which is the point.
 - Losing every copy of the key makes the remote unreadable. Docs and the first key generation
   say so.
 - Help and completions snapshots change, docs regenerated with `cargo xtask gen-docs`.
@@ -323,13 +341,15 @@ created, edited or deleted, the ignored `tests/sync_gist_live.rs` was not run):*
   segment of the printed `gist.github.com/...` URL).
 - `gh gist clone <id> <dir> -- --depth 1` works for a secret gist and with the configured git
   protocol.
-- A binary `session.agr` pushed with plain `git push` is served back byte-identical (Open
+- A binary `data.000` pushed with plain `git push` is served back byte-identical (Open
   Question 1), gist description length for the token (Open Question 2), and the real https
   without credential helper error text (Open Question 3, the mapping is built from sample
   strings, not captured output).
 - `gh api gists?per_page=100 --paginate` prints concatenated JSON arrays (parser accepts that and
   a single array), and `gh api -X PATCH gists/<id> -f description=...` updates the description.
 - The `gh auth status` scope line wording (`Token scopes: ...`) on other gh versions.
+- Not verified live: `gh gist create` accepting the empty dotfile `.keep` with a newline body, a
+  multi-part push and shrink (`tests/sync_gist_live.rs`, run by hand).
 - Push order, not verified live: a new gist is created with the placeholder description
   `agr:pending` (no `agr:v1 ` prefix, so `list` ignores it), then clone, blob commit, push, and
   only then `set_description(token)`, for new and existing gists. A crash in between leaves
