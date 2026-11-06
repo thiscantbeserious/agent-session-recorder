@@ -4,6 +4,7 @@ use thiserror::Error;
 
 use super::backend::{BackendError, SyncBackend};
 use super::crypto::{blob_aad, seal, seal_meta, sha256_hex, Key, Meta};
+use super::fail::Fail;
 use super::index::{self, Index};
 use super::lock::SyncLock;
 use super::plan::{decide, resolve, Command, Decision, Local, Remote, SkipReason};
@@ -202,7 +203,7 @@ impl Engine<'_> {
             (Decision::Push, Command::Push) | (Decision::Pull, Command::Pull) if opts.dry_run => {
                 Outcome::Planned
             }
-            (Decision::Push, Command::Push) => self.act(self.push_one(row, index)),
+            (Decision::Push, Command::Push) => self.act(self.push_one(row, index, opts.overwrite)),
             (Decision::Pull, Command::Pull) => self.act(pull_one(self, row, index)),
             (Decision::InSync { refresh_index }, _) if refresh_index && !opts.dry_run => self
                 .refresh(row, index)
@@ -233,14 +234,11 @@ impl Engine<'_> {
         }
     }
 
-    fn act(&self, result: Result<u64, String>) -> Outcome {
-        match result {
-            Ok(bytes) => Outcome::Done(bytes),
-            Err(message) => Outcome::Failed(message),
-        }
+    fn act(&self, result: Result<u64, Fail>) -> Outcome {
+        result.map_or_else(Fail::outcome, Outcome::Done)
     }
 
-    fn push_one(&self, row: &Row, index: &mut Index) -> Result<u64, String> {
+    fn push_one(&self, row: &Row, index: &mut Index, overwrite: bool) -> Result<u64, Fail> {
         let dir = self.storage.storage_dir();
         let plain = std::fs::read(dir.join(&row.path)).map_err(|e| e.to_string())?;
         let sha256 = sha256_hex(&plain);
@@ -253,7 +251,7 @@ impl Engine<'_> {
         };
         let token = seal_meta(self.key, &meta);
         let blob = seal(self.key, &blob_aad(&row.path, PUSH_GEN), &plain);
-        let id = self.upload(row, &token, &blob)?;
+        let id = self.upload(row, &token, &blob, overwrite)?;
         let synced = Synced {
             sha256,
             remote_id: id,
@@ -266,14 +264,22 @@ impl Engine<'_> {
     }
 
     /// Create when new, then the compare-and-swap push with the listed token, then the hint.
-    fn upload(&self, row: &Row, token: &str, blob: &[u8]) -> Result<String, String> {
+    /// A gist deleted on GitHub is only replaced with `overwrite`.
+    fn upload(&self, row: &Row, token: &str, blob: &[u8], overwrite: bool) -> Result<String, Fail> {
         let err = |e: BackendError| e.to_string();
-        let id = match &row.remote_id {
+        let mut id = match &row.remote_id {
             Some(id) => id.clone(),
             None => self.backend.create().map_err(err)?,
         };
         let expected = row.token.as_deref();
-        self.backend.push(&id, expected, token, blob).map_err(err)?;
+        match self.backend.push(&id, expected, token, blob) {
+            Err(BackendError::NotFound) if !overwrite => return Err(Fail::Gone),
+            Err(BackendError::NotFound) => {
+                id = self.backend.create().map_err(err)?;
+                self.backend.push(&id, None, token, blob).map_err(err)?;
+            }
+            other => other.map_err(err)?,
+        }
         self.backend.describe(&id, token).map_err(err)?;
         Ok(id)
     }
@@ -306,7 +312,7 @@ impl Engine<'_> {
         self.act(
             index::save(&self.storage.storage_dir(), index)
                 .map(|()| 0)
-                .map_err(|e| e.to_string()),
+                .map_err(|e| Fail::from(e.to_string())),
         )
     }
 }

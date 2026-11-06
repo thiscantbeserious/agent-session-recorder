@@ -3,6 +3,7 @@
 pub mod auto;
 pub mod backend;
 pub mod crypto;
+mod fail;
 pub mod file;
 pub mod format;
 pub mod gist;

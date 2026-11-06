@@ -41,7 +41,7 @@ impl Machine {
         path
     }
 
-    fn engine<'a>(&'a self, backend: &'a MemoryBackend, key: &'a Key) -> Engine<'a> {
+    fn engine<'a>(&'a self, backend: &'a dyn SyncBackend, key: &'a Key) -> Engine<'a> {
         Engine {
             backend,
             key,
@@ -650,4 +650,94 @@ fn pull_records_the_manifest_gen_and_token_and_repair_is_marked() {
             .unwrap()
             .repair_description
     );
+}
+
+const GONE: &str = "remote copy gone, `agr sync push --overwrite` uploads it again";
+
+fn gone_machine() -> (Machine, MemoryBackend, Key, String) {
+    let (m, backend, key) = pushed_machine();
+    let id = only_entry(&m, "claude/a.cast.gz").remote_id;
+    backend.delete(&id).unwrap();
+    (m, backend, key, id)
+}
+
+fn item_of<'a>(report: &'a agr::sync::run::Report, path: &str) -> &'a agr::sync::run::Item {
+    report.items.iter().find(|i| i.path == path).unwrap()
+}
+
+#[test]
+fn push_of_a_deleted_gist_is_skipped_as_gone_and_creates_nothing() {
+    let (m, backend, key, id) = gone_machine();
+    let report = m.engine(&backend, &key).push(&opts()).unwrap();
+    let item = item_of(&report, "claude/a.cast.gz");
+    assert_eq!(item.outcome, Outcome::Skipped(GONE.into()), "{item:?}");
+    assert_eq!((report.pushed, report.failed, backend.len()), (0, 0, 2));
+    assert!(m.dir().join("claude/a.cast.gz").exists());
+    assert_eq!(only_entry(&m, "claude/a.cast.gz").remote_id, id);
+}
+
+#[test]
+fn push_overwrite_recreates_a_deleted_gist_once() {
+    let (m, backend, key, id) = gone_machine();
+    let report = m.engine(&backend, &key).push(&overwrite()).unwrap();
+    assert_eq!((report.pushed, report.failed, backend.len()), (1, 0, 3));
+    let entry = only_entry(&m, "claude/a.cast.gz");
+    assert_ne!(entry.remote_id, id);
+    assert_eq!((entry.gen, entry.pending), (1, false));
+    let again = m.engine(&backend, &key).push(&opts()).unwrap();
+    assert_eq!((again.pushed, backend.len()), (0, 3));
+}
+
+/// Lists like the inner backend but the gist is gone when pulled.
+struct GoneOnPull(MemoryBackend);
+
+impl SyncBackend for GoneOnPull {
+    fn name(&self) -> &'static str {
+        "gone"
+    }
+    fn check(&self) -> Result<(), agr::sync::backend::BackendError> {
+        self.0.check()
+    }
+    fn list(
+        &self,
+    ) -> Result<Vec<agr::sync::backend::RemoteEntry>, agr::sync::backend::BackendError> {
+        self.0.list()
+    }
+    fn create(&self) -> Result<String, agr::sync::backend::BackendError> {
+        self.0.create()
+    }
+    fn push(
+        &self,
+        id: &str,
+        e: Option<&str>,
+        m: &str,
+        b: &[u8],
+    ) -> Result<(), agr::sync::backend::BackendError> {
+        self.0.push(id, e, m, b)
+    }
+    fn describe(&self, id: &str, t: &str) -> Result<(), agr::sync::backend::BackendError> {
+        self.0.describe(id, t)
+    }
+    fn pull(
+        &self,
+        _id: &str,
+    ) -> Result<(Option<String>, Vec<u8>), agr::sync::backend::BackendError> {
+        Err(agr::sync::backend::BackendError::NotFound)
+    }
+    fn delete(&self, id: &str) -> Result<(), agr::sync::backend::BackendError> {
+        self.0.delete(id)
+    }
+}
+
+#[test]
+fn pull_of_a_deleted_gist_is_skipped_as_gone_and_keeps_the_index_entry() {
+    let (a, backend, key) = pushed_machine();
+    fs::remove_file(a.dir().join("claude/a.cast.gz")).unwrap();
+    let wrapped = GoneOnPull(backend);
+    let report = a.engine(&wrapped, &key).pull(&overwrite()).unwrap();
+    let item = item_of(&report, "claude/a.cast.gz");
+    assert_eq!(item.outcome, Outcome::Skipped(GONE.into()), "{item:?}");
+    assert_eq!((report.pulled, report.failed), (0, 0));
+    assert!(!a.dir().join("claude/a.cast.gz").exists());
+    assert!(only_entry(&a, "claude/a.cast.gz").token.is_some());
 }

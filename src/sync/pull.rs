@@ -1,6 +1,8 @@
 //! Pull of one session, verify before anything touches the disk.
 
+use super::backend::BackendError;
 use super::crypto::{blob_aad, open, sha256_hex};
+use super::fail::Fail;
 use super::index::{self, Index};
 use super::record::{record, Synced};
 use super::run::Engine;
@@ -8,11 +10,14 @@ use super::scan::Row;
 use crate::files::{backup, codec};
 
 /// Download, open, verify the hash, back up an existing file, write atomically.
-pub(super) fn pull_one(engine: &Engine<'_>, row: &Row, index: &mut Index) -> Result<u64, String> {
+pub(super) fn pull_one(engine: &Engine<'_>, row: &Row, index: &mut Index) -> Result<u64, Fail> {
     let (Some(id), Some(meta), Some(token)) = (&row.remote_id, &row.meta, &row.token) else {
-        return Err("remote entry is missing".into());
+        return Err(String::from("remote entry is missing").into());
     };
-    let (_manifest, blob) = engine.backend.pull(id).map_err(|e| e.to_string())?;
+    let (_manifest, blob) = match engine.backend.pull(id) {
+        Err(BackendError::NotFound) => return Err(Fail::Gone),
+        other => other.map_err(|e| e.to_string())?,
+    };
     let plain =
         open(engine.key, &blob_aad(&meta.path, meta.gen), &blob).map_err(|e| e.to_string())?;
     if sha256_hex(&plain) != meta.sha256 {
