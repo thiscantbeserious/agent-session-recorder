@@ -38,7 +38,7 @@ fn seal_with_nonce(key: &Key, nonce: &[u8; NONCE_LEN], aad: &[u8], plain: &[u8])
     [MAGIC, &[VERSION], nonce, &ct].concat()
 }
 
-pub fn open(key: &Key, aad: &[u8], blob: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub(super) fn open(key: &Key, aad: &[u8], blob: &[u8]) -> Result<Vec<u8>, CryptoError> {
     if blob.len() < MIN_BLOB_LEN {
         return Err(CryptoError::Truncated);
     }

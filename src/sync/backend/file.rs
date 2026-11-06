@@ -9,12 +9,12 @@ use super::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 
 /// `<id>.blob`, `<id>.manifest` and `<id>.desc` per entry inside `dir`, same rules as the
 /// memory backend (no `.desc` means pending and unlisted).
-pub struct FileBackend {
+pub(in crate::sync) struct FileBackend {
     dir: PathBuf,
 }
 
 impl FileBackend {
-    pub fn new(dir: PathBuf) -> Self {
+    pub(in crate::sync) fn new(dir: PathBuf) -> Self {
         Self { dir }
     }
 

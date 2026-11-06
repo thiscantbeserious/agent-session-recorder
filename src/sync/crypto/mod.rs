@@ -2,11 +2,12 @@
 //!
 //! Blob format: `b"AGR1" || version u8 || nonce [24] || ciphertext+tag`, XChaCha20-Poly1305.
 
-pub mod blob;
+pub(in crate::sync) mod blob;
 mod phrase;
 mod seal;
 
-pub use phrase::{export_phrase, import_phrase, PhraseError};
+pub use phrase::PhraseError;
+pub(in crate::sync) use phrase::{export_phrase, import_phrase};
 pub use seal::{open_meta, seal, seal_meta, Meta};
 
 use chacha20poly1305::aead::{KeyInit, OsRng};
@@ -75,7 +76,9 @@ pub fn sha256_hex(data: &[u8]) -> String {
 }
 
 /// SHA-256 (hex) and byte count of a reader, streamed.
-pub fn sha256_reader(mut src: impl std::io::Read) -> std::io::Result<(String, u64)> {
+pub(in crate::sync) fn sha256_reader(
+    mut src: impl std::io::Read,
+) -> std::io::Result<(String, u64)> {
     let mut hasher = Sha256::new();
     let size = std::io::copy(&mut src, &mut hasher)?;
     Ok((HEXLOWER.encode(&hasher.finalize()), size))

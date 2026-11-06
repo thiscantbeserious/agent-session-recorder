@@ -7,7 +7,7 @@ use std::time::{Duration, Instant, SystemTime};
 use crate::sync::backend::BackendError;
 
 /// Mutating calls stay at least this far apart, which is at most 60 per minute.
-pub const MIN_GAP: Duration = Duration::from_secs(1);
+pub(super) const MIN_GAP: Duration = Duration::from_secs(1);
 
 /// Time source and sleeper, `&self` so tests can keep their state behind a mutex.
 pub trait Clock: Send + Sync {
@@ -19,12 +19,12 @@ pub trait Clock: Send + Sync {
 }
 
 /// The real clock, the only wall clock and the only sleep of the sync code.
-pub struct SystemClock {
+pub(super) struct SystemClock {
     start: Instant,
 }
 
 impl SystemClock {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             start: Instant::now(),
         }
@@ -60,18 +60,18 @@ fn secs_since_epoch(time: SystemTime) -> Result<u64, BackendError> {
 
 /// Waits before a mutating call so two calls are at least `MIN_GAP` apart.
 /// There is no call budget, a real rate limit stops the run as `BackendError::RateLimited`.
-pub struct Pacer {
+pub(super) struct Pacer {
     clock: Arc<dyn Clock>,
     last: Option<Duration>,
 }
 
 impl Pacer {
-    pub fn new(clock: Arc<dyn Clock>) -> Self {
+    pub(super) fn new(clock: Arc<dyn Clock>) -> Self {
         Self { clock, last: None }
     }
 
     /// Call right before each mutating call.
-    pub fn wait(&mut self) {
+    pub(super) fn wait(&mut self) {
         let now = self.clock.mono();
         if let Some(last) = self.last {
             let wait = MIN_GAP.saturating_sub(now.saturating_sub(last));

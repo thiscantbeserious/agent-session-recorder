@@ -1,9 +1,9 @@
 //! Gist backend, `gh` for create, list and delete, `git` for the binary blob.
 
-pub mod pace;
-pub mod parse;
-pub mod parts;
-pub mod runner;
+pub(super) mod pace;
+pub(super) mod parse;
+pub(super) mod parts;
+pub(super) mod runner;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};

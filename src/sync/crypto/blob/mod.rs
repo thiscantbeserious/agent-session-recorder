@@ -29,7 +29,7 @@ pub enum BlobError {
 }
 
 /// Plaintext SHA-256 (hex) and size seen by the sealer or opener.
-pub type Digest = (String, u64);
+pub(super) type Digest = (String, u64);
 
 fn aad(path: &str, gen: u64) -> Vec<u8> {
     let tail = format!(":{gen}");

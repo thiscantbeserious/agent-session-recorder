@@ -820,14 +820,14 @@ Depends on: Stage 36, Stage 37, Stage 38
 Goal: nothing is wider than it needs to be, the dependency rules are tested.
 Owner: implementer
 
-- [ ] Every item in `src/sync/` gets the narrowest visibility that compiles (`pub` only when
+- [x] Every item in `src/sync/` gets the narrowest visibility that compiles (`pub` only when
       re-exported, `pub(in crate::sync)` across layers, `pub(super)` inside a layer). Items that
       `dead_code` reports now are deleted, not allowed.
-- [ ] RED: `layer_rules_hold` in `sync/mod.rs` (`#[cfg(test)]`, reads `src/sync/**/*.rs` from
+- [x] RED: `layer_rules_hold` in `sync/mod.rs` (`#[cfg(test)]`, reads `src/sync/**/*.rs` from
       `CARGO_MANIFEST_DIR`) fails on a temporary `use crate::sync::engine` in
       `backend/memory.rs`, on `chacha20poly1305` named in `engine/push.rs`, on
       `Command::new` in `engine/run.rs` and on `crate::sync::app` in `engine/scan.rs`. Mutants are not committed.
-- [ ] GREEN: the test passes on the real tree. Test names identical plus `layer_rules_hold`.
+- [x] GREEN: the test passes on the real tree. Test names identical plus `layer_rules_hold`.
 
 Files: `src/sync/mod.rs`, `src/sync/crypto/mod.rs`, `src/sync/crypto/seal.rs`, `src/sync/crypto/phrase.rs`, `src/sync/crypto/blob/mod.rs`, `src/sync/backend/mod.rs`, `src/sync/backend/memory.rs`, `src/sync/backend/file.rs`, `src/sync/backend/gist/mod.rs`, `src/sync/backend/gist/parse.rs`, `src/sync/backend/gist/parts.rs`, `src/sync/backend/gist/pace.rs`, `src/sync/backend/gist/runner.rs`, `src/sync/engine/mod.rs`, `src/sync/engine/plan.rs`, `src/sync/engine/scan.rs`, `src/sync/engine/run.rs`, `src/sync/engine/push.rs`, `src/sync/engine/pull.rs`, `src/sync/engine/fail.rs`, `src/sync/engine/record.rs`, `src/sync/engine/index.rs`, `src/sync/engine/lock.rs`, `src/sync/app/mod.rs`, `src/sync/app/setup.rs`, `src/sync/app/key.rs`, `src/sync/app/auto/mod.rs`, `src/sync/app/auto/child.rs`, `src/sync/app/format/mod.rs`, `src/sync/app/format/summary.rs`
 Depends on: Stage 39

@@ -28,7 +28,7 @@ fn checksum(key: &[u8]) -> [u8; CHECKSUM_LEN] {
 }
 
 /// `agr1-` plus the base32 of `key || sha256(key)[..2]` in groups of five.
-pub fn export_phrase(key: &Key) -> String {
+pub(in crate::sync) fn export_phrase(key: &Key) -> String {
     let mut raw = key.0.to_vec();
     raw.extend_from_slice(&checksum(&key.0));
     let encoded = BASE32_NOPAD.encode(&raw);
@@ -40,7 +40,7 @@ pub fn export_phrase(key: &Key) -> String {
     format!("{PHRASE_PREFIX}-{}", groups.join("-"))
 }
 
-pub fn import_phrase(phrase: &str) -> Result<Key, PhraseError> {
+pub(in crate::sync) fn import_phrase(phrase: &str) -> Result<Key, PhraseError> {
     let clean: String = phrase
         .chars()
         .filter(|c| !c.is_whitespace() && *c != '-')

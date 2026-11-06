@@ -2,10 +2,10 @@
 
 mod fail;
 pub mod index;
-pub mod lock;
-pub mod plan;
+pub(super) mod lock;
+pub(super) mod plan;
 mod pull;
 mod push;
 mod record;
-pub mod run;
-pub mod scan;
+pub(super) mod run;
+pub(super) mod scan;

@@ -17,7 +17,7 @@ use crate::StorageManager;
 const META_VERSION: u8 = 2;
 
 /// On-disk size cap per session, from GitHub repository size guidance.
-pub const MAX_BYTES: u64 = 1024 * 1024 * 1024;
+pub(super) const MAX_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// One path with everything the engine needs to act on it.
 #[derive(Debug, Clone)]
@@ -207,7 +207,7 @@ fn valid_path(path: &str) -> bool {
 }
 
 /// Keep rows matching `names`, returns the names that matched nothing.
-pub fn select(
+pub(super) fn select(
     rows: Vec<Row>,
     storage: &StorageManager,
     names: &[String],
