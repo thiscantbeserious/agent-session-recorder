@@ -203,8 +203,6 @@ auto_optimize = true   # false keeps recordings exactly as recorded
 - **Failures**: if optimizing fails, the original file is kept and a warning is printed.
 - **Order after a session**: optimize, compress, stop message, auto-analyze, storage warning.
 
-`agr config migrate` asks once whether to turn this on when it adds the setting to an existing config (Enter keeps the default yes, `--yes` takes it without asking).
-
 ## Storage and Compression
 
 New recordings are saved gzip-compressed as `.cast.gz`. Every command (play, list, analyze, optimize, marker, copy, cleanup) works the same on `.cast.gz` and plain `.cast` files, and `agr copy` always hands over plain asciicast.
