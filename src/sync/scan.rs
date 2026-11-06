@@ -79,7 +79,7 @@ fn local_state(session: &SessionInfo) -> Local {
 
 fn merge_remote(rows: &mut BTreeMap<String, Row>, key: &Key, entry: &RemoteEntry, index: &Index) {
     match open_meta(key, &entry.meta_token) {
-        Ok(meta) if meta.v == META_VERSION && valid_path(&meta.path) => {
+        Ok(meta) if meta.v == META_VERSION && meta.gen > 0 && valid_path(&meta.path) => {
             attach(rows, entry, meta, index)
         }
         Ok(_) | Err(CryptoError::UnsupportedVersion(_) | CryptoError::BadMeta) => {

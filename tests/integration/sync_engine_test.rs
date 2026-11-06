@@ -520,19 +520,39 @@ fn unknown_version_and_other_key_entries_are_reported_and_left_alone() {
     assert_eq!(backend.len(), 5);
 }
 
+/// Seal a raw JSON manifest the way a v1 build did, with the meta AAD and no `gen` field.
+fn raw_token(key: &Key, json: &str) -> String {
+    data_encoding::BASE64URL_NOPAD.encode(&seal(key, b"agr:meta", json.as_bytes()))
+}
+
 #[test]
-fn v1_token_is_unknown_version_and_never_touched() {
+fn gen_zero_manifest_is_unknown_version_and_never_touched() {
     let (m, backend, key) = pushed_machine();
-    let v1 = seal_meta(
+    let zero = seal_meta(
         &key,
         &Meta {
-            v: 1,
+            v: 2,
             path: "claude/z.cast.gz".into(),
             sha256: "00".into(),
             size: 1,
-            gen: 1,
+            gen: 0,
         },
     );
+    let id = backend.push(None, &zero, b"zero blob").unwrap();
+    let status = m.engine(&backend, &key).status(&[]).unwrap();
+    let decisions: Vec<_> = status.items.iter().map(|i| i.decision).collect();
+    assert!(
+        decisions.contains(&Decision::UnknownVersion),
+        "{decisions:?}"
+    );
+    assert_eq!(backend.blob(&id).as_deref(), Some(&b"zero blob"[..]));
+}
+
+#[test]
+fn v1_token_is_unknown_version_and_never_touched() {
+    let (m, backend, key) = pushed_machine();
+    let json = r#"{"v":1,"path":"claude/x.cast.gz","sha256":"00","size":1}"#;
+    let v1 = raw_token(&key, json);
     let id = backend.push(None, &v1, b"v1 blob").unwrap();
     let status = m.engine(&backend, &key).status(&[]).unwrap();
     let decisions: Vec<_> = status.items.iter().map(|i| i.decision).collect();
