@@ -579,6 +579,15 @@ Owner: implementer
 Files: `src/files/codec.rs`, `tests/integration/codec_test.rs`
 Depends on: Stage 3
 
+
+Review notes for Stages 28 and 29 (D9 batch 1 pair review, 2026-11-06), must be followed:
+- D11: before the B1 describe in `push.rs` `adopt`, re-read the manifest via the backend and describe only if it still equals the adopted token. Test: a spy backend whose describe first lets another machine push and describe G+1; the description must end at G+1. Document the remaining window in README known limits.
+- Push: the manifest (with the plaintext hash) is passed before the blob streams, so compute the hash in a pre-pass (`sha256_reader`), seal in a second pass, compare the seal digest with the pre-hash and abort that session with "session changed while pushing, run again" on mismatch, never push.
+- Pull: hash and size checks against the manifest run inside the `atomic_write_raw_with` fill, before rename. The `.bak` rotation happens only after the stream verified and before rename (needs a hook or an explicit order in the fill), a failed pull never replaces the `.bak`.
+- The chained part reader never returns `Ok(0)` before all parts are consumed; `fill_buf`/reads retry `Interrupted`.
+- `seal_blob` / `open_blob` (whole-blob helpers) never on the production path: make them `#[cfg(test)]` or test-support only.
+- Tests to add: one-byte-per-read source and reader, source error mid-stream, destination error mid-stream, `adopt` same-gen different content (comment or test).
+
 ### Stage 28: Backend trait moves streams
 
 Goal: no backend holds a whole blob in memory, behaviour otherwise unchanged.
