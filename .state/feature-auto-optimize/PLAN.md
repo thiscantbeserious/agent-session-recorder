@@ -45,17 +45,17 @@ Goal: `[recording] auto_optimize: bool`, `Config::default()` and serde default `
 versioned migration v5.
 Owner: implementer
 
-- [ ] RED: `migrate_config("config_version = 4\n[recording]\n")` yields `auto_optimize = true`,
+- [x] RED: `migrate_config("config_version = 4\n[recording]\n")` yields `auto_optimize = true`,
       `config_version = 5`, `"recording.auto_optimize"` in `added_fields`.
-- [ ] RED: an existing `auto_optimize = false` is kept and not in `added_fields`.
-- [ ] RED: running the migration on its own output changes nothing (`has_changes() == false`).
-- [ ] RED: a config without the key deserializes with `auto_optimize == true`.
-- [ ] RED: `auto_optimize = "yes"` fails to parse with an error naming the field.
-- [ ] GREEN: field in `RecordingConfig` with `#[serde(default = "default_auto_optimize")]`,
+- [x] RED: an existing `auto_optimize = false` is kept and not in `added_fields`.
+- [x] RED: running the migration on its own output changes nothing (`has_changes() == false`).
+- [x] RED: a config without the key deserializes with `auto_optimize == true`.
+- [x] RED: `auto_optimize = "yes"` fails to parse with an error naming the field.
+- [x] GREEN: field in `RecordingConfig` with `#[serde(default = "default_auto_optimize")]`,
       `v5.rs` (empty `migrate`, like v4), registry entry, `CURRENT_VERSION = 5`.
-- [ ] `FieldDoc` in `docs/fields.rs` ("Remove idle time from each recording after it ends (no backup
+- [x] `FieldDoc` in `docs/fields.rs` ("Remove idle time from each recording after it ends (no backup
       is kept)", default `true`), example in `docs/markdown.rs`.
-- [ ] Update the default-config snapshot (`cargo insta review`), check only the new key and the
+- [x] Update the default-config snapshot (`cargo insta review`), check only the new key and the
       version changed.
 
 Files: `src/config/types.rs`, `src/config/migrate/migrations/v5.rs`, `src/config/migrate/migrations/mod.rs`, `src/config/migrate/mod.rs`, `src/config/docs/fields.rs`, `src/config/docs/markdown.rs`, `tests/integration/snapshots/agr__config__migrate__tests__complete_default_config_snapshot.snap`
