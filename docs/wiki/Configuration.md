@@ -70,7 +70,7 @@ Session sync settings (off until a backend is set)
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `backend` | `unset` | Sync backend: "gist" (secret GitHub Gists via gh, link holders can read them but sessions are encrypted locally, losing the key makes them unrecoverable). Unset = sync off |
+| `backend` | `unset` | Sync backend: "gist" (secret GitHub Gists via gh, link holders can read them but sessions are encrypted locally, losing the key makes them unrecoverable). Unset = sync off. One gist per session, sessions over 100MB are skipped |
 | `auto_push` | `true` | Push new sessions automatically after recording, on by default once a backend is set (needs one manual push first to confirm the privacy notice) |
 
 ### [agents.\<name\>]

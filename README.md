@@ -230,7 +230,7 @@ Set `NO_COLOR=1` to disable colored output.
 
 Sync copies your compressed sessions to a second place so another machine can pull them. Right now the only backend is secret GitHub gists through the `gh` CLI, as such `gh` and `git` need to be on your PATH and `gh auth login` done (the token needs the `gist` scope, `gh auth refresh -s gist` adds it). agr never reads or stores your GitHub token.
 
-> **Not verified against real GitHub yet.** The gist transport (`gh gist create`, the `git` push of the binary file, the list call and the error mapping) is only tested with a fake process runner and a fake backend in this PR. No real gist was created, edited or deleted. Treat the first real run as a test and see the "To verify" list in `.state/feature-sync-gist/ADR.md`.
+> **Not verified against real GitHub yet.** The gist transport (`gh gist create`, the `git` push of the binary file, the list call and the error mapping) is only tested with a fake process runner and a fake backend in this PR. No real gist was created, edited or deleted. Treat the first real run as a test.
 
 ### Setup
 
@@ -251,11 +251,11 @@ agr sync push --dry-run         # Preview, never prompts or changes anything
 agr sync push --yes             # Skip the confirmation (needed without a terminal)
 ```
 
-Every session is its own gist (`agent/name.cast.gz`). Plain `.cast` files are skipped with a hint to run `agr compress`, sessions that are still recording are skipped, and so are sessions above 100MB on disk. A conflict (both sides changed, decided by content hash and never by file time) is skipped and reported, `--overwrite` makes the local side win on push and the remote side win on pull (the replaced local file is kept as a hidden `.bak`). Deleting a session locally never deletes it remotely and the other way round, only `agr sync delete` removes the remote copy.
+Every session is its own gist (`agent/name.cast.gz`). Plain `.cast` files are skipped with a hint to run `agr compress`, sessions that are still recording are skipped, and so are sessions above 100MB on disk. A conflict (both sides changed, decided by content hash and never by file time) is skipped and reported, `--overwrite` makes the local side win on push and the remote side win on pull (the replaced local file is kept as a hidden `.bak`). Deleting a session locally never deletes it remotely and the other way round, only `agr sync delete` removes the remote copy. A later plain `agr sync push` uploads a deleted session again, as the local file is still there.
 
 ### Encryption and the key
 
-Secret gists are not listed anywhere, but **anyone who has the link can read them**, and recordings can hold secrets you typed in the terminal. That is why agr encrypts every session on your machine before it uploads (XChaCha20-Poly1305). The gist only holds ciphertext, and its description only holds an opaque token, so session names are not readable either.
+Secret gists are not listed anywhere, but **anyone who has the link can read them**, and recordings can hold secrets you typed in the terminal. That is why agr encrypts every session on your machine before it uploads (XChaCha20-Poly1305). The gist only holds ciphertext, and its description only holds an opaque token, so session names are not readable either. A gist keeps its git history, as such old ciphertexts of a changed session stay readable to anyone with the link and the key.
 
 The first push that creates gists shows this notice and asks for a confirmation once per machine (stored in `~/.config/agr/state.toml`). The key is created then, in `~/.config/agr/sync.key` with mode 0600, but only if the remote has no agr gists yet. If it has, agr stops and asks you to import the key of your other machine.
 
@@ -268,11 +268,11 @@ agr sync key export             # Prints the recovery phrase (agr1-XXXXX-...)
 On a second machine:
 
 ```bash
-agr sync key import             # Paste the phrase, or pass it as an argument
+agr sync key import             # Paste the phrase on stdin, an argument also works but lands in your shell history
 agr sync pull
 ```
 
-`key import` refuses to replace a different existing key unless you pass `--force`.
+`key import` refuses to replace a different existing key unless you pass `--force`. Remote entries sealed with another key are reported and left alone, remove them with `gh gist delete <id>` if you do not need them.
 
 ### Auto push
 

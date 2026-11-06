@@ -6,11 +6,15 @@ key \- Export or import the sync key
 .SH SYNOPSIS
 \fBkey\fR [\fB\-h\fR|\fB\-\-help\fR] <\fIsubcommands\fR>
 .SH DESCRIPTION
-Export or import the sync key
+Export or import the sync key.
+.PP
+SUBCOMMANDS:
+    agr sync key export              Print the recovery phrase
+    agr sync key import [PHRASE]     Install a recovery phrase (stdin when omitted)
 .SH OPTIONS
 .TP
 \fB\-h\fR, \fB\-\-help\fR
-Print help
+Print help (see a summary with \*(Aq\-h\*(Aq)
 .SH SUBCOMMANDS
 .TP
 key\-export(1)

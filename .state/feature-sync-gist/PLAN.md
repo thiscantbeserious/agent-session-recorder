@@ -143,7 +143,8 @@ Owner: implementer
 - [x] GREEN: engine takes `&dyn SyncBackend`, `&Key`, `&StorageManager`, never prints.
 - [x] Split `run.rs` into `run.rs` and `pull.rs` if it passes ~400 lines.
 
-Files: `src/sync/mod.rs`, `src/sync/scan.rs`, `src/sync/run.rs`,
+Files: `src/sync/mod.rs`, `src/sync/scan.rs`, `src/sync/run.rs`, `src/sync/pull.rs`,
+       `src/sync/lock.rs`,
        `tests/integration/sync_engine_test.rs`, `tests/integration.rs`
 Depends on: Stage 2, Stage 5
 
@@ -172,6 +173,7 @@ Owner: implementer
       inside `gist.rs` only.
 
 Files: `src/sync/mod.rs`, `src/sync/gist.rs`, `src/sync/gist_parse.rs`, `src/sync/runner.rs`,
+       `src/sync/setup.rs`,
        `tests/sync_gist_live.rs`
 Depends on: Stage 6
 
@@ -199,6 +201,7 @@ Owner: implementer
 - [x] Accept new help and completions snapshots (only sync additions may change).
 
 Files: `src/cli.rs`, `src/cli/subcommands.rs`, `src/dispatch.rs`, `src/commands/mod.rs`,
+       `src/sync/file.rs`, `src/sync/format.rs`,
        `src/commands/sync/mod.rs`, `src/commands/sync/key.rs`,
        `tests/integration/cli_sync_test.rs`, `tests/integration/snapshot_cli_test.rs`,
        `tests/integration.rs`, `tests/integration/snapshots/integration__snapshot_cli_test__cli_help_main.snap`,
@@ -225,7 +228,7 @@ Owner: implementer
       line, spawn with null stdio and `process_group(0)` on unix, no wait.
 - [x] `src/recording.rs` stays under ~400 lines (logic lives in `src/sync/auto.rs`).
 
-Files: `src/sync/mod.rs`, `src/sync/auto.rs`, `src/recording.rs`,
+Files: `src/sync/mod.rs`, `src/sync/auto.rs`, `src/recording.rs`, `src/recording/auto_push.rs`,
        `tests/integration/recording_test.rs`
 Depends on: Stage 8
 
@@ -241,7 +244,7 @@ Owner: implementer
       copy of the key makes synced sessions unrecoverable.
 - [x] `cargo xtask gen-docs`, commit the regenerated files.
 
-Files: `README.md`, `src/config/docs/templates.rs`, `docs/COMMANDS.md`, `docs/man/`, `docs/wiki/`
+Files: `README.md`, `src/config/docs/fields.rs`, `docs/COMMANDS.md`, `docs/man/`, `docs/wiki/`
 Depends on: Stage 8
 
 ### Stage 11: Final verification
@@ -258,6 +261,24 @@ Owner: implementer
 
 Files: `.state/feature-sync-gist/PLAN.md`
 Depends on: Stage 9, Stage 10
+
+### Stage 12: Fix round before the PR
+
+Goal: architect and product owner findings, strict TDD.
+Owner: implementer
+
+- [x] RED/GREEN: create with `agr:pending`, token set after the blob push, orphan not listed.
+- [x] Tests: token never leaks, `push --overwrite`, cleanup and vanished gist, unknown version
+      and other key left alone, no TTY pull aborts, pulled `.cast.gz` plays and lists.
+- [x] Test backend announcement, `.bak` rotation, delete re-upload line.
+- [x] `spawn_detached` into `runner.rs`, `confirm_planned`, function size refactors, 0700
+      scratch dir, `key import` stdin docs, lock race `ponytail:` note.
+- [x] Docs: field docs, `sync key` help, README, ADR (Accepted, decisions 9 and 10).
+
+Files: `src/sync/*`, `src/commands/sync/run.rs`, `src/cli/subcommands.rs`,
+       `src/recording/auto_push.rs`, `src/config/docs/fields.rs`, `README.md`, `docs/`,
+       `tests/integration/cli_sync_test.rs`, `tests/integration/sync_engine_test.rs`
+Depends on: Stage 10
 
 ## Batches
 
@@ -277,8 +298,8 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | Stage | Status | Notes |
 |-------|--------|-------|
 | 1 | done | also `zeroize = "1"` (already pulled in by the cipher) |
-| 2 | pending | |
-| 3 | pending | |
+| 2 | done | |
+| 3 | done | |
 | 4 | done | |
 | 5 | done | |
 | 6 | done | |
@@ -286,4 +307,5 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 8 | done | test-only `AGR_SYNC_TEST_BACKEND_DIR` file backend (`src/sync/file.rs`) |
 | 9 | done | |
 | 10 | done | README marks the gist transport as not verified live |
-| 11 | pending | |
+| 11 | pending | final gates, see Stage 12 for the fix round |
+| 12 | done | fix round before the PR |

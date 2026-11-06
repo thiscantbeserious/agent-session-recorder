@@ -1,7 +1,7 @@
 # ADR: Encrypted Session Sync (secret gists first)
 
 ## Status
-Proposed. Decided autonomously (review in PR), the user delegated the SDLC up to an open PR.
+Accepted (auto-approved, the user delegated the SDLC up to an open PR). Decided autonomously, review in PR.
 
 ## Context
 
@@ -249,7 +249,10 @@ Inputs per path: local hash (or skip reason), remote hash and id, last synced ha
 - Pull: download, open (auth), SHA-256 equals the sealed metadata hash, then
   `codec::atomic_write_raw` (new, same temp + fsync + rename as `atomic_write` but never
   encodes, because `atomic_write` gzips any `.cast.gz` target and would double-compress).
-  Existing file only with `--overwrite`, after `backup::create_backup`.
+  An existing file is only replaced when the decision is pull (row 3, remote changed and local
+  == last) or `--overwrite` on a conflict, after the current file is copied to the hidden
+  `.bak`. An older, different `.bak` is rotated (replaced by the current file, the newer state
+  worth keeping), it never blocks a pull.
 - Push and pull take `<storage>/.agr-sync.lock` (create_new, pid inside, stale pid reclaimed).
 - Index updated after each successful session, so an interrupted run loses nothing.
 - Per-session errors go to the report, the run continues.
@@ -271,8 +274,16 @@ Inputs per path: local hash (or skip reason), remote hash and id, last synced ha
 | `src/sync/memory.rs` | `MemoryBackend` (pub, used by tests) |
 | `src/sync/scan.rs` | local scan (skip reasons) and remote decode into plan inputs |
 | `src/sync/run.rs` | execute push, pull, delete, report, sync lock |
-| `src/sync/gist.rs` | `GistBackend`, the only file that spawns `gh` and `git` |
-| `src/sync/auto.rs` | auto push checks and detached spawn |
+| `src/sync/pull.rs` | pull of one session, verify, backup rotation, atomic write |
+| `src/sync/lock.rs` | `.agr-sync.lock`, pid inside, stale pid reclaimed |
+| `src/sync/format.rs` | plain text lines for status, preview, summary, delete |
+| `src/sync/setup.rs` | backend and key resolution, error explanations, key import and export |
+| `src/sync/file.rs` | directory backed fake, only through `AGR_SYNC_TEST_BACKEND_DIR` (prints one stderr line when set) |
+| `src/sync/gist.rs` | `GistBackend` (`gh` and `git` calls) |
+| `src/sync/gist_parse.rs` | list parsing, stderr mapping, scope check, pure |
+| `src/sync/runner.rs` | `Runner` trait, `ProcessRunner` and `spawn_detached`, the only code that spawns processes |
+| `src/sync/auto.rs` | auto push checks and error line |
+| `src/recording/auto_push.rs` | recording hook, prints the hint and spawns the child |
 | `src/commands/sync/` | `mod.rs` (dispatch, output), `key.rs` |
 
 The library never prints, except the existing `State::load_from` warning. Commands format output
@@ -319,12 +330,20 @@ created, edited or deleted, the ignored `tests/sync_gist_live.rs` was not run):*
 - `gh api gists?per_page=100 --paginate` prints concatenated JSON arrays (parser accepts that and
   a single array), and `gh api -X PATCH gists/<id> -f description=...` updates the description.
 - The `gh auth status` scope line wording (`Token scopes: ...`) on other gh versions.
-- Push order: blob first, description second (new gists carry the token from create). A crash
-  between the two leaves a hash mismatch that pull rejects, not verified live.
+- Push order, not verified live: a new gist is created with the placeholder description
+  `agr:pending` (no `agr:v1 ` prefix, so `list` ignores it), then clone, blob commit, push, and
+  only then `set_description(token)`, for new and existing gists. A crash in between leaves
+  either an unlisted pending gist or an old token with a new blob (hash mismatch, pull rejects).
+  On error a newly created gist is deleted, when that delete fails too the orphan stays unlisted
+  and the next push creates a fresh gist.
 
 ## Decision History
 1. 2026-11-06: user added auto push after recording (default on once a backend is set).
 2. 2026-11-06: user required private storage, gists have no private mode, decided: keep secret
    gists, encrypt every upload locally, key file plus recovery phrase. GitHub secrets rejected
    by the user (write-only for `gh`).
-3. All other decisions in this ADR: decided autonomously (review in PR).
+3. 2026-11-06 (fix round): decision 9, a pull replaces an older different `.bak` with the
+   current local file (rotate), a stale backup must not fail every later pull.
+4. 2026-11-06 (fix round): decision 10, push order is blob first and token last with a
+   placeholder description at create, so an orphan gist never advertises a hash without a blob.
+5. All other decisions in this ADR: decided autonomously (review in PR).

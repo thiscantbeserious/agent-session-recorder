@@ -707,6 +707,14 @@ EXAMPLE:
 
 Export or import the sync key
 
+```
+Export or import the sync key.
+
+SUBCOMMANDS:
+    agr sync key export              Print the recovery phrase
+    agr sync key import [PHRASE]     Install a recovery phrase (stdin when omitted)
+```
+
 ---
 
 ## agr optimize
