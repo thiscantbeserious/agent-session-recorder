@@ -98,14 +98,14 @@ Goal: `finish` runs optimize after path recovery and before compression, skipped
 interrupted, warning printed with `  \u{26a0} ` prefix.
 Owner: implementer
 
-- [ ] In `finish`: `if !self.guard.is_interrupted() { if let Some(w) = optimize_recording(..)
+- [x] In `finish`: `if !self.guard.is_interrupted() { if let Some(w) = optimize_recording(..)
       { eprintln!(..) } }` between `resolve_actual_path` and `finalize_recording`. Keep `finish`
       ~20 lines (extract `maybe_optimize` if needed), `recording.rs` under 400 lines.
-- [ ] Update the `finish` doc comment to name the optimize step.
-- [ ] e2e: with `auto_optimize = true`, record `sh -c 'echo a; sleep 3; echo b'`, assert the
+- [x] Update the `finish` doc comment to name the optimize step.
+- [x] e2e: with `auto_optimize = true`, record `sh -c 'echo a; sleep 3; echo b'`, assert the
       `.cast.gz` duration is under 3s and no `.<name>.cast.gz.bak` / `.<name>.cast.bak` exists.
-- [ ] e2e: with `auto_optimize = false`, the duration stays at 3s or more.
-- [ ] Full e2e suite passes (CI config has no key, so default yes is active everywhere).
+- [x] e2e: with `auto_optimize = false`, the duration stays at 3s or more.
+- [x] Full e2e suite passes (CI config has no key, so default yes is active everywhere).
 
 Files: `src/recording.rs`, `tests/e2e/recording.sh`
 Depends on: Stage 3
