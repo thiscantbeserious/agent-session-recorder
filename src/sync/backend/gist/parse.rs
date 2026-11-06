@@ -117,7 +117,10 @@ pub(super) fn check_auth(output: &str) -> Result<(), BackendError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        check_auth, id_from_create_output, map_failure, parse_list, BackendError, RemoteEntry,
+        NO_CREATED_AT,
+    };
 
     fn entry(id: &str, token: &str) -> RemoteEntry {
         RemoteEntry {

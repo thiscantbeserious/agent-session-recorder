@@ -1,6 +1,10 @@
 use super::pace::tests::FakeClock;
-use super::parts::part_name;
-use super::*;
+use super::pace::Clock;
+use super::parts::{part_name, part_names};
+use super::{
+    parse_list, Arc, BackendError, GistBackend, Output, Path, PathBuf, RemoteEntry, Runner,
+    Scratch, SyncBackend, MANIFEST_FILE, STUB_BODY, STUB_FILE,
+};
 use crate::sync::backend::{pull_bytes, push_bytes};
 use std::cell::RefCell;
 use std::collections::VecDeque;

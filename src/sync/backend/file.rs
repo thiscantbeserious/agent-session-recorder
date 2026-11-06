@@ -143,7 +143,7 @@ impl SyncBackend for FileBackend {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{BackendError, FileBackend, SyncBackend};
     use crate::sync::backend::{pull_bytes, push_bytes};
 
     fn backend() -> (tempfile::TempDir, FileBackend) {

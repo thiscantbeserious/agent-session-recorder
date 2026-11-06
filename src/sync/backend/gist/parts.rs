@@ -162,7 +162,11 @@ impl Read for PartReader {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        check_sequence, part_name, part_names, stale, ErrorKind, PartReader, PartWriter, Path, Read,
+    };
+    use super::{fs, io};
+    use std::io::Write;
 
     fn names(n: usize) -> Vec<String> {
         (0..n).map(part_name).collect()

@@ -97,7 +97,7 @@ fn size(bytes: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{label, status_lines, Decision, Item, Outcome, Report};
     use crate::sync::engine::plan::SkipReason;
     use crate::sync::engine::scan::Duplicate;
 

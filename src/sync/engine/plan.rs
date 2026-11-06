@@ -102,7 +102,7 @@ pub fn resolve(decision: Decision, command: Command, overwrite: bool) -> Decisio
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{decide, resolve, Command, Decision, Input, Local, Remote, SkipReason};
 
     fn h(s: &str) -> String {
         s.to_string()

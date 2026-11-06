@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    aad, open_blob, open_stream, seal_blob, seal_stream, seal_with_prefix, BlobError, CryptoError,
+    Digest, Key, FRAME, HEADER_LEN, PREFIX_LEN, TAG_LEN,
+};
 use crate::sync::crypto::sha256_hex;
 
 const PATH: &str = "claude/x.cast.gz";

@@ -86,7 +86,7 @@ pub(in crate::sync) fn sha256_reader(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{sha256_hex, sha256_reader, Key};
 
     #[test]
     fn sha256_matches_nist_abc() {

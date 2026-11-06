@@ -64,7 +64,7 @@ pub(in crate::sync) fn import_phrase(phrase: &str) -> Result<Key, PhraseError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{export_phrase, import_phrase, Key, PhraseError};
 
     fn key(b: u8) -> Key {
         Key::from_bytes([b; 32])

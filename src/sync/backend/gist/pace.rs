@@ -85,7 +85,7 @@ impl Pacer {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
+    use super::{secs_since_epoch, Arc, BackendError, Clock, Duration, Pacer, SystemTime};
     use std::sync::Mutex;
 
     /// Stateful fake, `sleep` advances `mono` and is recorded.

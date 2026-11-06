@@ -201,7 +201,7 @@ impl SyncBackend for MemoryBackend {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{BackendError, MemoryBackend, SyncBackend};
     use crate::sync::backend::{pull_bytes, push_bytes};
 
     fn pushed(b: &MemoryBackend, manifest: &str, blob: &[u8]) -> String {

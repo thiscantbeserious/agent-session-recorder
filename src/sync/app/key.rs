@@ -137,7 +137,7 @@ pub(super) fn import(path: &Path, key: &Key, force: bool) -> Result<Imported, Ke
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{import, load, save_new, Imported, Key, KeyError, Path};
 
     fn loaded(path: &Path) -> Option<[u8; 32]> {
         load(path).unwrap().map(|k| *k.as_bytes())

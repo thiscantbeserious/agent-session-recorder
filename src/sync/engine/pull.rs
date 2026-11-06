@@ -112,7 +112,7 @@ fn backup_existing(target: &std::path::Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{verify_into, Key, Meta, Read, Write};
     use crate::sync::crypto::blob::seal_blob;
     use crate::sync::crypto::sha256_hex;
 

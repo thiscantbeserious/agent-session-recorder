@@ -73,7 +73,7 @@ pub fn open_meta(key: &Key, token: &str) -> Result<Meta, CryptoError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{open, open_meta, seal, seal_meta, seal_with_nonce, CryptoError, Key, Meta};
 
     const KAT_KEY: &str = "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f";
     const KAT_NONCE: &str = "404142434445464748494a4b4c4d4e4f5051525354555657";

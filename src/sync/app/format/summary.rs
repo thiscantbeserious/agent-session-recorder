@@ -147,7 +147,10 @@ fn failed_line(item: &Item) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{
+        delete_preview_lines, preview_lines, privacy_lines, problem_lines, rate_limit_lines,
+        summary_lines, Decision, Outcome, Report,
+    };
     use crate::sync::app::format::tests::{item, report, sync};
     use crate::sync::engine::plan::SkipReason;
 

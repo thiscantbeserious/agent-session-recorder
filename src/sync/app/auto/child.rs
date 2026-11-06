@@ -39,7 +39,7 @@ pub fn run(engine: &Engine<'_>, session: &str) -> Result<Report, SyncError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{error_line, run, take_error_line, Engine, Outcome, Report, State, SyncError};
     use crate::config::Config;
     use crate::sync::app::auto::tests::session;
     use crate::sync::engine::plan::Decision;

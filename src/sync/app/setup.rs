@@ -138,7 +138,12 @@ pub fn export_key(path: &Path) -> Result<Option<String>, KeyError> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::key;
+    use super::{
+        explain, export_key, import_key, needs_privacy_ack, open_backend, resolve_key,
+        BackendError, ImportError, Imported, Key, KeyError, KeyNeed, KeyState, PathBuf, SetupError,
+        SyncBackendKind,
+    };
     use crate::sync::backend::memory::MemoryBackend;
 
     #[test]

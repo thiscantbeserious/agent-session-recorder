@@ -125,7 +125,7 @@ pub fn spawn_detached(exe: &Path, args: &[String]) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{decide, on_path, Auto, Config, Env, Path, State};
     use crate::config::SyncBackendKind;
     use std::fs;
 

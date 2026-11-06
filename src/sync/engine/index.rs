@@ -73,7 +73,7 @@ pub(super) fn save(storage_dir: &Path, index: &Index) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{load, path_for, save, Index, IndexEntry, Path, PathBuf, INDEX_FILE, LOCK_FILE};
 
     fn entry(n: u8) -> IndexEntry {
         IndexEntry {
