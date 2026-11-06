@@ -15,6 +15,7 @@ pub mod pace;
 pub mod parts;
 pub mod plan;
 mod pull;
+mod record;
 pub mod run;
 pub mod runner;
 pub mod scan;

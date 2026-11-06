@@ -1,14 +1,15 @@
 //! Pull of one session, verify before anything touches the disk.
 
 use super::crypto::{blob_aad, open, sha256_hex};
-use super::index::{self, Index, IndexEntry};
+use super::index::{self, Index};
+use super::record::{record, Synced};
 use super::run::Engine;
 use super::scan::Row;
 use crate::files::{backup, codec};
 
 /// Download, open, verify the hash, back up an existing file, write atomically.
 pub(super) fn pull_one(engine: &Engine<'_>, row: &Row, index: &mut Index) -> Result<u64, String> {
-    let (Some(id), Some(meta)) = (&row.remote_id, &row.meta) else {
+    let (Some(id), Some(meta), Some(token)) = (&row.remote_id, &row.meta, &row.token) else {
         return Err("remote entry is missing".into());
     };
     let (_manifest, blob) = engine.backend.pull(id).map_err(|e| e.to_string())?;
@@ -19,13 +20,13 @@ pub(super) fn pull_one(engine: &Engine<'_>, row: &Row, index: &mut Index) -> Res
     }
     let target = engine.storage.storage_dir().join(&meta.path);
     write_session(&target, &plain)?;
-    let entry = IndexEntry {
+    let synced = Synced {
         sha256: meta.sha256.clone(),
         remote_id: id.clone(),
-        synced_at: chrono::Utc::now().to_rfc3339(),
-        ..IndexEntry::default()
+        gen: meta.gen,
+        token: token.clone(),
     };
-    index.entries.insert(meta.path.clone(), entry);
+    record(index, &meta.path, synced);
     index::save(&engine.storage.storage_dir(), index).map_err(|e| e.to_string())?;
     Ok(plain.len() as u64)
 }

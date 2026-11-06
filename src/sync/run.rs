@@ -4,10 +4,11 @@ use thiserror::Error;
 
 use super::backend::{BackendError, SyncBackend};
 use super::crypto::{blob_aad, seal, seal_meta, sha256_hex, Key, Meta};
-use super::index::{self, Index, IndexEntry};
+use super::index::{self, Index};
 use super::lock::SyncLock;
 use super::plan::{decide, resolve, Command, Decision, Local, Remote, SkipReason};
 use super::pull::pull_one;
+use super::record::{record, Synced};
 use super::scan::{scan, select, Duplicate, Row};
 use crate::StorageManager;
 
@@ -253,7 +254,13 @@ impl Engine<'_> {
         let token = seal_meta(self.key, &meta);
         let blob = seal(self.key, &blob_aad(&row.path, PUSH_GEN), &plain);
         let id = self.upload(row, &token, &blob)?;
-        record(index, &row.path, sha256, id);
+        let synced = Synced {
+            sha256,
+            remote_id: id,
+            gen: PUSH_GEN,
+            token,
+        };
+        record(index, &row.path, synced);
         index::save(&dir, index).map_err(|e| e.to_string())?;
         Ok(plain.len() as u64)
     }
@@ -273,10 +280,18 @@ impl Engine<'_> {
 
     /// Hashes already agree, only the index lacks the entry.
     fn refresh(&self, row: &Row, index: &mut Index) -> Result<(), String> {
-        let (Local::Hash(hash), Some(id)) = (&row.input.local, &row.remote_id) else {
+        let (Local::Hash(hash), Some(id), Some(token)) =
+            (&row.input.local, &row.remote_id, &row.token)
+        else {
             return Ok(());
         };
-        record(index, &row.path, hash.clone(), id.clone());
+        let synced = Synced {
+            sha256: hash.clone(),
+            remote_id: id.clone(),
+            gen: row.gen,
+            token: token.clone(),
+        };
+        record(index, &row.path, synced);
         index::save(&self.storage.storage_dir(), index).map_err(|e| e.to_string())
     }
 
@@ -306,17 +321,6 @@ fn passive(decision: Decision) -> Outcome {
         Decision::Duplicate => Outcome::Skipped("duplicate remote copies".into()),
         _ => Outcome::Nothing,
     }
-}
-
-fn record(index: &mut Index, path: &str, sha256: String, remote_id: String) {
-    let synced_at = chrono::Utc::now().to_rfc3339();
-    let entry = IndexEntry {
-        sha256,
-        remote_id,
-        synced_at,
-        ..IndexEntry::default()
-    };
-    index.entries.insert(path.to_string(), entry);
 }
 
 fn not_found(name: String) -> Item {

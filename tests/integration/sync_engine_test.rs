@@ -583,3 +583,71 @@ fn push_stores_the_manifest_and_then_describes_with_the_same_token() {
         assert_eq!(backend.manifest(&entry.id), Some(entry.meta_token));
     }
 }
+
+fn only_entry(m: &Machine, path: &str) -> agr::sync::index::IndexEntry {
+    index::load(m.dir()).0.entries[path].clone()
+}
+
+#[test]
+fn push_records_gen_and_token_in_the_index() {
+    let (m, backend, _key) = pushed_machine();
+    let entry = only_entry(&m, "claude/a.cast.gz");
+    assert_eq!(entry.gen, 1);
+    assert_eq!(entry.token, backend.manifest(&entry.remote_id));
+    assert!(entry.token.is_some());
+}
+
+#[test]
+fn unlisted_gist_is_pushed_with_the_index_token_as_expected() {
+    let (m, backend, key) = pushed_machine();
+    let id = only_entry(&m, "claude/a.cast.gz").remote_id;
+    backend.set_description(&id, None);
+    m.session("claude", "a.cast.gz", &CAST.replace("secret", "edited"));
+    let report = m.engine(&backend, &key).push(&opts()).unwrap();
+    assert_eq!((report.pushed, report.failed), (1, 0), "{:?}", report.items);
+    assert_eq!(only_entry(&m, "claude/a.cast.gz").remote_id, id);
+    assert_eq!(backend.len(), 3);
+}
+
+#[test]
+fn rebuilt_index_keeps_the_listed_gen_and_token() {
+    let (m, backend, key) = pushed_machine();
+    fs::remove_file(index::path_for(m.dir())).unwrap();
+    m.engine(&backend, &key).push(&opts()).unwrap();
+    let entry = only_entry(&m, "claude/a.cast.gz");
+    assert_eq!(entry.gen, 1);
+    assert_eq!(entry.token, backend.manifest(&entry.remote_id));
+}
+
+#[test]
+fn pull_records_the_manifest_gen_and_token_and_repair_is_marked() {
+    let (key, backend) = (Key::generate(), MemoryBackend::new());
+    let path = "claude/x.cast.gz";
+    let plain = b"plain";
+    let seal_gen = |gen| {
+        let meta = Meta {
+            v: 2,
+            path: path.into(),
+            sha256: sha256_hex(plain),
+            size: 5,
+            gen,
+        };
+        seal_meta(&key, &meta)
+    };
+    let (t2, t1) = (seal_gen(2), seal_gen(1));
+    let id = backend.put(None, &t2, &seal(&key, &blob_aad(path, 2), plain));
+    let b = machine();
+    let report = b.engine(&backend, &key).pull(&opts()).unwrap();
+    assert_eq!(report.pulled, 1, "{:?}", report.items);
+    let entry = only_entry(&b, path);
+    assert_eq!((entry.gen, entry.token.as_deref()), (2, Some(t2.as_str())));
+    backend.set_description(&id, Some(t1));
+    let index = index::load(b.dir()).0;
+    let rows = agr::sync::scan::scan(&b.storage, &key, &backend.list().unwrap(), &index).unwrap();
+    assert!(
+        rows.iter()
+            .find(|r| r.path == path)
+            .unwrap()
+            .repair_description
+    );
+}
