@@ -10,6 +10,8 @@ use super::runner::{Output, ProcessRunner, Runner};
 const STUB_FILE: &str = "agr-session.json";
 const STUB_BODY: &str = "{\"format\":1}\n";
 const BLOB_FILE: &str = "session.agr";
+/// Placeholder until the blob is pushed, no `agr:v1 ` prefix so `parse_list` skips it.
+const PENDING_DESC: &str = "agr:pending";
 const LIST_ENDPOINT: &str = "gists?per_page=100";
 const GIT_IDENTITY: [&str; 4] = ["-c", "user.name=agr", "-c", "user.email=agr@localhost"];
 
@@ -115,14 +117,25 @@ impl<R: Runner> GistBackend<R> {
         Ok(())
     }
 
-    fn create_gist(&self, token: &str) -> Result<String, BackendError> {
+    /// Blob first, token last, so a crash in between never advertises a hash without its blob.
+    fn upload(&self, id: &str, token: &str, blob: &[u8]) -> Result<(), BackendError> {
+        let scratch = Scratch::create(&self.temp_base)?;
+        let repo = self.clone_gist(id, &scratch)?;
+        self.commit_and_push(&repo, blob)?;
+        self.set_description(id, token)
+    }
+
+    fn create_gist(&self) -> Result<String, BackendError> {
         let scratch = Scratch::create(&self.temp_base)?;
         let stub = scratch.join(STUB_FILE);
         std::fs::write(&stub, STUB_BODY)
             .map_err(|e| BackendError::Other(format!("write stub: {e}")))?;
-        let desc = format!("{DESC_PREFIX}{token}");
         let stub = stub.to_string_lossy().into_owned();
-        let out = self.run_ok("gh", &["gist", "create", &stub, "--desc", &desc], None)?;
+        let out = self.run_ok(
+            "gh",
+            &["gist", "create", &stub, "--desc", PENDING_DESC],
+            None,
+        )?;
         id_from_create_output(&out.stdout)
             .ok_or_else(|| BackendError::Other("gh did not print a gist url".into()))
     }
@@ -164,25 +177,13 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
         let created = id.is_none();
         let id = match id {
             Some(id) => id.to_string(),
-            None => self.create_gist(meta_token)?,
+            None => self.create_gist()?,
         };
-        let scratch = Scratch::create(&self.temp_base)?;
-        let sent = self
-            .clone_gist(&id, &scratch)
-            .and_then(|repo| self.commit_and_push(&repo, blob));
-        match (sent, created) {
-            (Ok(()), true) => Ok(id),
-            (Ok(()), false) => {
-                // Blob first, so a crash in between leaves a hash mismatch that pull rejects.
-                self.set_description(&id, meta_token)?;
-                Ok(id)
-            }
-            (Err(e), true) => {
-                let _ = self.delete(&id);
-                Err(e)
-            }
-            (Err(e), false) => Err(e),
+        let sent = self.upload(&id, meta_token, blob);
+        if sent.is_err() && created {
+            let _ = self.delete(&id);
         }
+        sent.map(|()| id)
     }
 
     fn pull(&self, id: &str) -> Result<Vec<u8>, BackendError> {
@@ -378,11 +379,12 @@ mod tests {
         assert_eq!(
             calls,
             [
-                "gh gist create <tmp>/agr-sync-N/agr-session.json --desc agr:v1 TOKEN",
+                "gh gist create <tmp>/agr-sync-N/agr-session.json --desc agr:pending",
                 "gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1",
                 "git add session.agr",
                 "git -c user.name=agr -c user.email=agr@localhost commit -m agr sync",
                 "git push",
+                "gh api -X PATCH gists/abc123 -f description=agr:v1 TOKEN",
             ]
         );
         assert_eq!(fake.pushed_blob.borrow().as_deref(), Some(&b"sealed"[..]));
@@ -438,6 +440,27 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("gh auth setup-git"), "{err}");
         assert_eq!(fake.calls().last().unwrap(), "gh gist delete abc123 --yes");
+    }
+
+    #[test]
+    fn orphan_gist_after_failed_push_and_failed_delete_is_not_listed() {
+        let fake = Fake::with(vec![
+            ok("https://gist.github.com/me/abc123"),
+            ok(""),
+            ok(""),
+            ok(""),
+            fail("fatal: Authentication failed"),
+            fail("could not resolve host"),
+        ]);
+        let base = tempfile::tempdir().unwrap();
+        assert!(backend(&fake, base.path())
+            .push(None, "TOKEN", b"x")
+            .is_err());
+        let calls = fake.calls();
+        let desc = calls[0].split(" --desc ").nth(1).unwrap().to_string();
+        let listing = format!(r#"[{{"id":"abc123","description":"{desc}"}}]"#);
+        assert_eq!(parse_list(&listing).unwrap(), vec![]);
+        assert!(!calls.iter().any(|c| c.contains("TOKEN")), "{calls:?}");
     }
 
     #[test]
