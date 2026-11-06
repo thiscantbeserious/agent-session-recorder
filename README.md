@@ -289,6 +289,7 @@ Sessions are encrypted and decrypted in chunks. Each 64 KiB chunk is encrypted a
 - If the key is compromised, every old version in the gist history is exposed. Deleting the gists is the only remedy.
 - When two machines push the same session at nearly the same time, GitHub has no conditional description update, so a newer description can be overwritten in a window of a few milliseconds. The next run of the newer machine repairs it.
 - `agr sync delete` racing a push of the same session on another machine is not a compare-and-swap. The other machine creates the gist again from its local copy on its next push.
+- A push landed but the run crashed before the index save, and the file was edited before the next run: it is reported as a conflict, `--overwrite` resolves it.
 - A machine that lost its index (`.agr-sync.json` in the storage directory) trusts the first version it sees, so it cannot detect a rollback that happened before.
 
 ### Encryption and the key

@@ -670,11 +670,11 @@ Depends on: Stage 23, Stage 29
 Goal: green, within limits, rules hold.
 Owner: implementer
 
-- [ ] `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`.
-- [ ] `cargo check --target x86_64-pc-windows-msvc`.
-- [ ] Grep: no `println!` or `eprintln!` in `src/sync/`, no `Command::new` outside
-      `src/sync/runner.rs`, no `--force` in `src/sync/`.
-- [ ] `git diff --stat main` under 100 files.
+- [x] `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
+- [x] `RUSTFLAGS="-D warnings" cargo check --target x86_64-pc-windows-msvc --all-targets`, `cargo +1.88 check --all-targets --locked`, `cargo build --release && ./tests/e2e_test.sh` (109 passed).
+- [x] Grep: no `println!` or `eprintln!` in `src/sync/`, no `Command::new` outside
+      `src/sync/runner.rs`, no `--force` in git push args (the only other hit is the key replace hint in `key.rs`).
+- [x] Changed files vs origin/main under 100 (90).
 
 Files: `.state/feature-sync-gist/PLAN.md`
 Depends on: Stage 11, Stage 22, Stage 23, Stage 30, Stage 31
@@ -728,15 +728,15 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 18 | pending | |
 | 19 | done | |
 | 19b | done | Batch 12 review fixes |
-| 20 | pending | |
+| 20 | done | |
 | 21 | done | also the delete rate limit stop from Stage 20 |
-| 22 | pending | three machine concurrency test |
+| 22 | done | three machine concurrency test |
 | 23 | done | README, ADR status |
-| 24 | pending | runs after D9 |
-| 25 | pending | B1, B2 |
-| 26 | pending | D9 blob v2 |
-| 27 | pending | |
-| 28 | pending | trait streams |
-| 29 | pending | |
+| 24 | done | runs after D9 |
+| 25 | done | B1, B2 |
+| 26 | done | D9 blob v2 |
+| 27 | done | |
+| 28 | done | trait streams |
+| 29 | done | |
 | 30 | done | peak RSS (release, macOS, file backend): push 64 MiB 8077312 B, push 512 MiB 8044544 B, pull 64 MiB 7979008 B, pull 512 MiB 7880704 B, growth about 0, all under 64 MiB |
 | 31 | done | README, ADR drift, REQUIREMENTS cap wording. Measured RSS numbers come from Stage 30 |

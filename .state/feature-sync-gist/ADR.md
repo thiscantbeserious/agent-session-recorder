@@ -623,7 +623,7 @@ fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn std::io::Read>), Bac
   and runs the sealer straight into `out`, a fresh nonce prefix each time.
 - The gist backend runs the callback only after the compare-and-swap check, into a small
   `PartWriter` (Write impl that rolls `data.NNN` files at `part_size`, creates `data.000`
-  eagerly), then drops stale parts and writes the manifest as today. A callback error aborts
+  only on finish for an empty blob), then drops stale parts and writes the manifest as today. A callback error aborts
   before `git add`, nothing is committed, the scratch dir is removed on drop.
 - The gist `pull` returns a reader that owns the `Scratch` and chains the part files in
   order (opened after `check_sequence`), the clone is removed when the reader is dropped.
@@ -641,11 +641,12 @@ flowchart LR
 ```
 Top row is push, bottom row is pull, every arrow carries at most one frame at a time.
 
-**Push**: scan already hashed the file (streamed). The sealer returns the plaintext SHA-256
-and size it saw, the push callback compares them with the planned hash and size and returns
-an error "session changed while pushing, run again" when they differ, so a file that changed
-between scan and push is never committed with a manifest for the old content. `push_one` no
-longer reads the file itself.
+**Push**: `push_one` hashes the file again in a streamed pre-pass (hash and size, the manifest
+meta is built from these, not from the scan). The sealer returns the plaintext SHA-256 and size
+it saw, and `seal_file` compares them with that pre-hash and fails with "session changed while
+pushing, run again" when they differ. So a file that changed between scan and push uploads the
+new content under a manifest for the new content (the compare-and-swap still holds), and a
+file that changed between the pre-pass and the seal is never committed.
 
 **Pull safety**: new `codec::atomic_write_raw_with(path, fill)` (same hidden temp, fsync,
 rename and temp removal on error as `atomic_write_raw`, the `commit` helper already does the
@@ -666,7 +667,7 @@ Not counted: `git` child processes, git loads one blob at a time below `core.big
 (512 MiB), our parts are 45 MiB.
 
 **Perf test** (`tests/performance/sync_memory_test.rs`, `#[ignore]`, run with
-`cargo test --release --test performance -- --ignored sync`): same pattern as
+`cargo test --release --test performance -- --ignored sync_memory --nocapture`): same pattern as
 `gzip_memory_test.rs`. Builds a gzip of random bytes (`Compression::none()`, fast) at 64 MiB
 and at 512 MiB, runs the release binary under `/usr/bin/time` (`-l` macOS, `-v` Linux) with
 `AGR_SYNC_TEST_BACKEND_DIR` (file backend, no network, no git) for `agr sync push --yes` on
@@ -688,13 +689,13 @@ the next change or with `--overwrite`.
   listing heals for the loser of a race and the next run plans against the real remote.
 - **B1** (`scan.rs` `row`): a pending index entry (sha256 `""`) is never `last`, it is
   filtered out like its token already is.
-- **B2** (`pull.rs` `verified`): `engine.backend.pull(id).map_err(Fail::from)?`, a rate limit
+- **B2** (`pull.rs` `pull_one`): `engine.backend.pull(id).map_err(Fail::from)?`, a rate limit
   during pull stops the run, `NotFound` stays `Gone`.
 
 #### Challenge
 
 1. **What can go wrong?**
-   - Session changes between scan and seal: caught by the hash check in the callback, the
+   - Session changes between scan and seal: caught by the hash check in `seal_file`, the
      push fails for that session and nothing is committed.
    - The look-ahead is the one subtle bit: a decoder that calls `decrypt_last` on a full frame
      without checking for more data would accept appended frames. Tests cover truncation at
@@ -702,7 +703,7 @@ the next change or with `--overwrite`.
    - Backup inside the fill closure means the `.bak` is written while the hidden temp exists,
      a failed backup removes the temp, nothing renamed. Ordering is tested.
    - The reader returned by gist `pull` holds the scratch clone, an engine that keeps it
-     around keeps 1 GiB on disk longer. `verified` drops it at the end of the function.
+     around keeps 1 GiB on disk longer. `pull_one` (`write_session` and `verify_into`) drops it at the end of the function.
    - Disk use is unchanged in total (clone plus temp), only RAM drops.
 2. **What is over-engineered?** Dropped: chunk size or any parameter in the header (version
    byte covers it), aligning parts to frames, own STREAM code, a streaming memory backend,
