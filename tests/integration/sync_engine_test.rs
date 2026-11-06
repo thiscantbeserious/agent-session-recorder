@@ -403,6 +403,9 @@ fn live_locked_plain_and_oversized_sessions_are_skipped() {
 }
 
 #[test]
+// ponytail: encrypts 101 MiB for real, which exceeds tarpaulin's 60s per-test limit
+// under instrumentation, so the coverage run skips it. Plain `cargo test` still runs it.
+#[cfg_attr(tarpaulin, ignore)]
 fn session_between_100mb_and_the_cap_is_pushed() {
     let (m, backend, key) = (machine(), MemoryBackend::new(), Key::generate());
     let big = m.session("claude", "big.cast.gz", CAST);

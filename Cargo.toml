@@ -16,7 +16,7 @@ categories = ["command-line-utilities"]
 # Allow tarpaulin_include cfg for coverage exclusion
 # See: https://github.com/xd009642/tarpaulin#ignoring-code-in-files
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)', 'cfg(tarpaulin)'] }
 
 [features]
 default = []
