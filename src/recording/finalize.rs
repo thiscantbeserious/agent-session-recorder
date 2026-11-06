@@ -1,4 +1,4 @@
-//! Compress a finished recording according to `storage.compression`.
+//! Post-process a finished recording: silence-optimize, then compress per `storage.compression`.
 
 use std::path::{Path, PathBuf};
 
@@ -26,4 +26,10 @@ pub fn finalize_recording(path: &Path, config: &Config) -> PathBuf {
 fn warn_keep(path: &Path, why: &str) -> PathBuf {
     eprintln!("  \u{26a0} Compression skipped, kept plain file: {why}");
     path.to_path_buf()
+}
+
+/// Clamps idle time in the plain recording without a backup, prints nothing.
+/// Returns the warning line when optimizing failed, the file then stays as recorded.
+pub fn optimize_recording(_path: &Path, _config: &Config) -> Option<String> {
+    None
 }

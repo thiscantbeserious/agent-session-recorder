@@ -6,7 +6,7 @@
 //! 3. It is thoroughly tested via e2e tests in tests/e2e_test.sh
 
 mod finalize;
-pub use finalize::finalize_recording;
+pub use finalize::{finalize_recording, optimize_recording};
 
 use anyhow::{bail, Context, Result};
 use std::env;
