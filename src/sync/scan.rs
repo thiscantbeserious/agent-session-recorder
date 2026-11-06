@@ -161,12 +161,21 @@ fn attach(row: &mut Row, group: Group, index: &Index) {
     row.meta = Some(meta);
 }
 
-/// The listing lags or a pending create never got a description, the index id is still ours.
+/// The listing lags or a pending create never got a description, the index id is still ours,
+/// unless it is listed as another key or an unknown version.
 fn fall_back_to_index(rows: &mut BTreeMap<String, Row>, index: &Index) {
     for (path, entry) in &index.entries {
+        let taken = rows
+            .get(&format!("remote:{}", entry.remote_id))
+            .map(|r| r.input.remote.clone());
         let Some(row) = rows.get_mut(path).filter(|r| r.remote_id.is_none()) else {
             continue;
         };
+        if let Some(state) = taken {
+            // listed but not ours to open, pushing into it would clobber it
+            row.input.remote = state;
+            continue;
+        }
         row.remote_id = Some(entry.remote_id.clone());
         row.pending = entry.pending;
         row.gen = entry.gen;

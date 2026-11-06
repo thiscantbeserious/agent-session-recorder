@@ -190,3 +190,46 @@ fn older_description_gen_marks_the_row_for_repair() {
     let level = row_of(rows(&temp, &key, &[listed], &index_with(entry(2))));
     assert!(!level.repair_description);
 }
+
+#[test]
+fn a_late_pending_gist_changes_the_pick_once_and_both_are_reported() {
+    let (temp, key) = (TempDir::new().unwrap(), Key::generate());
+    let t = token(&key, "same", 1);
+    let newer = remote("late-listed", &t, "0000000005");
+    let before = row_of(rows(
+        &temp,
+        &key,
+        std::slice::from_ref(&newer),
+        &Index::default(),
+    ));
+    assert_eq!(before.remote_id.as_deref(), Some("late-listed"));
+    assert!(before.duplicates.is_empty());
+    // the older pending gist now gets its description
+    let older = remote("early-pending", &t, "0000000002");
+    let after = row_of(rows(&temp, &key, &[newer, older], &Index::default()));
+    assert_eq!(after.remote_id.as_deref(), Some("early-pending"));
+    let others: Vec<_> = after.duplicates.iter().map(|d| d.id.as_str()).collect();
+    assert_eq!(others, ["late-listed"]);
+}
+
+#[test]
+fn index_id_listed_as_other_key_or_unknown_version_is_never_pushed_into() {
+    let (temp, key) = (TempDir::new().unwrap(), Key::generate());
+    local_file(&temp, "x");
+    let entry = IndexEntry {
+        remote_id: "taken".into(),
+        token: Some("tok".into()),
+        ..IndexEntry::default()
+    };
+    let other = Key::generate();
+    let cases = [
+        (token(&other, "h", 1), Decision::OtherKey),
+        ("garbage".to_string(), Decision::UnknownVersion),
+    ];
+    for (tok, want) in cases {
+        let listed = remote("taken", &tok, "1");
+        let row = row_of(rows(&temp, &key, &[listed], &index_with(entry.clone())));
+        assert_eq!(decide(&row.input), want);
+        assert_eq!(row.remote_id, None);
+    }
+}
