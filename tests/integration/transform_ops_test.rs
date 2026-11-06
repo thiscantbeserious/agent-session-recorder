@@ -393,8 +393,9 @@ fn apply_transforms_still_creates_backup_for_gz() {
 }
 
 #[test]
-fn bad_thresholds_error_and_leave_file_untouched() {
-    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+fn zero_and_negative_thresholds_error_and_leave_file_untouched() {
+    // NaN/inf cannot be written as JSON numbers (serialised as null), so only 0 and negative.
+    for bad in [0.0, -1.0] {
         for use_backup in [true, false] {
             let dir = TempDir::new().unwrap();
             let path = create_test_cast_with_idle_limit(&dir, "x.cast", bad, gap_events());
@@ -410,5 +411,22 @@ fn bad_thresholds_error_and_leave_file_untouched() {
             assert_eq!(fs::read(&path).unwrap(), before);
             assert!(bak_files(&dir).is_empty());
         }
+    }
+}
+
+#[test]
+fn unrepresentable_thresholds_error_and_leave_file_untouched() {
+    for bad in ["1e999", "-1e999"] {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("x.cast");
+        let body = format!(
+            "{{\"version\":3,\"term\":{{\"cols\":80,\"rows\":24}},\"idle_time_limit\":{bad}}}\n[0.1,\"o\",\"a\"]\n"
+        );
+        fs::write(&path, &body).unwrap();
+
+        assert!(remove_silence(&path).is_err(), "threshold {bad}");
+        assert!(apply_transforms(&path).is_err(), "threshold {bad}");
+        assert_eq!(fs::read_to_string(&path).unwrap(), body);
+        assert!(bak_files(&dir).is_empty());
     }
 }

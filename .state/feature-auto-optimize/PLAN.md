@@ -22,18 +22,18 @@ Goal: one transform path in `transform_ops.rs`. Private `optimize_file(path, bac
 header threshold returns an error instead of panicking. No duplicated transform logic.
 Owner: implementer
 
-- [ ] RED: `remove_silence` clamps a 5s gap to 2.0s, header `idle_time_limit: 1.0` clamps to
+- [x] RED: `remove_silence` clamps a 5s gap to 2.0s, header `idle_time_limit: 1.0` clamps to
       1.0s, `.cast.gz` stays gzip.
-- [ ] RED: `remove_silence` creates no `.x.cast.bak` / `.x.cast.gz.bak`, result has
+- [x] RED: `remove_silence` creates no `.x.cast.bak` / `.x.cast.gz.bak`, result has
       `backup_path: None`, `backup_created: false`.
-- [ ] RED: an existing (orphaned) `.x.cast.bak` is left byte-identical by `remove_silence`.
-- [ ] RED: `apply_transforms` still creates the `.bak` (existing tests stay green unchanged,
+- [x] RED: an existing (orphaned) `.x.cast.bak` is left byte-identical by `remove_silence`.
+- [x] RED: `apply_transforms` still creates the `.bak` (existing tests stay green unchanged,
       this is the TUI path).
-- [ ] RED: header `idle_time_limit: 0.0` and `-1.0` make both wrappers return `Err` (today a
+- [x] RED: header `idle_time_limit: 0.0` and `-1.0` make both wrappers return `Err` (today a
       panic in `SilenceRemoval::new`), file byte-identical, no `.bak`.
-- [ ] GREEN: move the body into `optimize_file`, `create_backup` behind `if backup`, threshold
+- [x] GREEN: move the body into `optimize_file`, `create_backup` behind `if backup`, threshold
       check (positive and finite) right after parse. Export `remove_silence` from `asciicast`.
-- [ ] `// ponytail:` comment on `optimize_file`: whole file parsed in memory (~2-3x plain size),
+- [x] `// ponytail:` comment on `optimize_file`: whole file parsed in memory (~2-3x plain size),
       streaming optimize is the upgrade path (follow-up issue, ADR section 5).
 
 Files: `src/asciicast/transform_ops.rs`, `src/asciicast/mod.rs`, `tests/integration/transform_ops_test.rs`
