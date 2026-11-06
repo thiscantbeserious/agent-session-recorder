@@ -321,11 +321,11 @@ Depends on: Stage 9, Stage 13
 Goal: no timezone in gist commits, still no env mutation in tests.
 Owner: implementer
 
-- [ ] RED (fake runner): `git commit` gets `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE` as
+- [x] RED (fake runner): `git commit` gets `GIT_AUTHOR_DATE` and `GIT_COMMITTER_DATE` as
       `@<secs> +0000`, every other call gets no extra env.
-- [ ] GREEN: `Runner::run` takes `env: &[(&str, String)]`, `ProcessRunner` passes it with
+- [x] GREEN: `Runner::run` takes `env: &[(&str, String)]`, `ProcessRunner` passes it with
       `Command::env`, the date comes from a clock argument so the test is fixed.
-- [ ] Commit identity stays `agr` / `agr@localhost`.
+- [x] Commit identity stays `agr` / `agr@localhost`.
 
 Files: `src/sync/runner.rs`, `src/sync/gist.rs`
 Depends on: Stage 9, Stage 13

@@ -23,6 +23,14 @@ pub struct GistBackend<R: Runner = ProcessRunner> {
     runner: R,
     temp_base: PathBuf,
     part_size: usize,
+    clock: fn() -> u64,
+}
+
+/// Unix seconds now, the only wall clock read of the backend.
+fn system_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 impl GistBackend<ProcessRunner> {
@@ -93,7 +101,14 @@ impl<R: Runner> GistBackend<R> {
             runner,
             temp_base,
             part_size: PART_SIZE,
+            clock: system_secs,
         }
+    }
+
+    /// Fixed clock for tests, unix seconds.
+    pub fn with_clock(mut self, clock: fn() -> u64) -> Self {
+        self.clock = clock;
+        self
     }
 
     /// Smaller parts, for tests that must not build a 45 MiB blob.
@@ -107,8 +122,9 @@ impl<R: Runner> GistBackend<R> {
         tool: &'static str,
         args: &[&str],
         cwd: Option<&Path>,
+        env: &[(&str, String)],
     ) -> Result<Output, BackendError> {
-        match self.runner.run(tool, &strings(args), cwd) {
+        match self.runner.run(tool, &strings(args), cwd, env) {
             Ok(out) => Ok(out),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 Err(BackendError::NotInstalled(tool))
@@ -124,7 +140,17 @@ impl<R: Runner> GistBackend<R> {
         args: &[&str],
         cwd: Option<&Path>,
     ) -> Result<Output, BackendError> {
-        let out = self.run(tool, args, cwd)?;
+        self.run_ok_env(tool, args, cwd, &[])
+    }
+
+    fn run_ok_env(
+        &self,
+        tool: &'static str,
+        args: &[&str],
+        cwd: Option<&Path>,
+        env: &[(&str, String)],
+    ) -> Result<Output, BackendError> {
+        let out = self.run(tool, args, cwd, env)?;
         if out.success() {
             return Ok(out);
         }
@@ -167,7 +193,12 @@ impl<R: Runner> GistBackend<R> {
         self.run_ok("git", &add, Some(repo))?;
         let mut commit = GIT_IDENTITY.to_vec();
         commit.extend(["commit", "-m", "agr sync"]);
-        self.run_ok("git", &commit, Some(repo))?;
+        let date = format!("@{} +0000", (self.clock)());
+        let env = [
+            ("GIT_AUTHOR_DATE", date.clone()),
+            ("GIT_COMMITTER_DATE", date),
+        ];
+        self.run_ok_env("git", &commit, Some(repo), &env)?;
         self.run_ok("git", &["push"], Some(repo))?;
         Ok(())
     }
@@ -209,9 +240,9 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
     }
 
     fn check(&self) -> Result<(), BackendError> {
-        self.run("git", &["--version"], None)?;
-        self.run("gh", &["--version"], None)?;
-        let out = self.run("gh", &["auth", "status"], None)?;
+        self.run("git", &["--version"], None, &[])?;
+        self.run("gh", &["--version"], None, &[])?;
+        let out = self.run("gh", &["auth", "status"], None, &[])?;
         if !out.success() {
             return Err(BackendError::NotLoggedIn);
         }
@@ -276,6 +307,7 @@ mod tests {
         pushed: RefCell<Option<Files>>,
         stub_seen: RefCell<Option<String>>,
         clone_dirs: RefCell<Vec<PathBuf>>,
+        envs: RefCell<Vec<Vec<(String, String)>>>,
         remote: Files,
     }
 
@@ -351,7 +383,13 @@ mod tests {
             program: &str,
             args: &[String],
             cwd: Option<&Path>,
+            env: &[(&str, String)],
         ) -> std::io::Result<Output> {
+            self.envs.borrow_mut().push(
+                env.iter()
+                    .map(|(k, v)| (k.to_string(), v.clone()))
+                    .collect(),
+            );
             self.calls
                 .borrow_mut()
                 .push(format!("{program} {}", args.join(" ")));
@@ -604,6 +642,33 @@ mod tests {
         let adds: Vec<_> = calls.iter().filter(|c| c.starts_with("git add")).collect();
         assert_eq!(adds, ["git add --all -- data.000 data.001 data.002"]);
         assert_eq!(calls.iter().filter(|c| c.contains("commit")).count(), 1);
+    }
+
+    #[test]
+    fn only_git_commit_gets_utc_dates_from_the_clock() {
+        let fake = Fake::default();
+        let base = tempfile::tempdir().unwrap();
+        backend(&fake, base.path())
+            .with_clock(|| 1_700_000_000)
+            .push(Some("abc123"), "T", b"x")
+            .unwrap();
+        let date = "@1700000000 +0000".to_string();
+        let want = vec![
+            ("GIT_AUTHOR_DATE".to_string(), date.clone()),
+            ("GIT_COMMITTER_DATE".to_string(), date),
+        ];
+        let calls = fake.calls();
+        let envs = fake.envs.borrow();
+        assert!(!calls.is_empty());
+        for (call, env) in calls.iter().zip(envs.iter()) {
+            if call.contains(" commit ") {
+                assert_eq!(env, &want, "{call}");
+            } else {
+                assert!(env.is_empty(), "{call}: {env:?}");
+            }
+        }
+        assert!(calls.iter().any(|c| c.contains("user.name=agr")));
+        assert!(calls.iter().any(|c| c.contains("user.email=agr@localhost")));
     }
 
     #[test]
