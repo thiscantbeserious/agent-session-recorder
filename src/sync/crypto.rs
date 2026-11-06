@@ -93,13 +93,20 @@ impl Key {
         &self.0
     }
 
-    fn cipher(&self) -> XChaCha20Poly1305 {
+    pub(super) fn cipher(&self) -> XChaCha20Poly1305 {
         XChaCha20Poly1305::new(&self.0.into())
     }
 }
 
 pub fn sha256_hex(data: &[u8]) -> String {
     HEXLOWER.encode(&Sha256::digest(data))
+}
+
+/// SHA-256 (hex) and byte count of a reader, streamed.
+pub fn sha256_reader(mut src: impl std::io::Read) -> std::io::Result<(String, u64)> {
+    let mut hasher = Sha256::new();
+    let size = std::io::copy(&mut src, &mut hasher)?;
+    Ok((HEXLOWER.encode(&hasher.finalize()), size))
 }
 
 /// AAD binding a blob to the header, its session path and its generation.
@@ -230,6 +237,13 @@ mod tests {
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn sha256_reader_hashes_and_counts() {
+        let got = sha256_reader(&b"abc"[..]).unwrap();
+        assert_eq!(got, (sha256_hex(b"abc"), 3));
+        assert_eq!(sha256_reader(&b""[..]).unwrap(), (sha256_hex(b""), 0));
     }
 
     #[test]
