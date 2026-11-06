@@ -19,20 +19,33 @@ impl Output {
 
 /// Runs one command line, never through a shell.
 pub trait Runner {
-    fn run(&self, program: &str, args: &[String], cwd: Option<&Path>) -> std::io::Result<Output>;
+    fn run(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: Option<&Path>,
+        env: &[(&str, String)],
+    ) -> std::io::Result<Output>;
 }
 
 /// Real processes, no stdin and no prompts so a missing credential fails instead of hanging.
 pub struct ProcessRunner;
 
 impl Runner for ProcessRunner {
-    fn run(&self, program: &str, args: &[String], cwd: Option<&Path>) -> std::io::Result<Output> {
+    fn run(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: Option<&Path>,
+        env: &[(&str, String)],
+    ) -> std::io::Result<Output> {
         let mut command = Command::new(program);
         command
             .args(args)
             .stdin(Stdio::null())
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GH_PROMPT_DISABLED", "1");
+        command.envs(env.iter().map(|(k, v)| (*k, v)));
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
