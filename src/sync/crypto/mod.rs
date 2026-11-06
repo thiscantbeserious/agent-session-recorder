@@ -58,11 +58,11 @@ impl Key {
         Key(XChaCha20Poly1305::generate_key(&mut OsRng).into())
     }
 
-    pub fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
+    pub(in crate::sync) fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
         Key(bytes)
     }
 
-    pub fn as_bytes(&self) -> &[u8; KEY_LEN] {
+    pub(in crate::sync) fn as_bytes(&self) -> &[u8; KEY_LEN] {
         &self.0
     }
 

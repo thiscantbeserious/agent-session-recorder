@@ -34,7 +34,7 @@ pub enum Imported {
 const KEY_PREFIX: &str = "agr-sync-key v1 ";
 
 /// Load the key, `None` when the file is missing.
-pub fn load(path: &Path) -> Result<Option<Key>, KeyError> {
+pub(super) fn load(path: &Path) -> Result<Option<Key>, KeyError> {
     if !path.exists() {
         return Ok(None);
     }
@@ -120,7 +120,7 @@ fn open_private(path: &Path) -> std::io::Result<std::fs::File> {
 }
 
 /// Store an imported key, a different existing key needs `force`.
-pub fn import(path: &Path, key: &Key, force: bool) -> Result<Imported, KeyError> {
+pub(super) fn import(path: &Path, key: &Key, force: bool) -> Result<Imported, KeyError> {
     let Some(existing) = load(path)? else {
         write_private(path, key)?;
         return Ok(Imported::Created);

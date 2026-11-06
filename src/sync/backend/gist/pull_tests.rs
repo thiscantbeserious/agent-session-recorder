@@ -1,6 +1,7 @@
-use super::fake::*;
+use super::fake::{backend, remote_parts, scrub, Bytes, Fake};
 use super::parts::part_name;
-use super::*;
+use super::{BackendError, SyncBackend};
+use std::io::Read;
 
 #[test]
 fn pull_clones_and_reads_the_blob() {

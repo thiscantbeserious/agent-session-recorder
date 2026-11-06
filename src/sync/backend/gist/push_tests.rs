@@ -1,7 +1,8 @@
-use super::fake::*;
+use super::fake::{backend, fail, ok, remote_parts, scrub, source_of, Bytes, Fake};
 use super::pace::tests::FakeClock;
 use super::parts::part_name;
-use super::*;
+use super::{BackendError, SyncBackend, MANIFEST_FILE};
+use std::sync::Arc;
 use std::time::Duration;
 
 #[test]

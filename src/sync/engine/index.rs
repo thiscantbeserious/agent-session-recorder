@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-pub const INDEX_FILE: &str = ".agr-sync.json";
+pub(super) const INDEX_FILE: &str = ".agr-sync.json";
 pub const LOCK_FILE: &str = ".agr-sync.lock";
 
 /// One synced session.
@@ -63,7 +63,7 @@ pub fn load(storage_dir: &Path) -> (Index, Option<String>) {
 }
 
 /// Save atomically.
-pub fn save(storage_dir: &Path, index: &Index) -> Result<()> {
+pub(super) fn save(storage_dir: &Path, index: &Index) -> Result<()> {
     let json = serde_json::to_string_pretty(index)?;
     crate::files::codec::atomic_write(
         &path_for(storage_dir),

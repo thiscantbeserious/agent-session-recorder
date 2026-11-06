@@ -14,7 +14,7 @@ pub use child::{error_line, run, take_error_line};
 
 /// What to do with a finished recording.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Auto {
+pub(super) enum Auto {
     /// Nothing to say, sync or auto push is off.
     Silent,
     /// Not pushed, one hint line for the user.
@@ -25,13 +25,13 @@ pub enum Auto {
 
 /// Facts the checks need that are not in config or state.
 #[derive(Debug, Clone, Copy)]
-pub struct Env {
+pub(super) struct Env {
     pub key_present: bool,
     pub tools_present: bool,
 }
 
 /// Decide in-process, no network.
-pub fn decide(config: &Config, state: &State, env: Env, path: &Path) -> Auto {
+pub(super) fn decide(config: &Config, state: &State, env: Env, path: &Path) -> Auto {
     if config.sync.backend.is_none() || !config.sync.auto_push {
         return Auto::Silent;
     }
@@ -77,7 +77,7 @@ fn session_name(path: &Path) -> Option<String> {
 }
 
 /// True when every program is an executable file in one of the `PATH` directories.
-pub fn on_path(programs: &[&str], path_var: &std::ffi::OsStr) -> bool {
+pub(super) fn on_path(programs: &[&str], path_var: &std::ffi::OsStr) -> bool {
     programs
         .iter()
         .all(|program| std::env::split_paths(path_var).any(|dir| dir.join(program).is_file()))
