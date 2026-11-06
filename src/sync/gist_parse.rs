@@ -72,7 +72,9 @@ const RATE_LIMIT: [&str; 4] = [
     "http 429",
     "error: 429",
 ];
-const NOT_FOUND: [&str; 3] = ["http 404", "repository not found", "not found (http"];
+/// Only the `gh` API says this, git prints "repository not found" for auth failures too.
+const NOT_FOUND: [&str; 2] = ["http 404", "not found (http"];
+const GIT_NO_ACCESS: &str = "repository not found";
 const REJECTED: [&str; 3] = ["! [rejected]", "non-fast-forward", "fetch first"];
 
 /// Map a failed `gh` or `git` run to one clear error, never echoes raw stderr.
@@ -87,12 +89,14 @@ pub fn map_failure(tool: &'static str, stderr: &str, code: Option<i32>) -> Backe
         BackendError::NotLoggedIn
     } else if text.contains("scope") {
         BackendError::MissingScope
-    } else if has(&NOT_FOUND) {
+    } else if tool == "gh" && has(&NOT_FOUND) {
         BackendError::NotFound
     } else if has(&NETWORK) {
         BackendError::Unreachable("no connection to github.com".into())
     } else if tool == "git" && has(&CREDENTIALS) {
         BackendError::Other("git has no credentials for gists, run `gh auth setup-git`".into())
+    } else if tool == "git" && text.contains(GIT_NO_ACCESS) {
+        BackendError::Other("git cannot open the gist (no access or it is gone)".into())
     } else {
         BackendError::Other(format!("{tool} failed (exit {code:?})"))
     }
@@ -131,8 +135,19 @@ mod tests {
     fn a_404_is_not_found() {
         let gh = "gh: Not Found (HTTP 404)";
         assert_eq!(map_failure("gh", gh, Some(1)), BackendError::NotFound);
-        let git = "remote: Repository not found.\nfatal: repository 'x' not found";
-        assert_eq!(map_failure("git", git, Some(128)), BackendError::NotFound);
+    }
+
+    #[test]
+    fn git_repository_not_found_is_never_not_found() {
+        let git = "remote: Repository not found.\nfatal: repository 'https://gist.github.com/x.git/' not found";
+        let err = map_failure("git", git, Some(128));
+        assert!(
+            matches!(&err, BackendError::Other(m) if m.contains("no access")),
+            "{err:?}"
+        );
+        let cred = "fatal: could not read Username for 'https://gist.github.com': terminal prompts disabled\nremote: Repository not found.";
+        let err = map_failure("git", cred, Some(128)).to_string();
+        assert!(err.contains("gh auth setup-git"), "{err}");
     }
 
     #[test]
