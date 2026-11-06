@@ -226,7 +226,7 @@ pub fn atomic_write(
 
 /// Write `bytes` verbatim via the same temp and rename path, never gzip-encoding.
 pub fn atomic_write_raw(path: &Path, bytes: &[u8]) -> Result<()> {
-    commit(path, |file| write_plain(file, |w| Ok(w.write_all(bytes)?)))
+    atomic_write_raw_with(path, |w| Ok(w.write_all(bytes)?))
 }
 
 /// Like `atomic_write_raw`, but `fill` streams into the hidden temp, rename only after `Ok`.
@@ -234,8 +234,7 @@ pub fn atomic_write_raw_with(
     path: &Path,
     fill: impl FnOnce(&mut dyn Write) -> Result<()>,
 ) -> Result<()> {
-    let _ = (path, fill);
-    Ok(())
+    commit(path, |file| write_plain(file, fill))
 }
 
 /// Run `write_target` on the hidden temp path and remove the temp on failure.

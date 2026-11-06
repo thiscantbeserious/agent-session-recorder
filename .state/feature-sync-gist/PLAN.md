@@ -571,10 +571,10 @@ Depends on: Stage 21
 Goal: pull can stream into the hidden temp and decide before the rename.
 Owner: implementer
 
-- [ ] RED: `atomic_write_raw_with(path, |w| ...)` writes through the hidden `.tmp`, renames on
+- [x] RED: `atomic_write_raw_with(path, |w| ...)` writes through the hidden `.tmp`, renames on
       `Ok`, on `Err` the target is untouched and the temp is removed.
-- [ ] RED: an existing target is replaced only on `Ok`.
-- [ ] GREEN in `codec.rs`, `atomic_write_raw` becomes a one-line call of it.
+- [x] RED: an existing target is replaced only on `Ok`.
+- [x] GREEN in `codec.rs`, `atomic_write_raw` becomes a one-line call of it.
 
 Files: `src/files/codec.rs`, `tests/integration/codec_test.rs`
 Depends on: Stage 3
