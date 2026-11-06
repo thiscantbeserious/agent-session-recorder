@@ -53,7 +53,11 @@ fn row(path: &str, local: Local, index: &Index) -> Row {
         input: Input {
             local,
             remote: Remote::Absent,
-            last: index.entries.get(path).map(|e| e.sha256.clone()),
+            last: index
+                .entries
+                .get(path)
+                .filter(|e| !e.pending)
+                .map(|e| e.sha256.clone()),
         },
         remote_id: None,
         token: None,

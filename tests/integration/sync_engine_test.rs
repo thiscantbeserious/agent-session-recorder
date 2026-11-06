@@ -790,6 +790,9 @@ struct Spy {
     /// The nth delete (1 based) fails with this error.
     delete_error: RefCell<Option<(usize, BackendError)>>,
     deletes: Cell<usize>,
+    pulls: Cell<usize>,
+    /// The nth pull (1 based) fails with this error.
+    pull_error: RefCell<Option<(usize, BackendError)>>,
 }
 
 impl SyncBackend for Spy {
@@ -828,6 +831,14 @@ impl SyncBackend for Spy {
         }
     }
     fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
+        self.pulls.set(self.pulls.get() + 1);
+        let mut failing = self.pull_error.borrow_mut();
+        if failing
+            .as_ref()
+            .is_some_and(|(n, _)| *n == self.pulls.get())
+        {
+            return Err(failing.take().unwrap().1);
+        }
         self.inner.pull(id)
     }
     fn delete(&self, id: &str) -> Result<(), BackendError> {
@@ -1159,4 +1170,102 @@ fn rate_limit_during_delete_stops_the_run_and_keeps_earlier_deletes() {
     assert!(!index.entries.contains_key(A));
     assert!(index.entries.contains_key("claude/b.cast.gz"));
     assert_eq!(spy.inner.len(), 2);
+}
+
+/// Our push of an edited A loses to a manifest from `theirs`, the description stays behind.
+fn lost_to(
+    theirs: impl Fn(&Key) -> String,
+    describe: Option<BackendError>,
+) -> (Result<Outcome, SyncError>, Option<String>, Option<String>) {
+    let (m, spy, key) = spied();
+    let before = only_entry(&m, A);
+    let (id, token) = (before.remote_id.clone(), theirs(&key));
+    race(&spy, move |b| {
+        b.set_manifest(&id, Some(token));
+        b.set_blob(&id, b"theirs".to_vec());
+    });
+    *spy.describe_error.borrow_mut() = describe;
+    edit_a(&m);
+    let result = m.engine(&spy, &key).push(&opts());
+    assert_eq!(only_entry(&m, A), before, "nothing is recorded");
+    let description = spy.inner.description(&before.remote_id);
+    let outcome = result.map(|r| item_of(&r, A).outcome.clone());
+    (outcome, description, spy.inner.manifest(&before.remote_id))
+}
+
+type Theirs = Box<dyn Fn(&Key) -> String>;
+
+fn failed_changed() -> Result<Outcome, SyncError> {
+    Ok(Outcome::Failed(CHANGED.into()))
+}
+
+#[test]
+fn lost_race_to_our_path_at_the_same_or_a_higher_gen_heals_the_description() {
+    for gen in [1, 2, 5] {
+        let (outcome, description, manifest) =
+            lost_to(|key| token_gen(key, "other-hash", gen), None);
+        assert_eq!(outcome, failed_changed(), "gen {gen}");
+        assert!(manifest.is_some(), "gen {gen}");
+        assert_eq!(description, manifest, "gen {gen}");
+    }
+}
+
+#[test]
+fn lost_race_to_a_lower_gen_another_path_or_another_key_describes_nothing() {
+    let other_path = |key: &Key| {
+        let meta = Meta {
+            v: 2,
+            path: "claude/b.cast.gz".into(),
+            sha256: "x".into(),
+            size: 1,
+            gen: 2,
+        };
+        seal_meta(key, &meta)
+    };
+    let cases: [(&str, Theirs); 3] = [
+        ("lower gen", Box::new(|key| token_gen(key, "x", 0))),
+        ("other path", Box::new(other_path)),
+        (
+            "other key",
+            Box::new(|_| token_gen(&Key::generate(), "x", 2)),
+        ),
+    ];
+    for (name, theirs) in cases {
+        let (outcome, description, manifest) = lost_to(theirs, None);
+        assert_eq!(outcome, failed_changed(), "{name}");
+        assert_ne!(description, manifest, "{name}: the description moved");
+    }
+}
+
+#[test]
+fn rate_limit_from_the_healing_describe_stops_the_run_any_other_error_reports_changed() {
+    let theirs = |key: &Key| token_gen(key, "other-hash", 2);
+    let (outcome, _, _) = lost_to(theirs, Some(BackendError::RateLimited));
+    assert!(
+        matches!(outcome, Err(SyncError::RateLimited { .. })),
+        "{outcome:?}"
+    );
+    let down = BackendError::Unreachable("down".into());
+    let (outcome, _, _) = lost_to(theirs, Some(down));
+    assert_eq!(outcome, failed_changed());
+}
+
+#[test]
+fn rate_limit_on_the_second_of_three_pulls_stops_the_run_and_keeps_the_first() {
+    let (a, backend, key) = pushed_machine();
+    let spy = Spy {
+        inner: backend,
+        ..Spy::default()
+    };
+    *spy.pull_error.borrow_mut() = Some((2, BackendError::RateLimited));
+    let b = machine();
+    let err = b.engine(&spy, &key).pull(&opts()).unwrap_err();
+    assert_eq!(err, SyncError::RateLimited { left: 2 });
+    let (index, _) = index::load(b.dir());
+    assert_eq!(index.entries.len(), 1, "{:?}", index.entries);
+    let first = index.entries.keys().next().unwrap();
+    assert_eq!(
+        fs::read(b.dir().join(first)).unwrap(),
+        fs::read(a.dir().join(first)).unwrap()
+    );
 }

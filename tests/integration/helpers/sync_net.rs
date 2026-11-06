@@ -148,6 +148,8 @@ pub struct Net<'a> {
     before: RefCell<Option<Hook<'a>>>,
     pub drop_describe: Cell<bool>,
     pub fail_push: RefCell<Option<BackendError>>,
+    /// The push lands, the reply is lost.
+    pub lose_reply: Cell<bool>,
 }
 
 impl<'a> Net<'a> {
@@ -191,7 +193,11 @@ impl SyncBackend for Net<'_> {
         if let Some(err) = self.fail_push.borrow_mut().take() {
             return Err(err);
         }
-        self.mem().push(id, e, m, b)
+        let landed = self.mem().push(id, e, m, b);
+        match landed {
+            Ok(()) if self.lose_reply.take() => Err(BackendError::Unreachable("reply lost".into())),
+            other => other,
+        }
     }
     fn describe(&self, id: &str, t: &str) -> Result<(), BackendError> {
         self.race();

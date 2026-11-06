@@ -1,6 +1,7 @@
 //! Index entry written after a push, refresh or pull.
 
-use super::index::{Index, IndexEntry};
+use super::index::{self, Index, IndexEntry};
+use crate::StorageManager;
 
 /// What the last sync knew about one remote copy.
 pub(super) struct Synced {
@@ -31,4 +32,9 @@ pub(super) fn record_pending(index: &mut Index, path: &str, remote_id: &str) {
         ..IndexEntry::default()
     };
     index.entries.insert(path.to_string(), entry);
+}
+
+/// The one place an engine run writes the index.
+pub(super) fn save_index(storage: &StorageManager, index: &Index) -> Result<(), String> {
+    index::save(&storage.storage_dir(), index).map_err(|e| e.to_string())
 }
