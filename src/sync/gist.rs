@@ -545,7 +545,7 @@ mod tests {
             vec![RemoteEntry {
                 id: "a1".into(),
                 meta_token: "T".into(),
-                created_at: String::new(),
+                created_at: super::super::gist_parse::NO_CREATED_AT.into(),
             }]
         );
     }

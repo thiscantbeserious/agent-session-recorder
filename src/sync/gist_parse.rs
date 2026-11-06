@@ -13,6 +13,9 @@ struct Gist {
     created_at: Option<String>,
 }
 
+/// Sorts after every real timestamp, a gist without `created_at` never wins the pick (D7).
+pub const NO_CREATED_AT: &str = "9999-12-31T23:59:59Z";
+
 /// GitHub stops listing after this many gists, see https://docs.github.com/en/rest/gists/gists.
 pub const LIST_LIMIT: usize = 3000;
 
@@ -43,7 +46,7 @@ fn to_entry(gist: Gist) -> Option<RemoteEntry> {
     Some(RemoteEntry {
         id: gist.id,
         meta_token: token,
-        created_at: gist.created_at.unwrap_or_default(),
+        created_at: gist.created_at.unwrap_or_else(|| NO_CREATED_AT.into()),
     })
 }
 
@@ -120,8 +123,16 @@ mod tests {
         RemoteEntry {
             id: id.into(),
             meta_token: token.into(),
-            created_at: String::new(),
+            created_at: NO_CREATED_AT.into(),
         }
+    }
+
+    #[test]
+    fn missing_created_at_sorts_last_in_the_pick() {
+        let json = r#"[{"id":"a","description":"agr:v1 T"},{"id":"z","description":"agr:v1 T","created_at":"2026-01-02T03:04:05Z"}]"#;
+        let mut got = parse_list(json).unwrap();
+        got.sort_by(|a, b| (&a.created_at, &a.id).cmp(&(&b.created_at, &b.id)));
+        assert_eq!(got[0].id, "z");
     }
 
     #[test]
