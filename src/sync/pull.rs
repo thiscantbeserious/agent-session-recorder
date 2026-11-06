@@ -23,6 +23,7 @@ pub(super) fn pull_one(engine: &Engine<'_>, row: &Row, index: &mut Index) -> Res
         sha256: meta.sha256.clone(),
         remote_id: id.clone(),
         synced_at: chrono::Utc::now().to_rfc3339(),
+        ..IndexEntry::default()
     };
     index.entries.insert(meta.path.clone(), entry);
     index::save(&engine.storage.storage_dir(), index).map_err(|e| e.to_string())?;

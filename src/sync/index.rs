@@ -10,11 +10,20 @@ pub const INDEX_FILE: &str = ".agr-sync.json";
 pub const LOCK_FILE: &str = ".agr-sync.lock";
 
 /// One synced session.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexEntry {
     pub sha256: String,
     pub remote_id: String,
     pub synced_at: String,
+    /// Generation of the last synced manifest, 0 when unknown (old index).
+    #[serde(default)]
+    pub gen: u64,
+    /// Sealed manifest token of the last sync, the `expected` of the next push.
+    #[serde(default)]
+    pub token: Option<String>,
+    /// The gist was created but its first push is not recorded yet, the next run resumes it.
+    #[serde(default)]
+    pub pending: bool,
 }
 
 /// Index keyed by `agent/name.cast.gz`.
@@ -71,6 +80,7 @@ mod tests {
             sha256: format!("hash{n}"),
             remote_id: format!("id{n}"),
             synced_at: "2026-11-06T10:00:00+00:00".into(),
+            ..IndexEntry::default()
         }
     }
 

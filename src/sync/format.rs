@@ -4,6 +4,7 @@ use humansize::{format_size, BINARY};
 
 use super::plan::Decision;
 use super::run::{Item, Outcome, Report};
+use super::scan::Duplicate;
 
 const ORDER: [&str; 7] = [
     "in sync",
@@ -24,7 +25,9 @@ pub fn label(item: &Item) -> &'static str {
         Decision::Pull if item.on_local => ORDER[3],
         Decision::Pull => ORDER[4],
         Decision::Conflict => ORDER[5],
-        Decision::OtherKey | Decision::UnknownVersion | Decision::Skip(_) => ORDER[6],
+        Decision::OtherKey | Decision::UnknownVersion | Decision::Duplicate | Decision::Skip(_) => {
+            ORDER[6]
+        }
     }
 }
 
@@ -36,9 +39,26 @@ pub fn status_lines(report: &Report, backend: &str) -> Vec<String> {
         lines.push("No sessions.".into());
         return lines;
     }
-    lines.extend(report.items.iter().map(status_line));
+    lines.extend(report.items.iter().flat_map(status_block));
     lines.push(totals(report));
     lines
+}
+
+fn status_block(item: &Item) -> Vec<String> {
+    let mut lines = vec![status_line(item)];
+    if let (true, Some(id)) = (item.pending, &item.remote_id) {
+        lines.push(format!("    pending upload, the next push resumes {id}"));
+    }
+    lines.extend(item.duplicates.iter().map(duplicate_line));
+    lines
+}
+
+fn duplicate_line(dup: &Duplicate) -> String {
+    let same = if dup.same_hash { "same" } else { "different" };
+    format!(
+        "    also on the remote: {id} ({same} content), delete with `gh gist delete {id}`",
+        id = dup.id
+    )
 }
 
 fn status_line(item: &Item) -> String {
@@ -205,6 +225,7 @@ fn size(bytes: u64) -> String {
 mod tests {
     use super::*;
     use crate::sync::plan::SkipReason;
+    use crate::sync::scan::Duplicate;
 
     fn item(path: &str, decision: Decision, outcome: Outcome) -> Item {
         Item {
@@ -217,7 +238,44 @@ mod tests {
             local_hash: Some("a".repeat(64)),
             remote_hash: Some("b".repeat(64)),
             remote_size: 4096,
+            remote_id: None,
+            pending: false,
+            duplicates: Vec::new(),
         }
+    }
+
+    #[test]
+    fn duplicates_are_listed_with_ids_and_the_delete_command() {
+        let mut dup = item("a/d.cast.gz", Decision::Duplicate, Outcome::Nothing);
+        dup.remote_id = Some("keep1".into());
+        dup.duplicates = vec![
+            Duplicate {
+                id: "x2".into(),
+                same_hash: true,
+            },
+            Duplicate {
+                id: "y3".into(),
+                same_hash: false,
+            },
+        ];
+        let lines = status_lines(&report(vec![dup]), "gist");
+        assert_eq!(
+            lines[1..4],
+            [
+                "  a/d.cast.gz skipped (2 KiB)",
+                "    also on the remote: x2 (same content), delete with `gh gist delete x2`",
+                "    also on the remote: y3 (different content), delete with `gh gist delete y3`",
+            ]
+        );
+    }
+
+    #[test]
+    fn pending_entry_names_the_gist_the_next_push_resumes() {
+        let mut p = item("a/p.cast.gz", Decision::Push, Outcome::Planned);
+        p.remote_id = Some("gist-7".into());
+        p.pending = true;
+        let lines = status_lines(&report(vec![p]), "gist");
+        assert_eq!(lines[2], "    pending upload, the next push resumes gist-7");
     }
 
     fn sync() -> Decision {
