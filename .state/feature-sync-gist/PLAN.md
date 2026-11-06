@@ -640,13 +640,13 @@ Depends on: Stage 26, Stage 27, Stage 28
 Goal: documented, flat peak memory up to large sessions.
 Owner: implementer
 
-- [ ] `tests/performance/sync_memory_test.rs`, `#[ignore]`, registered in
+- [x] `tests/performance/sync_memory_test.rs`, `#[ignore]`, registered in
       `tests/performance.rs`, reuses `parse_max_rss` from `gzip_memory_test.rs` (move it to
       `tests/performance/mod.rs` if needed).
-- [ ] 64 MiB and 512 MiB stored gzip of random bytes, release binary under `/usr/bin/time`,
+- [x] 64 MiB and 512 MiB stored gzip of random bytes, release binary under `/usr/bin/time`,
       file backend through `AGR_SYNC_TEST_BACKEND_DIR`, push on home A, key import and pull on
       home B, pulled file equals the source.
-- [ ] Prints the four peak RSS values, asserts 512 MiB minus 64 MiB run <= 16 MiB for push and
+- [x] Prints the four peak RSS values, asserts 512 MiB minus 64 MiB run <= 16 MiB for push and
       pull and every run < 64 MiB. Numbers go into the PLAN progress notes.
 
 Files: `tests/performance/sync_memory_test.rs`, `tests/performance.rs`, `tests/performance/mod.rs`, `tests/performance/gzip_memory_test.rs`
@@ -737,5 +737,5 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 27 | pending | |
 | 28 | pending | trait streams |
 | 29 | pending | |
-| 30 | pending | peak RSS numbers go here |
+| 30 | done | peak RSS (release, macOS, file backend): push 64 MiB 8077312 B, push 512 MiB 8044544 B, pull 64 MiB 7979008 B, pull 512 MiB 7880704 B, growth about 0, all under 64 MiB |
 | 31 | pending | |
