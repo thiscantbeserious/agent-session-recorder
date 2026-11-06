@@ -718,14 +718,14 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 8 | done | test-only `AGR_SYNC_TEST_BACKEND_DIR` file backend (`src/sync/file.rs`) |
 | 9 | done | |
 | 10 | done | README marks the gist transport as not verified live |
-| 11 | pending | final gates, see Stage 12 for the fix round |
+| 11 | done | final gates, see Stage 12 for the fix round |
 | 12 | done | fix round before the PR |
 | 13 | done | parts, 1 GiB cap, listing limit |
-| 14 | pending | Variant A |
-| 15 | pending | |
-| 16 | pending | |
+| 14 | done | Variant A |
+| 15 | done | |
+| 16 | done | |
 | 17 | done | one commit, no 17a/17b split. Gist `push` ignores `expected` and `manifest` until Stage 18, test `stage_17_push_does_not_compare_expected_yet` in `gist.rs` flips then. Memory test hook `put` sets a whole remote state without compare |
-| 18 | pending | |
+| 18 | done | |
 | 19 | done | |
 | 19b | done | Batch 12 review fixes |
 | 20 | done | |
