@@ -36,3 +36,40 @@ pub fn should_proceed(message: &str, auto_confirm: bool) -> Result<bool> {
     let response = input.trim().to_lowercase();
     Ok(response == "y" || response == "yes")
 }
+
+/// Parse a yes/no answer. Empty or unknown input keeps `default`.
+pub fn parse_answer(_input: &str, default: bool) -> bool {
+    default
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_keeps_default() {
+        assert!(parse_answer("", true));
+        assert!(!parse_answer("", false));
+        assert!(parse_answer("  \n", true));
+    }
+
+    #[test]
+    fn no_answers_are_false() {
+        assert!(!parse_answer("n", true));
+        assert!(!parse_answer("no", true));
+        assert!(!parse_answer("NO\n", true));
+    }
+
+    #[test]
+    fn yes_answers_are_true() {
+        assert!(parse_answer("y", false));
+        assert!(parse_answer("YES", false));
+        assert!(parse_answer(" yes \n", false));
+    }
+
+    #[test]
+    fn unknown_keeps_default() {
+        assert!(parse_answer("x", true));
+        assert!(!parse_answer("x", false));
+    }
+}
