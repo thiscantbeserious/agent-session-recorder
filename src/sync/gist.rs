@@ -2,9 +2,11 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use super::backend::{BackendError, RemoteEntry, SyncBackend};
 use super::gist_parse::{check_auth, id_from_create_output, map_failure, parse_list, DESC_PREFIX};
+use super::pace::{Clock, Pacer, SystemClock};
 use super::parts::{check_sequence, join, part_name, split, stale, PART_PREFIX, PART_SIZE};
 use super::runner::{Output, ProcessRunner, Runner};
 
@@ -37,14 +39,11 @@ pub struct GistBackend<R: Runner = ProcessRunner> {
     runner: R,
     temp_base: PathBuf,
     part_size: usize,
-    clock: fn() -> u64,
-}
-
-/// Unix seconds now, the only wall clock read of the backend.
-fn system_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs())
+    clock: Arc<dyn Clock>,
+    /// Behind a mutex so `&self` trait methods can pace, boxed clock so no generic leaks out.
+    /// Stage 18 calls `wait` before each mutating call.
+    #[allow(dead_code)]
+    pacer: Mutex<Pacer>,
 }
 
 impl GistBackend<ProcessRunner> {
@@ -111,16 +110,19 @@ fn part_files(repo: &Path) -> Result<Vec<String>, BackendError> {
 
 impl<R: Runner> GistBackend<R> {
     pub fn with_runner(runner: R, temp_base: PathBuf) -> Self {
+        let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
         Self {
             runner,
             temp_base,
             part_size: PART_SIZE,
-            clock: system_secs,
+            pacer: Mutex::new(Pacer::new(clock.clone())),
+            clock,
         }
     }
 
-    /// Fixed clock for tests, unix seconds.
-    pub fn with_clock(mut self, clock: fn() -> u64) -> Self {
+    /// Replace the clock, pacing and commit dates both follow it.
+    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
+        self.pacer = Mutex::new(Pacer::new(clock.clone()));
         self.clock = clock;
         self
     }
@@ -207,7 +209,7 @@ impl<R: Runner> GistBackend<R> {
         self.run_ok("git", &add, Some(repo))?;
         let mut commit = GIT_IDENTITY.to_vec();
         commit.extend(["commit", "-m", "agr sync"]);
-        let date = format!("@{} +0000", (self.clock)());
+        let date = format!("@{} +0000", self.clock.unix_secs()?);
         let mut env = vec![
             ("GIT_AUTHOR_DATE", date.clone()),
             ("GIT_COMMITTER_DATE", date),
@@ -309,9 +311,11 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::pace::tests::FakeClock;
     use super::*;
     use std::cell::RefCell;
     use std::collections::VecDeque;
+    use std::time::Duration;
 
     type Files = Vec<(String, Vec<u8>)>;
 
@@ -516,7 +520,7 @@ mod tests {
                 "gh gist create <tmp>/agr-sync-N/.keep --desc agr:pending",
                 "gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1",
                 "git add --all -- data.000",
-                "git -c user.name=agr -c user.email=agr@localhost commit -m agr sync",
+                "git -c user.name=agr -c user.email=agr@localhost -c commit.gpgsign=false commit -m agr sync",
                 "git push",
                 "gh api -X PATCH gists/abc123 -f description=agr:v1 TOKEN",
             ]
@@ -664,7 +668,7 @@ mod tests {
         let fake = Fake::default();
         let base = tempfile::tempdir().unwrap();
         backend(&fake, base.path())
-            .with_clock(|| 1_700_000_000)
+            .with_clock(Arc::new(FakeClock::new(Duration::ZERO, 1_700_000_000)))
             .push(Some("abc123"), "T", b"x")
             .unwrap();
         let date = "@1700000000 +0000".to_string();
