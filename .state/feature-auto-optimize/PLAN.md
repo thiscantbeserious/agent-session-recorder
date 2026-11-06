@@ -70,21 +70,21 @@ Goal: `pub fn optimize_recording(path: &Path, config: &Config) -> Option<String>
 warning line, prints nothing, never creates a backup.
 Owner: implementer
 
-- [ ] RED: `auto_optimize = false` leaves the file byte-identical, returns `None`.
-- [ ] RED: `auto_optimize = true`, a 5s gap is clamped to 2.0s, no `.x.cast.bak`, returns `None`.
-- [ ] RED: unparsable file stays byte-identical, returns
+- [x] RED: `auto_optimize = false` leaves the file byte-identical, returns `None`.
+- [x] RED: `auto_optimize = true`, a 5s gap is clamped to 2.0s, no `.x.cast.bak`, returns `None`.
+- [x] RED: unparsable file stays byte-identical, returns
       `Some(format!("Auto-optimize failed, kept original: {e:#}"))` (`{e:#}` like
       `finalize_recording`, so the context chain is in the one line).
-- [ ] RED: header `idle_time_limit: 0` returns `Some("Auto-optimize failed, ...")`, file
+- [x] RED: header `idle_time_limit: 0` returns `Some("Auto-optimize failed, ...")`, file
       byte-identical (guard from Stage 1 reaches the recording path).
-- [ ] RED: missing file returns `None` (path recovery already warned).
-- [ ] RED (interplay, ADR section 3): `optimize_recording` then `finalize_recording` with gzip
+- [x] RED: missing file returns `None` (path recovery already warned).
+- [x] RED (interplay, ADR section 3): `optimize_recording` then `finalize_recording` with gzip
       leaves only `x.cast.gz` (optimized duration), no `x.cast`, no `.x.cast.bak`, no
       `.x.cast.gz.bak`.
-- [ ] RED: same with `compression = "none"` leaves only `x.cast` (optimized), no `.x.cast.bak`.
-- [ ] RED: unparsable file then `finalize_recording` with gzip still yields `x.cast.gz` with the
+- [x] RED: same with `compression = "none"` leaves only `x.cast` (optimized), no `.x.cast.bak`.
+- [x] RED: unparsable file then `finalize_recording` with gzip still yields `x.cast.gz` with the
       original content.
-- [ ] GREEN: implement with `asciicast::remove_silence`.
+- [x] GREEN: implement with `asciicast::remove_silence`.
 
 Files: `src/recording/finalize.rs`, `src/recording.rs`, `tests/integration/recording_test.rs`
 Depends on: Stage 1, Stage 2
