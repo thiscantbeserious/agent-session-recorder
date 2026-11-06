@@ -26,6 +26,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
     backend is configured. Push only, never pull, never delete. Without a configured backend
     nothing is synced.
 5. Config is `[sync] backend = "gist"`, unset means sync is off. Added through a versioned migration (v5, current is v4).
+   (Update 2026-11-06: became v6 because auto-optimize took v5 on main.)
 6. Gists are created as secret by default.
 7. Sync moves compressed files only (`<agent>/<name>.cast.gz`). Hashes are stable because gzip output is deterministic.
 8. Machine-local state in `~/.config/agr/state.toml` is never synced.

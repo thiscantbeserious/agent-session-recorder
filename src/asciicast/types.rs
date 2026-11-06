@@ -33,7 +33,9 @@ use serde::{Deserialize, Serialize};
 ///
 /// Contains version information, terminal dimensions, and optional metadata
 /// like title, command, and environment variables. Only `version` is required.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Unknown fields are kept in `extra` and written back after the known ones.
+/// `Default` gives `version: 0`, which is not a valid header: set `version` explicitly.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Header {
     /// Format version (must be 3 for v3 format).
     pub version: u8,
@@ -73,13 +75,17 @@ pub struct Header {
     /// Maximum idle time between events (for playback speed limiting).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub idle_time_limit: Option<f64>,
+
+    /// Unknown header fields, kept so a rewrite does not drop them.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Terminal information embedded in the header.
 ///
 /// Contains the terminal dimensions and type. This is the preferred way to
 /// specify dimensions in v3 (over the deprecated `width`/`height` fields).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TermInfo {
     /// Number of columns (width) in the terminal.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -92,12 +98,16 @@ pub struct TermInfo {
     /// Terminal type (e.g., "xterm-256color").
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub term_type: Option<String>,
+
+    /// Unknown terminal fields (e.g. `theme`).
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Environment variables captured during recording.
 ///
 /// Stores shell and terminal type information that can be useful for playback.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EnvInfo {
     /// The shell used during recording (e.g., "/bin/zsh").
     #[serde(rename = "SHELL", skip_serializing_if = "Option::is_none")]
@@ -106,6 +116,10 @@ pub struct EnvInfo {
     /// The TERM environment variable value.
     #[serde(rename = "TERM", skip_serializing_if = "Option::is_none")]
     pub term: Option<String>,
+
+    /// Unknown environment entries (e.g. `LANG`).
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 // ============================================================================
@@ -264,6 +278,7 @@ impl Event {
 ///     command: None,
 ///     env: None,
 ///     idle_time_limit: None,
+///     ..Default::default()
 /// });
 /// ```
 #[derive(Debug, Clone)]
@@ -401,6 +416,7 @@ mod tests {
             command: None,
             env: None,
             idle_time_limit: None,
+            ..Default::default()
         });
         file.events.push(Event::output(0.1, "hello"));
         file.events.push(Event::output(0.2, " world"));
@@ -501,6 +517,7 @@ mod tests {
             command: None,
             env: None,
             idle_time_limit: None,
+            ..Default::default()
         });
         assert_eq!(empty.marker_count(), 0);
     }
@@ -518,6 +535,7 @@ mod tests {
             cols: Some(120),
             rows: Some(40),
             term_type: None,
+            ..Default::default()
         });
         assert_eq!(file.terminal_size(), (120, 40));
     }

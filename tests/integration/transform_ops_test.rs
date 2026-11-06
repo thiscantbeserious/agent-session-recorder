@@ -24,13 +24,14 @@ pub fn create_test_cast_file(dir: &TempDir, name: &str, events: Vec<Event>) -> P
         command: None,
         env: None,
         idle_time_limit: None,
+        ..Default::default()
     });
     file.events = events;
     file.write(&path).unwrap();
     path
 }
 
-fn create_test_cast_with_idle_limit(
+pub fn create_test_cast_with_idle_limit(
     dir: &TempDir,
     name: &str,
     idle_time_limit: f64,
@@ -48,6 +49,7 @@ fn create_test_cast_with_idle_limit(
         command: None,
         env: None,
         idle_time_limit: Some(idle_time_limit),
+        ..Default::default()
     });
     file.events = events;
     file.write(&path).unwrap();
@@ -279,18 +281,4 @@ fn transform_result_percent_saved_zero_duration() {
     };
 
     assert!((result.percent_saved()).abs() < 0.001);
-}
-
-// ========================================================================
-// Dual-format has_backup tests (Stage 3)
-// ========================================================================
-
-#[test]
-fn has_backup_finds_new_format() {
-    let dir = TempDir::new().unwrap();
-    let path = create_test_cast_file(&dir, "test.cast", vec![Event::output(0.1, "hello")]);
-    let hidden_backup = backup_path_for(&path);
-    fs::copy(&path, &hidden_backup).unwrap();
-
-    assert!(has_backup(&path));
 }

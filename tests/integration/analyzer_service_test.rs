@@ -84,6 +84,7 @@ fn create_test_cast_file() -> NamedTempFile {
         term: None,
         env: None,
         idle_time_limit: None,
+        ..Default::default()
     };
     let mut cast = AsciicastFile::new(header);
 
@@ -170,6 +171,7 @@ fn empty_cast_file() -> NamedTempFile {
         term: None,
         env: None,
         idle_time_limit: None,
+        ..Default::default()
     };
     let cast = AsciicastFile::new(header);
     let content = cast.to_string().unwrap();
@@ -270,6 +272,7 @@ fn analyzer_service_detects_existing_markers() {
         term: None,
         env: None,
         idle_time_limit: None,
+        ..Default::default()
     };
     let mut cast = AsciicastFile::new(header);
     cast.events.push(Event::output(0.1, "Hello\n"));

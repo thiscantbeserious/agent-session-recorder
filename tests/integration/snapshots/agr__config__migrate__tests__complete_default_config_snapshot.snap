@@ -2,7 +2,7 @@
 source: src/config/migrate/mod.rs
 expression: result.content
 ---
-config_version = 5
+config_version = 6
 
 [shell]
 auto_wrap = true
@@ -17,6 +17,7 @@ compression = "gzip"
 filename_template = "{directory}{?branch}_{id}"
 auto_analyze = false
 directory_max_length = 14
+auto_optimize = true
 
 [analysis]
 timeout = 120

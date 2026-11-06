@@ -7,7 +7,7 @@
 
 mod auto_push;
 mod finalize;
-pub use finalize::finalize_recording;
+pub use finalize::{finalize_recording, optimize_recording};
 
 use anyhow::{bail, Context, Result};
 use std::env;
@@ -171,7 +171,8 @@ impl Recorder {
         })
     }
 
-    /// Remove the lock, recover a moved file, compress it and print the final line.
+    /// Remove the lock, recover a moved file, optimize it (unless interrupted),
+    /// compress it and print the final line.
     fn finish(
         &self,
         filepath: &Path,
@@ -184,11 +185,22 @@ impl Recorder {
         let header = Self::read_header_line(filepath);
         lock::remove_lock(filepath);
         let actual_path = Self::resolve_actual_path(filepath, inode, &header, agent_dir);
+        self.maybe_optimize(&actual_path);
         let final_path = finalize_recording(&actual_path, &self.config);
         auto_push::after_finalize(&self.config, &final_path);
         let failed = !status.success() && !self.guard.is_interrupted();
         Self::print_stop(&final_path, filename, failed);
         final_path
+    }
+
+    /// Silence-optimize the recording unless the user interrupted; warn on failure.
+    fn maybe_optimize(&self, path: &Path) {
+        if self.guard.is_interrupted() {
+            return;
+        }
+        if let Some(w) = optimize_recording(path, &self.config) {
+            eprintln!("  \u{26a0} {w}");
+        }
     }
 
     fn print_stop(final_path: &Path, filename: &str, failed: bool) {

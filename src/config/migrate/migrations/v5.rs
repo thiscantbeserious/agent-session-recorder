@@ -1,8 +1,7 @@
-//! v4 -> v5: Add the `[sync]` section (`auto_push = true`, `backend` unset).
+//! v4 -> v5: Add `recording.auto_optimize` (default true).
 //!
-//! Nothing to rewrite: `auto_push` is filled from `Config::default()` after
-//! migrations run, the `backend` template comes from the field docs, and
-//! existing values are left alone. Sync stays off until `backend` is set.
+//! Nothing to rewrite: the missing key is filled from `Config::default()` after
+//! migrations run, and an existing value is left alone.
 
 use toml_edit::Table;
 
@@ -16,37 +15,50 @@ pub fn migrate(_root: &mut Table, _result: &mut MigrateResult) {}
 #[cfg(test)]
 mod tests {
     use crate::config::migrate::migrate_config;
-    use crate::config::SyncBackendKind;
     use crate::Config;
 
+    const KEY: &str = "recording.auto_optimize";
+
     #[test]
-    fn v5_adds_sync_section_with_sync_off() {
-        let result = migrate_config("config_version = 4\n").unwrap();
+    fn v5_adds_auto_optimize_true() {
+        let result = migrate_config("config_version = 4\n[recording]\n").unwrap();
         let parsed: Config = toml::from_str(&result.content).unwrap();
-        assert_eq!(parsed.config_version, 5);
-        assert!(parsed.sync.auto_push);
-        assert_eq!(parsed.sync.backend, None);
-        assert!(result.content.contains("[sync]\nauto_push = true"));
-        assert!(result.content.contains("# backend = \"gist\""));
+        assert_eq!(
+            parsed.config_version,
+            crate::config::migrate::CURRENT_VERSION
+        );
+        assert!(parsed.recording.auto_optimize);
+        assert!(result.content.contains("auto_optimize = true"));
+        assert!(result.added_fields.contains(&KEY.to_string()));
     }
 
     #[test]
-    fn v5_is_idempotent_and_keeps_values() {
-        let input = "config_version = 4\n[sync]\nbackend = \"gist\"\nauto_push = false\n";
-        let once = migrate_config(input).unwrap();
-        let twice = migrate_config(&once.content).unwrap();
-        assert_eq!(once.content, twice.content);
-        assert!(!twice.has_changes());
-        let parsed: Config = toml::from_str(&once.content).unwrap();
-        assert_eq!(parsed.sync.backend, Some(SyncBackendKind::Gist));
-        assert!(!parsed.sync.auto_push);
+    fn v5_keeps_existing_false() {
+        let input = "config_version = 4\n[recording]\nauto_optimize = false\n";
+        let result = migrate_config(input).unwrap();
+        let parsed: Config = toml::from_str(&result.content).unwrap();
+        assert!(!parsed.recording.auto_optimize);
+        assert!(!result.added_fields.contains(&KEY.to_string()));
     }
 
     #[test]
-    fn unknown_backend_names_gist() {
-        let result = toml::from_str::<Config>("[sync]\nbackend = \"s3\"\n");
-        assert!(result.is_err(), "s3 must be rejected");
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("gist"), "{err}");
+    fn v5_is_idempotent() {
+        let first = migrate_config("config_version = 4\n[recording]\n").unwrap();
+        let second = migrate_config(&first.content).unwrap();
+        assert!(!second.has_changes());
+    }
+
+    #[test]
+    fn missing_key_defaults_to_true() {
+        let parsed: Config = toml::from_str("[recording]\n").unwrap();
+        assert!(parsed.recording.auto_optimize);
+    }
+
+    #[test]
+    fn non_bool_names_field() {
+        let result = toml::from_str::<Config>("[recording]\nauto_optimize = \"yes\"\n");
+        assert!(result.is_err());
+        let err = result.map(|_| ()).unwrap_err().to_string();
+        assert!(err.contains("auto_optimize"), "{err}");
     }
 }

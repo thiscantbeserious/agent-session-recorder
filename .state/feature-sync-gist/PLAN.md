@@ -50,6 +50,8 @@ Considerations:
 
 ### Stage 2: Config v5 and state fields
 
+**Update 2026-11-06**: auto-optimize (#184) took config v5 on main, as such the sync migration is now `migrations/v6.rs` with `CURRENT_VERSION = 6`. References to v5 below mean v6.
+
 Goal: `[sync] backend` / `auto_push`, migration v5, `State` gets `sync_privacy_ack` and
 `last_auto_push_error`.
 Owner: implementer

@@ -78,6 +78,7 @@ mod tests {
             command: None,
             env: None,
             idle_time_limit: None,
+            ..Default::default()
         }
     }
 

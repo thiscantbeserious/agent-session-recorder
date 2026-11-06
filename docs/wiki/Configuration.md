@@ -42,6 +42,7 @@ Recording behavior settings
 | `auto_analyze` | `false` | Automatically run AI analysis after recording ends |
 | `filename_template` | `{directory}{?branch}_{id}` | Filename template using {directory}, {?branch}, {id}, {branch}, {date}, {time} tags |
 | `directory_max_length` | `14` | Maximum characters for directory component in filename |
+| `auto_optimize` | `true` | Remove idle time from each recording after it ends (no backup is kept) |
 
 ### [analysis]
 
@@ -143,6 +144,7 @@ age_threshold_days = 14
 auto_analyze = false
 filename_template = "{directory}_{date:%Y%m%d}_{time:%H%M}"
 directory_max_length = 40
+auto_optimize = true
 
 [analysis]
 agent = "claude"

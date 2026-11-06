@@ -66,6 +66,12 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
                 default_display: "14",
                 example: None,
             },
+            FieldDoc {
+                name: "auto_optimize",
+                description: "Remove idle time from each recording after it ends (no backup is kept)",
+                default_display: "true",
+                example: Some("true"),
+            },
         ],
     },
     SectionDoc {

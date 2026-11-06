@@ -101,6 +101,9 @@ mod transform_lock_test;
 #[path = "integration/transform_ops_test.rs"]
 mod transform_ops_test;
 
+#[path = "integration/transform_ops_backup_test.rs"]
+mod transform_ops_backup_test;
+
 #[path = "integration/transform_ops_cleanup_test.rs"]
 mod transform_ops_cleanup_test;
 
