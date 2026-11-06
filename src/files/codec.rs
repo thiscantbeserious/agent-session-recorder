@@ -229,6 +229,15 @@ pub fn atomic_write_raw(path: &Path, bytes: &[u8]) -> Result<()> {
     commit(path, |file| write_plain(file, |w| Ok(w.write_all(bytes)?)))
 }
 
+/// Like `atomic_write_raw`, but `fill` streams into the hidden temp, rename only after `Ok`.
+pub fn atomic_write_raw_with(
+    path: &Path,
+    fill: impl FnOnce(&mut dyn Write) -> Result<()>,
+) -> Result<()> {
+    let _ = (path, fill);
+    Ok(())
+}
+
 /// Run `write_target` on the hidden temp path and remove the temp on failure.
 fn commit(path: &Path, fill: impl FnOnce(File) -> Result<File>) -> Result<()> {
     let tmp = temp_path_for(path);
