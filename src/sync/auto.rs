@@ -286,16 +286,17 @@ mod tests {
         let key = Key::generate();
         let backend = MemoryBackend::new();
         let remote_only = Meta {
-            v: 1,
+            v: 2,
             path: "claude/other.cast.gz".into(),
             sha256: sha256_hex(b"other"),
             size: 5,
+            gen: 1,
         };
         backend
             .push(
                 None,
                 &seal_meta(&key, &remote_only),
-                &seal(&key, &blob_aad(&remote_only.path), b"other"),
+                &seal(&key, &blob_aad(&remote_only.path, 1), b"other"),
             )
             .unwrap();
         let path = session(dir.path());
@@ -311,10 +312,11 @@ mod tests {
         // changed on both sides is a conflict, skipped, nothing overwritten
         fs::write(&path, b"changed locally").unwrap();
         let moved = Meta {
-            v: 1,
+            v: 2,
             path: "claude/s.cast.gz".into(),
             sha256: sha256_hex(b"changed remotely"),
             size: 16,
+            gen: 1,
         };
         let id = backend
             .list()
@@ -327,7 +329,7 @@ mod tests {
             .push(
                 Some(&id),
                 &seal_meta(&key, &moved),
-                &seal(&key, &blob_aad(&moved.path), b"changed remotely"),
+                &seal(&key, &blob_aad(&moved.path, 1), b"changed remotely"),
             )
             .unwrap();
         let report = run(&engine, "claude/s.cast.gz").unwrap();

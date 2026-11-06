@@ -11,6 +11,9 @@ use super::pull::pull_one;
 use super::scan::{scan, select, Row};
 use crate::StorageManager;
 
+/// Engine compare-and-swap comes later, every push seals generation 1 for now.
+const PUSH_GEN: u64 = 1;
+
 /// Whole-run failures, per-session failures live in the report.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SyncError {
@@ -231,13 +234,14 @@ impl Engine<'_> {
         let plain = std::fs::read(dir.join(&row.path)).map_err(|e| e.to_string())?;
         let sha256 = sha256_hex(&plain);
         let meta = Meta {
-            v: 1,
+            v: 2,
             path: row.path.clone(),
             sha256: sha256.clone(),
             size: plain.len() as u64,
+            gen: PUSH_GEN,
         };
         let token = seal_meta(self.key, &meta);
-        let blob = seal(self.key, &blob_aad(&row.path), &plain);
+        let blob = seal(self.key, &blob_aad(&row.path, PUSH_GEN), &plain);
         let id = self
             .backend
             .push(row.remote_id.as_deref(), &token, &blob)

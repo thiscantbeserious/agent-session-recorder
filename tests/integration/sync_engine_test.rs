@@ -152,10 +152,11 @@ fn token(key: &Key, path: &str, hash: &str) -> String {
     seal_meta(
         key,
         &Meta {
-            v: 1,
+            v: 2,
             path: path.into(),
             sha256: hash.into(),
             size: 1,
+            gen: 1,
         },
     )
 }
@@ -163,7 +164,7 @@ fn token(key: &Key, path: &str, hash: &str) -> String {
 fn failed_pull(key: &Key, blob_key: &Key, hash: &str, tamper: bool) -> (Machine, usize) {
     let backend = MemoryBackend::new();
     let path = "claude/x.cast.gz";
-    let mut blob = seal(blob_key, &blob_aad(path), b"plain");
+    let mut blob = seal(blob_key, &blob_aad(path, 1), b"plain");
     if tamper {
         let last = blob.len() - 1;
         blob[last] ^= 1;
@@ -493,10 +494,11 @@ fn unknown_version_and_other_key_entries_are_reported_and_left_alone() {
     let v2 = seal_meta(
         &key,
         &Meta {
-            v: 2,
+            v: 3,
             path: "claude/z.cast.gz".into(),
             sha256: "00".into(),
             size: 1,
+            gen: 1,
         },
     );
     let foreign = token(&other, "claude/y.cast.gz", "00");
@@ -516,4 +518,38 @@ fn unknown_version_and_other_key_entries_are_reported_and_left_alone() {
         Some(&b"foreign blob"[..])
     );
     assert_eq!(backend.len(), 5);
+}
+
+#[test]
+fn v1_token_is_unknown_version_and_never_touched() {
+    let (m, backend, key) = pushed_machine();
+    let v1 = seal_meta(
+        &key,
+        &Meta {
+            v: 1,
+            path: "claude/z.cast.gz".into(),
+            sha256: "00".into(),
+            size: 1,
+            gen: 1,
+        },
+    );
+    let id = backend.push(None, &v1, b"v1 blob").unwrap();
+    let status = m.engine(&backend, &key).status(&[]).unwrap();
+    let decisions: Vec<_> = status.items.iter().map(|i| i.decision).collect();
+    assert!(decisions.contains(&Decision::UnknownVersion));
+    let pull = m.engine(&backend, &key).pull(&overwrite()).unwrap();
+    assert_eq!((pull.failed, pull.pulled), (0, 0));
+    assert!(!m.dir().join("claude/z.cast.gz").exists());
+    assert_eq!(backend.blob(&id).as_deref(), Some(&b"v1 blob"[..]));
+}
+
+#[test]
+fn pushed_manifest_is_v2_gen_1_and_blob_opens_with_that_gen() {
+    let (_m, backend, key) = pushed_machine();
+    let entry = backend.list().unwrap().remove(0);
+    let meta = agr::sync::crypto::open_meta(&key, &entry.meta_token).unwrap();
+    assert_eq!((meta.v, meta.gen), (2, 1));
+    let blob = backend.blob(&entry.id).unwrap();
+    assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 1), &blob).is_ok());
+    assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 2), &blob).is_err());
 }
