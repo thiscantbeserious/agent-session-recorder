@@ -1,5 +1,6 @@
 //! Index entry written after a push, refresh or pull.
 
+use super::fail::msg;
 use super::index::{self, Index, IndexEntry};
 use crate::StorageManager;
 
@@ -36,5 +37,5 @@ pub(super) fn record_pending(index: &mut Index, path: &str, remote_id: &str) {
 
 /// The one place an engine run writes the index.
 pub(super) fn save_index(storage: &StorageManager, index: &Index) -> Result<(), String> {
-    index::save(&storage.storage_dir(), index).map_err(|e| e.to_string())
+    index::save(&storage.storage_dir(), index).map_err(msg)
 }
