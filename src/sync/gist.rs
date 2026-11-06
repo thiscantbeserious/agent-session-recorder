@@ -220,14 +220,6 @@ impl<R: Runner> GistBackend<R> {
         Ok(())
     }
 
-    /// Blob first, token last, so a crash in between never advertises a hash without its blob.
-    fn upload(&self, id: &str, token: &str, blob: &[u8]) -> Result<(), BackendError> {
-        let scratch = Scratch::create(&self.temp_base)?;
-        let repo = self.clone_gist(id, &scratch)?;
-        self.commit_and_push(&repo, blob)?;
-        self.set_description(id, token)
-    }
-
     fn create_gist(&self) -> Result<String, BackendError> {
         let scratch = Scratch::create(&self.temp_base)?;
         let stub = scratch.join(STUB_FILE);
@@ -271,25 +263,30 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
         parse_list(&out.stdout)
     }
 
-    fn push(
-        &self,
-        id: Option<&str>,
-        meta_token: &str,
-        blob: &[u8],
-    ) -> Result<String, BackendError> {
-        let created = id.is_none();
-        let id = match id {
-            Some(id) => id.to_string(),
-            None => self.create_gist()?,
-        };
-        let sent = self.upload(&id, meta_token, blob);
-        if sent.is_err() && created {
-            let _ = self.delete(&id);
-        }
-        sent.map(|()| id)
+    fn create(&self) -> Result<String, BackendError> {
+        self.create_gist()
     }
 
-    fn pull(&self, id: &str) -> Result<Vec<u8>, BackendError> {
+    /// Stage 17: `expected` and `manifest` are not used yet, the gist is overwritten as
+    /// before. Stage 18 adds the clone side compare and the manifest file.
+    fn push(
+        &self,
+        id: &str,
+        _expected: Option<&str>,
+        _manifest: &str,
+        blob: &[u8],
+    ) -> Result<(), BackendError> {
+        let scratch = Scratch::create(&self.temp_base)?;
+        let repo = self.clone_gist(id, &scratch)?;
+        self.commit_and_push(&repo, blob)
+    }
+
+    fn describe(&self, id: &str, token: &str) -> Result<(), BackendError> {
+        self.set_description(id, token)
+    }
+
+    /// Stage 17: no manifest is stored yet, so it is always `None`.
+    fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
         let scratch = Scratch::create(&self.temp_base)?;
         let repo = self.clone_gist(id, &scratch)?;
         let names = part_files(&repo)?;
@@ -300,7 +297,7 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
                 BackendError::Other(format!("gist {id} part {name} unreadable: {e}"))
             })?);
         }
-        Ok(join(&parts))
+        Ok((None, join(&parts)))
     }
 
     fn delete(&self, id: &str) -> Result<(), BackendError> {
@@ -499,30 +496,40 @@ mod tests {
             got,
             vec![RemoteEntry {
                 id: "a1".into(),
-                meta_token: "T".into()
+                meta_token: "T".into(),
+                created_at: String::new(),
             }]
         );
     }
 
     #[test]
-    fn push_new_creates_stub_gist_then_clones_commits_pushes() {
+    fn create_makes_a_pending_stub_gist_and_nothing_else() {
         let fake = Fake::with(vec![ok("https://gist.github.com/me/abc123\n")]);
         let base = tempfile::tempdir().unwrap();
-        let id = backend(&fake, base.path())
-            .push(None, "TOKEN", b"sealed")
-            .unwrap();
+        let id = backend(&fake, base.path()).create().unwrap();
         assert_eq!(id, "abc123");
         assert_eq!(fake.stub_seen.borrow().as_deref(), Some("\n"));
+        assert_eq!(
+            scrub(&fake.calls(), base.path()),
+            ["gh gist create <tmp>/agr-sync-N/.keep --desc agr:pending"]
+        );
+    }
+
+    #[test]
+    fn push_clones_commits_and_pushes_without_touching_the_description() {
+        let fake = Fake::default();
+        let base = tempfile::tempdir().unwrap();
+        backend(&fake, base.path())
+            .push("abc123", None, "MANIFEST", b"sealed")
+            .unwrap();
         let calls = scrub(&fake.calls(), base.path());
         assert_eq!(
             calls,
             [
-                "gh gist create <tmp>/agr-sync-N/.keep --desc agr:pending",
                 "gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1",
                 "git add --all -- data.000",
                 "git -c user.name=agr -c user.email=agr@localhost -c commit.gpgsign=false commit -m agr sync",
                 "git push",
-                "gh api -X PATCH gists/abc123 -f description=agr:v1 TOKEN",
             ]
         );
         assert_eq!(
@@ -531,28 +538,41 @@ mod tests {
         );
     }
 
+    /// Stage 18 flips this: a mismatching `expected` must return `Changed(Some(..))` and run
+    /// no `git add`, `commit` or `push`.
     #[test]
-    fn push_existing_clones_replaces_and_updates_the_description() {
+    fn stage_17_push_does_not_compare_expected_yet() {
         let fake = Fake::default();
         let base = tempfile::tempdir().unwrap();
-        let id = backend(&fake, base.path())
-            .push(Some("abc123"), "NEW", b"v2")
+        let got = backend(&fake, base.path()).push("abc123", Some("stale"), "M", b"x");
+        assert_eq!(got, Ok(()));
+        assert!(fake.calls().iter().any(|c| c == "git push"));
+    }
+
+    #[test]
+    fn describe_patches_the_description_with_the_token() {
+        let fake = Fake::default();
+        let base = tempfile::tempdir().unwrap();
+        backend(&fake, base.path())
+            .describe("abc123", "NEW")
             .unwrap();
-        assert_eq!(id, "abc123");
-        let calls = scrub(&fake.calls(), base.path());
         assert_eq!(
-            calls[0],
-            "gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1"
+            fake.calls(),
+            ["gh api -X PATCH gists/abc123 -f description=agr:v1 NEW"]
         );
-        assert_eq!(
-            calls.last().unwrap(),
-            "gh api -X PATCH gists/abc123 -f description=agr:v1 NEW"
-        );
-        assert!(!calls.iter().any(|c| c.contains("gist create")));
-        assert_eq!(
-            fake.pushed.borrow().clone().unwrap(),
-            [("data.000".to_string(), b"v2".to_vec())]
-        );
+    }
+
+    #[test]
+    fn rejected_git_push_is_changed_none() {
+        let fake = Fake::with(vec![
+            ok(""),
+            ok(""),
+            ok(""),
+            fail("! [rejected] main -> main (fetch first)"),
+        ]);
+        let base = tempfile::tempdir().unwrap();
+        let got = backend(&fake, base.path()).push("abc123", None, "M", b"x");
+        assert_eq!(got, Err(BackendError::Changed(None)));
     }
 
     #[test]
@@ -560,19 +580,18 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         let fake = Fake::default();
         backend(&fake, base.path())
-            .push(Some("abc123"), "T", b"x")
+            .push("abc123", None, "T", b"x")
             .unwrap();
         let failing = Fake::with(vec![ok(""), fail("boom")]);
         assert!(backend(&failing, base.path())
-            .push(Some("abc123"), "T", b"x")
+            .push("abc123", None, "T", b"x")
             .is_err());
         assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 0);
     }
 
     #[test]
-    fn failed_push_of_a_new_gist_deletes_the_empty_gist() {
+    fn failed_push_keeps_the_gist_and_never_deletes() {
         let fake = Fake::with(vec![
-            ok("https://gist.github.com/me/abc123"),
             ok(""),
             ok(""),
             ok(""),
@@ -580,31 +599,21 @@ mod tests {
         ]);
         let base = tempfile::tempdir().unwrap();
         let err = backend(&fake, base.path())
-            .push(None, "T", b"x")
+            .push("abc123", None, "T", b"x")
             .unwrap_err();
         assert!(err.to_string().contains("gh auth setup-git"), "{err}");
-        assert_eq!(fake.calls().last().unwrap(), "gh gist delete abc123 --yes");
+        assert!(!fake.calls().iter().any(|c| c.contains("delete")));
     }
 
     #[test]
-    fn orphan_gist_after_failed_push_and_failed_delete_is_not_listed() {
-        let fake = Fake::with(vec![
-            ok("https://gist.github.com/me/abc123"),
-            ok(""),
-            ok(""),
-            ok(""),
-            fail("fatal: Authentication failed"),
-            fail("could not resolve host"),
-        ]);
+    fn a_pending_gist_is_not_listed_and_no_call_carries_the_token() {
+        let fake = Fake::with(vec![ok("https://gist.github.com/me/abc123")]);
         let base = tempfile::tempdir().unwrap();
-        assert!(backend(&fake, base.path())
-            .push(None, "TOKEN", b"x")
-            .is_err());
+        backend(&fake, base.path()).create().unwrap();
         let calls = fake.calls();
         let desc = calls[0].split(" --desc ").nth(1).unwrap().to_string();
         let listing = format!(r#"[{{"id":"abc123","description":"{desc}"}}]"#);
         assert_eq!(parse_list(&listing).unwrap(), vec![]);
-        assert!(!calls.iter().any(|c| c.contains("TOKEN")), "{calls:?}");
     }
 
     #[cfg(unix)]
@@ -625,7 +634,7 @@ mod tests {
         };
         let base = tempfile::tempdir().unwrap();
         let got = backend(&fake, base.path()).pull("abc123").unwrap();
-        assert_eq!(got, vec![0, 159, 146, 150]);
+        assert_eq!(got, (None, vec![0, 159, 146, 150]));
         let calls = scrub(&fake.calls(), base.path());
         assert_eq!(
             calls,
@@ -651,7 +660,7 @@ mod tests {
         let blob: Vec<u8> = (0..25u8).collect();
         backend(&fake, base.path())
             .with_part_size(10)
-            .push(Some("abc123"), "T", &blob)
+            .push("abc123", None, "T", &blob)
             .unwrap();
         let pushed = fake.pushed.borrow().clone().unwrap();
         let names: Vec<_> = pushed.iter().map(|(n, _)| n.as_str()).collect();
@@ -669,7 +678,7 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         backend(&fake, base.path())
             .with_clock(Arc::new(FakeClock::new(Duration::ZERO, 1_700_000_000)))
-            .push(Some("abc123"), "T", b"x")
+            .push("abc123", None, "T", b"x")
             .unwrap();
         let date = "@1700000000 +0000".to_string();
         let want: Vec<(String, String)> = [
@@ -707,7 +716,7 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         backend(&fake, base.path())
             .with_part_size(10)
-            .push(Some("abc123"), "T", b"tiny")
+            .push("abc123", None, "T", b"tiny")
             .unwrap();
         let pushed = fake.pushed.borrow().clone().unwrap();
         assert_eq!(pushed, [("data.000".to_string(), b"tiny".to_vec())]);
@@ -730,7 +739,7 @@ mod tests {
         };
         let base = tempfile::tempdir().unwrap();
         let got = backend(&fake, base.path()).pull("abc123").unwrap();
-        assert_eq!(got, b"hello world");
+        assert_eq!(got, (None, b"hello world".to_vec()));
     }
 
     #[test]

@@ -242,13 +242,23 @@ impl Engine<'_> {
         };
         let token = seal_meta(self.key, &meta);
         let blob = seal(self.key, &blob_aad(&row.path, PUSH_GEN), &plain);
-        let id = self
-            .backend
-            .push(row.remote_id.as_deref(), &token, &blob)
-            .map_err(|e| e.to_string())?;
+        let id = self.upload(row, &token, &blob)?;
         record(index, &row.path, sha256, id);
         index::save(&dir, index).map_err(|e| e.to_string())?;
         Ok(plain.len() as u64)
+    }
+
+    /// Create when new, then the compare-and-swap push with the listed token, then the hint.
+    fn upload(&self, row: &Row, token: &str, blob: &[u8]) -> Result<String, String> {
+        let err = |e: BackendError| e.to_string();
+        let id = match &row.remote_id {
+            Some(id) => id.clone(),
+            None => self.backend.create().map_err(err)?,
+        };
+        let expected = row.token.as_deref();
+        self.backend.push(&id, expected, token, blob).map_err(err)?;
+        self.backend.describe(&id, token).map_err(err)?;
+        Ok(id)
     }
 
     /// Hashes already agree, only the index lacks the entry.

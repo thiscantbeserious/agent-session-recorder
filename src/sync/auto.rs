@@ -292,13 +292,11 @@ mod tests {
             size: 5,
             gen: 1,
         };
-        backend
-            .push(
-                None,
-                &seal_meta(&key, &remote_only),
-                &seal(&key, &blob_aad(&remote_only.path, 1), b"other"),
-            )
-            .unwrap();
+        backend.put(
+            None,
+            &seal_meta(&key, &remote_only),
+            &seal(&key, &blob_aad(&remote_only.path, 1), b"other"),
+        );
         let path = session(dir.path());
         let engine = Engine {
             backend: &backend,
@@ -325,13 +323,11 @@ mod tests {
             .find(|e| e.id != "mem-1")
             .unwrap()
             .id;
-        backend
-            .push(
-                Some(&id),
-                &seal_meta(&key, &moved),
-                &seal(&key, &blob_aad(&moved.path, 1), b"changed remotely"),
-            )
-            .unwrap();
+        backend.put(
+            Some(&id),
+            &seal_meta(&key, &moved),
+            &seal(&key, &blob_aad(&moved.path, 1), b"changed remotely"),
+        );
         let report = run(&engine, "claude/s.cast.gz").unwrap();
         assert_eq!((report.pushed, report.conflicts), (0, 1));
         assert!(error_line(&Ok(report)).unwrap().contains("conflict"));

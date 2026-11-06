@@ -371,16 +371,16 @@ Goal: `create`, `push(id, expected, manifest, blob)`, `describe`, `pull` with ma
 `created_at`, `Changed` and `NotFound`, memory and file backends implement the swap.
 Owner: implementer
 
-- [ ] RED (memory): push with the current token as `expected` stores blob and manifest, the
+- [x] RED (memory): push with the current token as `expected` stores blob and manifest, the
       description stays until `describe`. Push with a stale `expected` returns
       `Changed(Some(current))` and stores nothing. `create` gives a pending, unlisted id.
       Unknown id is `NotFound`. `created_at` grows with each create.
-- [ ] RED (memory): test hooks to change the stored manifest, blob or description by hand
+- [x] RED (memory): test hooks to change the stored manifest, blob or description by hand
       (tamper, rollback, stalled description).
-- [ ] GREEN: trait as in the ADR, memory under one mutex (models git's ref check), file
+- [x] GREEN: trait as in the ADR, memory under one mutex (models git's ref check), file
       backend gets the same rules (`<id>.manifest`, `<id>.desc`).
-- [ ] Map `BackendError::Rejected` to `Changed(None)` in the trait reshape.
-- [ ] Engine call sites adapted without new behaviour: create then push with `expected` from
+- [x] Map `BackendError::Rejected` to `Changed(None)` in the trait reshape.
+- [x] Engine call sites adapted without new behaviour: create then push with `expected` from
       the listing, then describe. Gist backend adapted mechanically (`create_gist` and
       `set_description` become `create` and `describe`, no delete on error), its compare-and-swap
       follows in Stage 18 right after this one.
@@ -555,7 +555,7 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 14 | pending | Variant A |
 | 15 | pending | |
 | 16 | pending | |
-| 17 | pending | |
+| 17 | done | one commit, no 17a/17b split. Gist `push` ignores `expected` and `manifest` until Stage 18, test `stage_17_push_does_not_compare_expected_yet` in `gist.rs` flips then. Memory test hook `put` sets a whole remote state without compare |
 | 18 | pending | |
 | 19 | pending | |
 | 20 | pending | |

@@ -6,7 +6,8 @@ use std::path::PathBuf;
 
 use super::backend::{BackendError, RemoteEntry, SyncBackend};
 
-/// One `<id>.meta` (token) and one `<id>.blob` per entry inside `dir`.
+/// `<id>.blob`, `<id>.manifest` and `<id>.desc` per entry inside `dir`, same rules as the
+/// memory backend (no `.desc` means pending and unlisted).
 pub struct FileBackend {
     dir: PathBuf,
 }
@@ -16,12 +17,8 @@ impl FileBackend {
         Self { dir }
     }
 
-    fn meta(&self, id: &str) -> PathBuf {
-        self.dir.join(format!("{id}.meta"))
-    }
-
-    fn blob(&self, id: &str) -> PathBuf {
-        self.dir.join(format!("{id}.blob"))
+    fn path(&self, id: &str, ext: &str) -> PathBuf {
+        self.dir.join(format!("{id}.{ext}"))
     }
 
     /// `file-<n>`, the counter file keeps ids unique after deletes.
@@ -35,10 +32,28 @@ impl FileBackend {
         fs::write(&counter, n.to_string()).map_err(io_err)?;
         Ok(format!("file-{n}"))
     }
+
+    fn known(&self, id: &str) -> Result<(), BackendError> {
+        if self.path(id, "blob").exists() {
+            Ok(())
+        } else {
+            Err(BackendError::NotFound)
+        }
+    }
+
+    fn manifest(&self, id: &str) -> Option<String> {
+        fs::read_to_string(self.path(id, "manifest")).ok()
+    }
 }
 
 fn io_err(e: std::io::Error) -> BackendError {
     BackendError::Other(e.to_string())
+}
+
+/// Zero padded counter of `file-<n>`, sorts like the creation order.
+fn created_at(id: &str) -> String {
+    let n: u64 = id.trim_start_matches("file-").parse().unwrap_or(0);
+    format!("{n:010}")
 }
 
 impl SyncBackend for FileBackend {
@@ -58,11 +73,13 @@ impl SyncBackend for FileBackend {
                 .file_name()
                 .to_string_lossy()
                 .into_owned();
-            if let Some(id) = name.strip_suffix(".meta") {
-                let meta_token = fs::read_to_string(self.meta(id)).map_err(io_err)?;
+            if let Some(id) = name.strip_suffix(".desc") {
+                let meta_token = fs::read_to_string(self.path(id, "desc")).map_err(io_err)?;
+                let created_at = created_at(id);
                 entries.push(RemoteEntry {
                     id: id.to_string(),
                     meta_token,
+                    created_at,
                 });
             }
         }
@@ -70,28 +87,45 @@ impl SyncBackend for FileBackend {
         Ok(entries)
     }
 
-    fn push(
-        &self,
-        id: Option<&str>,
-        meta_token: &str,
-        blob: &[u8],
-    ) -> Result<String, BackendError> {
-        let id = match id {
-            Some(id) => id.to_string(),
-            None => self.next_id()?,
-        };
-        fs::write(self.blob(&id), blob).map_err(io_err)?;
-        fs::write(self.meta(&id), meta_token).map_err(io_err)?;
+    fn create(&self) -> Result<String, BackendError> {
+        let id = self.next_id()?;
+        fs::write(self.path(&id, "blob"), b"").map_err(io_err)?;
         Ok(id)
     }
 
-    fn pull(&self, id: &str) -> Result<Vec<u8>, BackendError> {
-        fs::read(self.blob(id)).map_err(|_| BackendError::Other(format!("unknown remote id {id}")))
+    fn push(
+        &self,
+        id: &str,
+        expected: Option<&str>,
+        manifest: &str,
+        blob: &[u8],
+    ) -> Result<(), BackendError> {
+        self.known(id)?;
+        let current = self.manifest(id);
+        if current.as_deref() != expected {
+            return Err(BackendError::Changed(current));
+        }
+        fs::write(self.path(id, "blob"), blob).map_err(io_err)?;
+        fs::write(self.path(id, "manifest"), manifest).map_err(io_err)
+    }
+
+    fn describe(&self, id: &str, token: &str) -> Result<(), BackendError> {
+        self.known(id)?;
+        fs::write(self.path(id, "desc"), token).map_err(io_err)
+    }
+
+    fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
+        self.known(id)?;
+        let blob = fs::read(self.path(id, "blob")).map_err(io_err)?;
+        Ok((self.manifest(id), blob))
     }
 
     fn delete(&self, id: &str) -> Result<(), BackendError> {
-        fs::remove_file(self.meta(id)).map_err(io_err)?;
-        fs::remove_file(self.blob(id)).map_err(io_err)
+        self.known(id)?;
+        for ext in ["blob", "manifest", "desc"] {
+            let _ = fs::remove_file(self.path(id, ext));
+        }
+        Ok(())
     }
 }
 
@@ -105,36 +139,76 @@ mod tests {
         (dir, backend)
     }
 
-    #[test]
-    fn push_creates_ids_lists_and_pulls_back() {
-        let (_dir, b) = backend();
-        let a = b.push(None, "tok-a", b"blob-a").unwrap();
-        let c = b.push(None, "tok-c", b"blob-c").unwrap();
-        assert_ne!(a, c);
-        let mut list = b.list().unwrap();
-        list.sort_by(|x, y| x.id.cmp(&y.id));
-        assert_eq!(list.len(), 2);
-        assert!(list.iter().any(|e| e.id == a && e.meta_token == "tok-a"));
-        assert_eq!(b.pull(&c).unwrap(), b"blob-c");
+    fn pushed(b: &FileBackend, manifest: &str, blob: &[u8]) -> String {
+        let id = b.create().unwrap();
+        b.push(&id, None, manifest, blob).unwrap();
+        id
     }
 
     #[test]
-    fn push_with_id_replaces_and_delete_removes() {
+    fn create_is_pending_until_described_and_created_at_grows() {
         let (_dir, b) = backend();
-        let id = b.push(None, "t1", b"one").unwrap();
-        assert_eq!(b.push(Some(&id), "t2", b"two").unwrap(), id);
-        assert_eq!(b.list().unwrap().len(), 1);
-        assert_eq!(b.pull(&id).unwrap(), b"two");
+        let a = b.create().unwrap();
+        let c = b.create().unwrap();
+        assert_ne!(a, c);
+        assert!(b.list().unwrap().is_empty());
+        b.describe(&a, "ta").unwrap();
+        b.describe(&c, "tc").unwrap();
+        let list = b.list().unwrap();
+        assert_eq!(list.len(), 2);
+        assert!(list[0].created_at < list[1].created_at, "{list:?}");
+        assert_eq!(list[1].meta_token, "tc");
+    }
+
+    #[test]
+    fn push_swaps_only_on_the_current_manifest() {
+        let (_dir, b) = backend();
+        let id = pushed(&b, "m1", b"one");
+        assert_eq!(
+            b.pull(&id).unwrap(),
+            (Some("m1".to_string()), b"one".to_vec())
+        );
+        b.push(&id, Some("m1"), "m2", b"two").unwrap();
+        let stale = b.push(&id, Some("m1"), "m3", b"three");
+        assert_eq!(stale, Err(BackendError::Changed(Some("m2".into()))));
+        let none = b.push(&id, None, "m3", b"three");
+        assert_eq!(none, Err(BackendError::Changed(Some("m2".into()))));
+        assert_eq!(
+            b.pull(&id).unwrap(),
+            (Some("m2".to_string()), b"two".to_vec())
+        );
+    }
+
+    #[test]
+    fn pending_entry_pulls_without_manifest_and_stale_expected_is_changed_none() {
+        let (_dir, b) = backend();
+        let id = b.create().unwrap();
+        assert_eq!(b.pull(&id).unwrap(), (None, vec![]));
+        assert_eq!(
+            b.push(&id, Some("x"), "m", b"b"),
+            Err(BackendError::Changed(None))
+        );
+    }
+
+    #[test]
+    fn unknown_id_is_not_found_and_delete_removes() {
+        let (_dir, b) = backend();
+        assert_eq!(b.push("nope", None, "m", b"x"), Err(BackendError::NotFound));
+        assert_eq!(b.describe("nope", "t"), Err(BackendError::NotFound));
+        assert_eq!(b.pull("nope"), Err(BackendError::NotFound));
+        let id = pushed(&b, "m", b"x");
+        b.describe(&id, "m").unwrap();
         b.delete(&id).unwrap();
         assert!(b.list().unwrap().is_empty());
-        assert!(b.pull(&id).is_err());
+        assert_eq!(b.pull(&id), Err(BackendError::NotFound));
+        assert_eq!(b.delete(&id), Err(BackendError::NotFound));
     }
 
     #[test]
     fn ids_are_not_reused_after_a_delete() {
         let (_dir, b) = backend();
-        let first = b.push(None, "t", b"x").unwrap();
+        let first = b.create().unwrap();
         b.delete(&first).unwrap();
-        assert_ne!(b.push(None, "t", b"x").unwrap(), first);
+        assert_ne!(b.create().unwrap(), first);
     }
 }

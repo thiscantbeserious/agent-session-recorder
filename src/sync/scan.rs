@@ -26,6 +26,8 @@ pub struct Row {
     pub path: String,
     pub input: Input,
     pub remote_id: Option<String>,
+    /// Sealed token from the listing, the `expected` of the compare-and-swap push.
+    pub token: Option<String>,
     pub meta: Option<Meta>,
 }
 
@@ -38,6 +40,7 @@ fn row(path: &str, local: Local, index: &Index) -> Row {
             last: index.entries.get(path).map(|e| e.sha256.clone()),
         },
         remote_id: None,
+        token: None,
         meta: None,
     }
 }
@@ -99,6 +102,7 @@ fn attach(rows: &mut BTreeMap<String, Row>, entry: &RemoteEntry, meta: Meta, ind
     }
     row.input.remote = Remote::Hash(meta.sha256.clone());
     row.remote_id = Some(entry.id.clone());
+    row.token = Some(entry.meta_token.clone());
     row.meta = Some(meta);
 }
 
@@ -107,6 +111,7 @@ fn opaque(rows: &mut BTreeMap<String, Row>, entry: &RemoteEntry, remote: Remote,
     let mut opaque = row(&path, Local::Absent, index);
     opaque.input.remote = remote;
     opaque.remote_id = Some(entry.id.clone());
+    opaque.token = Some(entry.meta_token.clone());
     rows.insert(path, opaque);
 }
 

@@ -169,7 +169,7 @@ fn failed_pull(key: &Key, blob_key: &Key, hash: &str, tamper: bool) -> (Machine,
         let last = blob.len() - 1;
         blob[last] ^= 1;
     }
-    backend.push(None, &token(key, path, hash), &blob).unwrap();
+    backend.put(None, &token(key, path, hash), &blob);
     let b = machine();
     let report = b.engine(&backend, key).pull(&opts()).unwrap();
     (b, report.failed)
@@ -502,8 +502,8 @@ fn unknown_version_and_other_key_entries_are_reported_and_left_alone() {
         },
     );
     let foreign = token(&other, "claude/y.cast.gz", "00");
-    let v2_id = backend.push(None, &v2, b"v2 blob").unwrap();
-    let foreign_id = backend.push(None, &foreign, b"foreign blob").unwrap();
+    let v2_id = backend.put(None, &v2, b"v2 blob");
+    let foreign_id = backend.put(None, &foreign, b"foreign blob");
     let status = m.engine(&backend, &key).status(&[]).unwrap();
     let decisions: Vec<_> = status.items.iter().map(|i| i.decision).collect();
     assert!(decisions.contains(&Decision::UnknownVersion));
@@ -538,7 +538,7 @@ fn gen_zero_manifest_is_unknown_version_and_never_touched() {
             gen: 0,
         },
     );
-    let id = backend.push(None, &zero, b"zero blob").unwrap();
+    let id = backend.put(None, &zero, b"zero blob");
     let status = m.engine(&backend, &key).status(&[]).unwrap();
     let decisions: Vec<_> = status.items.iter().map(|i| i.decision).collect();
     assert!(
@@ -553,7 +553,7 @@ fn v1_token_is_unknown_version_and_never_touched() {
     let (m, backend, key) = pushed_machine();
     let json = r#"{"v":1,"path":"claude/x.cast.gz","sha256":"00","size":1}"#;
     let v1 = raw_token(&key, json);
-    let id = backend.push(None, &v1, b"v1 blob").unwrap();
+    let id = backend.put(None, &v1, b"v1 blob");
     let status = m.engine(&backend, &key).status(&[]).unwrap();
     let decisions: Vec<_> = status.items.iter().map(|i| i.decision).collect();
     assert!(decisions.contains(&Decision::UnknownVersion));
@@ -572,4 +572,14 @@ fn pushed_manifest_is_v2_gen_1_and_blob_opens_with_that_gen() {
     let blob = backend.blob(&entry.id).unwrap();
     assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 1), &blob).is_ok());
     assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 2), &blob).is_err());
+}
+
+#[test]
+fn push_stores_the_manifest_and_then_describes_with_the_same_token() {
+    let (_m, backend, _key) = pushed_machine();
+    let listed = backend.list().unwrap();
+    assert_eq!(listed.len(), 3);
+    for entry in listed {
+        assert_eq!(backend.manifest(&entry.id), Some(entry.meta_token));
+    }
 }

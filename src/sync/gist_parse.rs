@@ -44,6 +44,7 @@ fn to_entry(gist: Gist) -> Option<RemoteEntry> {
     Some(RemoteEntry {
         id: gist.id,
         meta_token: token,
+        created_at: String::new(),
     })
 }
 
@@ -81,7 +82,7 @@ pub fn map_failure(tool: &'static str, stderr: &str, code: Option<i32>) -> Backe
     if has(&RATE_LIMIT) {
         BackendError::RateLimited
     } else if tool == "git" && has(&REJECTED) {
-        BackendError::Rejected
+        BackendError::Changed(None)
     } else if text.contains("not logged in") || text.contains("gh auth login") {
         BackendError::NotLoggedIn
     } else if text.contains("scope") {
@@ -113,6 +114,7 @@ mod tests {
         RemoteEntry {
             id: id.into(),
             meta_token: token.into(),
+            created_at: String::new(),
         }
     }
 
@@ -226,7 +228,7 @@ mod tests {
             "To https://gist.github.com/x.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs",
             "hint: Updates were rejected because the tip of your current branch is behind\nhint: (non-fast-forward)",
         ] {
-            assert_eq!(map_failure("git", text, Some(1)), BackendError::Rejected, "{text}");
+            assert_eq!(map_failure("git", text, Some(1)), BackendError::Changed(None), "{text}");
         }
     }
 

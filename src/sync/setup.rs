@@ -215,7 +215,7 @@ mod tests {
     fn missing_key_with_remote_sessions_never_creates_one() {
         let (_dir, path) = key_path();
         let backend = MemoryBackend::new();
-        backend.push(None, "token", b"blob").unwrap();
+        backend.put(None, "token", b"blob");
         let got = resolve_key(&path, &backend, KeyNeed::MayCreate);
         assert!(matches!(got, Err(SetupError::KeyOnRemote)));
     }

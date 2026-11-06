@@ -11,7 +11,7 @@ pub(super) fn pull_one(engine: &Engine<'_>, row: &Row, index: &mut Index) -> Res
     let (Some(id), Some(meta)) = (&row.remote_id, &row.meta) else {
         return Err("remote entry is missing".into());
     };
-    let blob = engine.backend.pull(id).map_err(|e| e.to_string())?;
+    let (_manifest, blob) = engine.backend.pull(id).map_err(|e| e.to_string())?;
     let plain =
         open(engine.key, &blob_aad(&meta.path, meta.gen), &blob).map_err(|e| e.to_string())?;
     if sha256_hex(&plain) != meta.sha256 {
