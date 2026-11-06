@@ -147,8 +147,8 @@ fn failed_line(item: &Item) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::tests::{item, report, sync};
     use super::*;
+    use crate::sync::app::format::tests::{item, report, sync};
     use crate::sync::engine::plan::SkipReason;
 
     #[test]

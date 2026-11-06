@@ -1,4 +1,5 @@
 //! In-memory backend for tests and dry runs of the engine.
+use crate::sync::crypto::Key as _Violation;
 
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Mutex;
