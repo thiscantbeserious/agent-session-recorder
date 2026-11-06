@@ -78,6 +78,13 @@ pub struct RecordingConfig {
     /// Maximum length for directory component in filename
     #[serde(default = "default_directory_max_length")]
     pub directory_max_length: usize,
+    /// Remove idle time from each recording after it ends (no backup is kept)
+    #[serde(default = "default_auto_optimize")]
+    pub auto_optimize: bool,
+}
+
+pub fn default_auto_optimize() -> bool {
+    false // STUB
 }
 
 pub fn default_filename_template() -> String {
@@ -94,6 +101,7 @@ impl Default for RecordingConfig {
             auto_analyze: false,
             filename_template: default_filename_template(),
             directory_max_length: default_directory_max_length(),
+            auto_optimize: default_auto_optimize(),
         }
     }
 }
