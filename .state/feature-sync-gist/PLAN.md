@@ -546,19 +546,19 @@ Depends on: Stage 21
 Goal: seal and open a blob from a reader into a writer with bounded memory, ADR D9 format.
 Owner: implementer
 
-- [ ] `Cargo.toml`: `chacha20poly1305 = { version = "0.10", features = ["stream"] }`, no new crate
+- [x] `Cargo.toml`: `chacha20poly1305 = { version = "0.10", features = ["stream"] }`, no new crate
       in `Cargo.lock` (check the diff).
-- [ ] RED: round trip for 0, 1, 65535, 65536, 65537, 3 x 65536 and 3 x 65536 + 5 bytes, sealed
+- [x] RED: round trip for 0, 1, 65535, 65536, 65537, 3 x 65536 and 3 x 65536 + 5 bytes, sealed
       length is `5 + 19 + n_frames * 16 + len`, an empty input is one 16 byte frame.
-- [ ] RED: seal returns the plaintext SHA-256 and size, open returns the same pair.
-- [ ] RED: tamper on a 4 frame blob, each rejected and the writer gets no byte after the
+- [x] RED: seal returns the plaintext SHA-256 and size, open returns the same pair.
+- [x] RED: tamper on a 4 frame blob, each rejected and the writer gets no byte after the
       failing frame: truncate at every frame boundary and inside a frame, drop frame 1, drop the
       last frame, swap frames 1 and 2, duplicate frame 1, append a copy of the last frame,
       append one byte, flip a bit in the prefix, in a frame and in the last tag.
-- [ ] RED: wrong key, other path, other gen, v1 blob (`UnsupportedVersion(1)`), bad magic,
+- [x] RED: wrong key, other path, other gen, v1 blob (`UnsupportedVersion(1)`), bad magic,
       under 24 bytes (`Truncated`).
-- [ ] RED: fixed key and prefix vector (KAT) so the layout cannot drift silently.
-- [ ] GREEN: new `src/sync/blob.rs` with `seal_stream(key, path, gen, impl Read, impl Write)`,
+- [x] RED: fixed key and prefix vector (KAT) so the layout cannot drift silently.
+- [x] GREEN: new `src/sync/blob.rs` with `seal_stream(key, path, gen, impl Read, impl Write)`,
       `open_stream(key, path, gen, impl Read, impl Write)`, both `-> Result<(String, u64), _>`,
       plus test-friendly `seal_blob` / `open_blob` over byte slices. `sha256_reader` in
       `crypto.rs`. Look-ahead via `BufReader::fill_buf` as in the ADR.

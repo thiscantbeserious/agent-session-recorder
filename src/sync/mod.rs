@@ -2,6 +2,7 @@
 
 pub mod auto;
 pub mod backend;
+pub mod blob;
 pub mod crypto;
 mod fail;
 pub mod file;
