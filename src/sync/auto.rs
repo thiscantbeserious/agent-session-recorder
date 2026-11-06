@@ -402,14 +402,14 @@ mod tests {
         assert!(error_line(&Ok(conflict)).unwrap().contains("conflict"));
         let capped = report(
             item(
-                Outcome::Skipped("over the 100MB limit".into()),
+                Outcome::Skipped("over the 1 GiB limit".into()),
                 Decision::Push,
             ),
             0,
             1,
             0,
         );
-        assert!(error_line(&Ok(capped)).unwrap().contains("100MB"));
+        assert!(error_line(&Ok(capped)).unwrap().contains("1 GiB"));
         let err = error_line(&Err(SyncError::Failed("boom".into()))).unwrap();
         assert!(err.contains("boom"), "{err}");
     }

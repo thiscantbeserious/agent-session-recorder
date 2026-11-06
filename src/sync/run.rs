@@ -336,7 +336,7 @@ fn skip_text(reason: SkipReason) -> &'static str {
     match reason {
         SkipReason::Plain => "plain .cast, run `agr compress` first",
         SkipReason::Locked => "still recording",
-        SkipReason::OverCap => "over the 100MB limit",
+        SkipReason::OverCap => "over the 1 GiB limit",
         SkipReason::Unreadable => "cannot read the file",
         SkipReason::NotFound => "no such session",
     }

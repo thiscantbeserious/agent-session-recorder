@@ -386,7 +386,7 @@ fn live_locked_plain_and_oversized_sessions_are_skipped() {
         .write(true)
         .open(&big)
         .unwrap()
-        .set_len(101 * 1024 * 1024)
+        .set_len(1024 * 1024 * 1024 + 1)
         .unwrap();
     let report = m.engine(&backend, &key).push(&opts()).unwrap();
     assert_eq!((report.pushed, report.skipped), (0, 3));
@@ -395,6 +395,21 @@ fn live_locked_plain_and_oversized_sessions_are_skipped() {
     for r in [SkipReason::Locked, SkipReason::Plain, SkipReason::OverCap] {
         assert!(reasons.contains(&Decision::Skip(r)), "{r:?}");
     }
+}
+
+#[test]
+fn session_between_100mb_and_the_cap_is_pushed() {
+    let (m, backend, key) = (machine(), MemoryBackend::new(), Key::generate());
+    let big = m.session("claude", "big.cast.gz", CAST);
+    fs::OpenOptions::new()
+        .write(true)
+        .open(&big)
+        .unwrap()
+        .set_len(101 * 1024 * 1024)
+        .unwrap();
+    let report = m.engine(&backend, &key).push(&opts()).unwrap();
+    assert_eq!((report.pushed, report.skipped), (1, 0));
+    assert_eq!(backend.len(), 1);
 }
 
 fn overwrite() -> Options {

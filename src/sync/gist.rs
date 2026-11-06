@@ -5,11 +5,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::backend::{BackendError, RemoteEntry, SyncBackend};
 use super::gist_parse::{check_auth, id_from_create_output, map_failure, parse_list, DESC_PREFIX};
+use super::parts::{check_sequence, join, part_name, split, stale, PART_PREFIX, PART_SIZE};
 use super::runner::{Output, ProcessRunner, Runner};
 
-const STUB_FILE: &str = "agr-session.json";
-const STUB_BODY: &str = "{\"format\":1}\n";
-const BLOB_FILE: &str = "session.agr";
+/// Neutral dotfile, only there because `gh gist create` refuses an empty gist.
+const STUB_FILE: &str = ".keep";
+const STUB_BODY: &str = "\n";
 /// Placeholder until the blob is pushed, no `agr:v1 ` prefix so `parse_list` skips it.
 const PENDING_DESC: &str = "agr:pending";
 const LIST_ENDPOINT: &str = "gists?per_page=100";
@@ -21,6 +22,7 @@ static CLONE_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct GistBackend<R: Runner = ProcessRunner> {
     runner: R,
     temp_base: PathBuf,
+    part_size: usize,
 }
 
 impl GistBackend<ProcessRunner> {
@@ -72,9 +74,32 @@ fn strings(args: &[&str]) -> Vec<String> {
     args.iter().map(ToString::to_string).collect()
 }
 
+/// Sorted names of the `data.*` files in a clone.
+fn part_files(repo: &Path) -> Result<Vec<String>, BackendError> {
+    let dir =
+        std::fs::read_dir(repo).map_err(|e| BackendError::Other(format!("read clone: {e}")))?;
+    let mut names: Vec<String> = dir
+        .filter_map(Result::ok)
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.starts_with(PART_PREFIX))
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
 impl<R: Runner> GistBackend<R> {
     pub fn with_runner(runner: R, temp_base: PathBuf) -> Self {
-        Self { runner, temp_base }
+        Self {
+            runner,
+            temp_base,
+            part_size: PART_SIZE,
+        }
+    }
+
+    /// Smaller parts, for tests that must not build a 45 MiB blob.
+    pub fn with_part_size(mut self, part_size: usize) -> Self {
+        self.part_size = part_size;
+        self
     }
 
     fn run(
@@ -117,10 +142,29 @@ impl<R: Runner> GistBackend<R> {
         Ok(dir)
     }
 
+    /// Write the parts and drop stale higher ones, returns every touched file name.
+    fn stage_parts(&self, repo: &Path, blob: &[u8]) -> Result<Vec<String>, BackendError> {
+        let parts = split(blob, self.part_size);
+        let mut names = Vec::new();
+        for (i, part) in parts.iter().enumerate() {
+            let name = part_name(i);
+            std::fs::write(repo.join(&name), part)
+                .map_err(|e| BackendError::Other(format!("write part: {e}")))?;
+            names.push(name);
+        }
+        for old in stale(&part_files(repo)?, parts.len()) {
+            std::fs::remove_file(repo.join(&old))
+                .map_err(|e| BackendError::Other(format!("remove stale part: {e}")))?;
+            names.push(old);
+        }
+        Ok(names)
+    }
+
     fn commit_and_push(&self, repo: &Path, blob: &[u8]) -> Result<(), BackendError> {
-        std::fs::write(repo.join(BLOB_FILE), blob)
-            .map_err(|e| BackendError::Other(format!("write blob: {e}")))?;
-        self.run_ok("git", &["add", BLOB_FILE], Some(repo))?;
+        let names = self.stage_parts(repo, blob)?;
+        let mut add = vec!["add", "--all", "--"];
+        add.extend(names.iter().map(String::as_str));
+        self.run_ok("git", &add, Some(repo))?;
         let mut commit = GIT_IDENTITY.to_vec();
         commit.extend(["commit", "-m", "agr sync"]);
         self.run_ok("git", &commit, Some(repo))?;
@@ -200,8 +244,15 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
     fn pull(&self, id: &str) -> Result<Vec<u8>, BackendError> {
         let scratch = Scratch::create(&self.temp_base)?;
         let repo = self.clone_gist(id, &scratch)?;
-        std::fs::read(repo.join(BLOB_FILE))
-            .map_err(|_| BackendError::Other(format!("gist {id} has no {BLOB_FILE}")))
+        let names = part_files(&repo)?;
+        check_sequence(&names).map_err(|e| BackendError::Other(format!("gist {id} {e}")))?;
+        let mut parts = Vec::new();
+        for name in &names {
+            parts.push(std::fs::read(repo.join(name)).map_err(|e| {
+                BackendError::Other(format!("gist {id} part {name} unreadable: {e}"))
+            })?);
+        }
+        Ok(join(&parts))
     }
 
     fn delete(&self, id: &str) -> Result<(), BackendError> {
@@ -216,14 +267,34 @@ mod tests {
     use std::cell::RefCell;
     use std::collections::VecDeque;
 
+    type Files = Vec<(String, Vec<u8>)>;
+
     #[derive(Default)]
     struct Fake {
         calls: RefCell<Vec<String>>,
         replies: RefCell<VecDeque<std::io::Result<Output>>>,
-        pushed_blob: RefCell<Option<Vec<u8>>>,
+        pushed: RefCell<Option<Files>>,
         stub_seen: RefCell<Option<String>>,
         clone_dirs: RefCell<Vec<PathBuf>>,
-        remote_blob: Option<Vec<u8>>,
+        remote: Files,
+    }
+
+    /// Every `data.*` file of a clone, sorted by name.
+    fn data_files(dir: &Path) -> Files {
+        let mut files: Vec<_> = part_files(dir)
+            .unwrap()
+            .into_iter()
+            .map(|n| {
+                let body = std::fs::read(dir.join(&n)).unwrap();
+                (n, body)
+            })
+            .collect();
+        files.sort();
+        files
+    }
+
+    fn remote_parts(n: usize) -> Files {
+        (0..n).map(|i| (part_name(i), vec![i as u8; 3])).collect()
     }
 
     fn ok(stdout: &str) -> std::io::Result<Output> {
@@ -263,14 +334,13 @@ mod tests {
                 let dir = PathBuf::from(&args[3]);
                 std::fs::create_dir_all(&dir).unwrap();
                 std::fs::write(dir.join(STUB_FILE), STUB_BODY).unwrap();
-                if let Some(blob) = &self.remote_blob {
-                    std::fs::write(dir.join(BLOB_FILE), blob).unwrap();
+                for (name, body) in &self.remote {
+                    std::fs::write(dir.join(name), body).unwrap();
                 }
                 self.clone_dirs.borrow_mut().push(dir);
             }
             if program == "git" && args.last().map(String::as_str) == Some("push") {
-                let blob = std::fs::read(cwd.unwrap().join(BLOB_FILE)).unwrap();
-                *self.pushed_blob.borrow_mut() = Some(blob);
+                *self.pushed.borrow_mut() = Some(data_files(cwd.unwrap()));
             }
         }
     }
@@ -385,20 +455,23 @@ mod tests {
             .push(None, "TOKEN", b"sealed")
             .unwrap();
         assert_eq!(id, "abc123");
-        assert_eq!(fake.stub_seen.borrow().as_deref(), Some("{\"format\":1}\n"));
+        assert_eq!(fake.stub_seen.borrow().as_deref(), Some("\n"));
         let calls = scrub(&fake.calls(), base.path());
         assert_eq!(
             calls,
             [
-                "gh gist create <tmp>/agr-sync-N/agr-session.json --desc agr:pending",
+                "gh gist create <tmp>/agr-sync-N/.keep --desc agr:pending",
                 "gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1",
-                "git add session.agr",
+                "git add --all -- data.000",
                 "git -c user.name=agr -c user.email=agr@localhost commit -m agr sync",
                 "git push",
                 "gh api -X PATCH gists/abc123 -f description=agr:v1 TOKEN",
             ]
         );
-        assert_eq!(fake.pushed_blob.borrow().as_deref(), Some(&b"sealed"[..]));
+        assert_eq!(
+            fake.pushed.borrow().clone().unwrap(),
+            [("data.000".to_string(), b"sealed".to_vec())]
+        );
     }
 
     #[test]
@@ -419,7 +492,10 @@ mod tests {
             "gh api -X PATCH gists/abc123 -f description=agr:v1 NEW"
         );
         assert!(!calls.iter().any(|c| c.contains("gist create")));
-        assert_eq!(fake.pushed_blob.borrow().as_deref(), Some(&b"v2"[..]));
+        assert_eq!(
+            fake.pushed.borrow().clone().unwrap(),
+            [("data.000".to_string(), b"v2".to_vec())]
+        );
     }
 
     #[test]
@@ -487,7 +563,7 @@ mod tests {
     #[test]
     fn pull_clones_and_reads_the_blob() {
         let fake = Fake {
-            remote_blob: Some(vec![0, 159, 146, 150]),
+            remote: vec![(part_name(0), vec![0, 159, 146, 150])],
             ..Fake::default()
         };
         let base = tempfile::tempdir().unwrap();
@@ -502,13 +578,80 @@ mod tests {
     }
 
     #[test]
-    fn pull_without_blob_file_errors() {
+    fn pull_without_data_files_errors() {
         let fake = Fake::default();
         let base = tempfile::tempdir().unwrap();
         assert!(matches!(
             backend(&fake, base.path()).pull("abc123"),
             Err(BackendError::Other(_))
         ));
+    }
+
+    #[test]
+    fn large_blob_is_split_into_parts_in_one_commit() {
+        let fake = Fake::default();
+        let base = tempfile::tempdir().unwrap();
+        let blob: Vec<u8> = (0..25u8).collect();
+        backend(&fake, base.path())
+            .with_part_size(10)
+            .push(Some("abc123"), "T", &blob)
+            .unwrap();
+        let pushed = fake.pushed.borrow().clone().unwrap();
+        let names: Vec<_> = pushed.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(names, ["data.000", "data.001", "data.002"]);
+        assert_eq!(pushed[2].1, &blob[20..]);
+        let calls = fake.calls();
+        let adds: Vec<_> = calls.iter().filter(|c| c.starts_with("git add")).collect();
+        assert_eq!(adds, ["git add --all -- data.000 data.001 data.002"]);
+        assert_eq!(calls.iter().filter(|c| c.contains("commit")).count(), 1);
+    }
+
+    #[test]
+    fn shrinking_push_removes_stale_parts_in_the_same_commit() {
+        let fake = Fake {
+            remote: remote_parts(4),
+            ..Fake::default()
+        };
+        let base = tempfile::tempdir().unwrap();
+        backend(&fake, base.path())
+            .with_part_size(10)
+            .push(Some("abc123"), "T", b"tiny")
+            .unwrap();
+        let pushed = fake.pushed.borrow().clone().unwrap();
+        assert_eq!(pushed, [("data.000".to_string(), b"tiny".to_vec())]);
+        let calls = fake.calls();
+        let adds: Vec<_> = calls.iter().filter(|c| c.starts_with("git add")).collect();
+        assert_eq!(
+            adds,
+            ["git add --all -- data.000 data.001 data.002 data.003"]
+        );
+    }
+
+    #[test]
+    fn pull_joins_all_parts_in_order() {
+        let fake = Fake {
+            remote: vec![
+                (part_name(1), b"world".to_vec()),
+                (part_name(0), b"hello ".to_vec()),
+            ],
+            ..Fake::default()
+        };
+        let base = tempfile::tempdir().unwrap();
+        let got = backend(&fake, base.path()).pull("abc123").unwrap();
+        assert_eq!(got, b"hello world");
+    }
+
+    #[test]
+    fn pull_with_a_missing_part_errors() {
+        let mut remote = remote_parts(3);
+        remote.remove(1);
+        let fake = Fake {
+            remote,
+            ..Fake::default()
+        };
+        let base = tempfile::tempdir().unwrap();
+        let err = backend(&fake, base.path()).pull("abc123").unwrap_err();
+        assert!(err.to_string().contains("data.001"), "{err}");
     }
 
     #[test]

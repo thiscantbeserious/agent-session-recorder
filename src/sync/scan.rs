@@ -13,8 +13,8 @@ use crate::files::{codec, lock};
 use crate::storage::SessionInfo;
 use crate::StorageManager;
 
-/// On-disk size cap per session.
-pub const MAX_BYTES: u64 = 100 * 1024 * 1024;
+/// On-disk size cap per session, from GitHub repository size guidance.
+pub const MAX_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// One path with everything the engine needs to act on it.
 #[derive(Debug, Clone)]

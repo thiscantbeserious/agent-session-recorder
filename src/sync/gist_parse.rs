@@ -11,13 +11,26 @@ struct Gist {
     description: Option<String>,
 }
 
+/// GitHub stops listing after this many gists, see https://docs.github.com/en/rest/gists/gists.
+pub const LIST_LIMIT: usize = 3000;
+
 /// Parse `gh api gists --paginate`, which prints one JSON array per page back to back.
 pub fn parse_list(json: &str) -> Result<Vec<RemoteEntry>, BackendError> {
     let pages = serde_json::Deserializer::from_str(json).into_iter::<Vec<Gist>>();
     let mut entries = Vec::new();
+    let mut total = 0;
     for page in pages {
         let page = page.map_err(|_| BackendError::Other("unexpected gist list output".into()))?;
+        total += page.len();
         entries.extend(page.into_iter().filter_map(to_entry));
+    }
+    // A capped listing would make gists past the cap look missing, so refuse it.
+    if total >= LIST_LIMIT {
+        return Err(BackendError::Other(format!(
+            "GitHub lists at most {LIST_LIMIT} gists and this account has that many, sync cannot \
+             tell which sessions exist, delete old gists and retry \
+             (https://docs.github.com/en/rest/gists/gists)"
+        )));
     }
     Ok(entries)
 }
@@ -98,6 +111,36 @@ mod tests {
         let page2 = r#"[{"id":"c3","description":null},{"id":"d4","description":"agr:v1 TOKEN4"}]"#;
         let got = parse_list(&format!("{page1}{page2}")).unwrap();
         assert_eq!(got, vec![entry("a1", "TOKEN1"), entry("d4", "TOKEN4")]);
+    }
+
+    /// `n` gists in pages of 100, the first one an agr gist, the rest foreign.
+    fn listing(n: usize) -> String {
+        let all: Vec<String> = (0..n)
+            .map(|i| match i {
+                0 => r#"{"id":"g0","description":"agr:v1 T"}"#.to_string(),
+                _ => format!(r#"{{"id":"g{i}","description":null}}"#),
+            })
+            .collect();
+        all.chunks(100)
+            .map(|c| format!("[{}]", c.join(",")))
+            .collect()
+    }
+
+    #[test]
+    fn list_aborts_at_3000_gists_counting_foreign_ones() {
+        let got = parse_list(&listing(3000));
+        let text = format!("{got:?}");
+        assert!(got.is_err(), "{text}");
+        assert!(
+            text.contains("3000") && text.contains("docs.github.com"),
+            "{text}"
+        );
+        assert!(parse_list(&listing(3500)).is_err());
+    }
+
+    #[test]
+    fn list_below_the_limit_is_fine() {
+        assert_eq!(parse_list(&listing(2999)).unwrap(), vec![entry("g0", "T")]);
     }
 
     #[test]
