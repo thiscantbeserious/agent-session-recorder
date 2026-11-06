@@ -126,7 +126,9 @@ pub fn after_recording(config: &Config, path: &Path) -> (Vec<String>, Option<Vec
 }
 
 fn key_exists() -> bool {
-    super::setup::default_key_path().is_ok_and(|p| p.exists())
+    super::setup::default_key_path()
+        .as_deref()
+        .is_ok_and(std::path::Path::exists)
 }
 
 /// The `--auto` run, pushes only the one session, never pulls or deletes, a conflict is

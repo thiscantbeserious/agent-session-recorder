@@ -53,7 +53,8 @@ impl Clock for SystemClock {
 
 fn secs_since_epoch(time: SystemTime) -> Result<u64, BackendError> {
     time.duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| d.as_secs())
+        .as_ref()
+        .map(std::time::Duration::as_secs)
         .map_err(|_| BackendError::Other("the system clock is before 1970".into()))
 }
 

@@ -245,7 +245,8 @@ impl Engine<'_> {
 
     fn item(&self, row: &Row, decision: Decision, outcome: Outcome) -> Item {
         let local = std::fs::metadata(self.storage.storage_dir().join(&row.path))
-            .map(|m| m.len())
+            .as_ref()
+            .map(std::fs::Metadata::len)
             .ok();
         let remote = row.meta.as_ref().map(|m| m.size);
         Item {
