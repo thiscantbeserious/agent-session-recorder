@@ -133,6 +133,10 @@ fn engine_failed(e: SyncError) -> ! {
             abort(&message, hint.as_deref())
         }
         SyncError::Failed(message) => abort(&message, None),
+        SyncError::RateLimited { left } => {
+            let [stopped, later] = format::rate_limit_lines(left);
+            abort(&stopped, Some(&later))
+        }
     }
 }
 
