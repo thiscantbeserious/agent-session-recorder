@@ -319,10 +319,10 @@ the table with `auto_push = true` and the commented backend line, idempotent. `S
    total (all gists, not only agr ones) the backend errors and the engine aborts before any
    change, so unlisted gists are never treated as missing.
 
-### Variant A: manifest, generation and compare-and-swap (2026-11-06, proposed)
+### Variant A: manifest, generation and compare-and-swap (2026-11-06, accepted, built in Stages 14 to 21)
 
-**Status**: Accepted (user decisions D1 to D5 on 2026-11-06), the points marked
-**USER DECISION** below change or narrow the requirement and wait for the user.
+**Status**: Accepted (user decisions D1 to D5 on 2026-11-06), built in Stages 14 to 21. The points
+marked **USER DECISION** below are settled by D1 to D5, D6 to D8 came after the batch 12 review.
 
 **Problem**: push today is clone, commit, `git push`, then a separate description PATCH
 (`src/sync/gist.rs` `upload`), and the engine never checks that the remote is still the state
@@ -537,6 +537,12 @@ Index entry: `{sha256, remote_id, synced_at, gen, token, pending}`, the three ne
 2. Description length fits the token (Stage 7).
 3. https protocol without credential helper error mapping (Stage 7).
 4. `cargo check --target x86_64-pc-windows-msvc` passes with the new deps (Stage 1 and Stage 11).
+
+**Variant A, still unverified live (Stage 18, fake runner only):** the compare-and-swap read of
+`manifest` after `gh gist clone`, the plain `git push` rejection texts mapped to `Changed(None)`
+(`! [rejected]`, `non-fast-forward`, `fetch first`), the `created_at` field in the list call, the
+404 mapping to `NotFound`, and the rate limit texts mapped to `RateLimited`. The ignored live test
+in `tests/sync_gist_live.rs` covers them and was not run.
 
 **Still unverified live (Stage 7 was tested against a fake process runner only, no real gist was
 created, edited or deleted, the ignored `tests/sync_gist_live.rs` was not run):**

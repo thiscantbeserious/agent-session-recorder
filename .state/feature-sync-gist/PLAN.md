@@ -513,11 +513,11 @@ Depends on: Stage 21
 Goal: users know what sync guarantees and what it does not.
 Owner: implementer
 
-- [ ] README sync section: changed remotely, duplicates, rate limit stop, known limits list
+- [x] README sync section: changed remotely, duplicates, rate limit stop, known limits list
       from the ADR.
-- [ ] ADR "To verify" gets the live checks of Stage 18, ADR status stays Proposed until the
+- [x] ADR "To verify" gets the live checks of Stage 18, ADR status stays Proposed until the
       user settles D1 to D5.
-- [ ] `cargo xtask gen-docs` if help text changed.
+- [x] `cargo xtask gen-docs` if help text changed.
 
 Files: `README.md`, `docs/`, `.state/feature-sync-gist/ADR.md`
 Depends on: Stage 21
@@ -584,5 +584,5 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 20 | pending | |
 | 21 | done | also the delete rate limit stop from Stage 20 |
 | 22 | pending | three machine concurrency test |
-| 23 | pending | |
+| 23 | done | README, ADR status |
 | 24 | pending | |
