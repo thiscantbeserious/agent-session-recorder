@@ -218,8 +218,13 @@ impl<R: Runner> GistBackend<R> {
         let mut add = vec!["add", "--all", "--"];
         add.extend(names.iter().map(String::as_str));
         self.run_ok("git", &add, Some(repo))?;
+        // A user's global hooks must not run in the scratch clone, point them at nothing.
+        let no_hooks = format!(
+            "core.hooksPath={}",
+            repo.with_file_name("no-hooks").display()
+        );
         let mut commit = GIT_IDENTITY.to_vec();
-        commit.extend(["commit", "-m", "agr sync"]);
+        commit.extend(["-c", &no_hooks, "commit", "-m", "agr sync"]);
         let date = format!("@{} +0000", self.clock.unix_secs()?);
         let mut env = vec![
             ("GIT_AUTHOR_DATE", date.clone()),
@@ -229,7 +234,7 @@ impl<R: Runner> GistBackend<R> {
         self.run_ok_env("git", &commit, Some(repo), &env)?;
         // Plain push, never forced and never retried, a rejection is `Changed(None)`.
         self.pace();
-        self.run_ok("git", &["push"], Some(repo))?;
+        self.run_ok("git", &["push", "--no-verify"], Some(repo))?;
         Ok(())
     }
 
@@ -424,7 +429,7 @@ mod tests {
                 }
                 self.clone_dirs.borrow_mut().push(dir);
             }
-            if program == "git" && args.last().map(String::as_str) == Some("push") {
+            if program == "git" && args.iter().any(|a| a == "push") {
                 *self.pushed.borrow_mut() = Some(data_files(cwd.unwrap()));
                 let manifest = std::fs::read_to_string(cwd.unwrap().join(MANIFEST_FILE)).ok();
                 *self.pushed_manifest.borrow_mut() = manifest;
@@ -569,8 +574,8 @@ mod tests {
             [
                 "gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1",
                 "git add --all -- data.000 manifest",
-                "git -c user.name=agr -c user.email=agr@localhost -c commit.gpgsign=false commit -m agr sync",
-                "git push",
+                "git -c user.name=agr -c user.email=agr@localhost -c commit.gpgsign=false -c core.hooksPath=<tmp>/agr-sync-N/no-hooks commit -m agr sync",
+                "git push --no-verify",
             ]
         );
         assert_eq!(
@@ -632,7 +637,7 @@ mod tests {
             assert_eq!(got, Err(BackendError::Changed(None)), "{stderr}");
             let calls = fake.calls();
             let pushes: Vec<_> = calls.iter().filter(|c| c.contains("push")).collect();
-            assert_eq!(pushes, ["git push"], "one push, no retry");
+            assert_eq!(pushes, ["git push --no-verify"], "one push, no retry");
             let forced = |a: &str| a == "--force" || a == "-f" || a.starts_with('+');
             assert!(!calls.iter().flat_map(|c| c.split(' ')).any(forced));
         }
@@ -677,7 +682,7 @@ mod tests {
         b.delete("abc123").unwrap();
         let mutating = |c: &str| {
             c.starts_with("gh gist create")
-                || c == "git push"
+                || c == "git push --no-verify"
                 || c.contains("PATCH")
                 || c.contains("delete")
         };
