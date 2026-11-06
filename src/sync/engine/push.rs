@@ -3,15 +3,15 @@
 use std::cell::Cell;
 use std::io::{self, Write};
 
-use super::backend::BackendError;
-use super::blob::seal_stream;
-use super::crypto::{open_meta, seal_meta, sha256_reader, Meta};
 use super::fail::{msg, Fail};
 use super::index::Index;
 use super::plan::Remote;
 use super::record::{record, record_pending, save_index, Synced};
 use super::run::Engine;
 use super::scan::Row;
+use crate::sync::backend::BackendError;
+use crate::sync::crypto::blob::seal_stream;
+use crate::sync::crypto::{open_meta, seal_meta, sha256_reader, Meta};
 
 /// Report text when somebody else pushed first, nothing local changes.
 const CHANGED: &str = "changed on the remote, run again";

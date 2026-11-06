@@ -5,12 +5,12 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::backend::RemoteEntry;
-use super::crypto::{open_meta, sha256_reader, CryptoError, Key, Meta};
 use super::index::Index;
 use super::plan::{Input, Local, Remote, SkipReason};
 use crate::files::{codec, lock};
 use crate::storage::SessionInfo;
+use crate::sync::backend::RemoteEntry;
+use crate::sync::crypto::{open_meta, sha256_reader, CryptoError, Key, Meta};
 use crate::StorageManager;
 
 /// Manifest version this build reads, older tokens are never touched.

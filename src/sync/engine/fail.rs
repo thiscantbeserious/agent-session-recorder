@@ -1,7 +1,7 @@
 //! Why one push or pull did not finish.
 
-use super::backend::BackendError;
 use super::run::Outcome;
+use crate::sync::backend::BackendError;
 
 /// Error text for a `map_err`, instead of a closure per call site.
 pub(super) fn msg(e: impl std::fmt::Display) -> String {

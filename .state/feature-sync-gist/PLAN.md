@@ -724,11 +724,11 @@ Depends on: Stage 32
 Goal: `src/sync/engine/` with plan, scan, run, push, pull, fail, record, index and lock, pure move.
 Owner: implementer
 
-- [ ] `git mv` the nine files to `src/sync/engine/`, new `engine/mod.rs` declares them with the
+- [x] `git mv` the nine files to `src/sync/engine/`, new `engine/mod.rs` declares them with the
       visibility they have today (`pub` for plan, scan, run, index, lock, private for the rest).
-- [ ] Cross-layer imports in the moved files use `crate::sync::crypto` and `crate::sync::backend`.
-- [ ] `sync/mod.rs` shims: `pub use engine::{index, lock, plan, run, scan};`.
-- [ ] Test names and snap hashes identical.
+- [x] Cross-layer imports in the moved files use `crate::sync::crypto` and `crate::sync::backend`.
+- [x] `sync/mod.rs` shims: `pub use engine::{index, lock, plan, run, scan};`.
+- [x] Test names and snap hashes identical.
 
 Files: `src/sync/mod.rs`, `src/sync/engine/mod.rs`, `src/sync/plan.rs`, `src/sync/engine/plan.rs`, `src/sync/scan.rs`, `src/sync/engine/scan.rs`, `src/sync/run.rs`, `src/sync/engine/run.rs`, `src/sync/push.rs`, `src/sync/engine/push.rs`, `src/sync/pull.rs`, `src/sync/engine/pull.rs`, `src/sync/fail.rs`, `src/sync/engine/fail.rs`, `src/sync/record.rs`, `src/sync/engine/record.rs`, `src/sync/index.rs`, `src/sync/engine/index.rs`, `src/sync/lock.rs`, `src/sync/engine/lock.rs`
 Depends on: Stage 33
