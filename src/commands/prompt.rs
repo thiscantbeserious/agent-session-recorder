@@ -38,8 +38,29 @@ pub fn should_proceed(message: &str, auto_confirm: bool) -> Result<bool> {
 }
 
 /// Parse a yes/no answer. Empty or unknown input keeps `default`.
-pub fn parse_answer(_input: &str, default: bool) -> bool {
-    default
+pub fn parse_answer(input: &str, default: bool) -> bool {
+    match input.trim().to_lowercase().as_str() {
+        "y" | "yes" => true,
+        "n" | "no" => false,
+        _ => default,
+    }
+}
+
+/// Ask a yes/no question with a default answer.
+///
+/// `auto_confirm` or a non-TTY stdin returns `default` silently.
+#[cfg(not(tarpaulin_include))]
+pub fn ask_with_default(message: &str, default: bool, auto_confirm: bool) -> Result<bool> {
+    if auto_confirm || !io::IsTerminal::is_terminal(&io::stdin()) {
+        return Ok(default);
+    }
+    let hint = if default { "[Y/n]" } else { "[y/N]" };
+    print!("{} {} ", current_theme().primary_text(message), hint);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().lock().read_line(&mut input)?;
+    Ok(parse_answer(&input, default))
 }
 
 #[cfg(test)]

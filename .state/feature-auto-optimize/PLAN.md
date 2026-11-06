@@ -152,16 +152,16 @@ Depends on: Stage 2
 Goal: `agr config migrate` asks once after confirmation, `--yes` and no TTY write the default.
 Owner: implementer
 
-- [ ] RED (inline): `parse_answer("", true) == true`, `"n"`/`"no"` false, `"y"`/`"YES"` true,
+- [x] RED (inline): `parse_answer("", true) == true`, `"n"`/`"no"` false, `"y"`/`"YES"` true,
       `"x"` keeps the default, `parse_answer("", false) == false`.
-- [ ] GREEN: `ask_with_default(message, default, auto_confirm)` in `prompt.rs`: auto_confirm or
+- [x] GREEN: `ask_with_default(message, default, auto_confirm)` in `prompt.rs`: auto_confirm or
       no TTY returns `default` silently, else prints `[Y/n]`/`[y/N]` and uses `parse_answer`.
       `should_proceed` unchanged.
-- [ ] Wire `apply_prompts` into `handle_migrate` and `handle_new_config_creation` after the
+- [x] Wire `apply_prompts` into `handle_migrate` and `handle_new_config_creation` after the
       confirmation, before `atomic_write`, so the file is written once.
-- [ ] Manual check: `HOME=$(mktemp -d) agr config migrate` asks the question after the create
+- [x] Manual check: `HOME=$(mktemp -d) agr config migrate` asks the question after the create
       prompt, Enter writes `auto_optimize = true`, second run says "already up to date".
-- [ ] Manual check: `agr config migrate --yes` on a v4 config writes `true` without asking.
+- [x] Manual check: `agr config migrate --yes` on a v4 config writes `true` without asking.
 
 Files: `src/commands/prompt.rs`, `src/commands/config.rs`
 Depends on: Stage 5
