@@ -785,15 +785,15 @@ Depends on: Stage 35
 Goal: auto and format under 400 lines, the detached child spawn sits with auto push.
 Owner: implementer
 
-- [ ] `app/auto.rs` to `app/auto/mod.rs` (`git mv`): decide, blocker, after_recording, on_path
+- [x] `app/auto.rs` to `app/auto/mod.rs` (`git mv`): decide, blocker, after_recording, on_path
       and their tests stay, `app/auto/child.rs` gets run, error_line, take_error_line and their
       tests, re-exported from `auto/mod.rs`.
-- [ ] `spawn_detached` moves from `backend/gist/runner.rs` to `app/auto/mod.rs` unchanged,
+- [x] `spawn_detached` moves from `backend/gist/runner.rs` to `app/auto/mod.rs` unchanged,
       `src/recording/auto_push.rs` calls `auto::spawn_detached` (`runner` is not a public name after Stage 39).
-- [ ] `app/format.rs` to `app/format/mod.rs` (`git mv`): label, status lines, totals, shared
+- [x] `app/format.rs` to `app/format/mod.rs` (`git mv`): label, status lines, totals, shared
       helpers and the test fixtures stay, `app/format/summary.rs` gets preview, privacy,
       problem, delete preview, rate limit and summary lines and their tests, re-exported.
-- [ ] Every file about 400 lines or less, test names and snap hashes identical.
+- [x] Every file about 400 lines or less, test names and snap hashes identical.
 
 Files: `src/sync/app/auto.rs`, `src/sync/app/auto/mod.rs`, `src/sync/app/auto/child.rs`, `src/sync/app/format.rs`, `src/sync/app/format/mod.rs`, `src/sync/app/format/summary.rs`, `src/sync/backend/gist/runner.rs`, `src/recording/auto_push.rs`
 Depends on: Stage 35
