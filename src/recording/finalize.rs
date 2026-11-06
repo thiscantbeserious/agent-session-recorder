@@ -2,6 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::asciicast::remove_silence;
 use crate::config::{Compression, Config};
 use crate::storage::compress::{compress_file, Outcome};
 
@@ -30,6 +31,11 @@ fn warn_keep(path: &Path, why: &str) -> PathBuf {
 
 /// Clamps idle time in the plain recording without a backup, prints nothing.
 /// Returns the warning line when optimizing failed, the file then stays as recorded.
-pub fn optimize_recording(_path: &Path, _config: &Config) -> Option<String> {
-    None
+pub fn optimize_recording(path: &Path, config: &Config) -> Option<String> {
+    if !config.recording.auto_optimize || !path.exists() {
+        return None;
+    }
+    remove_silence(path)
+        .err()
+        .map(|e| format!("Auto-optimize failed, kept original: {e:#}"))
 }
