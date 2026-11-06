@@ -1,13 +1,14 @@
 //! Sync engine against the in-memory backend
 
 use agr::files::{codec, lock};
-use agr::sync::backend::SyncBackend;
+use agr::sync::backend::{BackendError, RemoteEntry, SyncBackend};
 use agr::sync::crypto::{blob_aad, seal, seal_meta, sha256_hex, Key, Meta};
 use agr::sync::index::{self, Index};
 use agr::sync::memory::MemoryBackend;
 use agr::sync::plan::{Decision, SkipReason};
-use agr::sync::run::{Engine, Options, Outcome};
+use agr::sync::run::{Engine, Options, Outcome, SyncError};
 use agr::{Config, StorageManager};
+use std::cell::{Cell, RefCell};
 use std::fs;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -564,14 +565,22 @@ fn v1_token_is_unknown_version_and_never_touched() {
 }
 
 #[test]
-fn pushed_manifest_is_v2_gen_1_and_blob_opens_with_that_gen() {
-    let (_m, backend, key) = pushed_machine();
-    let entry = backend.list().unwrap().remove(0);
-    let meta = agr::sync::crypto::open_meta(&key, &entry.meta_token).unwrap();
+fn first_push_is_v2_gen_1_and_the_next_push_is_gen_2_with_a_gen_2_blob() {
+    let (m, backend, key) = pushed_machine();
+    let first = backend.list().unwrap().remove(0);
+    let meta = agr::sync::crypto::open_meta(&key, &first.meta_token).unwrap();
     assert_eq!((meta.v, meta.gen), (2, 1));
-    let blob = backend.blob(&entry.id).unwrap();
+    let blob = backend.blob(&first.id).unwrap();
     assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 1), &blob).is_ok());
-    assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 2), &blob).is_err());
+    m.session("claude", "a.cast.gz", &CAST.replace("secret", "edited"));
+    m.engine(&backend, &key).push(&opts()).unwrap();
+    let id = only_entry(&m, "claude/a.cast.gz").remote_id;
+    let token = backend.manifest(&id).unwrap();
+    let meta = agr::sync::crypto::open_meta(&key, &token).unwrap();
+    assert_eq!(meta.gen, 2);
+    let blob = backend.blob(&id).unwrap();
+    assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 2), &blob).is_ok());
+    assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 1), &blob).is_err());
 }
 
 #[test]
@@ -683,7 +692,7 @@ fn push_overwrite_recreates_a_deleted_gist_once() {
     assert_eq!((report.pushed, report.failed, backend.len()), (1, 0, 3));
     let entry = only_entry(&m, "claude/a.cast.gz");
     assert_ne!(entry.remote_id, id);
-    assert_eq!((entry.gen, entry.pending), (1, false));
+    assert_eq!((entry.gen, entry.pending), (2, false));
     let again = m.engine(&backend, &key).push(&opts()).unwrap();
     assert_eq!((again.pushed, backend.len()), (0, 3));
 }
@@ -760,4 +769,249 @@ fn duplicate_status_line_says_duplicate_with_its_reason() {
         "{line}"
     );
     assert!(lines.last().unwrap().contains("1 duplicate"), "{lines:?}");
+}
+
+const A: &str = "claude/a.cast.gz";
+
+type Hook = Box<dyn FnOnce(&MemoryBackend)>;
+
+/// Memory backend that records calls and injects failures at chosen pushes.
+#[derive(Default)]
+struct Spy {
+    inner: MemoryBackend,
+    creates: Cell<usize>,
+    pushes: Cell<usize>,
+    expected: RefCell<Vec<Option<String>>>,
+    /// Runs inside the next push before the compare, models another machine winning the race.
+    before_push: RefCell<Option<Hook>>,
+    /// The nth push (1 based) fails with this error.
+    push_error: RefCell<Option<(usize, BackendError)>>,
+    describe_error: RefCell<Option<BackendError>>,
+}
+
+impl SyncBackend for Spy {
+    fn name(&self) -> &'static str {
+        "spy"
+    }
+    fn check(&self) -> Result<(), BackendError> {
+        self.inner.check()
+    }
+    fn list(&self) -> Result<Vec<RemoteEntry>, BackendError> {
+        self.inner.list()
+    }
+    fn create(&self) -> Result<String, BackendError> {
+        self.creates.set(self.creates.get() + 1);
+        self.inner.create()
+    }
+    fn push(&self, id: &str, e: Option<&str>, m: &str, b: &[u8]) -> Result<(), BackendError> {
+        self.pushes.set(self.pushes.get() + 1);
+        self.expected.borrow_mut().push(e.map(String::from));
+        if let Some(hook) = self.before_push.borrow_mut().take() {
+            hook(&self.inner);
+        }
+        let mut failing = self.push_error.borrow_mut();
+        if failing
+            .as_ref()
+            .is_some_and(|(n, _)| *n == self.pushes.get())
+        {
+            return Err(failing.take().unwrap().1);
+        }
+        self.inner.push(id, e, m, b)
+    }
+    fn describe(&self, id: &str, t: &str) -> Result<(), BackendError> {
+        match self.describe_error.borrow_mut().take() {
+            Some(e) => Err(e),
+            None => self.inner.describe(id, t),
+        }
+    }
+    fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
+        self.inner.pull(id)
+    }
+    fn delete(&self, id: &str) -> Result<(), BackendError> {
+        self.inner.delete(id)
+    }
+}
+
+fn token_gen(key: &Key, hash: &str, gen: u64) -> String {
+    let meta = Meta {
+        v: 2,
+        path: A.into(),
+        sha256: hash.into(),
+        size: 1,
+        gen,
+    };
+    seal_meta(key, &meta)
+}
+
+fn spied() -> (Machine, Spy, Key) {
+    let (m, backend, key) = pushed_machine();
+    (
+        m,
+        Spy {
+            inner: backend,
+            ..Spy::default()
+        },
+        key,
+    )
+}
+
+fn edit_a(m: &Machine) -> String {
+    let path = m.session("claude", "a.cast.gz", &CAST.replace("secret", "edited"));
+    sha256_hex(&fs::read(path).unwrap())
+}
+
+fn race(spy: &Spy, hook: impl FnOnce(&MemoryBackend) + 'static) {
+    *spy.before_push.borrow_mut() = Some(Box::new(hook));
+}
+
+fn fresh_spy() -> (Machine, Spy, Key) {
+    let m = machine();
+    m.session("claude", "a.cast.gz", CAST);
+    (m, Spy::default(), Key::generate())
+}
+
+const CHANGED: &str = "changed on the remote, run again";
+
+#[test]
+fn push_seals_gen_plus_one_with_the_planned_token_as_expected() {
+    let (m, spy, key) = spied();
+    let planned = only_entry(&m, A).token;
+    edit_a(&m);
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!((report.pushed, report.failed), (1, 0), "{:?}", report.items);
+    assert_eq!(spy.expected.borrow().as_slice(), [planned]);
+    let entry = only_entry(&m, A);
+    assert_eq!(entry.gen, 2);
+    assert_eq!(spy.inner.description(&entry.remote_id), entry.token);
+}
+
+#[test]
+fn changed_is_reported_as_changed_remotely_and_nothing_is_recorded() {
+    let (m, spy, key) = spied();
+    let before = only_entry(&m, A);
+    let theirs = token_gen(&key, "other-hash", 2);
+    let (id, t) = (before.remote_id.clone(), theirs.clone());
+    race(&spy, move |b| {
+        b.put(Some(&id), &t, b"theirs");
+    });
+    edit_a(&m);
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    let item = item_of(&report, A);
+    assert_eq!(item.outcome, Outcome::Failed(CHANGED.into()), "{item:?}");
+    assert_eq!((report.pushed, report.conflicts), (0, 0));
+    assert_eq!(only_entry(&m, A), before);
+    assert_eq!(spy.inner.manifest(&before.remote_id), Some(theirs));
+}
+
+#[test]
+fn own_earlier_push_with_a_lost_index_save_is_adopted() {
+    let (m, spy, key) = spied();
+    let id = only_entry(&m, A).remote_id;
+    let hash = edit_a(&m);
+    let own = token_gen(&key, &hash, 2);
+    let (id2, t) = (id.clone(), own.clone());
+    race(&spy, move |b| {
+        b.set_manifest(&id2, Some(t));
+        b.set_blob(&id2, b"our earlier blob".to_vec());
+    });
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!(
+        (report.failed, report.conflicts),
+        (0, 0),
+        "{:?}",
+        report.items
+    );
+    let entry = only_entry(&m, A);
+    assert_eq!((entry.gen, entry.token.as_deref()), (2, Some(own.as_str())));
+    assert_eq!(spy.inner.description(&id), Some(own));
+    assert_eq!(
+        spy.inner.blob(&id).as_deref(),
+        Some(&b"our earlier blob"[..])
+    );
+}
+
+#[test]
+fn new_session_stores_the_pending_id_first_and_a_failed_push_is_resumed() {
+    let (m, spy, key) = fresh_spy();
+    let dir = m.dir().to_path_buf();
+    race(&spy, move |_| {
+        let entry = index::load(&dir).0.entries[A].clone();
+        assert!(entry.pending && entry.token.is_none(), "{entry:?}");
+    });
+    *spy.push_error.borrow_mut() = Some((1, BackendError::Unreachable("down".into())));
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!((report.pushed, report.failed), (0, 1));
+    let pending = only_entry(&m, A);
+    assert!(pending.pending, "{pending:?}");
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!((report.pushed, report.failed), (1, 0), "{:?}", report.items);
+    assert_eq!((spy.creates.get(), spy.inner.len()), (1, 1));
+    let done = only_entry(&m, A);
+    assert_eq!(
+        (done.remote_id, done.gen, done.pending),
+        (pending.remote_id, 1, false)
+    );
+}
+
+#[test]
+fn describe_failing_after_a_new_push_still_records_it_and_the_next_run_repairs() {
+    let (m, spy, key) = fresh_spy();
+    *spy.describe_error.borrow_mut() = Some(BackendError::Unreachable("down".into()));
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    let Outcome::Failed(why) = &item_of(&report, A).outcome else {
+        panic!("{:?}", report.items)
+    };
+    assert!(why.contains("next run"), "{why}");
+    let entry = only_entry(&m, A);
+    assert_eq!((entry.gen, entry.pending), (1, false));
+    assert!(entry.token.is_some() && spy.inner.description(&entry.remote_id).is_none());
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!(report.failed, 0, "{:?}", report.items);
+    assert_eq!((spy.creates.get(), spy.pushes.get()), (1, 1));
+    assert_eq!(spy.inner.description(&entry.remote_id), entry.token);
+}
+
+#[test]
+fn describe_failing_after_an_update_is_repaired_to_the_index_token() {
+    let (m, spy, key) = spied();
+    let old = only_entry(&m, A).token;
+    edit_a(&m);
+    *spy.describe_error.borrow_mut() = Some(BackendError::Unreachable("down".into()));
+    m.engine(&spy, &key).push(&opts()).unwrap();
+    let entry = only_entry(&m, A);
+    assert_eq!(entry.gen, 2);
+    assert_eq!(spy.inner.description(&entry.remote_id), old);
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!(report.failed, 0, "{:?}", report.items);
+    assert_eq!(spy.inner.description(&entry.remote_id), entry.token);
+    assert_eq!(spy.pushes.get(), 1);
+}
+
+#[test]
+fn description_is_never_repaired_to_a_lower_gen() {
+    let (m, spy, key) = spied();
+    let id = only_entry(&m, A).remote_id;
+    let ahead = token_gen(&key, "remote-hash", 2);
+    spy.inner.put(Some(&id), &ahead, b"theirs");
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!((report.pushed, report.failed), (0, 0), "{:?}", report.items);
+    assert_eq!(spy.inner.description(&id), Some(ahead));
+    assert_eq!(spy.pushes.get(), 0);
+}
+
+#[test]
+fn rate_limit_stops_the_run_keeps_earlier_sessions_and_the_next_run_resumes() {
+    let (m, key) = (machine(), Key::generate());
+    three(&m);
+    let spy = Spy::default();
+    *spy.push_error.borrow_mut() = Some((2, BackendError::RateLimited));
+    let err = m.engine(&spy, &key).push(&opts()).unwrap_err();
+    assert_eq!(err, SyncError::RateLimited { left: 2 });
+    let (index, _) = index::load(m.dir());
+    assert!(!index.entries[A].pending && index.entries[A].gen == 1);
+    assert!(index.entries["claude/b.cast.gz"].pending);
+    assert!(!index.entries.contains_key("codex/c.cast.gz"));
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!((report.pushed, report.failed), (2, 0), "{:?}", report.items);
+    assert_eq!((spy.creates.get(), spy.inner.len()), (3, 3));
 }

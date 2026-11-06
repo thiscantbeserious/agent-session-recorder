@@ -21,3 +21,14 @@ pub(super) fn record(index: &mut Index, path: &str, synced: Synced) {
     };
     index.entries.insert(path.to_string(), entry);
 }
+
+/// A gist that was created and not pushed yet, the next run resumes `remote_id`.
+pub(super) fn record_pending(index: &mut Index, path: &str, remote_id: &str) {
+    let entry = IndexEntry {
+        remote_id: remote_id.to_string(),
+        synced_at: chrono::Utc::now().to_rfc3339(),
+        pending: true,
+        ..IndexEntry::default()
+    };
+    index.entries.insert(path.to_string(), entry);
+}

@@ -138,6 +138,14 @@ pub fn delete_preview_lines(report: &Report) -> Vec<String> {
     lines
 }
 
+/// Two lines when GitHub stopped the run, `left` sessions were not done.
+pub fn rate_limit_lines(left: usize) -> [String; 2] {
+    [
+        "GitHub rate limit reached, sync stopped".into(),
+        format!("{left} left, please run again later"),
+    ]
+}
+
 /// Result of a real run, counts, skipped, conflicts with both hashes and sizes, failures.
 pub fn summary_lines(report: &Report) -> Vec<String> {
     let mut lines = count_lines(report);
@@ -242,6 +250,17 @@ mod tests {
             pending: false,
             duplicates: Vec::new(),
         }
+    }
+
+    #[test]
+    fn rate_limit_lines_name_the_stop_and_the_sessions_left() {
+        assert_eq!(
+            rate_limit_lines(3),
+            [
+                "GitHub rate limit reached, sync stopped",
+                "3 left, please run again later"
+            ]
+        );
     }
 
     #[test]

@@ -3,18 +3,16 @@
 use thiserror::Error;
 
 use super::backend::{BackendError, SyncBackend};
-use super::crypto::{blob_aad, seal, seal_meta, sha256_hex, Key, Meta};
-use super::fail::Fail;
+use super::crypto::Key;
+use super::fail::{Fail, Stop};
 use super::index::{self, Index};
 use super::lock::SyncLock;
 use super::plan::{decide, resolve, Command, Decision, Local, Remote, SkipReason};
 use super::pull::pull_one;
+use super::push::{heal, push_one};
 use super::record::{record, Synced};
 use super::scan::{scan, select, Duplicate, Row};
 use crate::StorageManager;
-
-/// Engine compare-and-swap comes later, every push seals generation 1 for now.
-const PUSH_GEN: u64 = 1;
 
 /// Whole-run failures, per-session failures live in the report.
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -25,6 +23,9 @@ pub enum SyncError {
     Backend(#[from] BackendError),
     #[error("{0}")]
     Failed(String),
+    /// GitHub reported a rate limit, `left` sessions were not done.
+    #[error("GitHub rate limit reached, sync stopped, {left} left, please run again later")]
+    RateLimited { left: usize },
 }
 
 #[derive(Debug, Clone, Default)]
@@ -159,13 +160,36 @@ impl Engine<'_> {
             Some(SyncLock::acquire(&self.storage.storage_dir())?)
         };
         let mut loaded = self.load(&opts.sessions)?;
-        for row in std::mem::take(&mut loaded.rows) {
-            let decision = resolve(decide(&row.input), command, opts.overwrite);
-            let outcome = self.step(command, opts, decision, &row, &mut loaded.index);
-            let item = self.item(&row, decision, outcome);
+        let mut rows = std::mem::take(&mut loaded.rows).into_iter();
+        while let Some(row) = rows.next() {
+            let item = self
+                .one(command, opts, row, &mut loaded.index)
+                .map_err(|Stop| SyncError::RateLimited {
+                    left: rows.len() + 1,
+                })?;
             loaded.report.add(command, item);
         }
         Ok(loaded.report)
+    }
+
+    /// Heal a lagging description on push, decide, act.
+    fn one(
+        &self,
+        command: Command,
+        opts: &Options,
+        mut row: Row,
+        index: &mut Index,
+    ) -> Result<Item, Stop> {
+        let healed = match (command, opts.dry_run) {
+            (Command::Push, false) => heal(self, &mut row, index, opts.overwrite),
+            _ => Ok(()),
+        };
+        let decision = resolve(decide(&row.input), command, opts.overwrite);
+        let outcome = match healed {
+            Ok(()) => self.step(command, opts, decision, &row, index)?,
+            Err(fail) => fail.outcome()?,
+        };
+        Ok(self.item(&row, decision, outcome))
     }
 
     fn load(&self, sessions: &[String]) -> Result<Loaded, SyncError> {
@@ -198,18 +222,20 @@ impl Engine<'_> {
         decision: Decision,
         row: &Row,
         index: &mut Index,
-    ) -> Outcome {
-        match (decision, command) {
+    ) -> Result<Outcome, Stop> {
+        Ok(match (decision, command) {
             (Decision::Push, Command::Push) | (Decision::Pull, Command::Pull) if opts.dry_run => {
                 Outcome::Planned
             }
-            (Decision::Push, Command::Push) => self.act(self.push_one(row, index, opts.overwrite)),
-            (Decision::Pull, Command::Pull) => self.act(pull_one(self, row, index)),
+            (Decision::Push, Command::Push) => {
+                return self.act(push_one(self, row, index, opts.overwrite))
+            }
+            (Decision::Pull, Command::Pull) => return self.act(pull_one(self, row, index)),
             (Decision::InSync { refresh_index }, _) if refresh_index && !opts.dry_run => self
                 .refresh(row, index)
                 .map_or_else(Outcome::Failed, |()| Outcome::Nothing),
             _ => passive(decision),
-        }
+        })
     }
 
     fn item(&self, row: &Row, decision: Decision, outcome: Outcome) -> Item {
@@ -234,54 +260,8 @@ impl Engine<'_> {
         }
     }
 
-    fn act(&self, result: Result<u64, Fail>) -> Outcome {
-        result.map_or_else(Fail::outcome, Outcome::Done)
-    }
-
-    fn push_one(&self, row: &Row, index: &mut Index, overwrite: bool) -> Result<u64, Fail> {
-        let dir = self.storage.storage_dir();
-        let plain = std::fs::read(dir.join(&row.path)).map_err(|e| e.to_string())?;
-        let sha256 = sha256_hex(&plain);
-        let meta = Meta {
-            v: 2,
-            path: row.path.clone(),
-            sha256: sha256.clone(),
-            size: plain.len() as u64,
-            gen: PUSH_GEN,
-        };
-        let token = seal_meta(self.key, &meta);
-        let blob = seal(self.key, &blob_aad(&row.path, PUSH_GEN), &plain);
-        let id = self.upload(row, &token, &blob, overwrite)?;
-        let synced = Synced {
-            sha256,
-            remote_id: id,
-            gen: PUSH_GEN,
-            token,
-        };
-        record(index, &row.path, synced);
-        index::save(&dir, index).map_err(|e| e.to_string())?;
-        Ok(plain.len() as u64)
-    }
-
-    /// Create when new, then the compare-and-swap push with the listed token, then the hint.
-    /// A gist deleted on GitHub is only replaced with `overwrite`.
-    fn upload(&self, row: &Row, token: &str, blob: &[u8], overwrite: bool) -> Result<String, Fail> {
-        let err = |e: BackendError| e.to_string();
-        let mut id = match &row.remote_id {
-            Some(id) => id.clone(),
-            None => self.backend.create().map_err(err)?,
-        };
-        let expected = row.token.as_deref();
-        match self.backend.push(&id, expected, token, blob) {
-            Err(BackendError::NotFound) if !overwrite => return Err(Fail::Gone),
-            Err(BackendError::NotFound) => {
-                id = self.backend.create().map_err(err)?;
-                self.backend.push(&id, None, token, blob).map_err(err)?;
-            }
-            other => other.map_err(err)?,
-        }
-        self.backend.describe(&id, token).map_err(err)?;
-        Ok(id)
+    fn act(&self, result: Result<u64, Fail>) -> Result<Outcome, Stop> {
+        result.map_or_else(Fail::outcome, |bytes| Ok(Outcome::Done(bytes)))
     }
 
     /// Hashes already agree, only the index lacks the entry.
@@ -309,11 +289,10 @@ impl Engine<'_> {
             return Outcome::Failed(e.to_string());
         }
         index.entries.remove(&row.path);
-        self.act(
-            index::save(&self.storage.storage_dir(), index)
-                .map(|()| 0)
-                .map_err(|e| Fail::from(e.to_string())),
-        )
+        match index::save(&self.storage.storage_dir(), index) {
+            Ok(()) => Outcome::Done(0),
+            Err(e) => Outcome::Failed(e.to_string()),
+        }
     }
 }
 

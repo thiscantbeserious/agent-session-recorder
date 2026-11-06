@@ -448,20 +448,20 @@ Depends on: Stage 18, Stage 19
 Goal: no lost update, no orphan, no stuck gist on push.
 Owner: implementer
 
-- [ ] RED: push uses gen = planned gen + 1 and the planned token as `expected`, `Changed` is
+- [x] RED: push uses gen = planned gen + 1 and the planned token as `expected`, `Changed` is
       reported as "changed remotely, pull first" and nothing is recorded.
-- [ ] RED: `Changed(Some(t))` where `t` is our local hash is adopted (index and description
+- [x] RED: `Changed(Some(t))` where `t` is our local hash is adopted (index and description
       repaired), not a conflict.
-- [ ] RED: a new session stores the id with `pending` before the push, a failed push leaves
+- [x] RED: a new session stores the id with `pending` before the push, a failed push leaves
       the index entry and the next run resumes the same id, the backend never gets a second
       `create` for that path.
-- [ ] RED: `NotFound` on the index id is "remote copy gone" (done in Stage 19b), only `--overwrite` creates once.
-- [ ] RED: describe failing after a good push still records the push, the next run repairs the
+- [x] RED: `NotFound` on the index id is "remote copy gone" (done in Stage 19b), only `--overwrite` creates once.
+- [x] RED: describe failing after a good push still records the push, the next run repairs the
       description, the description is never set to a lower gen.
-- [ ] RED: `RateLimited` stops the run with `SyncError::RateLimited { left }`, earlier
+- [x] RED: `RateLimited` stops the run with `SyncError::RateLimited { left }`, earlier
       sessions stay recorded, the command prints "N left, run again later", auto push stores
       the same line.
-- [ ] GREEN: push logic moves to `src/sync/push.rs` (keeps `run.rs` under ~400 lines).
+- [x] GREEN: push logic moves to `src/sync/push.rs` (keeps `run.rs` under ~400 lines).
 
 Files: `src/sync/push.rs`, `src/sync/run.rs`, `src/sync/mod.rs`, `src/sync/auto.rs`,
        `src/commands/sync/run.rs`, `tests/integration/sync_engine_test.rs`

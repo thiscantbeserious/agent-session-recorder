@@ -371,6 +371,15 @@ mod tests {
     }
 
     #[test]
+    fn error_line_keeps_the_rate_limit_text_with_sessions_left() {
+        let line = error_line(&Err(SyncError::RateLimited { left: 4 })).unwrap();
+        assert_eq!(
+            line,
+            "auto push failed: GitHub rate limit reached, sync stopped, 4 left, please run again later"
+        );
+    }
+
+    #[test]
     fn error_line_is_none_for_success_and_busy() {
         let ok = report(item(Outcome::Done(1), Decision::Push), 0, 0, 0);
         assert_eq!(error_line(&Ok(ok)), None);

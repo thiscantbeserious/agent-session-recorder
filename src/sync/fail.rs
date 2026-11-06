@@ -1,12 +1,25 @@
 //! Why one push or pull did not finish.
 
+use super::backend::BackendError;
 use super::run::Outcome;
 
 /// The remote copy is gone, or any other failure with its message.
 #[derive(Debug)]
 pub(super) enum Fail {
     Gone,
+    /// GitHub stopped us, the run ends here.
+    RateLimited,
     Other(String),
+}
+
+impl From<BackendError> for Fail {
+    fn from(e: BackendError) -> Self {
+        match e {
+            BackendError::RateLimited => Self::RateLimited,
+            BackendError::NotFound => Self::Gone,
+            other => Self::Other(other.to_string()),
+        }
+    }
 }
 
 /// Status text when the gist was deleted on GitHub.
@@ -25,10 +38,16 @@ impl From<&str> for Fail {
 }
 
 impl Fail {
-    pub(super) fn outcome(self) -> Outcome {
+    /// The outcome of this session, or `Err` when the whole run has to stop.
+    pub(super) fn outcome(self) -> Result<Outcome, Stop> {
         match self {
-            Self::Gone => Outcome::Skipped(GONE_TEXT.into()),
-            Self::Other(message) => Outcome::Failed(message),
+            Self::Gone => Ok(Outcome::Skipped(GONE_TEXT.into())),
+            Self::RateLimited => Err(Stop),
+            Self::Other(message) => Ok(Outcome::Failed(message)),
         }
     }
 }
+
+/// Marker, the run ends with `SyncError::RateLimited`.
+#[derive(Debug)]
+pub(super) struct Stop;

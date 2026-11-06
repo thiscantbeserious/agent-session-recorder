@@ -115,3 +115,26 @@ fn gist_compare_and_swap_and_manifest() {
         Err(BackendError::NotFound)
     );
 }
+
+#[test]
+#[ignore = "creates a real secret gist, run by hand"]
+fn gist_stale_description_is_repaired() {
+    let backend = GistBackend::new();
+    backend.check().unwrap();
+    let id = backend.create().unwrap();
+    let _cleanup = Cleanup(&backend, id.clone());
+    backend.push(&id, None, "gen-1", b"one").unwrap();
+    backend.describe(&id, "gen-1").unwrap();
+    backend.push(&id, Some("gen-1"), "gen-2", b"two").unwrap();
+    let listed = |b: &GistBackend| {
+        b.list()
+            .unwrap()
+            .into_iter()
+            .find(|e| e.id == id)
+            .map(|e| e.meta_token)
+    };
+    assert_eq!(listed(&backend).as_deref(), Some("gen-1"));
+    backend.describe(&id, "gen-2").unwrap();
+    assert_eq!(listed(&backend).as_deref(), Some("gen-2"));
+    assert_eq!(backend.pull(&id).unwrap().0.as_deref(), Some("gen-2"));
+}
