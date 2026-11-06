@@ -528,15 +528,15 @@ Goal: the loser of a push race heals the listing, a pending entry is never the l
 rate limit during pull stops the run.
 Owner: implementer
 
-- [ ] RED: `Changed(Some(theirs))` with another hash, `theirs` opens with our path and gen >=
+- [x] RED: `Changed(Some(theirs))` with another hash, `theirs` opens with our path and gen >=
       max(index gen, row gen): the description is set to `theirs`, the session reports
       CHANGED, nothing recorded. Lower gen, other path or other key: no describe.
-- [ ] RED: a `RateLimited` from that describe stops the run, any other describe error still
+- [x] RED: a `RateLimited` from that describe stops the run, any other describe error still
       reports CHANGED.
-- [ ] RED: a pending index entry (sha256 `""`) gives `last = None` in the scan row.
-- [ ] RED: `RateLimited` from `backend.pull` stops the run with `SyncError::RateLimited`,
+- [x] RED: a pending index entry (sha256 `""`) gives `last = None` in the scan row.
+- [x] RED: `RateLimited` from `backend.pull` stops the run with `SyncError::RateLimited`,
       `NotFound` stays "remote copy gone".
-- [ ] GREEN in `push.rs` `adopt`, `scan.rs` `row`, `pull.rs` `verified` (`map_err(Fail::from)`).
+- [x] GREEN in `push.rs` `adopt`, `scan.rs` `row`, `pull.rs` `verified` (`map_err(Fail::from)`).
 
 Files: `src/sync/push.rs`, `src/sync/pull.rs`, `src/sync/scan.rs`, `tests/integration/sync_engine_test.rs`
 Depends on: Stage 21
