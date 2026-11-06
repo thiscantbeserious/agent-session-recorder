@@ -3,9 +3,9 @@
 use super::backend::BackendError;
 use super::crypto::{blob_aad, open_meta, seal, seal_meta, sha256_hex, Meta};
 use super::fail::Fail;
-use super::index::{self, Index};
+use super::index::Index;
 use super::plan::Remote;
-use super::record::{record, record_pending, Synced};
+use super::record::{record, record_pending, save_index, Synced};
 use super::run::Engine;
 use super::scan::Row;
 
@@ -83,6 +83,8 @@ pub(super) fn heal(
     Ok(())
 }
 
+/// Reports a failed description, unlike the best effort one of a pull, the push is only
+/// finished once the listing knows it.
 fn describe(engine: &Engine<'_>, id: &str, token: &str) -> Result<(), Fail> {
     engine
         .backend
@@ -129,13 +131,27 @@ impl Push<'_> {
     }
 
     /// The remote holds our own earlier push of this very content, its index save got lost.
+    /// Another content of our path at a gen we know of means the description may lag behind
+    /// the manifest, so it is set to `theirs` (only a rate limit stops the run), the next run
+    /// plans against the real remote.
     fn adopt(&self, id: &str, theirs: &str, index: &mut Index) -> Result<(), Fail> {
-        match open_meta(self.engine.key, theirs) {
-            Ok(m) if m.path == self.row.path && m.sha256 == self.sha256 && m.gen > self.row.gen => {
-                self.finish(id, theirs, m.gen, index)
-            }
-            _ => Err(CHANGED.into()),
+        let Ok(m) = open_meta(self.engine.key, theirs) else {
+            return Err(CHANGED.into());
+        };
+        if m.path != self.row.path {
+            return Err(CHANGED.into());
         }
+        if m.sha256 == self.sha256 && m.gen > self.row.gen {
+            return self.finish(id, theirs, m.gen, index);
+        }
+        let known = index.entries.get(&m.path).map_or(0, |e| e.gen);
+        if m.gen >= known.max(self.row.gen) {
+            let healed = self.engine.backend.describe(id, theirs);
+            if matches!(healed, Err(BackendError::RateLimited)) {
+                return Err(Fail::RateLimited);
+            }
+        }
+        Err(CHANGED.into())
     }
 
     fn finish(&self, id: &str, token: &str, gen: u64, index: &mut Index) -> Result<(), Fail> {
@@ -150,7 +166,7 @@ impl Push<'_> {
         describe(self.engine, id, token)
     }
 
-    fn save(&self, index: &Index) -> Result<(), Fail> {
-        index::save(&self.engine.storage.storage_dir(), index).map_err(|e| e.to_string().into())
+    fn save(&self, index: &Index) -> Result<(), String> {
+        save_index(self.engine.storage, index)
     }
 }

@@ -202,3 +202,71 @@ fn two_creates_of_one_new_session_are_duplicates_everywhere_and_nothing_is_delet
     assert_eq!(backend.len(), 2, "D1: nothing is deleted");
     assert_eq!((a.bytes(), b.bytes(), c.bytes()), (mine_a, mine_b, None));
 }
+
+/// A pushed gen 2 and its description was lost, A is gone, B edits.
+fn stuck_behind_a_lost_description() -> (Mach, Mach, MemoryBackend, Key) {
+    let (a, b, backend, key) = synced_pair();
+    a.write("v1");
+    {
+        let net = Net::new(&backend);
+        net.drop_describe.set(true);
+        assert_eq!(a.push(&net, &key, &opts()).pushed, 1);
+    }
+    b.write("fromB");
+    (a, b, backend, key)
+}
+
+#[test]
+fn lost_description_does_not_strand_the_next_machine_push_overwrite_resolves_it() {
+    let (a, b, backend, key) = stuck_behind_a_lost_description();
+    let first = b.push(&backend, &key, &opts());
+    assert_eq!(outcomes(&first), [Outcome::Failed(CHANGED.into())]);
+    let plan = b.push(&backend, &key, &opts());
+    assert_eq!((plan.pushed, plan.conflicts), (0, 1), "{:?}", plan.items);
+    let kept = b.push(&backend, &key, &overwrite());
+    assert_eq!((kept.pushed, kept.failed), (1, 0), "{:?}", kept.items);
+    let id = only_id(&backend);
+    assert_eq!(remote_bytes(&backend, &key, &id), b.bytes().unwrap());
+    let pulled = a.pull(&backend, &key, &opts());
+    assert_eq!(pulled.pulled, 1, "{:?}", pulled.items);
+    assert_settled(&backend, &key, &[&a, &b], 1);
+}
+
+#[test]
+fn lost_description_does_not_strand_the_next_machine_pull_overwrite_resolves_it() {
+    let (a, b, backend, key) = stuck_behind_a_lost_description();
+    b.push(&backend, &key, &opts());
+    let mine = b.bytes();
+    let plain = b.pull(&backend, &key, &opts());
+    assert_eq!((plain.pulled, plain.conflicts), (0, 1), "{:?}", plain.items);
+    let taken = b.pull(&backend, &key, &overwrite());
+    assert_eq!(taken.pulled, 1, "{:?}", taken.items);
+    assert_eq!(b.bytes(), a.bytes());
+    assert_eq!(b.bak(), mine, "B's edit is in the .bak");
+    assert_settled(&backend, &key, &[&a, &b], 1);
+}
+
+#[test]
+fn create_whose_reply_is_lost_and_then_edited_converges_and_gets_listed() {
+    let (a, b) = (mach(), mach());
+    let (backend, key) = (MemoryBackend::new(), Key::generate());
+    a.write("fresh");
+    let net = Net::new(&backend);
+    net.lose_reply.set(true);
+    let lost = a.push(&net, &key, &opts());
+    assert_eq!((lost.pushed, lost.failed), (0, 1), "{:?}", lost.items);
+    assert!(a.pending());
+    a.write("edited");
+    let again = a.push(&backend, &key, &opts());
+    assert_eq!(outcomes(&again), [Outcome::Failed(CHANGED.into())]);
+    only_id(&backend);
+    let kept = a.push(&backend, &key, &overwrite());
+    assert_eq!((kept.pushed, kept.failed), (1, 0), "{:?}", kept.items);
+    assert_eq!(
+        remote_bytes(&backend, &key, &only_id(&backend)),
+        a.bytes().unwrap()
+    );
+    assert_eq!(b.pull(&backend, &key, &opts()).pulled, 1);
+    assert_eq!(b.bytes(), a.bytes());
+    assert_settled(&backend, &key, &[&a, &b], 1);
+}

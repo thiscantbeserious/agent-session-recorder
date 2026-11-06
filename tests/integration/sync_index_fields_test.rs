@@ -233,3 +233,16 @@ fn index_id_listed_as_other_key_or_unknown_version_is_never_pushed_into() {
         assert_eq!(row.remote_id, None);
     }
 }
+
+#[test]
+fn pending_entry_is_never_the_last_hash() {
+    let (temp, key) = (TempDir::new().unwrap(), Key::generate());
+    local_file(&temp, "x");
+    let entry = IndexEntry {
+        remote_id: "gist-9".into(),
+        pending: true,
+        ..IndexEntry::default()
+    };
+    let row = row_of(rows(&temp, &key, &[], &index_with(entry)));
+    assert_eq!(row.input.last, None);
+}

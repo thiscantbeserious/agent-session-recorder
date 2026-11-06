@@ -10,7 +10,7 @@ use super::lock::SyncLock;
 use super::plan::{decide, resolve, Command, Decision, Local, Remote, SkipReason};
 use super::pull::pull_one;
 use super::push::{heal, push_one};
-use super::record::{record, Synced};
+use super::record::{record, save_index, Synced};
 use super::scan::{scan, select, Duplicate, Row};
 use crate::StorageManager;
 
@@ -283,7 +283,7 @@ impl Engine<'_> {
             token: token.clone(),
         };
         record(index, &row.path, synced);
-        index::save(&self.storage.storage_dir(), index).map_err(|e| e.to_string())
+        save_index(self.storage, index)
     }
 
     fn delete_one(&self, row: &Row, index: &mut Index) -> Result<Outcome, Stop> {
@@ -296,9 +296,9 @@ impl Engine<'_> {
             Ok(()) => {}
         }
         index.entries.remove(&row.path);
-        Ok(match index::save(&self.storage.storage_dir(), index) {
+        Ok(match save_index(self.storage, index) {
             Ok(()) => Outcome::Done(0),
-            Err(e) => Outcome::Failed(e.to_string()),
+            Err(e) => Outcome::Failed(e),
         })
     }
 }
