@@ -837,12 +837,12 @@ Depends on: Stage 39
 Goal: docs match the tree, all gates green.
 Owner: implementer
 
-- [ ] ADR "Module layout" table marked superseded by the refinement, refinement status Accepted.
-- [ ] Stage 24 rules re-run with the new paths: no `println!` or `eprintln!` in `src/sync/`,
+- [x] ADR "Module layout" table marked superseded by the refinement, refinement status Accepted.
+- [x] Stage 24 rules re-run with the new paths: no `println!` or `eprintln!` in `src/sync/`,
       `Command::new` only in `backend/gist/runner.rs` and `app/auto/mod.rs`, no `--force` in git push args.
-- [ ] Full gates plus `cargo build --release && ./tests/e2e_test.sh`, Codecov patch coverage
+- [x] Full gates plus `cargo build --release && ./tests/e2e_test.sh`, Codecov patch coverage
       not lower than before Stage 32, `wc -l` of every file in `src/sync/` about 400 or less.
-- [ ] Changed files vs origin/main recorded in the progress notes (expected 100, see ADR PR size).
+- [x] Changed files vs origin/main recorded in the progress notes (expected 100, see ADR PR size).
 
 Files: `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
 Depends on: Stage 40
@@ -924,5 +924,5 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 37 | todo | module refactor, waits for ADR approval |
 | 38 | todo | module refactor, waits for ADR approval |
 | 39 | todo | module refactor, waits for ADR approval |
-| 40 | todo | module refactor, waits for ADR approval |
-| 41 | todo | module refactor, waits for ADR approval |
+| 40 | done | layers, facade, testing module, layer check |
+| 41 | done | docs match the tree, 100 files changed vs main, largest file 370 lines, Command::new only in runner.rs and app/auto/mod.rs |
