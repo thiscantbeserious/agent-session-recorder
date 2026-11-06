@@ -22,6 +22,9 @@ pub enum BackendError {
     Unreachable(String),
     #[error("GitHub rate limit reached")]
     RateLimited,
+    /// `git push` was rejected because the gist moved on, Stage 17 maps it to `Changed`.
+    #[error("the remote changed during the push")]
+    Rejected,
     #[error("{0}")]
     Other(String),
 }

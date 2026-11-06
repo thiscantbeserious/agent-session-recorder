@@ -66,12 +66,22 @@ const CREDENTIALS: [&str; 3] = [
     "invalid username or password",
 ];
 
+const RATE_LIMIT: [&str; 4] = [
+    "api rate limit",
+    "secondary rate limit",
+    "http 429",
+    "error: 429",
+];
+const REJECTED: [&str; 3] = ["! [rejected]", "non-fast-forward", "fetch first"];
+
 /// Map a failed `gh` or `git` run to one clear error, never echoes raw stderr.
 pub fn map_failure(tool: &'static str, stderr: &str, code: Option<i32>) -> BackendError {
     let text = stderr.to_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| text.contains(n));
-    if text.contains("rate limit") || text.contains("http 429") {
+    if has(&RATE_LIMIT) {
         BackendError::RateLimited
+    } else if tool == "git" && has(&REJECTED) {
+        BackendError::Rejected
     } else if text.contains("not logged in") || text.contains("gh auth login") {
         BackendError::NotLoggedIn
     } else if text.contains("scope") {
@@ -192,6 +202,32 @@ mod tests {
         );
         let plain = gh("HTTP 403: Resource not accessible");
         assert!(matches!(plain, BackendError::Other(_)), "{plain:?}");
+    }
+
+    #[test]
+    fn git_push_rate_limit_is_rate_limited() {
+        let text = "fatal: unable to access 'https://gist.github.com/x.git/': The requested URL returned error: 429";
+        assert_eq!(
+            map_failure("git", text, Some(128)),
+            BackendError::RateLimited
+        );
+    }
+
+    #[test]
+    fn a_path_echoing_rate_limit_is_not_rate_limited() {
+        let text = "error: pathspec 'notes/rate limit ideas.cast.gz' did not match any file";
+        let err = map_failure("git", text, Some(1));
+        assert!(matches!(err, BackendError::Other(_)), "{err:?}");
+    }
+
+    #[test]
+    fn git_push_rejection_is_rejected() {
+        for text in [
+            "To https://gist.github.com/x.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs",
+            "hint: Updates were rejected because the tip of your current branch is behind\nhint: (non-fast-forward)",
+        ] {
+            assert_eq!(map_failure("git", text, Some(1)), BackendError::Rejected, "{text}");
+        }
     }
 
     #[test]
