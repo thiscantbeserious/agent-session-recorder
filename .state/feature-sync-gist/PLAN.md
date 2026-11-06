@@ -707,14 +707,14 @@ Depends on: Stage 24
 Goal: `src/sync/backend/` with the trait, the fakes and `gist/`, pure move.
 Owner: implementer
 
-- [ ] `git mv`: `backend.rs` to `backend/mod.rs`, `memory.rs` and `file.rs` to `backend/`,
+- [x] `git mv`: `backend.rs` to `backend/mod.rs`, `memory.rs` and `file.rs` to `backend/`,
       `gist.rs` to `backend/gist/mod.rs`, `gist_parse.rs` to `backend/gist/parse.rs`,
       `parts.rs`, `pace.rs` and `runner.rs` to `backend/gist/`.
-- [ ] Moved files fix their own `super::` paths (no `super::super` across layers, see ADR rule 6).
-- [ ] `sync/mod.rs` shims: `pub use backend::{file, gist, memory};` and
+- [x] Moved files fix their own `super::` paths (no `super::super` across layers, see ADR rule 6).
+- [x] `sync/mod.rs` shims: `pub use backend::{file, gist, memory};` and
       `pub use backend::gist::{pace, parse as gist_parse, parts, runner};`.
-- [ ] Grep: no file in `src/sync/backend/` names `crypto`, `engine` or `app`.
-- [ ] Test names and snap hashes identical.
+- [x] Grep: no file in `src/sync/backend/` names `crypto`, `engine` or `app`.
+- [x] Test names and snap hashes identical.
 
 Files: `src/sync/mod.rs`, `src/sync/backend.rs`, `src/sync/backend/mod.rs`, `src/sync/memory.rs`, `src/sync/backend/memory.rs`, `src/sync/file.rs`, `src/sync/backend/file.rs`, `src/sync/gist.rs`, `src/sync/backend/gist/mod.rs`, `src/sync/gist_parse.rs`, `src/sync/backend/gist/parse.rs`, `src/sync/parts.rs`, `src/sync/backend/gist/parts.rs`, `src/sync/pace.rs`, `src/sync/backend/gist/pace.rs`, `src/sync/runner.rs`, `src/sync/backend/gist/runner.rs`
 Depends on: Stage 32

@@ -1,15 +1,20 @@
 //! Gist backend, `gh` for create, list and delete, `git` for the binary blob.
 
+pub mod pace;
+pub mod parse;
+pub mod parts;
+pub mod runner;
+
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use super::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
-use super::gist_parse::{check_auth, id_from_create_output, map_failure, parse_list, DESC_PREFIX};
-use super::pace::{Clock, Pacer, SystemClock};
-use super::parts::{check_sequence, part_names, PartReader, PartWriter, PART_SIZE};
-use super::runner::{Output, ProcessRunner, Runner};
+use self::pace::{Clock, Pacer, SystemClock};
+use self::parse::{check_auth, id_from_create_output, map_failure, parse_list, DESC_PREFIX};
+use self::parts::{check_sequence, part_names, PartReader, PartWriter, PART_SIZE};
+use self::runner::{Output, ProcessRunner, Runner};
+use crate::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 
 /// Neutral dotfile, only there because `gh gist create` refuses an empty gist.
 const STUB_FILE: &str = ".keep";
@@ -334,10 +339,10 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::backend::{pull_bytes, push_bytes};
-    use super::super::pace::tests::FakeClock;
-    use super::super::parts::part_name;
+    use super::pace::tests::FakeClock;
+    use super::parts::part_name;
     use super::*;
+    use crate::sync::backend::{pull_bytes, push_bytes};
     use std::cell::RefCell;
     use std::collections::VecDeque;
     use std::time::Duration;
@@ -543,7 +548,7 @@ mod tests {
             vec![RemoteEntry {
                 id: "a1".into(),
                 meta_token: "T".into(),
-                created_at: super::super::gist_parse::NO_CREATED_AT.into(),
+                created_at: super::parse::NO_CREATED_AT.into(),
             }]
         );
     }

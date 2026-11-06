@@ -5,7 +5,7 @@ use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
 
-use super::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
+use super::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 
 /// `<id>.blob`, `<id>.manifest` and `<id>.desc` per entry inside `dir`, same rules as the
 /// memory backend (no `.desc` means pending and unlisted).
@@ -143,8 +143,8 @@ impl SyncBackend for FileBackend {
 
 #[cfg(test)]
 mod tests {
-    use super::super::backend::{pull_bytes, push_bytes};
     use super::*;
+    use crate::sync::backend::{pull_bytes, push_bytes};
 
     fn backend() -> (tempfile::TempDir, FileBackend) {
         let dir = tempfile::tempdir().unwrap();

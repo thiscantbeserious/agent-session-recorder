@@ -1,6 +1,6 @@
 //! Pure parsing for the gist backend, no process and no disk.
 
-use super::backend::{BackendError, RemoteEntry};
+use crate::sync::backend::{BackendError, RemoteEntry};
 
 /// Description prefix of every agr gist.
 pub const DESC_PREFIX: &str = "agr:v1 ";

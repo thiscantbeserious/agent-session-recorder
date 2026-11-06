@@ -1,5 +1,9 @@
 //! Backend-neutral transport, backends only ever see opaque tokens and sealed bytes.
 
+pub mod file;
+pub mod gist;
+pub mod memory;
+
 use std::io::{self, Read, Write};
 
 use thiserror::Error;

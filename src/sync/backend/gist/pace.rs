@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
-use super::backend::BackendError;
+use crate::sync::backend::BackendError;
 
 /// Mutating calls stay at least this far apart, which is at most 60 per minute.
 pub const MIN_GAP: Duration = Duration::from_secs(1);
