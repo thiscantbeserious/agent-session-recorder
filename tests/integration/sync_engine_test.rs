@@ -741,3 +741,23 @@ fn pull_of_a_deleted_gist_is_skipped_as_gone_and_keeps_the_index_entry() {
     assert!(!a.dir().join("claude/a.cast.gz").exists());
     assert!(only_entry(&a, "claude/a.cast.gz").token.is_some());
 }
+
+#[test]
+fn duplicate_status_line_says_duplicate_with_its_reason() {
+    let (m, backend, key) = (machine(), MemoryBackend::new(), Key::generate());
+    let path = "claude/a.cast.gz";
+    m.session("claude", "a.cast.gz", CAST);
+    for hash in ["one", "two"] {
+        let tok = token(&key, path, hash);
+        backend.put(None, &tok, &seal(&key, &blob_aad(path, 1), b"x"));
+    }
+    let report = m.engine(&backend, &key).status(&[]).unwrap();
+    let lines = agr::sync::format::status_lines(&report, "memory");
+    let line = lines.iter().find(|l| l.contains(path)).unwrap();
+    assert!(
+        line.starts_with("  claude/a.cast.gz duplicate (")
+            && line.ends_with("): duplicate remote copies"),
+        "{line}"
+    );
+    assert!(lines.last().unwrap().contains("1 duplicate"), "{lines:?}");
+}

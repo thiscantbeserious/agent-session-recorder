@@ -6,13 +6,14 @@ use super::plan::Decision;
 use super::run::{Item, Outcome, Report};
 use super::scan::Duplicate;
 
-const ORDER: [&str; 7] = [
+const ORDER: [&str; 8] = [
     "in sync",
     "local ahead (push)",
     "local only (push)",
     "remote ahead (pull)",
     "remote only (pull)",
     "conflict",
+    "duplicate",
     "skipped",
 ];
 
@@ -25,9 +26,8 @@ pub fn label(item: &Item) -> &'static str {
         Decision::Pull if item.on_local => ORDER[3],
         Decision::Pull => ORDER[4],
         Decision::Conflict => ORDER[5],
-        Decision::OtherKey | Decision::UnknownVersion | Decision::Duplicate | Decision::Skip(_) => {
-            ORDER[6]
-        }
+        Decision::Duplicate => ORDER[6],
+        Decision::OtherKey | Decision::UnknownVersion | Decision::Skip(_) => ORDER[7],
     }
 }
 
@@ -262,7 +262,7 @@ mod tests {
         assert_eq!(
             lines[1..4],
             [
-                "  a/d.cast.gz skipped (2 KiB)",
+                "  a/d.cast.gz duplicate (2 KiB)",
                 "    also on the remote: x2 (same content), delete with `gh gist delete x2`",
                 "    also on the remote: y3 (different content), delete with `gh gist delete y3`",
             ]
