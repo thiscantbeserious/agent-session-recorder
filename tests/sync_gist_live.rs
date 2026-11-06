@@ -26,6 +26,38 @@ impl Drop for Cleanup<'_> {
     }
 }
 
+/// Sorted file names of a gist, read through `gh api`.
+fn gist_files(id: &str) -> Vec<String> {
+    let out = std::process::Command::new("gh")
+        .args(["api", &format!("gists/{id}"), "--jq", ".files | keys | .[]"])
+        .output()
+        .unwrap();
+    String::from_utf8(out.stdout)
+        .unwrap()
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+#[ignore = "creates a real secret gist, run by hand"]
+fn gist_parts_stub_and_shrink() {
+    let backend = GistBackend::new().with_part_size(1024 * 1024);
+    backend.check().unwrap();
+    let blob = binary_blob(3 * 1024 * 1024 + 5);
+    let id = backend.push(None, "live-parts", &blob).unwrap();
+    let _cleanup = Cleanup(&backend, id.clone());
+    assert_eq!(
+        gist_files(&id),
+        [".keep", "data.000", "data.001", "data.002", "data.003"]
+    );
+    assert_eq!(backend.pull(&id).unwrap(), blob);
+    let small = binary_blob(10);
+    backend.push(Some(&id), "live-shrunk", &small).unwrap();
+    assert_eq!(gist_files(&id), [".keep", "data.000"]);
+    assert_eq!(backend.pull(&id).unwrap(), small);
+}
+
 #[test]
 #[ignore = "creates a real secret gist, run by hand"]
 fn gist_round_trip_binary_blob() {
