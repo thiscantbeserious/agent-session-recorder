@@ -472,15 +472,18 @@ Depends on: Stage 18, Stage 19, Stage 19b
 Goal: rollback and stale copies are rejected, the manifest wins over the description.
 Owner: implementer
 
-- [ ] RED: a manifest gen lower than the index gen is rejected ("older than the last sync"),
+- [x] RED: a manifest gen lower than the index gen is rejected ("older than the last sync"),
       the local file and the `.bak` are untouched.
-- [ ] RED: a manifest for another path, or a blob that does not open with the manifest gen,
+- [x] RED: a manifest for another path, or a blob that does not open with the manifest gen,
       is rejected.
-- [ ] RED: a manifest newer than the description is pulled and the description repaired.
-- [ ] RED: pull records gen and token in the index.
-- [ ] GREEN in `pull.rs`.
+- [x] RED: a manifest newer than the description is pulled and the description repaired.
+- [x] RED: pull records gen and token in the index.
+- [x] GREEN in `pull.rs`.
 
-Files: `src/sync/pull.rs`, `tests/integration/sync_engine_test.rs`
+- [x] Follow-up from Stage 20 (D3/D4): `delete_one` returns `Result<Outcome, Stop>`, a `RateLimited`
+      during `agr sync delete` stops the run with `SyncError::RateLimited { left }`, tested.
+
+Files: `src/sync/pull.rs`, `src/sync/run.rs`, `tests/integration/sync_engine_test.rs`
 Depends on: Stage 20
 
 ### Stage 22: Concurrency test, three machines on one remote
@@ -579,7 +582,7 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 19 | done | |
 | 19b | done | Batch 12 review fixes |
 | 20 | pending | |
-| 21 | pending | |
+| 21 | done | also the delete rate limit stop from Stage 20 |
 | 22 | pending | three machine concurrency test |
 | 23 | pending | |
 | 24 | pending | |

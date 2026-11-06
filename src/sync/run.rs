@@ -143,8 +143,13 @@ impl Engine<'_> {
         }
         let _lock = SyncLock::acquire(&self.storage.storage_dir())?;
         let mut loaded = self.load(sessions)?;
-        for row in std::mem::take(&mut loaded.rows) {
-            let outcome = self.delete_one(&row, &mut loaded.index);
+        let mut rows = std::mem::take(&mut loaded.rows).into_iter();
+        while let Some(row) = rows.next() {
+            let outcome = self.delete_one(&row, &mut loaded.index).map_err(|Stop| {
+                SyncError::RateLimited {
+                    left: rows.len() + 1,
+                }
+            })?;
             let done = matches!(outcome, Outcome::Done(_));
             let item = self.item(&row, decide(&row.input), outcome);
             loaded.report.deleted += usize::from(done);
@@ -281,18 +286,20 @@ impl Engine<'_> {
         index::save(&self.storage.storage_dir(), index).map_err(|e| e.to_string())
     }
 
-    fn delete_one(&self, row: &Row, index: &mut Index) -> Outcome {
+    fn delete_one(&self, row: &Row, index: &mut Index) -> Result<Outcome, Stop> {
         let Some(id) = &row.remote_id else {
-            return Outcome::Skipped("not on the remote".into());
+            return Ok(Outcome::Skipped("not on the remote".into()));
         };
-        if let Err(e) = self.backend.delete(id) {
-            return Outcome::Failed(e.to_string());
+        match self.backend.delete(id) {
+            Err(BackendError::RateLimited) => return Err(Stop),
+            Err(e) => return Ok(Outcome::Failed(e.to_string())),
+            Ok(()) => {}
         }
         index.entries.remove(&row.path);
-        match index::save(&self.storage.storage_dir(), index) {
+        Ok(match index::save(&self.storage.storage_dir(), index) {
             Ok(()) => Outcome::Done(0),
             Err(e) => Outcome::Failed(e.to_string()),
-        }
+        })
     }
 }
 

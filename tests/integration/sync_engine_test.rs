@@ -787,6 +787,9 @@ struct Spy {
     /// The nth push (1 based) fails with this error.
     push_error: RefCell<Option<(usize, BackendError)>>,
     describe_error: RefCell<Option<BackendError>>,
+    /// The nth delete (1 based) fails with this error.
+    delete_error: RefCell<Option<(usize, BackendError)>>,
+    deletes: Cell<usize>,
 }
 
 impl SyncBackend for Spy {
@@ -828,6 +831,14 @@ impl SyncBackend for Spy {
         self.inner.pull(id)
     }
     fn delete(&self, id: &str) -> Result<(), BackendError> {
+        self.deletes.set(self.deletes.get() + 1);
+        let mut failing = self.delete_error.borrow_mut();
+        if failing
+            .as_ref()
+            .is_some_and(|(n, _)| *n == self.deletes.get())
+        {
+            return Err(failing.take().unwrap().1);
+        }
         self.inner.delete(id)
     }
 }
@@ -1014,4 +1025,138 @@ fn rate_limit_stops_the_run_keeps_earlier_sessions_and_the_next_run_resumes() {
     let report = m.engine(&spy, &key).push(&opts()).unwrap();
     assert_eq!((report.pushed, report.failed), (2, 0), "{:?}", report.items);
     assert_eq!((spy.creates.get(), spy.inner.len()), (3, 3));
+}
+
+const OLDER: &str = "remote version is older than the last sync, not pulling";
+
+fn sealed_gen(key: &Key, path: &str, plain: &[u8], gen: u64) -> (String, Vec<u8>) {
+    let meta = Meta {
+        v: 2,
+        path: path.into(),
+        sha256: sha256_hex(plain),
+        size: plain.len() as u64,
+        gen,
+    };
+    (
+        seal_meta(key, &meta),
+        seal(key, &blob_aad(path, gen), plain),
+    )
+}
+
+/// Machine A pushed gen 1, another machine then pushed gen 2 that A pulled.
+fn pulled_gen_2() -> (Machine, MemoryBackend, Key, String) {
+    let (m, backend, key) = pushed_machine();
+    let id = only_entry(&m, A).remote_id;
+    let (token, blob) = sealed_gen(&key, A, CAST.replace("secret", "two").as_bytes(), 2);
+    backend.put(Some(&id), &token, &blob);
+    let report = m.engine(&backend, &key).pull(&opts()).unwrap();
+    assert_eq!(report.pulled, 1, "{:?}", report.items);
+    (m, backend, key, id)
+}
+
+fn pull_item(m: &Machine, backend: &dyn SyncBackend, key: &Key) -> Outcome {
+    let report = m.engine(backend, key).pull(&opts()).unwrap();
+    assert_eq!(report.pulled, 0, "{:?}", report.items);
+    item_of(&report, A).outcome.clone()
+}
+
+#[test]
+fn manifest_gen_lower_than_the_index_gen_is_rejected_and_nothing_changes() {
+    let (m, backend, key, id) = pulled_gen_2();
+    let old = token_gen(&key, "x", 1);
+    let (t3, b3) = sealed_gen(&key, A, b"three", 3);
+    backend.put(Some(&id), &t3, &b3);
+    backend.set_manifest(&id, Some(old));
+    let (before, entry) = (fs::read(m.dir().join(A)).unwrap(), only_entry(&m, A));
+    let names = m.names("claude");
+    let outcome = pull_item(&m, &backend, &key);
+    assert_eq!(outcome, Outcome::Failed(OLDER.into()));
+    assert_eq!(fs::read(m.dir().join(A)).unwrap(), before);
+    assert_eq!(only_entry(&m, A), entry);
+    assert_eq!(m.names("claude"), names);
+}
+
+#[test]
+fn manifest_for_another_path_is_rejected_and_nothing_is_written() {
+    let (key, backend) = (Key::generate(), MemoryBackend::new());
+    let (token, _) = sealed_gen(&key, A, b"plain", 1);
+    let (other, blob) = sealed_gen(&key, "claude/b.cast.gz", b"plain", 1);
+    let id = backend.put(None, &token, &blob);
+    backend.set_manifest(&id, Some(other));
+    let b = machine();
+    let outcome = pull_item(&b, &backend, &key);
+    assert!(matches!(&outcome, Outcome::Failed(why) if why.contains("another session")));
+    assert!(b.names("claude").is_empty());
+    assert!(index::load(b.dir()).0.entries.is_empty());
+}
+
+#[test]
+fn blob_that_does_not_open_with_the_manifest_gen_is_rejected() {
+    let (key, backend) = (Key::generate(), MemoryBackend::new());
+    let (token, _) = sealed_gen(&key, A, b"plain", 2);
+    let stale_blob = seal(&key, &blob_aad(A, 1), b"plain");
+    backend.put(None, &token, &stale_blob);
+    let b = machine();
+    assert!(matches!(pull_item(&b, &backend, &key), Outcome::Failed(_)));
+    assert!(b.names("claude").is_empty());
+    assert!(index::load(b.dir()).0.entries.is_empty());
+}
+
+#[test]
+fn missing_manifest_is_rejected_not_guessed() {
+    let (key, backend) = (Key::generate(), MemoryBackend::new());
+    let (token, blob) = sealed_gen(&key, A, b"plain", 1);
+    let id = backend.put(None, &token, &blob);
+    backend.set_manifest(&id, None);
+    let b = machine();
+    let outcome = pull_item(&b, &backend, &key);
+    assert_eq!(
+        outcome,
+        Outcome::Failed("remote has no manifest, not pulling".into())
+    );
+    assert!(b.names("claude").is_empty());
+}
+
+/// Description lags at gen 1, the manifest and blob are gen 2.
+fn manifest_newer_than_description() -> (MemoryBackend, Key, String, String) {
+    let (key, backend) = (Key::generate(), MemoryBackend::new());
+    let (t1, _) = sealed_gen(&key, A, b"one", 1);
+    let (t2, b2) = sealed_gen(&key, A, b"two", 2);
+    let id = backend.put(None, &t2, &b2);
+    backend.set_description(&id, Some(t1));
+    (backend, key, id, t2)
+}
+
+#[test]
+fn manifest_newer_than_the_description_wins_and_the_description_is_repaired() {
+    let (backend, key, id, t2) = manifest_newer_than_description();
+    let b = machine();
+    let report = b.engine(&backend, &key).pull(&opts()).unwrap();
+    assert_eq!(report.pulled, 1, "{:?}", report.items);
+    assert_eq!(fs::read(b.dir().join(A)).unwrap(), b"two");
+    assert_eq!(backend.description(&id), Some(t2));
+}
+
+#[test]
+fn pull_records_the_manifest_token_and_gen_not_the_description_ones() {
+    let (backend, key, _id, t2) = manifest_newer_than_description();
+    let b = machine();
+    b.engine(&backend, &key).pull(&opts()).unwrap();
+    let entry = only_entry(&b, A);
+    assert_eq!((entry.gen, entry.token), (2, Some(t2)));
+}
+
+#[test]
+fn rate_limit_during_delete_stops_the_run_and_keeps_earlier_deletes() {
+    let (m, spy, key) = spied();
+    *spy.delete_error.borrow_mut() = Some((2, BackendError::RateLimited));
+    let names: Vec<String> = [A, "claude/b.cast.gz", "codex/c.cast.gz"]
+        .map(String::from)
+        .to_vec();
+    let err = m.engine(&spy, &key).delete(&names).unwrap_err();
+    assert_eq!(err, SyncError::RateLimited { left: 2 });
+    let (index, _) = index::load(m.dir());
+    assert!(!index.entries.contains_key(A));
+    assert!(index.entries.contains_key("claude/b.cast.gz"));
+    assert_eq!(spy.inner.len(), 2);
 }
