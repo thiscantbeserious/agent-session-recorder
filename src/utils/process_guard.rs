@@ -102,3 +102,18 @@ impl ProcessGuard {
         false
     }
 }
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn orphaned_counts_as_interrupted() {
+        // A ppid snapshot that differs from the real parent means the parent died.
+        let guard = ProcessGuard {
+            interrupted: Arc::new(AtomicBool::new(false)),
+            initial_ppid: u32::MAX,
+        };
+        assert!(guard.is_interrupted());
+    }
+}
