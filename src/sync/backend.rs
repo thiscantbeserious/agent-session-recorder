@@ -20,6 +20,8 @@ pub enum BackendError {
     MissingScope,
     #[error("remote not reachable: {0}")]
     Unreachable(String),
+    #[error("GitHub rate limit reached")]
+    RateLimited,
     #[error("{0}")]
     Other(String),
 }

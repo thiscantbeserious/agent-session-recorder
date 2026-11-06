@@ -70,7 +70,9 @@ const CREDENTIALS: [&str; 3] = [
 pub fn map_failure(tool: &'static str, stderr: &str, code: Option<i32>) -> BackendError {
     let text = stderr.to_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| text.contains(n));
-    if text.contains("not logged in") || text.contains("gh auth login") {
+    if text.contains("rate limit") || text.contains("http 429") {
+        BackendError::RateLimited
+    } else if text.contains("not logged in") || text.contains("gh auth login") {
         BackendError::NotLoggedIn
     } else if text.contains("scope") {
         BackendError::MissingScope
@@ -171,6 +173,25 @@ mod tests {
             gh("connection timed out"),
             BackendError::Unreachable(_)
         ));
+    }
+
+    #[test]
+    fn rate_limits_map_to_their_own_variant() {
+        let gh = |s| map_failure("gh", s, Some(1));
+        for text in [
+            "gh: API rate limit exceeded for user ID 1. (HTTP 403)",
+            "HTTP 429: Too Many Requests (https://api.github.com/gists)",
+            "HTTP 403: You have exceeded a secondary rate limit. Please wait a few minutes",
+            "remote: You have exceeded a secondary rate limit.\nfatal: unable to access",
+        ] {
+            assert_eq!(gh(text), BackendError::RateLimited, "{text}");
+        }
+        assert_eq!(
+            map_failure("git", "HTTP 429", Some(128)),
+            BackendError::RateLimited
+        );
+        let plain = gh("HTTP 403: Resource not accessible");
+        assert!(matches!(plain, BackendError::Other(_)), "{plain:?}");
     }
 
     #[test]

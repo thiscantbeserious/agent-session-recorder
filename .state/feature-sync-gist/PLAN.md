@@ -335,12 +335,12 @@ Depends on: Stage 9, Stage 13
 Goal: a distinct error that stops the run, and a pure pacer for mutating calls.
 Owner: implementer
 
-- [ ] RED: `map_failure` maps `HTTP 403` or `HTTP 429` with `rate limit`, and
+- [x] RED: `map_failure` maps `HTTP 403` or `HTTP 429` with `rate limit`, and
       `secondary rate limit`, to `BackendError::RateLimited`, a plain 403 stays as it is.
-- [ ] RED: `explain(RateLimited)` gives one line plus "run again later".
-- [ ] RED: `Pacer` with an injected clock and sleeper waits so two mutating calls are at least
+- [x] RED: `explain(RateLimited)` gives one line plus "run again later".
+- [x] RED: `Pacer` with an injected clock and sleeper waits so two mutating calls are at least
       one second apart (D3: pace only, no call budget per run).
-- [ ] GREEN: `src/sync/pace.rs` (pure, no thread sleep in tests), new variant, mapping.
+- [x] GREEN: `src/sync/pace.rs` (pure, no thread sleep in tests), new variant, mapping.
 
 Files: `src/sync/backend.rs`, `src/sync/gist_parse.rs`, `src/sync/pace.rs`, `src/sync/mod.rs`,
        `src/sync/setup.rs`
