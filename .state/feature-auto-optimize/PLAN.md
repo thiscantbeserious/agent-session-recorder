@@ -130,18 +130,19 @@ pub fn apply_prompt_list(result: &MigrateResult, prompts: &[PostMigratePrompt], 
 in `handle_migrate`, Stage 6).
 Owner: implementer
 
-- [ ] RED: `"recording.auto_optimize"` in `added_fields`, `ask` returns false, content has
+- [x] RED: `"recording.auto_optimize"` in `added_fields`, `ask` returns false, content has
       `auto_optimize = false`, everything else unchanged (comments kept).
-- [ ] RED: `ask` returns true keeps `auto_optimize = true`.
-- [ ] RED: key not in `added_fields` (already in the file), `ask` is never called, content
+- [x] RED: `ask` returns true keeps `auto_optimize = true`.
+- [x] RED: key not in `added_fields` (already in the file), `ask` is never called, content
       equals `result.content`.
-- [ ] RED: a test-only prompt list with two entries asks both in order and writes both (runner
+- [x] RED: a test-only prompt list with two entries asks both in order and writes both (runner
       takes the list as a parameter, `apply_prompts` passes `PROMPTS`).
-- [ ] RED: `ask` error is returned as `Err` (no content returned, so nothing can be written).
-- [ ] RED: fresh config (`migrate_config("")`, whole `[recording]` section added) also asks,
+- [x] RED: `ask` error is returned as `Err` (no content returned, so nothing can be written).
+- [x] RED: fresh config (`migrate_config("")`, whole `[recording]` section added) also asks,
       `added_fields` then holds `"recording.auto_optimize"` via `track_added_fields`.
-- [ ] GREEN: dotted key walk with `toml_edit`, set `value(bool)`. `pub mod prompts;` plus
-      `pub use prompts::*;` in `src/config/migrate/mod.rs` (`config` re-exports `migrate::*`).
+- [x] GREEN: dotted key walk with `toml_edit`, set `value(bool)`. `pub mod prompts;` plus
+      `pub use prompts::{apply_prompt_list, apply_prompts, PostMigratePrompt, PROMPTS};`
+      (explicit, not a wildcard, Sonar S2208) in `src/config/migrate/mod.rs` (`config` re-exports `migrate::*`).
 
 Files: `src/config/migrate/prompts.rs`, `src/config/migrate/mod.rs`, `tests/integration/config_prompts_test.rs`, `tests/integration.rs`
 Depends on: Stage 2
