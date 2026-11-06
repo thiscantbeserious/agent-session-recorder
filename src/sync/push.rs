@@ -145,12 +145,25 @@ impl Push<'_> {
         }
         let known = index.entries.get(&m.path).map_or(0, |e| e.gen);
         if m.gen >= known.max(self.row.gen) {
-            let healed = self.engine.backend.describe(id, theirs);
-            if matches!(healed, Err(BackendError::RateLimited)) {
-                return Err(Fail::RateLimited);
-            }
+            self.heal_description(id, theirs)?;
         }
         Err(CHANGED.into())
+    }
+
+    /// D11: GitHub has no conditional description update, so the manifest is read again right
+    /// before and the description is only set when it still is the adopted token. A millisecond
+    /// window remains (README known limits), a newer describe in it heals on the next run.
+    /// ponytail: the re-read is a full `pull` (a clone for the gist), a manifest only read on
+    /// the trait would be cheaper, add when adopt shows up in practice.
+    fn heal_description(&self, id: &str, theirs: &str) -> Result<(), Fail> {
+        let current = self.engine.backend.pull(id).map(|(manifest, _)| manifest);
+        if !matches!(&current, Ok(Some(now)) if now == theirs) {
+            return Ok(());
+        }
+        match self.engine.backend.describe(id, theirs) {
+            Err(BackendError::RateLimited) => Err(Fail::RateLimited),
+            _ => Ok(()),
+        }
     }
 
     fn finish(&self, id: &str, token: &str, gen: u64, index: &mut Index) -> Result<(), Fail> {

@@ -593,18 +593,20 @@ Review notes for Stages 28 and 29 (D9 batch 1 pair review, 2026-11-06), must be 
 Goal: no backend holds a whole blob in memory, behaviour otherwise unchanged.
 Owner: implementer
 
-- [ ] Trait as in ADR D9: `push(.., blob: BlobSource)`, `pull -> (Option<String>, Box<dyn Read>)`.
-- [ ] RED (gist): the source is not called when `expected` does not match, a source error
+- [x] Trait as in ADR D9: `push(.., blob: BlobSource)`, `pull -> (Option<String>, Box<dyn Read>)`.
+- [x] RED (gist): the source is not called when `expected` does not match, a source error
       commits and pushes nothing, parts roll over at `part_size` (fake runner, small part
       size), `data.000` exists for an empty blob, stale parts removed, shrink and grow.
-- [ ] RED (gist): pull reader yields the parts in order, the scratch dir is gone after the
+- [x] RED (gist): pull reader yields the parts in order, the scratch dir is gone after the
       reader is dropped, missing or extra part still errors before reading.
-- [ ] RED (file, memory): push and pull round trip through the new signatures, CAS unchanged.
-- [ ] GREEN: `PartWriter` in `gist.rs` (or `parts.rs` if `gist.rs` passes ~400 lines without
+- [x] RED (file, memory): push and pull round trip through the new signatures, CAS unchanged.
+- [x] GREEN: `PartWriter` in `gist.rs` (or `parts.rs` if `gist.rs` passes ~400 lines without
       tests), `split` and `join` removed from `parts.rs`. Engine adapted minimally: push passes
       a source that writes today's sealed bytes, pull reads to end and opens as today.
-- [ ] Wrapper backend in `tests/integration/helpers/sync_net.rs` and `tests/sync_gist_live.rs`
+- [x] Wrapper backend in `tests/integration/helpers/sync_net.rs` and `tests/sync_gist_live.rs`
       follow the new signatures.
+
+Done in two commits. Parts writer and reader live in `parts.rs` (`PartWriter`, `PartReader`, `part_names`), `split` and `join` are gone. Seams for Stage 29: `backend::push_bytes` and `backend::pull_bytes` (whole blob in memory, used by `push.rs`, `pull.rs`, fixtures), `Push.blob: Vec<u8>` in `push.rs`. D11 is in `push.rs` `heal_description` (re-reads via `pull`, README known limit added).
 
 Files: `src/sync/backend.rs`, `src/sync/gist.rs`, `src/sync/parts.rs`, `src/sync/file.rs`, `src/sync/memory.rs`, `src/sync/push.rs`, `src/sync/pull.rs`, `tests/integration/helpers/sync_net.rs`, `tests/sync_gist_live.rs`
 Depends on: Stage 25

@@ -282,6 +282,7 @@ Pull refuses a remote version that is older than the last one this machine synce
 - GitHub lists at most 3000 gists, with that many sync aborts.
 - A rename leaves the old name on your other machines until you run `agr sync delete` for it there.
 - If the key is compromised, every old version in the gist history is exposed. Deleting the gists is the only remedy.
+- When two machines push the same session at nearly the same time, GitHub has no conditional description update, so a newer description can be overwritten in a window of a few milliseconds. The next run of the newer machine repairs it.
 - A machine that lost its index (`.agr-sync.json` in the storage directory) trusts the first version it sees, so it cannot detect a rollback that happened before.
 
 ### Encryption and the key

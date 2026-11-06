@@ -787,12 +787,23 @@ struct Spy {
     /// The nth push (1 based) fails with this error.
     push_error: RefCell<Option<(usize, BackendError)>>,
     describe_error: RefCell<Option<BackendError>>,
+    /// Runs once before the next describe or pull, models another machine finishing a push
+    /// between our failed compare and our description repair.
+    between: RefCell<Option<Hook>>,
     /// The nth delete (1 based) fails with this error.
     delete_error: RefCell<Option<(usize, BackendError)>>,
     deletes: Cell<usize>,
     pulls: Cell<usize>,
     /// The nth pull (1 based) fails with this error.
     pull_error: RefCell<Option<(usize, BackendError)>>,
+}
+
+impl Spy {
+    fn interleave(&self) {
+        if let Some(hook) = self.between.borrow_mut().take() {
+            hook(&self.inner);
+        }
+    }
 }
 
 impl SyncBackend for Spy {
@@ -825,12 +836,14 @@ impl SyncBackend for Spy {
         self.inner.push(id, e, m, b)
     }
     fn describe(&self, id: &str, t: &str) -> Result<(), BackendError> {
+        self.interleave();
         match self.describe_error.borrow_mut().take() {
             Some(e) => Err(e),
             None => self.inner.describe(id, t),
         }
     }
     fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn std::io::Read>), BackendError> {
+        self.interleave();
         self.pulls.set(self.pulls.get() + 1);
         let mut failing = self.pull_error.borrow_mut();
         if failing
@@ -950,6 +963,41 @@ fn own_earlier_push_with_a_lost_index_save_is_adopted() {
         spy.inner.blob(&id).as_deref(),
         Some(&b"our earlier blob"[..])
     );
+}
+
+/// Another machine wins the race with a manifest of ours at `gen`, description still lagging.
+fn lagging_theirs(m: &Machine, spy: &Spy, key: &Key, gen: u64) -> (String, String) {
+    let id = only_entry(m, A).remote_id;
+    let theirs = token_gen(key, "other-hash", gen);
+    let (id2, t) = (id.clone(), theirs.clone());
+    race(spy, move |b| b.set_manifest(&id2, Some(t)));
+    (id, theirs)
+}
+
+#[test]
+fn the_description_repair_never_overwrites_a_newer_describe() {
+    let (m, spy, key) = spied();
+    let (id, _) = lagging_theirs(&m, &spy, &key, 2);
+    let newer = token_gen(&key, "newest-hash", 3);
+    let (id2, n) = (id.clone(), newer.clone());
+    *spy.between.borrow_mut() = Some(Box::new(move |b| {
+        b.put(Some(&id2), &n, b"newest");
+    }));
+    edit_a(&m);
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!(item_of(&report, A).outcome, Outcome::Failed(CHANGED.into()));
+    assert_eq!(spy.inner.manifest(&id), Some(newer.clone()));
+    assert_eq!(spy.inner.description(&id), Some(newer));
+}
+
+#[test]
+fn same_gen_other_content_is_described_as_theirs_and_reported_changed() {
+    let (m, spy, key) = spied();
+    let (id, theirs) = lagging_theirs(&m, &spy, &key, 1);
+    edit_a(&m);
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!(item_of(&report, A).outcome, Outcome::Failed(CHANGED.into()));
+    assert_eq!(spy.inner.description(&id), Some(theirs));
 }
 
 #[test]
