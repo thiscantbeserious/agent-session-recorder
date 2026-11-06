@@ -170,7 +170,8 @@ impl Recorder {
         })
     }
 
-    /// Remove the lock, recover a moved file, optimize it (unless interrupted), compress it and print the final line.
+    /// Remove the lock, recover a moved file, optimize it (unless interrupted),
+    /// compress it and print the final line.
     fn finish(
         &self,
         filepath: &Path,

@@ -172,7 +172,7 @@ Goal: README describes `auto_optimize`, the default, the post-migrate question, 
 keeps no backup (TUI optimize does) and the flow order (optimize, compress, stop banner, auto-analyze, storage warning).
 Owner: implementer
 
-- [ ] `[recording]` example and a short "Auto-optimize" section, mention `agr optimize` and
+- [x] `[recording]` example and a short "Auto-optimize" section, mention `agr optimize` and
       TUI optimize stay manual alternatives.
 
 Files: `README.md`
