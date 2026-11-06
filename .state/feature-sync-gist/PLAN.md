@@ -752,13 +752,13 @@ Depends on: Stage 34
 Goal: every crypto file about 400 lines or less, paths unchanged through re-exports.
 Owner: implementer
 
-- [ ] `crypto/mod.rs` keeps Key, CryptoError, hashes and their tests, `seal.rs` gets the v1
+- [x] `crypto/mod.rs` keeps Key, CryptoError, hashes and their tests, `seal.rs` gets the v1
       one-shot seal and open plus the meta token and their tests, `phrase.rs` the phrase and its tests.
-- [ ] `crypto/mod.rs` re-exports `seal`, `open`, `seal_meta`, `open_meta`, `Meta`,
+- [x] `crypto/mod.rs` re-exports `seal`, `open`, `seal_meta`, `open_meta`, `Meta`,
       `export_phrase`, `import_phrase`, `PhraseError`, every `crypto::x` path stays valid.
-- [ ] `crypto/blob.rs` to `crypto/blob/mod.rs` (`git mv`), its tests move unchanged to
+- [x] `crypto/blob.rs` to `crypto/blob/mod.rs` (`git mv`), its tests move unchanged to
       `crypto/blob/tests.rs` (`#[cfg(test)] mod tests;`).
-- [ ] `wc -l` of every file in `src/sync/crypto/` about 400 or less, test names and snap hashes identical.
+- [x] `wc -l` of every file in `src/sync/crypto/` about 400 or less, test names and snap hashes identical.
 
 Files: `src/sync/crypto/mod.rs`, `src/sync/crypto/seal.rs`, `src/sync/crypto/phrase.rs`, `src/sync/crypto/blob.rs`, `src/sync/crypto/blob/mod.rs`, `src/sync/crypto/blob/tests.rs`
 Depends on: Stage 35
