@@ -33,6 +33,8 @@ use serde::{Deserialize, Serialize};
 ///
 /// Contains version information, terminal dimensions, and optional metadata
 /// like title, command, and environment variables. Only `version` is required.
+/// Unknown fields are kept in `extra` and written back after the known ones.
+/// `Default` gives `version: 0`, which is not a valid header: set `version` explicitly.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Header {
     /// Format version (must be 3 for v3 format).
