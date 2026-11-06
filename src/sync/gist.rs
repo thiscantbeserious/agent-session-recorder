@@ -657,8 +657,8 @@ mod tests {
         let mut fake = with_manifest("CUR");
         fake.remote.push((part_name(0), b"blob".to_vec()));
         let base = tempfile::tempdir().unwrap();
-        let got = backend(&fake, base.path()).pull_b("abc123").unwrap();
-        assert_eq!(got, (Some("CUR".to_string()), b"blob".to_vec()));
+        let got = backend(&fake, base.path()).pull_b("abc123");
+        assert_eq!(got, Ok((Some("CUR".to_string()), b"blob".to_vec())));
         assert_eq!(fake.calls().len(), 1, "one clone");
     }
 
@@ -775,8 +775,8 @@ mod tests {
             ..Fake::default()
         };
         let base = tempfile::tempdir().unwrap();
-        let got = backend(&fake, base.path()).pull_b("abc123").unwrap();
-        assert_eq!(got, (None, vec![0, 159, 146, 150]));
+        let got = backend(&fake, base.path()).pull_b("abc123");
+        assert_eq!(got, Ok((None, vec![0, 159, 146, 150])));
         assert_eq!(fake.calls().len(), 1, "one clone, nothing else");
         let calls = scrub(&fake.calls(), base.path());
         assert_eq!(
@@ -884,8 +884,8 @@ mod tests {
             ..Fake::default()
         };
         let base = tempfile::tempdir().unwrap();
-        let got = backend(&fake, base.path()).pull_b("abc123").unwrap();
-        assert_eq!(got, (None, b"hello world".to_vec()));
+        let got = backend(&fake, base.path()).pull_b("abc123");
+        assert_eq!(got, Ok((None, b"hello world".to_vec())));
     }
 
     #[test]
@@ -897,8 +897,11 @@ mod tests {
             ..Fake::default()
         };
         let base = tempfile::tempdir().unwrap();
-        let err = backend(&fake, base.path()).pull_b("abc123").unwrap_err();
-        assert!(err.to_string().contains("data.001"), "{err}");
+        let got = backend(&fake, base.path()).pull_b("abc123");
+        assert!(
+            matches!(&got, Err(e) if e.to_string().contains("data.001")),
+            "{got:?}"
+        );
     }
 
     #[test]
@@ -944,10 +947,11 @@ mod tests {
             w.write_all(b"half")?;
             Err(std::io::Error::other("file vanished"))
         };
-        let err = backend(&fake, base.path())
-            .push("abc123", None, "N", &broken)
-            .unwrap_err();
-        assert!(err.to_string().contains("file vanished"), "{err}");
+        let got = backend(&fake, base.path()).push("abc123", None, "N", &broken);
+        assert!(
+            matches!(&got, Err(e) if e.to_string().contains("file vanished")),
+            "{got:?}"
+        );
         let calls = fake.calls();
         assert_eq!(calls.len(), 1, "only the clone: {calls:?}");
         assert!(fake.pushed.borrow().is_none());
@@ -990,7 +994,9 @@ mod tests {
             ..Fake::default()
         };
         let base = tempfile::tempdir().unwrap();
-        let (_, mut reader) = backend(&fake, base.path()).pull("abc123").unwrap();
+        let pulled = backend(&fake, base.path()).pull("abc123");
+        assert!(pulled.is_ok(), "{:?}", pulled.as_ref().err());
+        let (_, mut reader) = pulled.unwrap();
         assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 1);
         let mut all = Vec::new();
         reader.read_to_end(&mut all).unwrap();
