@@ -657,9 +657,10 @@ Depends on: Stage 29
 Goal: users and reviewers know the format and the memory bound.
 Owner: implementer
 
-- [ ] README sync section: sessions are encrypted in 64 KiB chunks, memory stays flat, the
+- [x] README sync section: sessions are encrypted in 64 KiB chunks, memory stays flat, the
       1 GiB cap is the local `.cast.gz` size.
-- [ ] ADR D9 status to built, measured RSS numbers from Stage 30 in "To verify".
+- [x] ADR D9 status to Accepted. "To verify" points at the Stage 30 RSS numbers, they are not copied
+      here as Stage 30 runs in parallel.
 
 Files: `README.md`, `.state/feature-sync-gist/ADR.md`
 Depends on: Stage 23, Stage 29
@@ -738,4 +739,4 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 28 | pending | trait streams |
 | 29 | pending | |
 | 30 | done | peak RSS (release, macOS, file backend): push 64 MiB 8077312 B, push 512 MiB 8044544 B, pull 64 MiB 7979008 B, pull 512 MiB 7880704 B, growth about 0, all under 64 MiB |
-| 31 | pending | |
+| 31 | done | README, ADR drift, REQUIREMENTS cap wording. Measured RSS numbers come from Stage 30 |

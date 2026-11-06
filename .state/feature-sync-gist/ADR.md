@@ -1,7 +1,7 @@
 # ADR: Encrypted Session Sync (secret gists first)
 
 ## Status
-Accepted (auto-approved, the user delegated the SDLC up to an open PR). Decided autonomously, review in PR.
+Accepted (auto-approved, the user delegated the SDLC up to an open PR). Variant A and D9 were decided by the user, not autonomously. Everything else was decided autonomously, review in PR.
 
 ## Context
 
@@ -216,9 +216,9 @@ in the engine, as such a later S3 or git backend gets it for free.
 
 `b"AGR1" || version u8 (1) || nonce [24] || ciphertext+tag`. AAD is `b"agr:blob:" || path` for
 the blob and `b"agr:meta"` for the token, so a blob moved to another session's gist fails to
-open. Whole session in memory, bounded by the 1 GiB cap.
-`// ponytail:` in-memory seal, a streaming STREAM construction if the cap ever goes up.
-**Superseded for the blob by D9 below** (streamed `AGR1 || 0x02`), the token keeps this one-shot format.
+open.
+**Superseded for the blob by D9 below** (streamed `AGR1 || 0x02`, no longer whole in memory), the
+token keeps this one-shot format.
 
 ### Key file
 
@@ -277,6 +277,12 @@ Inputs per path: local hash (or skip reason), remote hash and id, last synced ha
 | `src/sync/memory.rs` | `MemoryBackend` (pub, used by tests) |
 | `src/sync/scan.rs` | local scan (skip reasons) and remote decode into plan inputs |
 | `src/sync/run.rs` | execute push, pull, delete, report, sync lock |
+| `src/sync/push.rs` | push of one session, compare-and-swap, adopt and description repair |
+| `src/sync/pace.rs` | clock and pacer for mutating GitHub calls |
+| `src/sync/fail.rs` | why one push or pull did not finish (`Fail`) |
+| `src/sync/record.rs` | index entry written after a push, refresh or pull |
+| `src/sync/parts.rs` | sealed blob as `data.NNN` parts, rolling writer and chaining reader |
+| `src/sync/blob.rs` | streamed blob v2, STREAM over XChaCha20-Poly1305 in 64 KiB frames |
 | `src/sync/pull.rs` | pull of one session, verify, backup rotation, atomic write |
 | `src/sync/lock.rs` | `.agr-sync.lock`, pid inside, stale pid reclaimed |
 | `src/sync/format.rs` | plain text lines for status, preview, summary, delete |
@@ -314,15 +320,16 @@ the table with `auto_push = true` and the commented backend line, idempotent. `S
    (`sync::parts`), the engine and `SyncBackend` still move one blob.
 2. **1 GiB cap** per session (was 100MB), from GitHub's repository size guidance
    (https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits).
-   Whole session still sits in memory, as such the cap is also a memory bound.
+   The cap is checked on the local `.cast.gz` size (D10 follow-up). The memory bound this point
+   described is gone with D9, memory is flat now.
 3. **Listing abort at 3000**: GitHub documents a 3000 gist pagination cap
    (https://docs.github.com/en/rest/gists/gists). If the listing has 3000 or more gists in
    total (all gists, not only agr ones) the backend errors and the engine aborts before any
    change, so unlisted gists are never treated as missing.
 
-### Variant A: manifest, generation and compare-and-swap (2026-11-06, accepted, built in Stages 14 to 21)
+### Variant A: manifest, generation and compare-and-swap (2026-11-06, accepted, built in Stages 14 to 31)
 
-**Status**: Accepted (user decisions D1 to D5 on 2026-11-06), built in Stages 14 to 21. The points
+**Status**: Accepted (user decisions D1 to D5 on 2026-11-06), built in Stages 14 to 31 (D9 streaming is Stages 25 to 31). The points
 marked **USER DECISION** below are settled by D1 to D5, D6 to D8 came after the batch 12 review.
 
 **Problem**: push today is clone, commit, `git push`, then a separate description PATCH
@@ -521,10 +528,10 @@ Index entry: `{sha256, remote_id, synced_at, gen, token, pending}`, the three ne
 - The description can lag behind the manifest after a stalled PATCH, until it heals (review 1).
 - Rollback detection is trust on first use for a machine without an index (review 2).
 
-### D9: streaming encryption (2026-11-06, proposed, built in Stages 25 to 31, Stage 25 is B1 and B2)
+### D9: streaming encryption (2026-11-06, accepted, built in Stages 25 to 31, Stage 25 is B1 and B2)
 
-**Status**: Proposed, decided autonomously by the architect (review in PR), user decision D9
-asked for it on 2026-11-06.
+**Status**: Accepted. The user asked for it (D9) and accepted the design on 2026-11-06, see Decision
+History.
 
 **Problem**: push reads the whole session and seals it in one AEAD call (`src/sync/push.rs`
 `push_one`, `src/sync/crypto.rs` `seal`), the gist backend splits a `&[u8]` and joins every part
@@ -744,12 +751,16 @@ created, edited or deleted, the ignored `tests/sync_gist_live.rs` was not run):*
 - The `gh auth status` scope line wording (`Token scopes: ...`) on other gh versions.
 - Not verified live: `gh gist create` accepting the empty dotfile `.keep` with a newline body, a
   multi-part push and shrink (`tests/sync_gist_live.rs`, run by hand).
-- Push order, not verified live: a new gist is created with the placeholder description
-  `agr:pending` (no `agr:v1 ` prefix, so `list` ignores it), then clone, blob commit, push, and
-  only then `set_description(token)`, for new and existing gists. A crash in between leaves
-  either an unlisted pending gist or an old token with a new blob (hash mismatch, pull rejects).
-  On error a newly created gist is deleted, when that delete fails too the orphan stays unlisted
-  and the next push creates a fresh gist.
+- Push order, not verified live (replaces the old order that deleted a newly created gist on
+  error): a new gist is created with the placeholder description `agr:pending` (no `agr:v1 `
+  prefix, so `list` ignores it), then clone, compare the manifest with the expected one, one
+  commit with manifest and parts, plain `git push`, and only then `describe(token)`. A failed
+  push never deletes a gist, an interrupted create stays in the index as pending and the next
+  push resumes it. A crash before the description leaves an unlisted pending gist or an old
+  description with a new manifest, pull trusts the manifest and the description is repaired
+  later.
+- Measured peak RSS of the D9 perf test (`tests/performance/sync_memory_test.rs`) is recorded in
+  the PLAN progress notes of Stage 30.
 
 ## Decision History
 1. 2026-11-06: user added auto push after recording (default on once a backend is set).
@@ -770,3 +781,4 @@ created, edited or deleted, the ignored `tests/sync_gist_live.rs` was not run):*
 - 2026-11-06: D9 design by the architect (autonomous, review in PR): STREAM (`aead` `stream` feature, `StreamBE32`, XChaCha20-Poly1305), 64 KiB chunks, blob v2 `AGR1 || 0x02 || prefix19`, parts and chunks independent, push callback and pull reader in the trait, verify into hidden temp then backup then rename, v1 not migrated (unreleased). B1 and B2 from the Variant A review go into the same round.
 - 2026-11-06: D9 design accepted by user: STREAM over XChaCha20-Poly1305 via `aead::stream`, 64 KiB chunks, plaintext SHA-256 check kept as sync identity.
 - 2026-11-06: D11 by user (D9 batch 1 review): the B1 description repair re-reads the gist manifest right before describing and only describes if it still equals the token it adopts. GitHub has no conditional description update, so a millisecond window remains in which a concurrent newer describe can be overwritten; documented as a known limit, it self-heals when the newer machine runs again.
+- 2026-11-06: D9 measured (Stage 30, release build, macOS, file backend): peak RSS push 64 MiB 7.7 MiB, push 512 MiB 7.7 MiB, pull 64 MiB 7.6 MiB, pull 512 MiB 7.5 MiB. Memory does not grow with session size.

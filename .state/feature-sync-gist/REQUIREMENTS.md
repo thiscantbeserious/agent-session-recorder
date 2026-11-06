@@ -54,7 +54,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
 **Gist layout and limits (constraint to be verified by the Architect)**
 - Default is one gist per session, not one per agent. Reasons: 1. a single big session cannot block or fail the others, 2. per-session conflict and delete handling stays simple, 3. a per-agent gist would grow without bound and hit the size and file count limits sooner.
 - Gists store text. The API does not take binary content, so the `.cast.gz` bytes cannot go in as a normal gist file. Default: push and pull through the gist's git repository (`gh gist clone`, then plain git), which holds binary files, so the file stays a real `.cast.gz` on the remote and `gzip -dc` works on a cloned gist. Fallback if the Architect finds that unworkable (for example git credentials for gists): base64 text in chunked files, about 33% larger, hash is always calculated over the original `.cast.gz` bytes either way.
-- Known limits to verify and document: API responses truncate large files (raw content has to be fetched separately), git pushes reject single files over 100MB and warn from 50MB, and a gist has a file count limit. Our own limit is a hard cap per session on on-disk size, default 100MB. Larger sessions are skipped and reported with the reason, never half uploaded. (On the maintainer's data the largest session is 52MB compressed, so this covers the known data.)
+- Known limits to verify and document: API responses truncate large files (raw content has to be fetched separately), git pushes reject single files over 100MB and warn from 50MB, and a gist has a file count limit. Our own limit is a hard cap per session on on-disk size, default 100MB (raised to 1 GiB later, see the large sessions items). Larger sessions are skipped and reported with the reason, never half uploaded. (On the maintainer's data the largest session is 52MB compressed, so this covers the known data.)
 - Each gist contains the session file plus one small metadata file (`.keep`, a neutral placeholder, the metadata itself is the sealed description token).
 
 **Identity and discovery (second machine)**
@@ -216,7 +216,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
   the blob; a missing, extra or reordered part is rejected, nothing is written.
 - [ ] Re-pushing a session whose part count shrinks removes the stale higher parts in the same
   commit.
-- [ ] The per-session cap is 1 GiB of sealed size (was 100 MB), sessions above are skipped
+- [ ] The per-session cap is 1 GiB of local `.cast.gz` size (was 100 MB), sessions above are skipped
   with a reason. Splitting lives only in the gist backend, the engine and `SyncBackend` trait
   still move one blob.
 - [ ] If the gist listing returns 3000 or more entries, sync aborts before any change with a
@@ -294,7 +294,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
 
 1. **One gist per session, not per agent**: independent failures and conflicts, no unbounded growth, avoids the gist file count and size limits.
 2. **Binary handling via the gist git repo, base64 chunks as fallback**: keeps the remote file a real `.cast.gz` and the hash identical, the Architect verifies feasibility (git credentials for gists) and may flip to the fallback.
-3. **Size cap of 100MB on-disk per session, skip and report above**: matches the git per-file limit, covers the largest known session (52MB), no config key for it yet.
+3. **Size cap of 100MB on-disk per session (now 1 GiB), skip and report above**: matches the git per-file limit, covers the largest known session (52MB), no config key for it yet.
 4. **Identity by description marker `agr:v1 <agent>/<name>` plus `agr-session.json` metadata**: a second machine finds the gists by listing the user's gists, no extra registry, version in the marker allows format changes later.
 5. **Conflict means skip and report, resolved only with `--overwrite` (local wins on push, remote wins on pull)**: never lose data silently, pull keeps a `.bak` of the replaced file.
 6. **Three-way decision using the last synced hash from the index**: this is what makes "both changed" detectable by hash, without mtime.
