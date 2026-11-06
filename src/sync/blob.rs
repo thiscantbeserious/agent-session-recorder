@@ -432,6 +432,55 @@ mod tests {
         assert_eq!(out[HEADER_LEN..], [f0, f1].concat());
     }
 
+    /// Raw frame sealed by hand: `prefix || ctr BE || flag` nonce, same AAD.
+    fn raw_frame(k: &Key, prefix: &[u8; PREFIX_LEN], ctr: u32, flag: u8, msg: &[u8]) -> Vec<u8> {
+        use chacha20poly1305::aead::{Aead, KeyInit, Payload};
+        let nonce = [&prefix[..], &ctr.to_be_bytes(), &[flag]].concat();
+        let aad = aad(PATH, 3);
+        let cipher = chacha20poly1305::XChaCha20Poly1305::new(k.as_bytes().into());
+        cipher
+            .encrypt(nonce.as_slice().into(), Payload { msg, aad: &aad })
+            .unwrap()
+    }
+
+    #[test]
+    fn valid_last_frame_followed_by_a_valid_frame_is_rejected_by_lookahead_alone() {
+        let prefix = [4u8; PREFIX_LEN];
+        let k = key(1);
+        let mut one = Vec::new();
+        seal_with_prefix(&k, PATH, 3, &prefix, plain(FRAME).as_slice(), &mut one).unwrap();
+        assert_eq!(
+            open_raw(&k, PATH, 3, &one).0.ok().map(|d| d.1),
+            Some(FRAME as u64)
+        );
+        // Same key, path, gen and prefix, a genuine last-flag frame at the next counter.
+        let extra = raw_frame(&k, &prefix, 1, 1, b"tail");
+        let (res, out) = open_raw(&k, PATH, 3, &[one, extra].concat());
+        assert_eq!(crypto_err(res), Some(CryptoError::Authentication));
+        assert!(
+            out.is_empty(),
+            "frame 0 was written although more data follows"
+        );
+    }
+
+    #[test]
+    fn frames_sealed_without_the_header_in_the_aad_are_rejected() {
+        use chacha20poly1305::aead::stream::EncryptorBE32;
+        let k = key(1);
+        let prefix = [6u8; PREFIX_LEN];
+        let bare = format!("agr:blob:{PATH}:3");
+        let enc = EncryptorBE32::from_aead(k.cipher(), (&prefix).into());
+        let frame = enc.encrypt_last(chacha20poly1305::aead::Payload {
+            msg: b"x",
+            aad: bare.as_bytes(),
+        });
+        let blob = [b"AGR1\x02".as_slice(), &prefix, &frame.unwrap()].concat();
+        assert_eq!(
+            crypto_err(open_raw(&k, PATH, 3, &blob).0),
+            Some(CryptoError::Authentication)
+        );
+    }
+
     #[test]
     fn known_answer_for_fixed_key_prefix_path_and_gen() {
         let k = Key::from_bytes(core::array::from_fn(|i| i as u8));
