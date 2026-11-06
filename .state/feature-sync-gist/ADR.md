@@ -386,7 +386,9 @@ The earlier proposal named the gist files after an HMAC of the path plus the cip
    records it and repairs the description instead of reporting a conflict.
 9. **Index id fallback**: when the listing misses a path but the index has a remote id, the
    push goes to that id with the index token as `expected`. `BackendError::NotFound` (gist
-   deleted elsewhere) drops the index entry and creates a new gist, same as today.
+   deleted on GitHub) is reported as "remote copy gone" and skipped (D6), no automatic
+   recreate. Only `push --overwrite` creates a new gist and updates the index. An index id
+   that is listed as another key or an unknown version is never pushed into.
 10. **Duplicates**: `RemoteEntry` gets the server `created_at`. Several gists for one path
     resolve to the oldest `created_at`, id as tie-break, so every machine picks the same one.
     Same SHA-256 means the others are reported with a hint, a different SHA-256 makes the path

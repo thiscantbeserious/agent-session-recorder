@@ -425,6 +425,24 @@ Owner: implementer
 Files: `src/sync/index.rs`, `src/sync/scan.rs`, `src/sync/plan.rs`, `src/sync/format.rs`
 Depends on: Stage 17
 
+### Stage 19b: Batch 12 review fixes
+
+Goal: gen and token are persisted, a deleted gist is never recreated silently (D6 to D8).
+Owner: implementer
+
+- [x] RED: after push, refresh and pull the index entry has gen and token, the fallback push
+      sends `expected = Some(token)`.
+- [x] RED: git "Repository not found" is not `NotFound`, only the `gh` API 404 is.
+- [x] RED: push or pull of a deleted gist is "remote copy gone", skipped, nothing created,
+      `push --overwrite` recreates it (D6).
+- [x] RED: missing `created_at` sorts last in the pick (D7), late pending pick documented (D8).
+- [x] RED: an index id listed as other key or unknown version is not pushed into.
+- [x] RED: duplicate status label "duplicate", asserted on the real status line.
+
+Files: `src/sync/record.rs`, `src/sync/fail.rs`, `src/sync/run.rs`, `src/sync/pull.rs`,
+       `src/sync/scan.rs`, `src/sync/gist_parse.rs`, `src/sync/format.rs`
+Depends on: Stage 18, Stage 19
+
 ### Stage 20: Engine push as compare-and-swap, pending resume, rate limit stop
 
 Goal: no lost update, no orphan, no stuck gist on push.
@@ -437,7 +455,7 @@ Owner: implementer
 - [ ] RED: a new session stores the id with `pending` before the push, a failed push leaves
       the index entry and the next run resumes the same id, the backend never gets a second
       `create` for that path.
-- [ ] RED: `NotFound` on the index id drops the entry and creates once.
+- [ ] RED: `NotFound` on the index id is "remote copy gone" (done in Stage 19b), only `--overwrite` creates once.
 - [ ] RED: describe failing after a good push still records the push, the next run repairs the
       description, the description is never set to a lower gen.
 - [ ] RED: `RateLimited` stops the run with `SyncError::RateLimited { left }`, earlier
@@ -447,7 +465,7 @@ Owner: implementer
 
 Files: `src/sync/push.rs`, `src/sync/run.rs`, `src/sync/mod.rs`, `src/sync/auto.rs`,
        `src/commands/sync/run.rs`, `tests/integration/sync_engine_test.rs`
-Depends on: Stage 18, Stage 19
+Depends on: Stage 18, Stage 19, Stage 19b
 
 ### Stage 21: Engine pull with manifest and gen check
 
@@ -528,10 +546,11 @@ Depends on: Stage 11, Stage 22, Stage 23
 9. Stage 14, Stage 15, Stage 16 (parallel, no shared files)
 10. Stage 17
 11. Stage 18, Stage 19 (parallel, gist files vs index, scan and plan)
-12. Stage 20
-13. Stage 21
-14. Stage 22, Stage 23 (parallel)
-15. Stage 24
+12. Stage 19b
+14. Stage 20
+14. Stage 21
+15. Stage 22, Stage 23 (parallel)
+16. Stage 24
 
 Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 
@@ -557,7 +576,8 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 16 | pending | |
 | 17 | done | one commit, no 17a/17b split. Gist `push` ignores `expected` and `manifest` until Stage 18, test `stage_17_push_does_not_compare_expected_yet` in `gist.rs` flips then. Memory test hook `put` sets a whole remote state without compare |
 | 18 | pending | |
-| 19 | pending | |
+| 19 | done | |
+| 19b | done | Batch 12 review fixes |
 | 20 | pending | |
 | 21 | pending | |
 | 22 | pending | three machine concurrency test |

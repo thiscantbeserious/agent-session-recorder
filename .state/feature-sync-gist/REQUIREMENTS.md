@@ -248,14 +248,14 @@ Sessions only live on one machine. We want to sync them between machines, with G
   exposes gist history.
 
 **Batch 12 review decisions** (user decisions 2026-11-06)
-- [ ] D6: a session whose gist is gone on GitHub (NotFound from the API) is reported as
+- [x] D6: a session whose gist is gone on GitHub (NotFound from the API) is reported as
   "remote copy gone" and skipped; push never recreates it on its own, only
   `agr sync push --overwrite` does. Local file and index entry stay.
-- [ ] Auth or access failures that git reports as "Repository not found" are never treated as
+- [x] Auth or access failures that git reports as "Repository not found" are never treated as
   a deleted gist (only a `gh` API 404 is NotFound), so a wrong token can never cause a second
   gist.
-- [ ] D7: a listed gist without `created_at` never wins the duplicate pick (fail closed).
-- [ ] D8: a duplicate pick may change once when a formerly pending gist gets its description;
+- [x] D7: a listed gist without `created_at` never wins the duplicate pick (fail closed).
+- [x] D8: a duplicate pick may change once when a formerly pending gist gets its description;
   both copies are reported, nothing is deleted or overwritten.
 
 ## Constraints
