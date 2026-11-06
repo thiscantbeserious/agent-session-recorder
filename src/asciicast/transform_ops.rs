@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 use super::{AsciicastFile, SilenceRemoval, Transform, DEFAULT_SILENCE_THRESHOLD};
 use crate::files::backup::{backup_path_for, create_backup};
@@ -40,59 +40,61 @@ impl TransformResult {
     }
 }
 
-/// Apply all transforms to a recording file.
+/// Apply all transforms to a recording file, creating a `.bak` if none exists.
 ///
-/// This function:
-/// 1. Creates a backup if one doesn't already exist
-/// 2. Parses the file
-/// 3. Applies silence removal with threshold from header or default
-/// 4. Writes the modified file back
-///
-/// # Arguments
-///
-/// * `path` - Path to the `.cast` file to transform
-///
-/// # Returns
-///
-/// Returns a `TransformResult` with duration information and backup status.
+/// This is the TUI path. See [`optimize_file`] for the shared steps.
 ///
 /// # Errors
 ///
-/// Returns an error if:
-/// - The file cannot be read or parsed
-/// - Backup creation fails
-/// - Writing the transformed file fails
+/// Returns an error if the file cannot be read or parsed, the header threshold is not
+/// positive and finite, backup creation fails, or writing the transformed file fails.
 pub fn apply_transforms(path: &Path) -> Result<TransformResult> {
-    // Parse the file first to get original duration
+    optimize_file(path, true)
+}
+
+/// Remove silence from a recording without creating or reading any backup.
+///
+/// Works on `.cast` and `.cast.gz` (format is kept). Used by auto-optimize.
+///
+/// # Errors
+///
+/// Same as [`apply_transforms`], minus backup creation.
+pub fn remove_silence(path: &Path) -> Result<TransformResult> {
+    optimize_file(path, false)
+}
+
+// ponytail: whole file parsed in memory (~2-3x plain size), streaming optimize is the
+// upgrade path (follow-up issue, ADR section 5).
+fn optimize_file(path: &Path, backup: bool) -> Result<TransformResult> {
     let mut cast = AsciicastFile::parse(path)
         .with_context(|| format!("Failed to parse asciicast file: {}", path.display()))?;
-
     let original_duration = cast.duration();
 
-    // Create backup if it doesn't exist
-    let backup_created = create_backup(path)?;
-    let backup = backup_path_for(path);
-
-    // Resolve threshold: header's idle_time_limit or default
     let threshold = cast
         .header
         .idle_time_limit
         .unwrap_or(DEFAULT_SILENCE_THRESHOLD);
+    if !(threshold > 0.0 && threshold.is_finite()) {
+        bail!("Invalid idle_time_limit in header: {threshold}");
+    }
 
-    // Apply silence removal transform
-    let mut transform = SilenceRemoval::new(threshold);
-    transform.transform(&mut cast.events);
+    let (backup_path, backup_created) = if backup {
+        (Some(backup_path_for(path)), create_backup(path)?)
+    } else {
+        (None, false)
+    };
 
+    SilenceRemoval::new(threshold).transform(&mut cast.events);
     let new_duration = cast.duration();
 
-    // Write back to original path (AsciicastFile::write uses atomic temp+rename)
+    // AsciicastFile::write uses atomic temp+rename
     cast.write(path)
         .with_context(|| format!("Failed to write transformed file: {}", path.display()))?;
 
     Ok(TransformResult {
         original_duration,
         new_duration,
-        backup_path: Some(backup),
+        backup_path,
         backup_created,
     })
 }

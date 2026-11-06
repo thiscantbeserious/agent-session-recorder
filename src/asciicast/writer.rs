@@ -30,6 +30,7 @@
 //!     command: None,
 //!     env: None,
 //!     idle_time_limit: None,
+//!     ..Default::default()
 //! });
 //! file.events.push(Event::output(0.5, "hello"));
 //!
@@ -148,6 +149,7 @@ mod tests {
             command: None,
             env: None,
             idle_time_limit: None,
+            ..Default::default()
         });
         file.events.push(Event::output(0.1, "hello"));
 
@@ -169,6 +171,7 @@ mod tests {
             command: None,
             env: None,
             idle_time_limit: None,
+            ..Default::default()
         });
         file.events.push(Event::output(0.0, "test"));
 

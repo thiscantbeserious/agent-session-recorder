@@ -22,7 +22,10 @@ mod tests {
     fn v4_adds_gzip_compression() {
         let result = migrate_config("config_version = 3\n[storage]\n").unwrap();
         let parsed: Config = toml::from_str(&result.content).unwrap();
-        assert_eq!(parsed.config_version, 4);
+        assert_eq!(
+            parsed.config_version,
+            crate::config::migrate::CURRENT_VERSION
+        );
         assert_eq!(parsed.storage.compression, Compression::Gzip);
         assert!(result.content.contains("compression = \"gzip\""));
         assert!(result

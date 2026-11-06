@@ -138,6 +138,41 @@ fi
 rm -rf "$PLAIN_DIR"
 reset_config
 
+# Total duration in whole seconds (asciicast v3 events carry relative intervals)
+cast_duration() {
+    gzip -dc "$1" | awk -F'[][,]' 'NR>1 { t += $2 } END { printf "%d", t }'
+}
+
+# Test: auto_optimize (default on) collapses idle time and leaves no backup
+test_header "Auto-optimize shortens recording"
+rm -rf "$HOME/recorded_agent_sessions/optagent"
+$AGR record optagent -- sh -c 'echo a; sleep 3; echo b' </dev/null
+OPT_DIR="$HOME/recorded_agent_sessions/optagent"
+OPT_FILE=$(ls "$OPT_DIR/"*.cast.gz 2>/dev/null | /usr/bin/head -1)
+if [[ -f "$OPT_FILE" ]] && [[ "$(cast_duration "$OPT_FILE")" -lt 3 ]] && ! ls "$OPT_DIR/".*.bak >/dev/null 2>&1; then
+    pass "Idle time removed, no backup left"
+else
+    fail "Expected duration < 3s and no .bak, got: $(cast_duration "$OPT_FILE")s"
+    ls -a "$OPT_DIR"
+fi
+rm -rf "$OPT_DIR"
+
+# Test: auto_optimize = false keeps the original timing
+test_header "Auto-optimize disabled keeps timing"
+create_config << 'TOMLEOF'
+[recording]
+auto_optimize = false
+TOMLEOF
+$AGR record optagent -- sh -c 'echo a; sleep 3; echo b' </dev/null
+OPT_FILE=$(ls "$OPT_DIR/"*.cast.gz 2>/dev/null | /usr/bin/head -1)
+if [[ -f "$OPT_FILE" ]] && [[ "$(cast_duration "$OPT_FILE")" -ge 3 ]]; then
+    pass "Duration stays at 3s or more"
+else
+    fail "Expected duration >= 3s, got: $(cast_duration "$OPT_FILE")s"
+fi
+rm -rf "$OPT_DIR"
+reset_config
+
 # Print summary when running standalone
 if [[ -z "$_AGR_E2E_MAIN_RUNNER" ]]; then
     print_summary

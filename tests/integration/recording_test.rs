@@ -88,3 +88,162 @@ mod finalize {
         assert_eq!(fs::read_to_string(&plain).unwrap(), CAST);
     }
 }
+
+mod optimize {
+    use agr::config::Compression;
+    use agr::recording::{finalize_recording, optimize_recording};
+    use agr::Config;
+    use flate2::read::GzDecoder;
+    use std::fs;
+    use std::io::Read;
+    use std::path::Path;
+
+    const GAP: &str = "{\"version\":3}\n[0.1,\"o\",\"a\"]\n[5.0,\"o\",\"b\"]\n";
+    const ZERO_LIMIT: &str =
+        "{\"version\":3,\"idle_time_limit\":0}\n[0.1,\"o\",\"a\"]\n[5.0,\"o\",\"b\"]\n";
+    const BROKEN: &str = "not a cast\n[5.0,\"o\",\"b\"]\n";
+
+    fn config(optimize: bool, compression: Compression) -> Config {
+        let mut config = Config::default();
+        config.recording.auto_optimize = optimize;
+        config.storage.compression = compression;
+        config
+    }
+
+    fn setup(content: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let plain = dir.path().join("x.cast");
+        fs::write(&plain, content).unwrap();
+        (dir, plain)
+    }
+
+    fn names(dir: &Path) -> Vec<String> {
+        let mut v: Vec<String> = fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        v.sort();
+        v
+    }
+
+    fn read_gz(path: &Path) -> String {
+        let mut out = String::new();
+        GzDecoder::new(fs::File::open(path).unwrap())
+            .read_to_string(&mut out)
+            .unwrap();
+        out
+    }
+
+    #[test]
+    fn disabled_leaves_file_identical() {
+        let (_dir, plain) = setup(GAP);
+        assert_eq!(
+            optimize_recording(&plain, &config(false, Compression::None)),
+            None
+        );
+        assert_eq!(fs::read_to_string(&plain).unwrap(), GAP);
+    }
+
+    #[test]
+    fn enabled_clamps_gap_without_backup() {
+        let (dir, plain) = setup(GAP);
+        assert_eq!(
+            optimize_recording(&plain, &config(true, Compression::None)),
+            None
+        );
+        let out = fs::read_to_string(&plain).unwrap();
+        assert!(out.contains("[2.0,"), "gap not clamped: {out}");
+        assert!(!out.contains("[5.0,"), "gap kept: {out}");
+        assert_eq!(names(dir.path()), vec!["x.cast"]);
+    }
+
+    #[test]
+    fn unparsable_file_warns_and_stays_identical() {
+        let (_dir, plain) = setup(BROKEN);
+        let warning = optimize_recording(&plain, &config(true, Compression::None));
+        assert!(
+            warning
+                .as_deref()
+                .is_some_and(|w| w.starts_with("Auto-optimize failed, kept original: ")),
+            "{warning:?}"
+        );
+        assert_eq!(fs::read_to_string(&plain).unwrap(), BROKEN);
+    }
+
+    #[test]
+    fn zero_idle_limit_warns_and_stays_identical() {
+        let (_dir, plain) = setup(ZERO_LIMIT);
+        let warning = optimize_recording(&plain, &config(true, Compression::None));
+        assert!(
+            warning
+                .as_deref()
+                .is_some_and(|w| w.starts_with("Auto-optimize failed, ")),
+            "{warning:?}"
+        );
+        assert_eq!(fs::read_to_string(&plain).unwrap(), ZERO_LIMIT);
+    }
+
+    #[test]
+    fn missing_file_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("x.cast");
+        assert_eq!(
+            optimize_recording(&missing, &config(true, Compression::None)),
+            None
+        );
+    }
+
+    #[test]
+    fn optimize_then_gzip_leaves_only_optimized_gz() {
+        let (dir, plain) = setup(GAP);
+        let cfg = config(true, Compression::Gzip);
+        assert_eq!(optimize_recording(&plain, &cfg), None);
+        let result = finalize_recording(&plain, &cfg);
+        assert_eq!(names(dir.path()), vec!["x.cast.gz"]);
+        let out = read_gz(&result);
+        assert!(out.contains("[2.0,") && !out.contains("[5.0,"), "{out}");
+    }
+
+    #[test]
+    fn optimize_then_none_leaves_only_optimized_plain() {
+        let (dir, plain) = setup(GAP);
+        let cfg = config(true, Compression::None);
+        assert_eq!(optimize_recording(&plain, &cfg), None);
+        let result = finalize_recording(&plain, &cfg);
+        assert_eq!(names(dir.path()), vec!["x.cast"]);
+        let out = fs::read_to_string(result).unwrap();
+        assert!(out.contains("[2.0,") && !out.contains("[5.0,"), "{out}");
+    }
+
+    #[test]
+    fn failed_optimize_then_gzip_keeps_original_content() {
+        let (dir, plain) = setup(BROKEN);
+        let cfg = config(true, Compression::Gzip);
+        assert!(optimize_recording(&plain, &cfg).is_some());
+        let result = finalize_recording(&plain, &cfg);
+        assert_eq!(names(dir.path()), vec!["x.cast.gz"]);
+        assert_eq!(read_gz(&result), BROKEN);
+    }
+
+    #[test]
+    fn empty_file_returns_none() {
+        let (_dir, plain) = setup("");
+        assert_eq!(
+            optimize_recording(&plain, &config(true, Compression::None)),
+            None
+        );
+        assert_eq!(fs::read_to_string(&plain).unwrap(), "");
+    }
+
+    #[test]
+    fn no_gap_over_threshold_returns_none_and_keeps_events() {
+        let quiet = "{\"version\":3}\n[0.1,\"o\",\"a\"]\n[0.2,\"o\",\"b\"]\n";
+        let (_dir, plain) = setup(quiet);
+        assert_eq!(
+            optimize_recording(&plain, &config(true, Compression::None)),
+            None
+        );
+        let out = fs::read_to_string(&plain).unwrap();
+        assert!(out.contains("[0.1,") && out.contains("[0.2,"), "{out}");
+    }
+}

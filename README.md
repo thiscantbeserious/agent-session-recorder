@@ -188,6 +188,23 @@ agr optimize --remove-silence --output fast.cast session.cast
 2. Header's `idle_time_limit` - recording author's intent
 3. Default: 2.0 seconds
 
+### Auto-Optimize
+
+Every recording gets its silence removed right after it ends, with the same threshold rules as above. This is on by default and runs before compression, so a new session is stored optimized as `.cast.gz`.
+
+```toml
+[recording]
+auto_optimize = true   # false keeps recordings exactly as recorded
+```
+
+**Behaviour:**
+- **No backup**: auto mode overwrites the fresh recording in place and keeps no `.bak` file. `agr optimize` and the file browser optimize (`t`) stay the manual alternatives, only the file browser keeps a backup.
+- **Interrupted sessions**: a recording stopped with Ctrl+C or a closed terminal is left as recorded.
+- **Failures**: if optimizing fails, the original file is kept and a warning is printed.
+- **Order after a session**: optimize, compress, stop message, auto-analyze, storage warning.
+
+`agr config migrate` asks once whether to turn this on when it adds the setting to an existing config (Enter keeps the default yes, `--yes` takes it without asking).
+
 ## Storage and Compression
 
 New recordings are saved gzip-compressed as `.cast.gz`. Every command (play, list, analyze, optimize, marker, copy, cleanup) works the same on `.cast.gz` and plain `.cast` files, and `agr copy` always hands over plain asciicast.

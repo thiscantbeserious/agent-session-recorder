@@ -57,9 +57,9 @@ impl ProcessGuard {
         }
     }
 
-    /// Whether the interrupted flag was set (by SIGINT or SIGHUP).
+    /// Whether the session was cut short: SIGINT, SIGHUP or parent death.
     pub fn is_interrupted(&self) -> bool {
-        self.interrupted.load(Ordering::SeqCst)
+        self.should_terminate()
     }
 
     /// Wait for a child process, killing it on signal or orphan detection.
@@ -100,5 +100,20 @@ impl ProcessGuard {
     #[cfg(not(unix))]
     fn is_orphaned(&self) -> bool {
         false
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn orphaned_counts_as_interrupted() {
+        // A ppid snapshot that differs from the real parent means the parent died.
+        let guard = ProcessGuard {
+            interrupted: Arc::new(AtomicBool::new(false)),
+            initial_ppid: u32::MAX,
+        };
+        assert!(guard.is_interrupted());
     }
 }

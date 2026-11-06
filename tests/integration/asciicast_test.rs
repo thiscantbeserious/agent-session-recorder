@@ -365,3 +365,42 @@ mod integrity_gzip {
         assert_eq!(removed, 1);
     }
 }
+
+// === Unknown header fields survive a rewrite ===
+
+const RICH_HEADER: &str = r##"{"version":3,"term":{"cols":80,"rows":24,"type":"xterm-256color","theme":{"fg":"#f5f5f5","bg":"#000000","palette":"#000000:#ff0000"}},"timestamp":1793889101,"command":"claude","title":"claude session","env":{"SHELL":"/bin/zsh","LANG":"en_US.UTF-8"},"x_custom":1}"##;
+
+fn rich_cast_text() -> String {
+    format!("{RICH_HEADER}\n[0.1,\"o\",\"hello\"]\n[5.0,\"o\",\"world\"]\n")
+}
+
+fn assert_unknown_fields_kept(written_text: &str) {
+    let header: serde_json::Value =
+        serde_json::from_str(written_text.lines().next().unwrap()).unwrap();
+    let original: serde_json::Value = serde_json::from_str(RICH_HEADER).unwrap();
+    assert_eq!(header["term"]["theme"], original["term"]["theme"]);
+    assert_eq!(header["env"]["LANG"], original["env"]["LANG"]);
+    assert_eq!(header["x_custom"], original["x_custom"]);
+}
+
+#[test]
+fn remove_silence_keeps_unknown_header_fields() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("rich.cast");
+    std::fs::write(&path, rich_cast_text()).unwrap();
+
+    agr::asciicast::remove_silence(&path).unwrap();
+
+    assert_unknown_fields_kept(&std::fs::read_to_string(&path).unwrap());
+}
+
+#[test]
+fn parse_write_roundtrip_keeps_unknown_header_fields() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("rich.cast");
+    let cast = AsciicastFile::parse_str(&rich_cast_text()).unwrap();
+
+    cast.write(&path).unwrap();
+
+    assert_unknown_fields_kept(&std::fs::read_to_string(&path).unwrap());
+}

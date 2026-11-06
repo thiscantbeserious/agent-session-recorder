@@ -4,6 +4,7 @@ use std::io::{self, BufRead, Write};
 
 use anyhow::Result;
 
+use agr::config::parse_answer;
 use agr::theme::current_theme;
 
 /// Determine whether to proceed with the operation.
@@ -35,4 +36,21 @@ pub fn should_proceed(message: &str, auto_confirm: bool) -> Result<bool> {
 
     let response = input.trim().to_lowercase();
     Ok(response == "y" || response == "yes")
+}
+
+/// Ask a yes/no question with a default answer.
+///
+/// `auto_confirm` or a non-TTY stdin returns `default` silently.
+#[cfg(not(tarpaulin_include))]
+pub fn ask_with_default(message: &str, default: bool, auto_confirm: bool) -> Result<bool> {
+    if auto_confirm || !io::IsTerminal::is_terminal(&io::stdin()) {
+        return Ok(default);
+    }
+    let hint = if default { "[Y/n]" } else { "[y/N]" };
+    print!("{} {} ", current_theme().primary_text(message), hint);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().lock().read_line(&mut input)?;
+    Ok(parse_answer(&input, default))
 }
