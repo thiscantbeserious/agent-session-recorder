@@ -258,6 +258,17 @@ Sessions only live on one machine. We want to sync them between machines, with G
 - [x] D8: a duplicate pick may change once when a formerly pending gist gets its description;
   both copies are reported, nothing is deleted or overwritten.
 
+**PO acceptance follow-ups** (user decisions 2026-11-06)
+- [ ] D9: encryption and decryption stream in chunks, so peak memory stays bounded and flat
+  regardless of session size (up to the 1 GiB cap). The sealed format stays authenticated end
+  to end: truncation, reordering, dropping or duplicating chunks is detected, nothing is
+  written on pull unless the whole stream verified. A performance test (ignored by default)
+  documents peak memory for a large session.
+- [ ] D10: the test-only backend switch `AGR_SYNC_TEST_BACKEND_DIR` stays in the release
+  binary (e2e needs it), announces itself on stderr, and is documented in the PR and README
+  developer notes as test-only.
+- [ ] README states that the 1 GiB cap applies to the local `.cast.gz` size.
+
 ## Constraints
 
 - Sync works on `.cast.gz` bytes as stored, no recompression, so the hash stays stable.
