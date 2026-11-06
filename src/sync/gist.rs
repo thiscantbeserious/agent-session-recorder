@@ -1,13 +1,14 @@
 //! Gist backend, `gh` for create, list and delete, `git` for the binary blob.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use super::backend::{BackendError, RemoteEntry, SyncBackend};
+use super::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 use super::gist_parse::{check_auth, id_from_create_output, map_failure, parse_list, DESC_PREFIX};
 use super::pace::{Clock, Pacer, SystemClock};
-use super::parts::{check_sequence, join, part_name, split, stale, PART_PREFIX, PART_SIZE};
+use super::parts::{check_sequence, part_names, PartReader, PartWriter, PART_SIZE};
 use super::runner::{Output, ProcessRunner, Runner};
 
 /// Neutral dotfile, only there because `gh gist create` refuses an empty gist.
@@ -94,19 +95,6 @@ fn private_dir_builder() -> std::fs::DirBuilder {
 
 fn strings(args: &[&str]) -> Vec<String> {
     args.iter().map(ToString::to_string).collect()
-}
-
-/// Sorted names of the `data.*` files in a clone.
-fn part_files(repo: &Path) -> Result<Vec<String>, BackendError> {
-    let dir =
-        std::fs::read_dir(repo).map_err(|e| BackendError::Other(format!("read clone: {e}")))?;
-    let mut names: Vec<String> = dir
-        .filter_map(Result::ok)
-        .filter_map(|e| e.file_name().into_string().ok())
-        .filter(|n| n.starts_with(PART_PREFIX))
-        .collect();
-    names.sort();
-    Ok(names)
 }
 
 /// The stored manifest of a clone, `None` when the gist has none yet.
@@ -202,26 +190,18 @@ impl<R: Runner> GistBackend<R> {
         Ok(dir)
     }
 
-    /// Write the parts and drop stale higher ones, returns every touched file name.
+    /// Stream the blob into the parts, returns every touched file name.
     fn stage_parts(
         &self,
         repo: &Path,
         manifest: &str,
-        blob: &[u8],
+        blob: BlobSource,
     ) -> Result<Vec<String>, BackendError> {
-        let parts = split(blob, self.part_size);
-        let mut names = Vec::new();
-        for (i, part) in parts.iter().enumerate() {
-            let name = part_name(i);
-            std::fs::write(repo.join(&name), part)
-                .map_err(|e| BackendError::Other(format!("write part: {e}")))?;
-            names.push(name);
-        }
-        for old in stale(&part_files(repo)?, parts.len()) {
-            std::fs::remove_file(repo.join(&old))
-                .map_err(|e| BackendError::Other(format!("remove stale part: {e}")))?;
-            names.push(old);
-        }
+        let mut writer = PartWriter::new(repo, self.part_size);
+        blob(&mut writer).map_err(|e| BackendError::Other(format!("write part: {e}")))?;
+        let mut names = writer
+            .finish()
+            .map_err(|e| BackendError::Other(format!("write part: {e}")))?;
         std::fs::write(repo.join(MANIFEST_FILE), manifest)
             .map_err(|e| BackendError::Other(format!("write manifest: {e}")))?;
         names.push(MANIFEST_FILE.to_string());
@@ -232,7 +212,7 @@ impl<R: Runner> GistBackend<R> {
         &self,
         repo: &Path,
         manifest: &str,
-        blob: &[u8],
+        blob: BlobSource,
     ) -> Result<(), BackendError> {
         let names = self.stage_parts(repo, manifest, blob)?;
         let mut add = vec!["add", "--all", "--"];
@@ -309,7 +289,7 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
         id: &str,
         expected: Option<&str>,
         manifest: &str,
-        blob: &[u8],
+        blob: BlobSource,
     ) -> Result<(), BackendError> {
         let scratch = Scratch::create(&self.temp_base)?;
         let repo = self.clone_gist(id, &scratch)?;
@@ -324,20 +304,20 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
         self.set_description(id, token)
     }
 
-    /// Manifest and parts come from one clone, so they belong together.
-    fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
+    /// Manifest and parts come from one clone, so they belong together. The reader owns the
+    /// clone and removes it when dropped.
+    fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn Read>), BackendError> {
         let scratch = Scratch::create(&self.temp_base)?;
         let repo = self.clone_gist(id, &scratch)?;
         let manifest = read_manifest(&repo)?;
-        let names = part_files(&repo)?;
+        let names =
+            part_names(&repo).map_err(|e| BackendError::Other(format!("read clone: {e}")))?;
         check_sequence(&names).map_err(|e| BackendError::Other(format!("gist {id} {e}")))?;
-        let mut parts = Vec::new();
-        for name in &names {
-            parts.push(std::fs::read(repo.join(name)).map_err(|e| {
-                BackendError::Other(format!("gist {id} part {name} unreadable: {e}"))
-            })?);
-        }
-        Ok((manifest, join(&parts)))
+        let files = names.iter().map(|n| repo.join(n)).collect();
+        Ok((
+            manifest,
+            Box::new(PartReader::new(files, Box::new(scratch))),
+        ))
     }
 
     fn delete(&self, id: &str) -> Result<(), BackendError> {
@@ -349,13 +329,26 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::backend::{pull_bytes, push_bytes};
     use super::super::pace::tests::FakeClock;
+    use super::super::parts::part_name;
     use super::*;
     use std::cell::RefCell;
     use std::collections::VecDeque;
     use std::time::Duration;
 
     type Files = Vec<(String, Vec<u8>)>;
+
+    /// Whole-blob shorthands over the streaming trait.
+    trait Bytes: SyncBackend + Sized {
+        fn push_b(&self, id: &str, e: Option<&str>, m: &str, b: &[u8]) -> Result<(), BackendError> {
+            push_bytes(self, id, e, m, b)
+        }
+        fn pull_b(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
+            pull_bytes(self, id)
+        }
+    }
+    impl<T: SyncBackend> Bytes for T {}
 
     #[derive(Default)]
     struct Fake {
@@ -373,7 +366,7 @@ mod tests {
 
     /// Every `data.*` file of a clone, sorted by name.
     fn data_files(dir: &Path) -> Files {
-        let mut files: Vec<_> = part_files(dir)
+        let mut files: Vec<_> = part_names(dir)
             .unwrap()
             .into_iter()
             .map(|n| {
@@ -568,7 +561,7 @@ mod tests {
         let fake = Fake::default();
         let base = tempfile::tempdir().unwrap();
         backend(&fake, base.path())
-            .push("abc123", None, "MANIFEST", b"sealed")
+            .push_b("abc123", None, "MANIFEST", b"sealed")
             .unwrap();
         let calls = scrub(&fake.calls(), base.path());
         assert_eq!(
@@ -602,7 +595,7 @@ mod tests {
             (Fake::default(), Some("stale"), None),
         ];
         for (fake, expected, current) in cases {
-            let got = backend(&fake, base.path()).push("abc123", expected, "NEW", b"x");
+            let got = backend(&fake, base.path()).push_b("abc123", expected, "NEW", b"x");
             let want = BackendError::Changed(current.map(str::to_string));
             assert_eq!(got, Err(want));
             let calls = scrub(&fake.calls(), base.path());
@@ -617,7 +610,7 @@ mod tests {
         let fake = with_manifest("CUR");
         let base = tempfile::tempdir().unwrap();
         backend(&fake, base.path())
-            .push("abc123", Some("CUR"), "NEW", b"blob")
+            .push_b("abc123", Some("CUR"), "NEW", b"blob")
             .unwrap();
         assert_eq!(fake.pushed_manifest.borrow().as_deref(), Some("NEW"));
         assert_eq!(
@@ -635,7 +628,7 @@ mod tests {
             "hint: Updates were rejected, fetch first",
         ] {
             let fake = Fake::with(vec![ok(""), ok(""), ok(""), fail(stderr)]);
-            let got = backend(&fake, base.path()).push("abc123", None, "M", b"x");
+            let got = backend(&fake, base.path()).push_b("abc123", None, "M", b"x");
             assert_eq!(got, Err(BackendError::Changed(None)), "{stderr}");
             let calls = fake.calls();
             let pushes: Vec<_> = calls.iter().filter(|c| c.contains("push")).collect();
@@ -650,7 +643,7 @@ mod tests {
         let fake = Fake::default();
         let base = tempfile::tempdir().unwrap();
         backend(&fake, base.path())
-            .push("abc123", None, "M", b"x")
+            .push_b("abc123", None, "M", b"x")
             .unwrap();
         let calls = fake.calls();
         let adds: Vec<_> = calls.iter().filter(|c| c.starts_with("git add")).collect();
@@ -664,7 +657,7 @@ mod tests {
         let mut fake = with_manifest("CUR");
         fake.remote.push((part_name(0), b"blob".to_vec()));
         let base = tempfile::tempdir().unwrap();
-        let got = backend(&fake, base.path()).pull("abc123").unwrap();
+        let got = backend(&fake, base.path()).pull_b("abc123").unwrap();
         assert_eq!(got, (Some("CUR".to_string()), b"blob".to_vec()));
         assert_eq!(fake.calls().len(), 1, "one clone");
     }
@@ -679,7 +672,7 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         let b = backend(&fake, base.path()).with_clock(clock.clone());
         b.create().unwrap();
-        b.push("abc123", None, "M", b"x").unwrap();
+        b.push_b("abc123", None, "M", b"x").unwrap();
         b.describe("abc123", "T").unwrap();
         b.delete("abc123").unwrap();
         let mutating = |c: &str| {
@@ -720,7 +713,7 @@ mod tests {
             fail("! [rejected] main -> main (fetch first)"),
         ]);
         let base = tempfile::tempdir().unwrap();
-        let got = backend(&fake, base.path()).push("abc123", None, "M", b"x");
+        let got = backend(&fake, base.path()).push_b("abc123", None, "M", b"x");
         assert_eq!(got, Err(BackendError::Changed(None)));
     }
 
@@ -729,11 +722,11 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         let fake = Fake::default();
         backend(&fake, base.path())
-            .push("abc123", None, "T", b"x")
+            .push_b("abc123", None, "T", b"x")
             .unwrap();
         let failing = Fake::with(vec![ok(""), fail("boom")]);
         assert!(backend(&failing, base.path())
-            .push("abc123", None, "T", b"x")
+            .push_b("abc123", None, "T", b"x")
             .is_err());
         assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 0);
     }
@@ -748,7 +741,7 @@ mod tests {
         ]);
         let base = tempfile::tempdir().unwrap();
         let err = backend(&fake, base.path())
-            .push("abc123", None, "T", b"x")
+            .push_b("abc123", None, "T", b"x")
             .unwrap_err();
         assert!(err.to_string().contains("gh auth setup-git"), "{err}");
         assert!(!fake.calls().iter().any(|c| c.contains("delete")));
@@ -782,7 +775,7 @@ mod tests {
             ..Fake::default()
         };
         let base = tempfile::tempdir().unwrap();
-        let got = backend(&fake, base.path()).pull("abc123").unwrap();
+        let got = backend(&fake, base.path()).pull_b("abc123").unwrap();
         assert_eq!(got, (None, vec![0, 159, 146, 150]));
         assert_eq!(fake.calls().len(), 1, "one clone, nothing else");
         let calls = scrub(&fake.calls(), base.path());
@@ -798,7 +791,7 @@ mod tests {
         let fake = Fake::default();
         let base = tempfile::tempdir().unwrap();
         assert!(matches!(
-            backend(&fake, base.path()).pull("abc123"),
+            backend(&fake, base.path()).pull_b("abc123"),
             Err(BackendError::Other(_))
         ));
     }
@@ -810,7 +803,7 @@ mod tests {
         let blob: Vec<u8> = (0..25u8).collect();
         backend(&fake, base.path())
             .with_part_size(10)
-            .push("abc123", None, "T", &blob)
+            .push_b("abc123", None, "T", &blob)
             .unwrap();
         let pushed = fake.pushed.borrow().clone().unwrap();
         let names: Vec<_> = pushed.iter().map(|(n, _)| n.as_str()).collect();
@@ -831,7 +824,7 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         backend(&fake, base.path())
             .with_clock(Arc::new(FakeClock::new(Duration::ZERO, 1_700_000_000)))
-            .push("abc123", None, "T", b"x")
+            .push_b("abc123", None, "T", b"x")
             .unwrap();
         let date = "@1700000000 +0000".to_string();
         let want: Vec<(String, String)> = [
@@ -869,7 +862,7 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         backend(&fake, base.path())
             .with_part_size(10)
-            .push("abc123", None, "T", b"tiny")
+            .push_b("abc123", None, "T", b"tiny")
             .unwrap();
         let pushed = fake.pushed.borrow().clone().unwrap();
         assert_eq!(pushed, [("data.000".to_string(), b"tiny".to_vec())]);
@@ -891,7 +884,7 @@ mod tests {
             ..Fake::default()
         };
         let base = tempfile::tempdir().unwrap();
-        let got = backend(&fake, base.path()).pull("abc123").unwrap();
+        let got = backend(&fake, base.path()).pull_b("abc123").unwrap();
         assert_eq!(got, (None, b"hello world".to_vec()));
     }
 
@@ -904,7 +897,7 @@ mod tests {
             ..Fake::default()
         };
         let base = tempfile::tempdir().unwrap();
-        let err = backend(&fake, base.path()).pull("abc123").unwrap_err();
+        let err = backend(&fake, base.path()).pull_b("abc123").unwrap_err();
         assert!(err.to_string().contains("data.001"), "{err}");
     }
 
@@ -922,5 +915,102 @@ mod tests {
         let base = tempfile::tempdir().unwrap();
         let err = backend(&fake, base.path()).list().unwrap_err();
         assert!(matches!(err, BackendError::Unreachable(_)));
+    }
+
+    fn source_of(bytes: &'static [u8]) -> impl Fn(&mut dyn std::io::Write) -> std::io::Result<()> {
+        move |w| w.write_all(bytes)
+    }
+
+    #[test]
+    fn the_source_is_not_called_on_a_stale_expected() {
+        let fake = with_manifest("CUR");
+        let base = tempfile::tempdir().unwrap();
+        let calls = std::cell::Cell::new(0);
+        let source = |_: &mut dyn std::io::Write| {
+            calls.set(calls.get() + 1);
+            Ok(())
+        };
+        let got = backend(&fake, base.path()).push("abc123", Some("old"), "N", &source);
+        assert_eq!(got, Err(BackendError::Changed(Some("CUR".into()))));
+        assert_eq!(calls.get(), 0);
+        assert!(fake.pushed.borrow().is_none());
+    }
+
+    #[test]
+    fn a_source_error_commits_and_pushes_nothing_and_cleans_up() {
+        let fake = Fake::default();
+        let base = tempfile::tempdir().unwrap();
+        let broken = |w: &mut dyn std::io::Write| {
+            w.write_all(b"half")?;
+            Err(std::io::Error::other("file vanished"))
+        };
+        let err = backend(&fake, base.path())
+            .push("abc123", None, "N", &broken)
+            .unwrap_err();
+        assert!(err.to_string().contains("file vanished"), "{err}");
+        let calls = fake.calls();
+        assert_eq!(calls.len(), 1, "only the clone: {calls:?}");
+        assert!(fake.pushed.borrow().is_none());
+        assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn an_empty_blob_pushes_data_000() {
+        let fake = Fake::default();
+        let base = tempfile::tempdir().unwrap();
+        backend(&fake, base.path())
+            .push("abc123", None, "N", &source_of(b""))
+            .unwrap();
+        assert_eq!(
+            fake.pushed.borrow().clone().unwrap(),
+            [("data.000".to_string(), Vec::new())]
+        );
+    }
+
+    #[test]
+    fn a_growing_push_overwrites_and_adds_parts() {
+        let fake = Fake {
+            remote: remote_parts(1),
+            ..Fake::default()
+        };
+        let base = tempfile::tempdir().unwrap();
+        backend(&fake, base.path())
+            .with_part_size(4)
+            .push("abc123", None, "N", &source_of(b"0123456789"))
+            .unwrap();
+        let pushed = fake.pushed.borrow().clone().unwrap();
+        let sizes: Vec<_> = pushed.iter().map(|(n, b)| (n.as_str(), b.len())).collect();
+        assert_eq!(sizes, [("data.000", 4), ("data.001", 4), ("data.002", 2)]);
+    }
+
+    #[test]
+    fn the_pull_reader_owns_the_clone_until_it_is_dropped() {
+        let fake = Fake {
+            remote: remote_parts(2),
+            ..Fake::default()
+        };
+        let base = tempfile::tempdir().unwrap();
+        let (_, mut reader) = backend(&fake, base.path()).pull("abc123").unwrap();
+        assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 1);
+        let mut all = Vec::new();
+        reader.read_to_end(&mut all).unwrap();
+        assert_eq!(all, [0, 0, 0, 1, 1, 1]);
+        assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 1);
+        drop(reader);
+        assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_pull_with_a_missing_part_errors_before_any_read_and_cleans_up() {
+        let mut remote = remote_parts(3);
+        remote.remove(1);
+        let fake = Fake {
+            remote,
+            ..Fake::default()
+        };
+        let base = tempfile::tempdir().unwrap();
+        let got = backend(&fake, base.path()).pull("abc123");
+        assert!(got.is_err());
+        assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 0);
     }
 }

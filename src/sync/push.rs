@@ -1,5 +1,7 @@
 //! Push of one session as compare-and-swap, create and pending id first, see the ADR.
 
+use std::io::Write;
+
 use super::backend::BackendError;
 use super::crypto::{blob_aad, open_meta, seal, seal_meta, sha256_hex, Meta};
 use super::fail::Fail;
@@ -117,11 +119,8 @@ impl Push<'_> {
     }
 
     fn send(&self, id: &str, expected: Option<&str>, index: &mut Index) -> Result<(), Fail> {
-        match self
-            .engine
-            .backend
-            .push(id, expected, &self.token, &self.blob)
-        {
+        let blob = |w: &mut dyn Write| w.write_all(&self.blob);
+        match self.engine.backend.push(id, expected, &self.token, &blob) {
             Ok(()) => self.finish(id, &self.token, self.gen, index),
             Err(BackendError::Changed(Some(theirs))) => self.adopt(id, &theirs, index),
             Err(BackendError::Changed(None)) => Err(CHANGED.into()),

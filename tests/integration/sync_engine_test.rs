@@ -1,7 +1,7 @@
 //! Sync engine against the in-memory backend
 
 use agr::files::{codec, lock};
-use agr::sync::backend::{BackendError, RemoteEntry, SyncBackend};
+use agr::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 use agr::sync::crypto::{blob_aad, seal, seal_meta, sha256_hex, Key, Meta};
 use agr::sync::index::{self, Index};
 use agr::sync::memory::MemoryBackend;
@@ -720,7 +720,7 @@ impl SyncBackend for GoneOnPull {
         id: &str,
         e: Option<&str>,
         m: &str,
-        b: &[u8],
+        b: BlobSource,
     ) -> Result<(), agr::sync::backend::BackendError> {
         self.0.push(id, e, m, b)
     }
@@ -730,7 +730,7 @@ impl SyncBackend for GoneOnPull {
     fn pull(
         &self,
         _id: &str,
-    ) -> Result<(Option<String>, Vec<u8>), agr::sync::backend::BackendError> {
+    ) -> Result<(Option<String>, Box<dyn std::io::Read>), agr::sync::backend::BackendError> {
         Err(agr::sync::backend::BackendError::NotFound)
     }
     fn delete(&self, id: &str) -> Result<(), agr::sync::backend::BackendError> {
@@ -809,7 +809,7 @@ impl SyncBackend for Spy {
         self.creates.set(self.creates.get() + 1);
         self.inner.create()
     }
-    fn push(&self, id: &str, e: Option<&str>, m: &str, b: &[u8]) -> Result<(), BackendError> {
+    fn push(&self, id: &str, e: Option<&str>, m: &str, b: BlobSource) -> Result<(), BackendError> {
         self.pushes.set(self.pushes.get() + 1);
         self.expected.borrow_mut().push(e.map(String::from));
         if let Some(hook) = self.before_push.borrow_mut().take() {
@@ -830,7 +830,7 @@ impl SyncBackend for Spy {
             None => self.inner.describe(id, t),
         }
     }
-    fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
+    fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn std::io::Read>), BackendError> {
         self.pulls.set(self.pulls.get() + 1);
         let mut failing = self.pull_error.borrow_mut();
         if failing

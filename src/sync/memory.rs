@@ -3,7 +3,9 @@
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Mutex;
 
-use super::backend::{BackendError, RemoteEntry, SyncBackend};
+use std::io::{Cursor, Read};
+
+use super::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 
 #[derive(Default, Clone)]
 struct Stored {
@@ -160,15 +162,17 @@ impl SyncBackend for MemoryBackend {
         id: &str,
         expected: Option<&str>,
         manifest: &str,
-        blob: &[u8],
+        blob: BlobSource,
     ) -> Result<(), BackendError> {
         let mut inner = self.lock();
         let entry = inner.known(id)?;
         if entry.manifest.as_deref() != expected {
             return Err(BackendError::Changed(entry.manifest.clone()));
         }
+        let mut bytes = Vec::new();
+        blob(&mut bytes).map_err(|e| BackendError::Other(e.to_string()))?;
         entry.manifest = Some(manifest.to_string());
-        entry.blob = blob.to_vec();
+        entry.blob = bytes;
         Ok(())
     }
 
@@ -177,10 +181,13 @@ impl SyncBackend for MemoryBackend {
         Ok(())
     }
 
-    fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
+    fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn Read>), BackendError> {
         let mut inner = self.lock();
         let entry = inner.known(id)?;
-        Ok((entry.manifest.clone(), entry.blob.clone()))
+        Ok((
+            entry.manifest.clone(),
+            Box::new(Cursor::new(entry.blob.clone())),
+        ))
     }
 
     fn delete(&self, id: &str) -> Result<(), BackendError> {
@@ -193,11 +200,12 @@ impl SyncBackend for MemoryBackend {
 
 #[cfg(test)]
 mod tests {
+    use super::super::backend::{pull_bytes, push_bytes};
     use super::*;
 
     fn pushed(b: &MemoryBackend, manifest: &str, blob: &[u8]) -> String {
         let id = b.create().unwrap();
-        b.push(&id, None, manifest, blob).unwrap();
+        push_bytes(b, &id, None, manifest, blob).unwrap();
         id
     }
 
@@ -224,7 +232,7 @@ mod tests {
             (Some("m1"), Some(b"one".to_vec()))
         );
         b.describe(&id, "m1").unwrap();
-        b.push(&id, Some("m1"), "m2", b"two").unwrap();
+        push_bytes(&b, &id, Some("m1"), "m2", b"two").unwrap();
         assert_eq!(
             (b.manifest(&id).as_deref(), b.blob(&id)),
             (Some("m2"), Some(b"two".to_vec()))
@@ -238,9 +246,9 @@ mod tests {
     fn push_with_a_stale_expected_returns_current_and_stores_nothing() {
         let b = MemoryBackend::new();
         let id = pushed(&b, "m1", b"one");
-        let stale = b.push(&id, Some("old"), "m2", b"two");
+        let stale = push_bytes(&b, &id, Some("old"), "m2", b"two");
         assert_eq!(stale, Err(BackendError::Changed(Some("m1".into()))));
-        let none = b.push(&id, None, "m3", b"three");
+        let none = push_bytes(&b, &id, None, "m3", b"three");
         assert_eq!(none, Err(BackendError::Changed(Some("m1".into()))));
         assert_eq!(
             (b.manifest(&id).as_deref(), b.blob(&id)),
@@ -253,7 +261,7 @@ mod tests {
         let b = MemoryBackend::new();
         let id = b.create().unwrap();
         assert_eq!(
-            b.push(&id, Some("x"), "m", b"b"),
+            push_bytes(&b, &id, Some("x"), "m", b"b"),
             Err(BackendError::Changed(None))
         );
         assert_eq!(b.blob(&id), Some(vec![]));
@@ -262,9 +270,12 @@ mod tests {
     #[test]
     fn unknown_id_is_not_found_everywhere() {
         let b = MemoryBackend::new();
-        assert_eq!(b.push("nope", None, "m", b"x"), Err(BackendError::NotFound));
+        assert_eq!(
+            push_bytes(&b, "nope", None, "m", b"x"),
+            Err(BackendError::NotFound)
+        );
         assert_eq!(b.describe("nope", "t"), Err(BackendError::NotFound));
-        assert_eq!(b.pull("nope"), Err(BackendError::NotFound));
+        assert_eq!(pull_bytes(&b, "nope"), Err(BackendError::NotFound));
         assert_eq!(b.delete("nope"), Err(BackendError::NotFound));
     }
 
@@ -273,11 +284,11 @@ mod tests {
         let b = MemoryBackend::new();
         let id = pushed(&b, "m1", b"one");
         assert_eq!(
-            b.pull(&id).unwrap(),
+            pull_bytes(&b, &id).unwrap(),
             (Some("m1".to_string()), b"one".to_vec())
         );
         let pending = b.create().unwrap();
-        assert_eq!(b.pull(&pending).unwrap(), (None, vec![]));
+        assert_eq!(pull_bytes(&b, &pending).unwrap(), (None, vec![]));
     }
 
     #[test]
@@ -289,12 +300,12 @@ mod tests {
         b.set_manifest(&id, Some("m0".into()));
         b.set_description(&id, Some("old".into()));
         assert_eq!(
-            b.pull(&id).unwrap(),
+            pull_bytes(&b, &id).unwrap(),
             (Some("m0".to_string()), b"tampered".to_vec())
         );
         assert_eq!(b.list().unwrap()[0].meta_token, "old");
         b.set_manifest(&id, None);
-        assert_eq!(b.pull(&id).unwrap().0, None);
+        assert_eq!(pull_bytes(&b, &id).unwrap().0, None);
     }
 
     #[test]
@@ -303,7 +314,7 @@ mod tests {
         let id = b.put(None, "t1", b"one");
         assert_eq!(b.put(Some(&id), "t2", b"two"), id);
         assert_eq!(
-            b.pull(&id).unwrap(),
+            pull_bytes(&b, &id).unwrap(),
             (Some("t2".to_string()), b"two".to_vec())
         );
         assert_eq!(b.list().unwrap()[0].meta_token, "t2");
@@ -324,10 +335,35 @@ mod tests {
         let bad = pushed(&b, "m1", b"x");
         let good = pushed(&b, "m2", b"y");
         b.fail_on(&bad);
-        assert!(b.pull(&bad).is_err());
-        assert!(b.push(&bad, Some("m1"), "m", b"z").is_err());
+        assert!(pull_bytes(&b, &bad).is_err());
+        assert!(push_bytes(&b, &bad, Some("m1"), "m", b"z").is_err());
         assert!(b.describe(&bad, "t").is_err());
         assert!(b.delete(&bad).is_err());
-        assert_eq!(b.pull(&good).unwrap().1, b"y");
+        assert_eq!(pull_bytes(&b, &good).unwrap().1, b"y");
+    }
+
+    #[test]
+    fn the_source_runs_only_after_the_compare_and_an_error_stores_nothing() {
+        let b = MemoryBackend::new();
+        let id = pushed(&b, "m1", b"one");
+        let calls = std::cell::Cell::new(0);
+        let counted = |w: &mut dyn std::io::Write| {
+            calls.set(calls.get() + 1);
+            w.write_all(b"two")
+        };
+        let stale = b.push(&id, Some("old"), "m2", &counted);
+        assert_eq!(stale, Err(BackendError::Changed(Some("m1".into()))));
+        assert_eq!(calls.get(), 0, "source must not run on a stale expected");
+        b.push(&id, Some("m1"), "m2", &counted).unwrap();
+        assert_eq!(calls.get(), 1);
+        let broken = |w: &mut dyn std::io::Write| {
+            w.write_all(b"partial")?;
+            Err(std::io::Error::other("disk gone"))
+        };
+        assert!(b.push(&id, Some("m2"), "m3", &broken).is_err());
+        assert_eq!(
+            pull_bytes(&b, &id).unwrap(),
+            (Some("m2".to_string()), b"two".to_vec())
+        );
     }
 }

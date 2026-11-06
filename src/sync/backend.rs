@@ -1,5 +1,7 @@
 //! Backend-neutral transport, backends only ever see opaque tokens and sealed bytes.
 
+use std::io::{self, Read, Write};
+
 use thiserror::Error;
 
 /// One remote session, `meta_token` is the sealed metadata from `crypto::seal_meta`.
@@ -34,6 +36,10 @@ pub enum BackendError {
     Other(String),
 }
 
+/// Produces the sealed blob into the writer it is given, called at most once per push and only
+/// after the compare-and-swap check passed. An `Err` aborts the push, nothing is committed.
+pub type BlobSource<'a> = &'a dyn Fn(&mut dyn Write) -> io::Result<()>;
+
 /// Remote store for sealed sessions.
 pub trait SyncBackend {
     fn name(&self) -> &'static str;
@@ -49,11 +55,37 @@ pub trait SyncBackend {
         id: &str,
         expected: Option<&str>,
         manifest: &str,
-        blob: &[u8],
+        blob: BlobSource,
     ) -> Result<(), BackendError>;
     /// Set the listing hint to `token`, makes a pending entry visible.
     fn describe(&self, id: &str, token: &str) -> Result<(), BackendError>;
-    /// Stored manifest (`None` when there is none) and blob, read together.
-    fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError>;
+    /// Stored manifest (`None` when there is none) and a reader over the blob, taken together.
+    /// The reader owns whatever the backend needs to keep alive (a scratch clone for the gist).
+    fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn Read>), BackendError>;
     fn delete(&self, id: &str) -> Result<(), BackendError>;
+}
+
+/// Push a blob that is already in memory.
+/// Seam until Stage 29, the engine still seals whole blobs and tests use it as a shorthand.
+pub fn push_bytes(
+    backend: &dyn SyncBackend,
+    id: &str,
+    expected: Option<&str>,
+    manifest: &str,
+    blob: &[u8],
+) -> Result<(), BackendError> {
+    backend.push(id, expected, manifest, &|w| w.write_all(blob))
+}
+
+/// Pull and read the whole blob into memory, same seam as `push_bytes`.
+pub fn pull_bytes(
+    backend: &dyn SyncBackend,
+    id: &str,
+) -> Result<(Option<String>, Vec<u8>), BackendError> {
+    let (manifest, mut reader) = backend.pull(id)?;
+    let mut blob = Vec::new();
+    reader
+        .read_to_end(&mut blob)
+        .map_err(|e| BackendError::Other(format!("read blob: {e}")))?;
+    Ok((manifest, blob))
 }

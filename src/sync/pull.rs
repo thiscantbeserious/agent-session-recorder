@@ -1,6 +1,6 @@
 //! Pull of one session, verify before anything touches the disk.
 
-use super::backend::BackendError;
+use super::backend::{pull_bytes, BackendError};
 use super::crypto::{blob_aad, open, open_meta, sha256_hex, Meta};
 use super::fail::Fail;
 use super::index::Index;
@@ -42,7 +42,7 @@ fn verified(
     index: &Index,
     id: &str,
 ) -> Result<(String, Meta, Vec<u8>), Fail> {
-    let (manifest, blob) = engine.backend.pull(id).map_err(Fail::from)?;
+    let (manifest, blob) = pull_bytes(engine.backend, id).map_err(Fail::from)?;
     let token = manifest.ok_or("remote has no manifest, not pulling")?;
     let meta = open_meta(engine.key, &token).map_err(|e| e.to_string())?;
     let synced = index.entries.get(&row.path).map_or(0, |e| e.gen);

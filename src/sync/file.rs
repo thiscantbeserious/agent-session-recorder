@@ -2,9 +2,10 @@
 //! `AGR_SYNC_TEST_BACKEND_DIR`. Never used for real data.
 
 use std::fs;
+use std::io::Read;
 use std::path::PathBuf;
 
-use super::backend::{BackendError, RemoteEntry, SyncBackend};
+use super::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 
 /// `<id>.blob`, `<id>.manifest` and `<id>.desc` per entry inside `dir`, same rules as the
 /// memory backend (no `.desc` means pending and unlisted).
@@ -39,6 +40,17 @@ impl FileBackend {
         } else {
             Err(BackendError::NotFound)
         }
+    }
+
+    /// Streams into `<id>.blob.tmp` and renames, a failing source leaves the stored blob alone.
+    fn write_blob(&self, id: &str, blob: BlobSource) -> Result<(), BackendError> {
+        let tmp = self.path(id, "blob.tmp");
+        let written = fs::File::create(&tmp).and_then(|mut f| blob(&mut f));
+        let done = written.and_then(|()| fs::rename(&tmp, self.path(id, "blob")));
+        if done.is_err() {
+            let _ = fs::remove_file(&tmp);
+        }
+        done.map_err(io_err)
     }
 
     fn manifest(&self, id: &str) -> Option<String> {
@@ -98,14 +110,14 @@ impl SyncBackend for FileBackend {
         id: &str,
         expected: Option<&str>,
         manifest: &str,
-        blob: &[u8],
+        blob: BlobSource,
     ) -> Result<(), BackendError> {
         self.known(id)?;
         let current = self.manifest(id);
         if current.as_deref() != expected {
             return Err(BackendError::Changed(current));
         }
-        fs::write(self.path(id, "blob"), blob).map_err(io_err)?;
+        self.write_blob(id, blob)?;
         fs::write(self.path(id, "manifest"), manifest).map_err(io_err)
     }
 
@@ -114,10 +126,10 @@ impl SyncBackend for FileBackend {
         fs::write(self.path(id, "desc"), token).map_err(io_err)
     }
 
-    fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
+    fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn Read>), BackendError> {
         self.known(id)?;
-        let blob = fs::read(self.path(id, "blob")).map_err(io_err)?;
-        Ok((self.manifest(id), blob))
+        let file = fs::File::open(self.path(id, "blob")).map_err(io_err)?;
+        Ok((self.manifest(id), Box::new(file)))
     }
 
     fn delete(&self, id: &str) -> Result<(), BackendError> {
@@ -131,6 +143,7 @@ impl SyncBackend for FileBackend {
 
 #[cfg(test)]
 mod tests {
+    use super::super::backend::{pull_bytes, push_bytes};
     use super::*;
 
     fn backend() -> (tempfile::TempDir, FileBackend) {
@@ -141,7 +154,7 @@ mod tests {
 
     fn pushed(b: &FileBackend, manifest: &str, blob: &[u8]) -> String {
         let id = b.create().unwrap();
-        b.push(&id, None, manifest, blob).unwrap();
+        push_bytes(b, &id, None, manifest, blob).unwrap();
         id
     }
 
@@ -165,16 +178,16 @@ mod tests {
         let (_dir, b) = backend();
         let id = pushed(&b, "m1", b"one");
         assert_eq!(
-            b.pull(&id).unwrap(),
+            pull_bytes(&b, &id).unwrap(),
             (Some("m1".to_string()), b"one".to_vec())
         );
-        b.push(&id, Some("m1"), "m2", b"two").unwrap();
-        let stale = b.push(&id, Some("m1"), "m3", b"three");
+        push_bytes(&b, &id, Some("m1"), "m2", b"two").unwrap();
+        let stale = push_bytes(&b, &id, Some("m1"), "m3", b"three");
         assert_eq!(stale, Err(BackendError::Changed(Some("m2".into()))));
-        let none = b.push(&id, None, "m3", b"three");
+        let none = push_bytes(&b, &id, None, "m3", b"three");
         assert_eq!(none, Err(BackendError::Changed(Some("m2".into()))));
         assert_eq!(
-            b.pull(&id).unwrap(),
+            pull_bytes(&b, &id).unwrap(),
             (Some("m2".to_string()), b"two".to_vec())
         );
     }
@@ -183,9 +196,9 @@ mod tests {
     fn pending_entry_pulls_without_manifest_and_stale_expected_is_changed_none() {
         let (_dir, b) = backend();
         let id = b.create().unwrap();
-        assert_eq!(b.pull(&id).unwrap(), (None, vec![]));
+        assert_eq!(pull_bytes(&b, &id).unwrap(), (None, vec![]));
         assert_eq!(
-            b.push(&id, Some("x"), "m", b"b"),
+            push_bytes(&b, &id, Some("x"), "m", b"b"),
             Err(BackendError::Changed(None))
         );
     }
@@ -193,14 +206,17 @@ mod tests {
     #[test]
     fn unknown_id_is_not_found_and_delete_removes() {
         let (_dir, b) = backend();
-        assert_eq!(b.push("nope", None, "m", b"x"), Err(BackendError::NotFound));
+        assert_eq!(
+            push_bytes(&b, "nope", None, "m", b"x"),
+            Err(BackendError::NotFound)
+        );
         assert_eq!(b.describe("nope", "t"), Err(BackendError::NotFound));
-        assert_eq!(b.pull("nope"), Err(BackendError::NotFound));
+        assert_eq!(pull_bytes(&b, "nope"), Err(BackendError::NotFound));
         let id = pushed(&b, "m", b"x");
         b.describe(&id, "m").unwrap();
         b.delete(&id).unwrap();
         assert!(b.list().unwrap().is_empty());
-        assert_eq!(b.pull(&id), Err(BackendError::NotFound));
+        assert_eq!(pull_bytes(&b, &id), Err(BackendError::NotFound));
         assert_eq!(b.delete(&id), Err(BackendError::NotFound));
     }
 
@@ -210,5 +226,30 @@ mod tests {
         let first = b.create().unwrap();
         b.delete(&first).unwrap();
         assert_ne!(b.create().unwrap(), first);
+    }
+
+    #[test]
+    fn the_source_runs_only_after_the_compare_and_an_error_stores_nothing() {
+        let (_dir, b) = backend();
+        let id = pushed(&b, "m1", b"one");
+        let calls = std::cell::Cell::new(0);
+        let counted = |w: &mut dyn std::io::Write| {
+            calls.set(calls.get() + 1);
+            w.write_all(b"two")
+        };
+        let stale = b.push(&id, Some("old"), "m2", &counted);
+        assert_eq!(stale, Err(BackendError::Changed(Some("m1".into()))));
+        assert_eq!(calls.get(), 0, "source must not run on a stale expected");
+        b.push(&id, Some("m1"), "m2", &counted).unwrap();
+        assert_eq!(calls.get(), 1);
+        let broken = |w: &mut dyn std::io::Write| {
+            w.write_all(b"partial")?;
+            Err(std::io::Error::other("disk gone"))
+        };
+        assert!(b.push(&id, Some("m2"), "m3", &broken).is_err());
+        assert_eq!(
+            pull_bytes(&b, &id).unwrap(),
+            (Some("m2".to_string()), b"two".to_vec())
+        );
     }
 }

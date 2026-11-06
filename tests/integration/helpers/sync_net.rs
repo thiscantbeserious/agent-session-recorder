@@ -1,7 +1,7 @@
 //! Simulated machines on one shared remote, for the multi-machine sync tests.
 
 use agr::files::{backup, codec};
-use agr::sync::backend::{BackendError, RemoteEntry, SyncBackend};
+use agr::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 use agr::sync::crypto::{blob_aad, open, open_meta, sha256_hex, Key};
 use agr::sync::index;
 use agr::sync::memory::MemoryBackend;
@@ -188,7 +188,7 @@ impl SyncBackend for Net<'_> {
     fn create(&self) -> Result<String, BackendError> {
         self.mem().create()
     }
-    fn push(&self, id: &str, e: Option<&str>, m: &str, b: &[u8]) -> Result<(), BackendError> {
+    fn push(&self, id: &str, e: Option<&str>, m: &str, b: BlobSource) -> Result<(), BackendError> {
         self.race();
         if let Some(err) = self.fail_push.borrow_mut().take() {
             return Err(err);
@@ -206,7 +206,7 @@ impl SyncBackend for Net<'_> {
         }
         self.mem().describe(id, t)
     }
-    fn pull(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
+    fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn std::io::Read>), BackendError> {
         self.mem().pull(id)
     }
     fn delete(&self, id: &str) -> Result<(), BackendError> {
