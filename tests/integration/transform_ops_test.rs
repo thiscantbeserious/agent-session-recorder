@@ -24,6 +24,7 @@ pub fn create_test_cast_file(dir: &TempDir, name: &str, events: Vec<Event>) -> P
         command: None,
         env: None,
         idle_time_limit: None,
+        ..Default::default()
     });
     file.events = events;
     file.write(&path).unwrap();
@@ -48,6 +49,7 @@ pub fn create_test_cast_with_idle_limit(
         command: None,
         env: None,
         idle_time_limit: Some(idle_time_limit),
+        ..Default::default()
     });
     file.events = events;
     file.write(&path).unwrap();

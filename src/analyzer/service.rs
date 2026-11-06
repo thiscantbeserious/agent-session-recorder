@@ -742,6 +742,7 @@ mod tests {
             term: None,
             env: None,
             idle_time_limit: None,
+            ..Default::default()
         };
         let mut cast = AsciicastFile::new(header);
 
@@ -978,6 +979,7 @@ mod tests {
             term: None,
             env: None,
             idle_time_limit: None,
+            ..Default::default()
         };
         let mut cast = AsciicastFile::new(header);
         cast.events.push(Event::output(0.1, "Hello\n"));
@@ -1026,6 +1028,7 @@ mod tests {
             term: None,
             env: None,
             idle_time_limit: None,
+            ..Default::default()
         };
         let cast = AsciicastFile::new(header);
 

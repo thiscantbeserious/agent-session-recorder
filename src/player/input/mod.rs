@@ -88,6 +88,7 @@ mod tests {
                 cols: Some(80),
                 rows: Some(24),
                 term_type: None,
+                ..Default::default()
             }),
             timestamp: None,
             duration: None,
@@ -95,6 +96,7 @@ mod tests {
             command: None,
             env: None,
             idle_time_limit: None,
+            ..Default::default()
         });
         cast.events.push(CastEvent::output(0.1, "hello"));
         cast

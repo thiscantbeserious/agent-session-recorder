@@ -22,6 +22,7 @@ fn make_cast(events: Vec<(f64, &str)>) -> AsciicastFile {
         command: None,
         env: None,
         idle_time_limit: None,
+        ..Default::default()
     };
     let mut cast = AsciicastFile::new(header);
     for (time, data) in events {
@@ -133,6 +134,7 @@ fn advance_playback_handles_resize_events() {
         command: None,
         env: None,
         idle_time_limit: None,
+        ..Default::default()
     };
     let mut cast = AsciicastFile::new(header);
     cast.events.push(Event::output(0.1, "before"));
