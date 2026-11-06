@@ -358,8 +358,14 @@ The earlier proposal named the gist files after an HMAC of the path plus the cip
    the current token and writes nothing. Otherwise it writes the parts and the new manifest,
    commits and runs a plain `git push`. Never `--force`, never a `+` refspec, never a pull or
    rebase retry. A non-fast-forward rejection maps to `Changed(None)`.
-4. **Blob AAD**: `b"AGR1" || 0x01 || b"agr:blob:" || path || ":" || gen`, header and gen
-   bound, the core `seal` and `open` (and the KAT vector) stay untouched.
+4. **Blob AAD**: `b"AGR1" || 0x01 || b"agr:blob:" || path || ":" || gen`, format tag in AAD
+   (domain separation, wire header checked separately) and gen bound, the core `seal` and `open` (and the KAT vector) stay untouched.
+4a. **Clock and pacer** (Batch 10 review): one `pace::Clock` trait (`mono`, `unix_secs`,
+   `sleep`, all `&self`) behind `Arc<dyn Clock>`, `SystemClock` in production and a mutex
+   backed fake in tests. `unix_secs` errors on a pre-epoch clock instead of giving 1970.
+   `GistBackend` holds the clock for commit dates and a `Mutex<Pacer>` built from the same
+   clock, so `&self` trait methods can pace and no generic leaks into the public type. The
+   per-call `wait` wiring stays in Stage 18.
 5. **Push order**: `create` (pending gist) then the index entry with the id and
    `pending = true`, then the compare-and-swap push, then the index entry with token and gen,
    then the description PATCH. A failing step keeps the gist, nothing is deleted on error any

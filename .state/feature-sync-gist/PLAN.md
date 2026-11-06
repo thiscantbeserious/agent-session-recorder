@@ -346,6 +346,25 @@ Files: `src/sync/backend.rs`, `src/sync/gist_parse.rs`, `src/sync/pace.rs`, `src
        `src/sync/setup.rs`
 Depends on: Stage 9, Stage 13
 
+### Stage 16b: Batch 10 review fixes
+
+Goal: fix the pair review findings of Stages 14 to 16 before the trait reshape.
+Owner: implementer
+
+- [x] RED/GREEN: `git push` `returned error: 429` maps to `RateLimited`, match narrowed to
+      `api rate limit`, `secondary rate limit`, `http 429`, `error: 429`.
+- [x] RED/GREEN: git push rejection maps to new `BackendError::Rejected`, Stage 17 maps it to
+      `Changed(None)` (Stage 18 test below).
+- [x] RED/GREEN: `git commit` env pins author and committer name and email, `commit.gpgsign=false`.
+- [x] GREEN: one `Clock` trait for pacing and commit dates, `Mutex<Pacer>` in `GistBackend`,
+      pre-epoch clock is an error.
+- [x] RED/GREEN: `gen == 0` is `UnknownVersion`, raw legacy v1 JSON without `gen` is tested.
+- [x] ADR wording for the blob AAD.
+
+Files: `src/sync/gist_parse.rs`, `src/sync/gist.rs`, `src/sync/pace.rs`, `src/sync/backend.rs`,
+       `src/sync/scan.rs`, `tests/integration/sync_engine_test.rs`
+Depends on: Stage 14, Stage 15, Stage 16
+
 ### Stage 17: Backend trait reshape and memory compare-and-swap
 
 Goal: `create`, `push(id, expected, manifest, blob)`, `describe`, `pull` with manifest,
@@ -360,6 +379,7 @@ Owner: implementer
       (tamper, rollback, stalled description).
 - [ ] GREEN: trait as in the ADR, memory under one mutex (models git's ref check), file
       backend gets the same rules (`<id>.manifest`, `<id>.desc`).
+- [ ] Map `BackendError::Rejected` to `Changed(None)` in the trait reshape.
 - [ ] Engine call sites adapted without new behaviour: create then push with `expected` from
       the listing, then describe. Gist backend adapted mechanically (`create_gist` and
       `set_description` become `create` and `describe`, no delete on error), its compare-and-swap
@@ -367,7 +387,7 @@ Owner: implementer
 
 Files: `src/sync/backend.rs`, `src/sync/memory.rs`, `src/sync/file.rs`, `src/sync/run.rs`,
        `src/sync/pull.rs`, `src/sync/gist.rs`, `tests/integration/sync_engine_test.rs`
-Depends on: Stage 14, Stage 15, Stage 16
+Depends on: Stage 14, Stage 15, Stage 16b
 
 ### Stage 18: Gist compare-and-swap, manifest, created_at and pacing
 
