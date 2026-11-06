@@ -96,9 +96,13 @@ impl From<anyhow::Error> for Failure {
 }
 
 /// Config, backend, tool and login checks, then the key. Changes nothing.
-fn try_prepare(need: KeyNeed) -> Result<Ctx, Failure> {
+fn try_prepare(need: KeyNeed, announce: bool) -> Result<Ctx, Failure> {
     let config = Config::load()?;
-    let test_dir = std::env::var_os("AGR_SYNC_TEST_BACKEND_DIR").map(Into::into);
+    let test_dir: Option<std::path::PathBuf> =
+        std::env::var_os("AGR_SYNC_TEST_BACKEND_DIR").map(Into::into);
+    if let (Some(dir), true) = (&test_dir, announce) {
+        eprintln!("Using test sync backend at {}", dir.display());
+    }
     let Some(backend) = open_backend(config.sync.backend, test_dir) else {
         return Err(Failure(
             "Sync is off.".into(),
@@ -117,7 +121,8 @@ fn try_prepare(need: KeyNeed) -> Result<Ctx, Failure> {
 }
 
 fn prepare(need: KeyNeed) -> Result<Ctx> {
-    Ok(try_prepare(need).unwrap_or_else(|Failure(message, hint)| abort(&message, hint.as_deref())))
+    Ok(try_prepare(need, true)
+        .unwrap_or_else(|Failure(message, hint)| abort(&message, hint.as_deref())))
 }
 
 fn engine_failed(e: SyncError) -> ! {
@@ -252,7 +257,7 @@ fn push_auto(args: &Args) -> Result<()> {
     if !state.sync_privacy_ack {
         return Ok(());
     }
-    let result = try_prepare(KeyNeed::Existing)
+    let result = try_prepare(KeyNeed::Existing, false)
         .map_err(|Failure(message, _)| SyncError::Failed(message))
         .and_then(|ctx| {
             auto::run(

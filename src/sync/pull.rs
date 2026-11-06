@@ -39,17 +39,11 @@ fn write_session(target: &std::path::Path, plain: &[u8]) -> Result<(), String> {
     codec::atomic_write_raw(target, plain).map_err(|e| err(&e))
 }
 
-/// A hidden `.bak` is kept, an older different backup is never replaced silently.
+/// A hidden `.bak` is replaced by the current file, the local file is the newer state
+/// worth keeping and a stale backup must not block pulls forever.
 fn backup_existing(target: &std::path::Path) -> Result<(), String> {
     let bak = backup::backup_path_for(target);
-    if bak.exists() {
-        let same = std::fs::read(&bak).ok() == std::fs::read(target).ok();
-        if !same {
-            return Err(format!("a different backup exists: {}", bak.display()));
-        }
-        return Ok(());
-    }
-    backup::create_backup(target)
+    std::fs::copy(target, &bak)
         .map(|_| ())
-        .map_err(|e| e.to_string())
+        .map_err(|e| format!("backup {}: {e}", bak.display()))
 }

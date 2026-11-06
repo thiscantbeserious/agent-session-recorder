@@ -223,27 +223,32 @@ fn pull_overwrite_keeps_hidden_backup_and_plain_pull_keeps_file() {
 }
 
 #[test]
-fn existing_backup_with_other_content_blocks_overwrite() {
-    let (_a, backend, key) = pushed_machine();
+fn existing_backup_with_other_content_is_rotated_not_blocking() {
+    let (a, backend, key) = pushed_machine();
     let b = machine();
     let old = b.session(
         "claude",
         "a.cast.gz",
         "{\"version\":3}\n[0.1,\"o\",\"mine\"]\n",
     );
-    fs::write(b.dir().join("claude/.a.cast.gz.bak"), b"precious").unwrap();
+    fs::write(b.dir().join("claude/.a.cast.gz.bak"), b"stale").unwrap();
     let old_bytes = fs::read(&old).unwrap();
     let over = Options {
         overwrite: true,
         ..opts()
     };
     let report = b.engine(&backend, &key).pull(&over).unwrap();
-    assert_eq!(report.failed, 1);
-    assert_eq!(fs::read(&old).unwrap(), old_bytes);
+    assert_eq!((report.pulled, report.failed), (3, 0));
+    assert_eq!(
+        fs::read(&old).unwrap(),
+        fs::read(a.dir().join("claude/a.cast.gz")).unwrap()
+    );
     assert_eq!(
         fs::read(b.dir().join("claude/.a.cast.gz.bak")).unwrap(),
-        b"precious"
+        old_bytes
     );
+    let again = b.engine(&backend, &key).pull(&over).unwrap();
+    assert_eq!(again.failed, 0);
 }
 
 #[test]
@@ -390,4 +395,110 @@ fn live_locked_plain_and_oversized_sessions_are_skipped() {
     for r in [SkipReason::Locked, SkipReason::Plain, SkipReason::OverCap] {
         assert!(reasons.contains(&Decision::Skip(r)), "{r:?}");
     }
+}
+
+fn overwrite() -> Options {
+    Options {
+        overwrite: true,
+        ..opts()
+    }
+}
+
+fn remote_ids(backend: &MemoryBackend) -> Vec<String> {
+    backend.list().unwrap().into_iter().map(|e| e.id).collect()
+}
+
+#[test]
+fn push_overwrite_lets_local_win_and_reuses_the_remote_id() {
+    let (a, backend, key) = pushed_machine();
+    let b = machine();
+    b.engine(&backend, &key).pull(&opts()).unwrap();
+    a.session("claude", "a.cast.gz", &CAST.replace("secret", "from a"));
+    b.session("claude", "a.cast.gz", &CAST.replace("secret", "from b"));
+    a.engine(&backend, &key).push(&opts()).unwrap();
+    let ids = remote_ids(&backend);
+    let plain = b.engine(&backend, &key).push(&opts()).unwrap();
+    assert_eq!((plain.conflicts, plain.pushed), (1, 0));
+    let report = b.engine(&backend, &key).push(&overwrite()).unwrap();
+    assert_eq!((report.pushed, report.conflicts), (1, 0));
+    assert_eq!(remote_ids(&backend), ids);
+    let c = machine();
+    c.engine(&backend, &key).pull(&opts()).unwrap();
+    assert_eq!(
+        fs::read(c.dir().join("claude/a.cast.gz")).unwrap(),
+        fs::read(b.dir().join("claude/a.cast.gz")).unwrap()
+    );
+}
+
+#[test]
+fn cleanup_of_the_local_file_shows_remote_only_and_touches_nothing() {
+    let (m, backend, key) = pushed_machine();
+    fs::remove_file(m.dir().join("claude/a.cast.gz")).unwrap();
+    let ids = remote_ids(&backend);
+    let blob = backend.blob(&ids[0]);
+    let report = m.engine(&backend, &key).status(&[]).unwrap();
+    let item = report
+        .items
+        .iter()
+        .find(|i| i.path == "claude/a.cast.gz")
+        .unwrap();
+    assert_eq!(agr::sync::format::label(item), "remote only (pull)");
+    let pushed = m.engine(&backend, &key).push(&opts()).unwrap();
+    assert_eq!((pushed.pushed, pushed.deleted, pushed.failed), (0, 0, 0));
+    assert_eq!(remote_ids(&backend), ids);
+    assert_eq!(backend.blob(&ids[0]), blob);
+    assert!(!m.dir().join("claude/a.cast.gz").exists());
+}
+
+#[test]
+fn vanished_gist_shows_local_only_and_deletes_no_local_file() {
+    let (m, backend, key) = pushed_machine();
+    let gone = index::load(m.dir()).0.entries["claude/a.cast.gz"]
+        .remote_id
+        .clone();
+    backend.delete(&gone).unwrap();
+    let report = m.engine(&backend, &key).status(&[]).unwrap();
+    let item = report
+        .items
+        .iter()
+        .find(|i| i.path == "claude/a.cast.gz")
+        .unwrap();
+    assert_eq!(agr::sync::format::label(item), "local only (push)");
+    let pulled = m.engine(&backend, &key).pull(&overwrite()).unwrap();
+    assert_eq!(pulled.failed, 0);
+    for path in ["claude/a.cast.gz", "claude/b.cast.gz", "codex/c.cast.gz"] {
+        assert!(m.dir().join(path).exists(), "{path}");
+    }
+}
+
+#[test]
+fn unknown_version_and_other_key_entries_are_reported_and_left_alone() {
+    let (m, backend, key) = pushed_machine();
+    let other = Key::generate();
+    let v2 = seal_meta(
+        &key,
+        &Meta {
+            v: 2,
+            path: "claude/z.cast.gz".into(),
+            sha256: "00".into(),
+            size: 1,
+        },
+    );
+    let foreign = token(&other, "claude/y.cast.gz", "00");
+    let v2_id = backend.push(None, &v2, b"v2 blob").unwrap();
+    let foreign_id = backend.push(None, &foreign, b"foreign blob").unwrap();
+    let status = m.engine(&backend, &key).status(&[]).unwrap();
+    let decisions: Vec<_> = status.items.iter().map(|i| i.decision).collect();
+    assert!(decisions.contains(&Decision::UnknownVersion));
+    assert!(decisions.contains(&Decision::OtherKey));
+    let push = m.engine(&backend, &key).push(&overwrite()).unwrap();
+    let pull = m.engine(&backend, &key).pull(&overwrite()).unwrap();
+    assert_eq!((push.failed, pull.failed, pull.pulled), (0, 0, 0));
+    assert_eq!(push.skipped, 2);
+    assert_eq!(backend.blob(&v2_id).as_deref(), Some(&b"v2 blob"[..]));
+    assert_eq!(
+        backend.blob(&foreign_id).as_deref(),
+        Some(&b"foreign blob"[..])
+    );
+    assert_eq!(backend.len(), 5);
 }

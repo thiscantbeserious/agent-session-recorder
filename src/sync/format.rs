@@ -120,6 +120,7 @@ pub fn delete_preview_lines(report: &Report) -> Vec<String> {
     }
     let mut lines = vec![format!("Would delete {} remote session(s)", remote.len())];
     lines.extend(remote.iter().map(|i| format!("  {}", i.path)));
+    lines.push("A later `agr sync push` uploads the session again.".into());
     lines
 }
 

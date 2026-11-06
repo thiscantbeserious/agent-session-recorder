@@ -511,3 +511,123 @@ fn auto_push_failure_is_stored_one_line_and_shown_once_by_status() {
     );
     assert!(!m.state().contains("last_auto_push_error"));
 }
+
+const CAST: &str =
+    "{\"version\":3,\"term\":{\"cols\":80,\"rows\":24}}\n[0.5,\"o\",\"a\"]\n[10.0,\"o\",\"b\"]\n";
+
+fn phrase_of(m: &Machine) -> String {
+    let out = m.run(&["key", "export"]).stdout;
+    let line = out.lines().find(|l| l.trim().starts_with("agr1-")).unwrap();
+    line.trim().to_string()
+}
+
+fn all_files(dir: &Path, found: &mut Vec<PathBuf>) {
+    for entry in fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            all_files(&path, found);
+        } else {
+            found.push(path);
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn a_token_printed_by_gh_never_reaches_output_or_files() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "one");
+    let gh = "echo \"  - Token: gho_FAKE123\"; echo \"  - Token scopes: 'gist'\"; \
+        if [ \"$1\" = auth ]; then echo \"Token: gho_FAKE123\" >&2; exit 0; fi\n\
+        if [ \"$1\" = api ]; then echo '[]'; exit 0; fi\n\
+        echo \"HTTP 500 token gho_FAKE123 rejected\" >&2; exit 1";
+    let bin = fake_bin(&[("git", "exit 0"), ("gh", gh)]);
+    let mut seen = String::new();
+    for args in [&["status"][..], &["push", "--yes"], &["pull", "--yes"]] {
+        let out = gist_cmd(&m, &bin, args);
+        seen.push_str(&out.all());
+    }
+    let mut files = Vec::new();
+    all_files(m.home.path(), &mut files);
+    for file in files {
+        seen.push_str(&String::from_utf8_lossy(&fs::read(file).unwrap()));
+    }
+    assert!(!seen.contains("gho_FAKE123"), "{seen}");
+}
+
+#[test]
+fn pull_without_tty_and_without_yes_aborts_and_changes_nothing() {
+    let remote = remote();
+    let a = Machine::gist(remote.path());
+    a.session("claude", "a.cast.gz", "one");
+    assert_eq!(a.run(&["push", "--yes"]).code, 0);
+    let b = Machine::gist(remote.path());
+    assert_eq!(b.run(&["key", "import", &phrase_of(&a)]).code, 0);
+    let out = b.run(&["pull"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(out.stdout.contains("No changes made."), "{}", out.stdout);
+    assert!(!b.storage.join("claude/a.cast.gz").exists());
+    assert!(!b.storage.join(".agr-sync-index.json").exists());
+    assert_eq!(b.state(), "");
+}
+
+#[test]
+fn pulled_cast_gz_plays_without_warning_and_is_listed() {
+    let remote = remote();
+    let a = Machine::gist(remote.path());
+    a.session("claude", "a.cast.gz", CAST);
+    assert_eq!(a.run(&["push", "--yes"]).code, 0);
+    let b = Machine::gist(remote.path());
+    b.run(&["key", "import", &phrase_of(&a)]);
+    assert_eq!(b.run(&["pull", "--yes"]).code, 0);
+    let file = b.storage.join("claude/a.cast.gz");
+    let agr = |args: &[&str]| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_agr"));
+        cmd.args(args)
+            .env("NO_COLOR", "1")
+            .env("HOME", b.home.path())
+            .env("XDG_CONFIG_HOME", b.home.path().join(".config"));
+        b.exec(cmd, None)
+    };
+    let play = agr(&["play", file.to_str().unwrap()]);
+    assert!(
+        !play
+            .all()
+            .contains("does not have .cast or .cast.gz extension"),
+        "{}",
+        play.all()
+    );
+    assert!(
+        !play.all().to_lowercase().contains("corrupt"),
+        "{}",
+        play.all()
+    );
+    let list = agr(&["list"]);
+    assert_eq!(list.code, 0, "{}", list.all());
+    assert!(list.stdout.contains("a.cast"), "{}", list.stdout);
+}
+
+#[test]
+fn test_backend_dir_is_announced_on_stderr() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    let out = m.run(&["status"]);
+    let line = format!("Using test sync backend at {}", remote.path().display());
+    assert!(out.stderr.contains(&line), "{}", out.stderr);
+}
+
+#[test]
+fn delete_warns_that_a_plain_push_uploads_the_session_again() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "one");
+    m.run(&["push", "--yes"]);
+    let out = m.run(&["delete", "--yes", "claude/a.cast.gz"]);
+    assert!(
+        out.stdout
+            .contains("A later `agr sync push` uploads the session again."),
+        "{}",
+        out.stdout
+    );
+}
