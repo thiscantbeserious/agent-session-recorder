@@ -803,14 +803,14 @@ Depends on: Stage 35
 Goal: outside code sees only `agr::sync::<item>` and `agr::sync::testing::<item>`, the shims are gone.
 Owner: implementer
 
-- [ ] `sync/mod.rs`: layers are private `mod`, the facade re-exports exactly the list in the
+- [x] `sync/mod.rs`: layers are private `mod`, the facade re-exports exactly the list in the
       ADR, `#[doc(hidden)] pub mod testing` re-exports the test list, shims from Stages 32 to 35 removed.
-- [ ] Every cross-layer import inside `src/sync/` written as `crate::sync::<layer>::...`.
-- [ ] `src/commands/sync/{run,key}.rs` and `src/recording/auto_push.rs` use facade paths only,
+- [x] Every cross-layer import inside `src/sync/` written as `crate::sync::<layer>::...`.
+- [x] `src/commands/sync/{run,key}.rs` and `src/recording/auto_push.rs` use facade paths only,
       the integration tests and `sync_gist_live.rs` use facade or `testing` paths only.
-- [ ] Grep: no `sync::(crypto|backend|engine|app|blob|gist|memory|index|plan|scan|run)::`
+- [x] Grep: no `sync::(crypto|backend|engine|app|blob|gist|memory|index|plan|scan|run)::`
       outside `src/sync/`.
-- [ ] `cargo test --test sync_gist_live --no-run` compiles (ignored live test), test names and snap hashes identical.
+- [x] `cargo test --test sync_gist_live --no-run` compiles (ignored live test), test names and snap hashes identical.
 
 Files: `src/sync/mod.rs`, `src/sync/crypto/mod.rs`, `src/sync/backend/mod.rs`, `src/sync/engine/mod.rs`, `src/sync/app/mod.rs`, `src/sync/engine/run.rs`, `src/sync/engine/scan.rs`, `src/sync/engine/push.rs`, `src/sync/engine/pull.rs`, `src/sync/app/setup.rs`, `src/sync/app/key.rs`, `src/sync/app/auto/mod.rs`, `src/sync/app/auto/child.rs`, `src/sync/app/format/mod.rs`, `src/sync/app/format/summary.rs`, `src/commands/sync/run.rs`, `src/commands/sync/key.rs`, `src/recording/auto_push.rs`, `tests/integration/sync_engine_test.rs`, `tests/integration/sync_index_fields_test.rs`, `tests/integration/sync_multi_machine_test.rs`, `tests/integration/helpers/sync_net.rs`, `tests/sync_gist_live.rs`
 Depends on: Stage 36, Stage 37, Stage 38

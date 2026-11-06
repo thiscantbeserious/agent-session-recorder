@@ -3,11 +3,9 @@
 use crate::helpers::sync_net::{
     assert_settled, mach, only_id, overwrite, remote_bytes, Mach, Net, PATH,
 };
-use agr::sync::backend::BackendError;
-use agr::sync::crypto::Key;
-use agr::sync::memory::MemoryBackend;
-use agr::sync::plan::Decision;
-use agr::sync::run::{Options, Outcome, Report};
+use agr::sync::testing::MemoryBackend;
+use agr::sync::BackendError;
+use agr::sync::{Decision, Key, Options, Outcome, Report};
 
 const CHANGED: &str = "changed on the remote, run again";
 

@@ -7,7 +7,7 @@ mod phrase;
 mod seal;
 
 pub use phrase::{export_phrase, import_phrase, PhraseError};
-pub use seal::{open, open_meta, seal, seal_meta, Meta};
+pub use seal::{open_meta, seal, seal_meta, Meta};
 
 use chacha20poly1305::aead::{KeyInit, OsRng};
 use chacha20poly1305::XChaCha20Poly1305;
