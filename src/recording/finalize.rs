@@ -30,9 +30,9 @@ fn warn_keep(path: &Path, why: &str) -> PathBuf {
 }
 
 /// Clamps idle time in the plain recording without a backup, prints nothing.
-/// Returns the warning line when optimizing failed, the file then stays as recorded.
+/// Returns None for a missing or empty file, else the warning line when optimizing failed, the file then stays as recorded.
 pub fn optimize_recording(path: &Path, config: &Config) -> Option<String> {
-    if !config.recording.auto_optimize || !path.exists() {
+    if !config.recording.auto_optimize || !path.metadata().is_ok_and(|m| m.len() > 0) {
         return None;
     }
     remove_silence(path)
