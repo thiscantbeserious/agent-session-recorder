@@ -18,7 +18,6 @@ const MAGIC: &[u8] = b"AGR1";
 const VERSION: u8 = 1;
 const HEADER_LEN: usize = MAGIC.len() + 1;
 const MIN_BLOB_LEN: usize = HEADER_LEN + NONCE_LEN + TAG_LEN;
-const BLOB_AAD_PREFIX: &[u8] = b"agr:blob:";
 const META_AAD: &[u8] = b"agr:meta";
 const PHRASE_PREFIX: &str = "agr1";
 const PHRASE_BODY_LEN: usize = 55;
@@ -107,19 +106,6 @@ pub fn sha256_reader(mut src: impl std::io::Read) -> std::io::Result<(String, u6
     let mut hasher = Sha256::new();
     let size = std::io::copy(&mut src, &mut hasher)?;
     Ok((HEXLOWER.encode(&hasher.finalize()), size))
-}
-
-/// AAD binding a blob to the header, its session path and its generation.
-pub fn blob_aad(path: &str, gen: u64) -> Vec<u8> {
-    let tail = format!(":{gen}");
-    [
-        MAGIC,
-        &[VERSION],
-        BLOB_AAD_PREFIX,
-        path.as_bytes(),
-        tail.as_bytes(),
-    ]
-    .concat()
 }
 
 pub fn seal(key: &Key, aad: &[u8], plain: &[u8]) -> Vec<u8> {
@@ -325,31 +311,6 @@ mod tests {
     }
 
     #[test]
-    fn blob_aad_binds_header_path_and_gen() {
-        assert_eq!(
-            blob_aad("claude/x.cast.gz", 3),
-            b"AGR1\x01agr:blob:claude/x.cast.gz:3"
-        );
-    }
-
-    #[test]
-    fn blob_sealed_for_gen_3_opens_only_with_gen_3_and_its_path() {
-        let blob = seal(&key(1), &blob_aad("a/x.cast.gz", 3), b"p");
-        assert_eq!(
-            open(&key(1), &blob_aad("a/x.cast.gz", 3), &blob).unwrap(),
-            b"p"
-        );
-        assert_eq!(
-            open(&key(1), &blob_aad("a/x.cast.gz", 2), &blob),
-            Err(CryptoError::Authentication)
-        );
-        assert_eq!(
-            open(&key(1), &blob_aad("a/y.cast.gz", 3), &blob),
-            Err(CryptoError::Authentication)
-        );
-    }
-
-    #[test]
     fn sealed_gzip_session_shows_no_magic_or_text() {
         let text = "secret customer ticket ABC-123 output line";
         let mut enc = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
@@ -405,7 +366,7 @@ mod tests {
             .decode(token.as_bytes())
             .unwrap();
         assert_eq!(
-            open(&key(1), &blob_aad("claude/x.cast.gz", 4), &raw),
+            open(&key(1), b"agr:blob:claude/x.cast.gz:4", &raw),
             Err(CryptoError::Authentication)
         );
     }

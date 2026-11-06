@@ -2,7 +2,8 @@
 
 use agr::files::{backup, codec};
 use agr::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
-use agr::sync::crypto::{blob_aad, open, open_meta, sha256_hex, Key};
+use agr::sync::blob::{open_stream, seal_stream, BlobError};
+use agr::sync::crypto::{open_meta, sha256_hex, Key};
 use agr::sync::index;
 use agr::sync::memory::MemoryBackend;
 use agr::sync::run::{Engine, Options, Report};
@@ -117,7 +118,20 @@ impl Mach {
 pub fn remote_bytes(backend: &MemoryBackend, key: &Key, id: &str) -> Vec<u8> {
     let meta = open_meta(key, &backend.manifest(id).unwrap()).unwrap();
     let blob = backend.blob(id).unwrap();
-    open(key, &blob_aad(&meta.path, meta.gen), &blob).unwrap()
+    open_blob(key, &meta.path, meta.gen, &blob).unwrap()
+}
+
+/// Whole-blob fixture over the streaming sealer, never on the production path.
+pub fn seal_blob(key: &Key, path: &str, gen: u64, plain: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    seal_stream(key, path, gen, plain, &mut out).unwrap();
+    out
+}
+
+pub fn open_blob(key: &Key, path: &str, gen: u64, blob: &[u8]) -> Result<Vec<u8>, BlobError> {
+    let mut out = Vec::new();
+    open_stream(key, path, gen, blob, &mut out)?;
+    Ok(out)
 }
 
 pub fn only_id(backend: &MemoryBackend) -> String {

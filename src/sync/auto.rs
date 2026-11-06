@@ -280,7 +280,8 @@ mod tests {
     #[test]
     fn auto_run_pushes_only_the_session_never_pulls_and_skips_conflicts() {
         use crate::sync::backend::SyncBackend;
-        use crate::sync::crypto::{blob_aad, seal, seal_meta, sha256_hex, Key, Meta};
+        use crate::sync::blob::seal_blob;
+        use crate::sync::crypto::{seal_meta, sha256_hex, Key, Meta};
         use crate::sync::memory::MemoryBackend;
         let dir = tempfile::tempdir().unwrap();
         let mut cfg = Config::default();
@@ -298,7 +299,7 @@ mod tests {
         backend.put(
             None,
             &seal_meta(&key, &remote_only),
-            &seal(&key, &blob_aad(&remote_only.path, 1), b"other"),
+            &seal_blob(&key, &remote_only.path, 1, b"other"),
         );
         let path = session(dir.path());
         let engine = Engine {
@@ -329,7 +330,7 @@ mod tests {
         backend.put(
             Some(&id),
             &seal_meta(&key, &moved),
-            &seal(&key, &blob_aad(&moved.path, 1), b"changed remotely"),
+            &seal_blob(&key, &moved.path, 1, b"changed remotely"),
         );
         let report = run(&engine, "claude/s.cast.gz").unwrap();
         assert_eq!((report.pushed, report.conflicts), (0, 1));

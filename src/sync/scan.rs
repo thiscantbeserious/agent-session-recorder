@@ -6,7 +6,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use super::backend::RemoteEntry;
-use super::crypto::{open_meta, sha256_hex, CryptoError, Key, Meta};
+use super::crypto::{open_meta, sha256_reader, CryptoError, Key, Meta};
 use super::index::Index;
 use super::plan::{Input, Local, Remote, SkipReason};
 use crate::files::{codec, lock};
@@ -93,12 +93,12 @@ fn local_state(session: &SessionInfo) -> Local {
     if lock::read_lock(&session.path).is_some() {
         return Local::Skipped(SkipReason::Locked);
     }
-    // Checked on the on-disk size before the file is read into memory.
+    // Checked on the on-disk size before the file is read.
     if session.size > MAX_BYTES {
         return Local::Skipped(SkipReason::OverCap);
     }
-    match std::fs::read(&session.path) {
-        Ok(bytes) => Local::Hash(sha256_hex(&bytes)),
+    match std::fs::File::open(&session.path).and_then(sha256_reader) {
+        Ok((hash, _)) => Local::Hash(hash),
         Err(_) => Local::Skipped(SkipReason::Unreadable),
     }
 }

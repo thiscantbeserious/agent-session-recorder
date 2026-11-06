@@ -65,8 +65,7 @@ pub trait SyncBackend {
     fn delete(&self, id: &str) -> Result<(), BackendError>;
 }
 
-/// Push a blob that is already in memory.
-/// Seam until Stage 29, the engine still seals whole blobs and tests use it as a shorthand.
+/// Push a blob that is already in memory, a shorthand for tests, the engine streams.
 pub fn push_bytes(
     backend: &dyn SyncBackend,
     id: &str,
@@ -77,7 +76,7 @@ pub fn push_bytes(
     backend.push(id, expected, manifest, &|w| w.write_all(blob))
 }
 
-/// Pull and read the whole blob into memory, same seam as `push_bytes`.
+/// Pull and read the whole blob into memory, a shorthand for tests like `push_bytes`.
 pub fn pull_bytes(
     backend: &dyn SyncBackend,
     id: &str,

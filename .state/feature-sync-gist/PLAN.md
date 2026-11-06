@@ -616,19 +616,21 @@ Depends on: Stage 25
 Goal: push and pull never hold a session in memory, pull writes nothing unverified.
 Owner: implementer
 
-- [ ] RED: push of a session whose file changes after scan fails for that session with
+- [x] RED: push of a session whose file changes after scan fails for that session with
       "session changed while pushing, run again", the remote and the index are unchanged.
-- [ ] RED: pull of a tampered v2 blob (truncated, frame dropped, hash mismatch against the
+- [x] RED: pull of a tampered v2 blob (truncated, frame dropped, hash mismatch against the
       manifest) leaves the local file, the `.bak` and the storage dir unchanged and no hidden
       `.tmp` behind.
-- [ ] RED: pull of a good blob over an existing file writes the `.bak` first, then the file.
-- [ ] RED: scan hash of a file equals `sha256_hex` of its bytes (streamed hashing).
-- [ ] GREEN: push source calls `blob::seal_stream` on the opened file and checks hash and
+- [x] RED: pull of a good blob over an existing file writes the `.bak` first, then the file.
+- [x] RED: scan hash of a file equals `sha256_hex` of its bytes (streamed hashing).
+- [x] GREEN: push source calls `blob::seal_stream` on the opened file and checks hash and
       size, pull uses `blob::open_stream` inside `atomic_write_raw_with`, then hash, then
       `backup_existing`, scan uses `sha256_reader`. Remove `crypto::blob_aad` and the blob use
       of `seal` / `open` (the meta token keeps them).
-- [ ] Test fixtures move to `blob::seal_blob` / `open_blob`: `sync_engine_test.rs`,
+- [x] Test fixtures move to `blob::seal_blob` / `open_blob`: `sync_engine_test.rs`,
       `sync_net.rs`, `auto.rs` tests.
+
+Done: push hashes in a pre-pass (`sha256_reader`), the `BlobSource` re-opens the file and runs `seal_stream`, a digest other than the pre-hash fails the source and reports "session changed while pushing, run again". Pull streams `open_stream` into `atomic_write_raw_with`, the fill checks hash and size, flushes, rotates the `.bak`, and only then the temp is renamed (order: verify, .bak, rename). Scan uses `sha256_reader`. `crypto::blob_aad` is gone, `seal_blob` / `open_blob` are `#[cfg(test)]` in `blob.rs` and fixtures in `tests/integration/helpers/sync_net.rs`.
 
 Files: `src/sync/push.rs`, `src/sync/pull.rs`, `src/sync/scan.rs`, `src/sync/crypto.rs`, `src/sync/auto.rs`, `tests/integration/sync_engine_test.rs`, `tests/integration/helpers/sync_net.rs`
 Depends on: Stage 26, Stage 27, Stage 28

@@ -3,6 +3,11 @@
 use super::backend::BackendError;
 use super::run::Outcome;
 
+/// Error text for a `map_err`, instead of a closure per call site.
+pub(super) fn msg(e: impl std::fmt::Display) -> String {
+    e.to_string()
+}
+
 /// The remote copy is gone, or any other failure with its message.
 #[derive(Debug)]
 pub(super) enum Fail {

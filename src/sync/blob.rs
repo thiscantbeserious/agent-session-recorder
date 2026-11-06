@@ -142,12 +142,15 @@ pub fn open_stream(
     }
 }
 
+/// Whole-blob shorthand for tests, never on the production path.
+#[cfg(test)]
 pub fn seal_blob(key: &Key, path: &str, gen: u64, plain: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     seal_stream(key, path, gen, plain, &mut out).expect("sealing into a Vec cannot fail");
     out
 }
 
+#[cfg(test)]
 pub fn open_blob(key: &Key, path: &str, gen: u64, blob: &[u8]) -> Result<Vec<u8>, BlobError> {
     let mut out = Vec::new();
     open_stream(key, path, gen, blob, &mut out)?;

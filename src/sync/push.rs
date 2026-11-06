@@ -1,10 +1,12 @@
 //! Push of one session as compare-and-swap, create and pending id first, see the ADR.
 
-use std::io::Write;
+use std::cell::Cell;
+use std::io::{self, Write};
 
 use super::backend::BackendError;
-use super::crypto::{blob_aad, open_meta, seal, seal_meta, sha256_hex, Meta};
-use super::fail::Fail;
+use super::blob::seal_stream;
+use super::crypto::{open_meta, seal_meta, sha256_reader, Meta};
+use super::fail::{msg, Fail};
 use super::index::Index;
 use super::plan::Remote;
 use super::record::{record, record_pending, save_index, Synced};
@@ -14,14 +16,19 @@ use super::scan::Row;
 /// Report text when somebody else pushed first, nothing local changes.
 const CHANGED: &str = "changed on the remote, run again";
 
-/// Everything one push needs, sealed once.
+/// Report text when the file moved between the hash pre-pass and the seal pass.
+const CHANGED_WHILE: &str = "session changed while pushing, run again";
+
+/// Everything one push needs, the blob is sealed from the file while it is sent.
 struct Push<'a> {
     engine: &'a Engine<'a>,
     row: &'a Row,
     sha256: String,
+    size: u64,
     gen: u64,
     token: String,
-    blob: Vec<u8>,
+    /// The seal pass saw other bytes than the hash pre-pass.
+    moved: Cell<bool>,
 }
 
 /// Create when new and store the pending id, compare-and-swap push with the planned token,
@@ -32,26 +39,28 @@ pub(super) fn push_one(
     index: &mut Index,
     overwrite: bool,
 ) -> Result<u64, Fail> {
-    let plain =
-        std::fs::read(engine.storage.storage_dir().join(&row.path)).map_err(|e| e.to_string())?;
-    let sha256 = sha256_hex(&plain);
+    let path = engine.storage.storage_dir().join(&row.path);
+    let (sha256, size) = std::fs::File::open(path)
+        .and_then(sha256_reader)
+        .map_err(msg)?;
     let gen = row.gen + 1;
     let meta = Meta {
         v: 2,
         path: row.path.clone(),
         sha256: sha256.clone(),
-        size: plain.len() as u64,
+        size,
         gen,
     };
     let push = Push {
         engine,
         row,
         sha256,
+        size,
         gen,
         token: seal_meta(engine.key, &meta),
-        blob: seal(engine.key, &blob_aad(&row.path, gen), &plain),
+        moved: Cell::new(false),
     };
-    push.run(index, overwrite).map(|()| plain.len() as u64)
+    push.run(index, overwrite).map(|()| size)
 }
 
 /// The description of the last recorded push never landed (index gen higher than the listing,
@@ -119,14 +128,32 @@ impl Push<'_> {
     }
 
     fn send(&self, id: &str, expected: Option<&str>, index: &mut Index) -> Result<(), Fail> {
-        let blob = |w: &mut dyn Write| w.write_all(&self.blob);
-        match self.engine.backend.push(id, expected, &self.token, &blob) {
+        self.moved.set(false);
+        let blob = |w: &mut dyn Write| self.seal_file(w);
+        let sent = self.engine.backend.push(id, expected, &self.token, &blob);
+        if self.moved.get() {
+            return Err(CHANGED_WHILE.into());
+        }
+        match sent {
             Ok(()) => self.finish(id, &self.token, self.gen, index),
             Err(BackendError::Changed(Some(theirs))) => self.adopt(id, &theirs, index),
             Err(BackendError::Changed(None)) => Err(CHANGED.into()),
             Err(BackendError::NotFound) => Err(Fail::Gone),
             Err(e) => Err(e.into()),
         }
+    }
+
+    /// Opens the file again and seals it into `out`, a different hash or size than the pre-pass
+    /// fails the source so the backend commits nothing. Runs again on every retry.
+    fn seal_file(&self, out: &mut dyn Write) -> io::Result<()> {
+        let file = std::fs::File::open(self.engine.storage.storage_dir().join(&self.row.path))?;
+        let (key, path) = (self.engine.key, &self.row.path);
+        let sealed = seal_stream(key, path, self.gen, file, out).map_err(io::Error::other)?;
+        if sealed != (self.sha256.clone(), self.size) {
+            self.moved.set(true);
+            return Err(io::Error::other(CHANGED_WHILE));
+        }
+        Ok(())
     }
 
     /// The remote holds our own earlier push of this very content, its index save got lost.

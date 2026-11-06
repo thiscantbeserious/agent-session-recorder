@@ -2,16 +2,19 @@
 
 use agr::files::{codec, lock};
 use agr::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
-use agr::sync::crypto::{blob_aad, seal, seal_meta, sha256_hex, Key, Meta};
+use agr::sync::crypto::{seal, seal_meta, sha256_hex, Key, Meta};
 use agr::sync::index::{self, Index};
 use agr::sync::memory::MemoryBackend;
 use agr::sync::plan::{Decision, SkipReason};
 use agr::sync::run::{Engine, Options, Outcome, SyncError};
 use agr::{Config, StorageManager};
+
+use crate::helpers::sync_net::{open_blob, seal_blob};
 use std::cell::{Cell, RefCell};
 use std::fs;
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use tempfile::TempDir;
 
 struct Machine {
@@ -165,7 +168,7 @@ fn token(key: &Key, path: &str, hash: &str) -> String {
 fn failed_pull(key: &Key, blob_key: &Key, hash: &str, tamper: bool) -> (Machine, usize) {
     let backend = MemoryBackend::new();
     let path = "claude/x.cast.gz";
-    let mut blob = seal(blob_key, &blob_aad(path, 1), b"plain");
+    let mut blob = seal_blob(blob_key, path, 1, b"plain");
     if tamper {
         let last = blob.len() - 1;
         blob[last] ^= 1;
@@ -571,7 +574,7 @@ fn first_push_is_v2_gen_1_and_the_next_push_is_gen_2_with_a_gen_2_blob() {
     let meta = agr::sync::crypto::open_meta(&key, &first.meta_token).unwrap();
     assert_eq!((meta.v, meta.gen), (2, 1));
     let blob = backend.blob(&first.id).unwrap();
-    assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 1), &blob).is_ok());
+    assert!(open_blob(&key, &meta.path, 1, &blob).is_ok());
     m.session("claude", "a.cast.gz", &CAST.replace("secret", "edited"));
     m.engine(&backend, &key).push(&opts()).unwrap();
     let id = only_entry(&m, "claude/a.cast.gz").remote_id;
@@ -579,8 +582,8 @@ fn first_push_is_v2_gen_1_and_the_next_push_is_gen_2_with_a_gen_2_blob() {
     let meta = agr::sync::crypto::open_meta(&key, &token).unwrap();
     assert_eq!(meta.gen, 2);
     let blob = backend.blob(&id).unwrap();
-    assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 2), &blob).is_ok());
-    assert!(agr::sync::crypto::open(&key, &blob_aad(&meta.path, 1), &blob).is_err());
+    assert!(open_blob(&key, &meta.path, 2, &blob).is_ok());
+    assert!(open_blob(&key, &meta.path, 1, &blob).is_err());
 }
 
 #[test]
@@ -644,7 +647,7 @@ fn pull_records_the_manifest_gen_and_token_and_repair_is_marked() {
         seal_meta(&key, &meta)
     };
     let (t2, t1) = (seal_gen(2), seal_gen(1));
-    let id = backend.put(None, &t2, &seal(&key, &blob_aad(path, 2), plain));
+    let id = backend.put(None, &t2, &seal_blob(&key, path, 2, plain));
     let b = machine();
     let report = b.engine(&backend, &key).pull(&opts()).unwrap();
     assert_eq!(report.pulled, 1, "{:?}", report.items);
@@ -758,7 +761,7 @@ fn duplicate_status_line_says_duplicate_with_its_reason() {
     m.session("claude", "a.cast.gz", CAST);
     for hash in ["one", "two"] {
         let tok = token(&key, path, hash);
-        backend.put(None, &tok, &seal(&key, &blob_aad(path, 1), b"x"));
+        backend.put(None, &tok, &seal_blob(&key, path, 1, b"x"));
     }
     let report = m.engine(&backend, &key).status(&[]).unwrap();
     let lines = agr::sync::format::status_lines(&report, "memory");
@@ -1096,10 +1099,7 @@ fn sealed_gen(key: &Key, path: &str, plain: &[u8], gen: u64) -> (String, Vec<u8>
         size: plain.len() as u64,
         gen,
     };
-    (
-        seal_meta(key, &meta),
-        seal(key, &blob_aad(path, gen), plain),
-    )
+    (seal_meta(key, &meta), seal_blob(key, path, gen, plain))
 }
 
 /// Machine A pushed gen 1, another machine then pushed gen 2 that A pulled.
@@ -1153,7 +1153,7 @@ fn manifest_for_another_path_is_rejected_and_nothing_is_written() {
 fn blob_that_does_not_open_with_the_manifest_gen_is_rejected() {
     let (key, backend) = (Key::generate(), MemoryBackend::new());
     let (token, _) = sealed_gen(&key, A, b"plain", 2);
-    let stale_blob = seal(&key, &blob_aad(A, 1), b"plain");
+    let stale_blob = seal_blob(&key, A, 1, b"plain");
     backend.put(None, &token, &stale_blob);
     let b = machine();
     assert!(matches!(pull_item(&b, &backend, &key), Outcome::Failed(_)));
@@ -1315,5 +1315,205 @@ fn rate_limit_on_the_second_of_three_pulls_stops_the_run_and_keeps_the_first() {
     assert_eq!(
         fs::read(b.dir().join(first)).unwrap(),
         fs::read(a.dir().join(first)).unwrap()
+    );
+}
+
+const CHANGED_WHILE: &str = "session changed while pushing, run again";
+
+type Remote = (Option<String>, Option<Vec<u8>>);
+
+fn remote_of(spy: &Spy, id: &str) -> Remote {
+    (spy.inner.manifest(id), spy.inner.blob(id))
+}
+
+#[test]
+fn a_session_changed_between_the_hash_and_the_seal_pushes_nothing() {
+    let (m, spy, key) = spied();
+    let before = only_entry(&m, A);
+    let remote = remote_of(&spy, &before.remote_id);
+    edit_a(&m);
+    let file = m.dir().join(A);
+    race(&spy, move |_| {
+        let text = CAST.replace("secret", "edited again");
+        codec::atomic_write(&file, |w| Ok(w.write_all(text.as_bytes())?)).unwrap();
+    });
+    let report = m.engine(&spy, &key).push(&opts()).unwrap();
+    assert_eq!(
+        item_of(&report, A).outcome,
+        Outcome::Failed(CHANGED_WHILE.into())
+    );
+    assert_eq!(report.pushed, 0);
+    assert_eq!(remote_of(&spy, &before.remote_id), remote);
+    assert_eq!(only_entry(&m, A), before);
+}
+
+/// Reader that hands out one byte per call.
+struct OneByte(Box<dyn std::io::Read>);
+
+impl std::io::Read for OneByte {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let end = buf.len().min(1);
+        self.0.read(&mut buf[..end])
+    }
+}
+
+/// Memory backend whose pull reader gives one byte at a time and reports the local state at the
+/// first read.
+struct Slow<'a> {
+    inner: &'a MemoryBackend,
+    on_first_read: RefCell<Option<Box<dyn FnOnce() + 'a>>>,
+}
+
+impl SyncBackend for Slow<'_> {
+    fn name(&self) -> &'static str {
+        "slow"
+    }
+    fn check(&self) -> Result<(), BackendError> {
+        self.inner.check()
+    }
+    fn list(&self) -> Result<Vec<RemoteEntry>, BackendError> {
+        self.inner.list()
+    }
+    fn create(&self) -> Result<String, BackendError> {
+        self.inner.create()
+    }
+    fn push(&self, id: &str, e: Option<&str>, m: &str, b: BlobSource) -> Result<(), BackendError> {
+        self.inner.push(id, e, m, b)
+    }
+    fn describe(&self, id: &str, t: &str) -> Result<(), BackendError> {
+        self.inner.describe(id, t)
+    }
+    fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn std::io::Read>), BackendError> {
+        if let Some(hook) = self.on_first_read.borrow_mut().take() {
+            hook();
+        }
+        let (manifest, reader) = self.inner.pull(id)?;
+        Ok((manifest, Box::new(OneByte(reader))))
+    }
+    fn delete(&self, id: &str) -> Result<(), BackendError> {
+        self.inner.delete(id)
+    }
+}
+
+const BIG_PATH: &str = "claude/big.cast.gz";
+
+fn big_plain() -> Vec<u8> {
+    (0..200_000u32).map(|i| (i % 251) as u8).collect()
+}
+
+fn big_token(key: &Key, plain: &[u8], hash: &str) -> String {
+    let meta = Meta {
+        v: 2,
+        path: BIG_PATH.into(),
+        sha256: hash.into(),
+        size: plain.len() as u64,
+        gen: 1,
+    };
+    seal_meta(key, &meta)
+}
+
+/// Local copy of the session, its `.bak`, and the directory listing.
+fn local_state(m: &Machine) -> (Vec<u8>, Vec<u8>, Vec<String>) {
+    let dir = m.dir().join("claude");
+    let bak = fs::read(dir.join(".big.cast.gz.bak")).unwrap();
+    (
+        fs::read(dir.join("big.cast.gz")).unwrap(),
+        bak,
+        m.names("claude"),
+    )
+}
+
+fn local_with_bak() -> Machine {
+    let m = machine();
+    m.session("claude", "big.cast.gz", "mine");
+    fs::write(m.dir().join("claude/.big.cast.gz.bak"), b"old bak").unwrap();
+    m
+}
+
+fn pull_overwrite(m: &Machine, backend: &dyn SyncBackend, key: &Key) -> agr::sync::run::Report {
+    m.engine(backend, key).pull(&overwrite()).unwrap()
+}
+
+#[test]
+fn a_good_blob_replaces_the_file_after_rotating_the_backup() {
+    let (key, backend) = (Key::generate(), MemoryBackend::new());
+    let plain = big_plain();
+    let blob = seal_blob(&key, BIG_PATH, 1, &plain);
+    backend.put(None, &big_token(&key, &plain, &sha256_hex(&plain)), &blob);
+    let m = local_with_bak();
+    let old = fs::read(m.dir().join(BIG_PATH)).unwrap();
+    let dir = m.dir().join("claude");
+    let seen = Rc::new(RefCell::new(None));
+    let slow = Slow {
+        inner: &backend,
+        on_first_read: RefCell::new(Some(Box::new({
+            let seen = seen.clone();
+            move || *seen.borrow_mut() = fs::read(dir.join(".big.cast.gz.bak")).ok()
+        }))),
+    };
+    let report = pull_overwrite(&m, &slow, &key);
+    assert_eq!((report.pulled, report.failed), (1, 0), "{:?}", report.items);
+    assert_eq!(seen.borrow().as_deref(), Some(&b"old bak"[..]));
+    let (file, bak, names) = local_state(&m);
+    assert_eq!((file == plain, bak), (true, old));
+    assert_eq!(names, [".big.cast.gz.bak", "big.cast.gz"]);
+}
+
+fn tampered(f: impl Fn(Vec<u8>) -> Vec<u8>, good_hash: bool) {
+    let (key, backend) = (Key::generate(), MemoryBackend::new());
+    let plain = big_plain();
+    let hash = if good_hash {
+        sha256_hex(&plain)
+    } else {
+        "00".repeat(32)
+    };
+    let id = backend.put(
+        None,
+        &big_token(&key, &plain, &hash),
+        &seal_blob(&key, BIG_PATH, 1, &plain),
+    );
+    let control = machine();
+    let ok = pull_overwrite(&control, &backend, &key).pulled;
+    backend.set_blob(&id, f(backend.blob(&id).unwrap()));
+    let m = local_with_bak();
+    let before = local_state(&m);
+    let report = pull_overwrite(&m, &backend, &key);
+    assert_eq!((report.failed, report.pulled), (1, 0), "{:?}", report.items);
+    assert_eq!(local_state(&m), before);
+    assert_eq!(ok == 1, good_hash, "control pull of the untouched blob");
+}
+
+#[test]
+fn a_truncated_blob_changes_nothing_locally() {
+    tampered(|b| b[..b.len() - 100].to_vec(), true);
+}
+
+#[test]
+fn a_blob_without_its_last_frame_changes_nothing_locally() {
+    tampered(|b| b[..b.len() - 3_000 - 16].to_vec(), true);
+}
+
+#[test]
+fn a_blob_with_a_dropped_middle_frame_changes_nothing_locally() {
+    tampered(
+        |b| [&b[..24 + 65_552], &b[24 + 2 * 65_552..]].concat(),
+        true,
+    );
+}
+
+#[test]
+fn a_hash_mismatch_against_the_manifest_changes_nothing_locally() {
+    tampered(|b| b, false);
+}
+
+#[test]
+fn the_scan_hash_of_a_session_is_the_sha256_of_its_bytes() {
+    let (m, backend, key) = (machine(), MemoryBackend::new(), Key::generate());
+    let path = m.session("claude", "a.cast.gz", CAST);
+    let report = m.engine(&backend, &key).status(&[]).unwrap();
+    let hash = sha256_hex(&fs::read(path).unwrap());
+    assert_eq!(
+        item_of(&report, A).local_hash.as_deref(),
+        Some(hash.as_str())
     );
 }
