@@ -3,7 +3,7 @@ use super::pace::Clock;
 use super::parts::{part_name, part_names};
 use super::{
     parse_list, Arc, BackendError, GistBackend, Output, Path, PathBuf, RemoteEntry, Runner,
-    Scratch, SyncBackend, MANIFEST_FILE, STUB_BODY, STUB_FILE,
+    SyncBackend, MANIFEST_FILE, STUB_BODY, STUB_FILE,
 };
 use crate::sync::backend::{pull_bytes, push_bytes};
 use std::cell::RefCell;
@@ -285,6 +285,7 @@ fn a_pending_gist_is_not_listed_and_no_call_carries_the_token() {
 #[cfg(unix)]
 #[test]
 fn scratch_dir_is_private() {
+    use super::Scratch;
     use std::os::unix::fs::PermissionsExt;
     let base = tempfile::tempdir().unwrap();
     let scratch = Scratch::create(base.path()).unwrap();
