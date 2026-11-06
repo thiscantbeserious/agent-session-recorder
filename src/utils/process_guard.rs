@@ -57,9 +57,9 @@ impl ProcessGuard {
         }
     }
 
-    /// Whether the interrupted flag was set (by SIGINT or SIGHUP).
+    /// Whether the session was cut short: SIGINT, SIGHUP or parent death.
     pub fn is_interrupted(&self) -> bool {
-        self.interrupted.load(Ordering::SeqCst)
+        self.should_terminate()
     }
 
     /// Wait for a child process, killing it on signal or orphan detection.
