@@ -218,6 +218,7 @@ in the engine, as such a later S3 or git backend gets it for free.
 the blob and `b"agr:meta"` for the token, so a blob moved to another session's gist fails to
 open. Whole session in memory, bounded by the 1 GiB cap.
 `// ponytail:` in-memory seal, a streaming STREAM construction if the cap ever goes up.
+**Superseded for the blob by D9 below** (streamed `AGR1 || 0x02`), the token keeps this one-shot format.
 
 ### Key file
 
@@ -520,6 +521,190 @@ Index entry: `{sha256, remote_id, synced_at, gen, token, pending}`, the three ne
 - The description can lag behind the manifest after a stalled PATCH, until it heals (review 1).
 - Rollback detection is trust on first use for a machine without an index (review 2).
 
+### D9: streaming encryption (2026-11-06, proposed, built in Stages 25 to 31, Stage 25 is B1 and B2)
+
+**Status**: Proposed, decided autonomously by the architect (review in PR), user decision D9
+asked for it on 2026-11-06.
+
+**Problem**: push reads the whole session and seals it in one AEAD call (`src/sync/push.rs`
+`push_one`, `src/sync/crypto.rs` `seal`), the gist backend splits a `&[u8]` and joins every part
+into one `Vec<u8>` on pull (`src/sync/gist.rs` `stage_parts`, `pull`), pull opens the whole blob
+in memory and scan hashes the whole file in memory (`src/sync/scan.rs` `local_state`). A 1 GiB
+session needs about 2 GiB of RAM on push and on pull. Memory has to stay flat up to the cap,
+the format has to detect truncation, reordering, dropped and duplicated chunks, and pull must
+write nothing unless the whole stream verified.
+
+#### Options
+
+1. **STREAM from the already used RustCrypto `aead` crate** (chosen). `chacha20poly1305 0.10.1`
+   and `aead 0.5.2` are in `Cargo.lock`. `aead` has a `stream` module (STREAM, Hoang,
+   Reyhanitabar, Rogaway, Vizar 2015, https://eprint.iacr.org/2015/189.pdf) behind the
+   `stream` feature, `chacha20poly1305` forwards it as `stream = ["aead/stream"]`, the feature
+   has no extra dependencies and `aead` declares `rust-version = "1.56"`, as such MSRV 1.88 is
+   fine and no new crate comes in. Checked in the vendored sources
+   (`~/.cargo/registry/src/*/aead-0.5.2/src/stream.rs`, `Cargo.toml` of both crates), docs.rs
+   page: https://docs.rs/aead/0.5.2/aead/stream/index.html. `StreamBE32` builds the nonce as
+   `prefix || counter u32 BE || last flag u8`, with XChaCha20-Poly1305 the prefix is 19 bytes.
+   `EncryptorBE32::encrypt_next_in_place` / `encrypt_last_in_place` take the AAD per chunk.
+   The same construction is used by age (https://github.com/C2SP/C2SP/blob/main/age.md,
+   "payload", 64 KiB chunks, counter and last flag in the nonce) and libsodium secretstream
+   is a close relative (https://doc.libsodium.org/secret-key_cryptography/secretstream).
+2. **Own chunking with a per-chunk index in the AAD and a final length record**. Same idea,
+   more code we own, no proof. Rejected.
+3. **libsodium secretstream through a binding**. New C dependency, rekeying and tags we do not
+   need. Rejected (constraint: no new heavy dependencies).
+
+#### Blob format v2
+
+```
+AGR1 (4) || 0x02 (1) || nonce prefix (19, random) || frame 0 || frame 1 || ... || frame n
+frame i < n : ciphertext of exactly 65536 plaintext bytes + tag (16) = 65552 bytes, last flag 0
+frame n     : ciphertext of 0..=65536 plaintext bytes + tag (16), last flag 1
+AAD (every chunk) = AGR1 || 0x02 || "agr:blob:" || path || ":" || gen
+```
+
+- Chunk size 64 KiB is a constant of version 2, not stored in the header, a different size
+  is a new version byte. Overhead is 16 bytes per 64 KiB (0.025 %), a 1 GiB session is 16384
+  chunks, far below the 2^32 counter.
+- An empty session is one empty last frame (16 bytes). A session that is an exact multiple
+  of 64 KiB ends with a full frame that carries the last flag, there is never an empty
+  trailing frame after a full one.
+- Magic and version are authenticated through the AAD, the nonce prefix through the nonce
+  itself (a changed prefix gives a different nonce and every tag fails).
+- The manifest token stays the one-shot `AGR1 || 0x01` format with `agr:meta` AAD, it is
+  small. Only the blob moves to v2. `crypto::open` on a v2 blob and the v2 opener on a v1
+  blob both fail with `UnsupportedVersion`.
+
+Reading frames: wrap the input in a `BufReader`, read up to one frame with
+`take(FRAME).read_to_end`, then `fill_buf().is_empty()` tells whether more data follows. More
+data means `decrypt_next`, none means `decrypt_last`. Sealing uses the same look-ahead on the
+plaintext to decide `encrypt_next` or `encrypt_last`.
+
+| Attack on the stored ciphertext | Why it fails |
+|---|---|
+| Truncation at a frame boundary | the new last frame was sealed with flag 0, it is opened with flag 1 |
+| Truncation inside a frame | short frame is opened as last, tag fails, under 16 bytes is `Truncated` |
+| Reorder or swap frames | the counter is part of the nonce, frame i only opens at position i |
+| Drop a frame | every later frame sits one position off, dropping the last leaves a flag 0 frame at the end |
+| Duplicate a frame | same as reorder, the copy sits at the wrong counter |
+| Append bytes or a frame after the end | the real last frame is then opened with flag 0 and fails |
+| Frame from another blob, another gen or another session | other nonce prefix, other gen or path in the AAD |
+| Old v1 blob replayed | version byte check, then AAD carries `0x02` |
+
+#### Parts and chunks stay independent
+
+The 45 MiB gist parts are a plain byte split of the sealed stream, a part boundary can fall
+inside a frame. Integrity comes from STREAM over the joined bytes, `check_sequence` keeps
+guarding the part names. Aligning parts to frames would couple two layers for no gain (a part
+size of 45 MiB is not a multiple of 65552 anyway). `parts::split` and `parts::join` go away,
+`part_name`, `check_sequence` and `stale` stay.
+
+#### Trait and data flow
+
+```rust
+/// Writes the sealed blob into `out`, may be called again for a retry.
+pub type BlobSource<'a> = &'a dyn Fn(&mut dyn std::io::Write) -> std::io::Result<()>;
+
+fn push(&self, id: &str, expected: Option<&str>, manifest: &str, blob: BlobSource<'_>)
+    -> Result<(), BackendError>;
+/// Manifest and a reader over the stored blob, read from the same clone.
+fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn std::io::Read>), BackendError>;
+```
+
+- Push gives a callback, not a reader, as `Push::run` can send twice (`Gone` plus
+  `--overwrite`) and each call has to re-read the file. The callback opens the session file
+  and runs the sealer straight into `out`, a fresh nonce prefix each time.
+- The gist backend runs the callback only after the compare-and-swap check, into a small
+  `PartWriter` (Write impl that rolls `data.NNN` files at `part_size`, creates `data.000`
+  eagerly), then drops stale parts and writes the manifest as today. A callback error aborts
+  before `git add`, nothing is committed, the scratch dir is removed on drop.
+- The gist `pull` returns a reader that owns the `Scratch` and chains the part files in
+  order (opened after `check_sequence`), the clone is removed when the reader is dropped.
+- File backend: `File::create` plus callback on push, `File::open` on pull. Memory backend
+  (tests only): callback into a `Vec`, `Cursor` on pull. Byte helpers `put`, `set_blob`,
+  `blob` stay as they are for tests.
+- `crypto::sha256_reader(impl Read) -> io::Result<(String, u64)>` hashes by `io::copy` into
+  `Sha256` (sha2 implements `Write` with its default `std` feature). Scan uses it on the file
+  instead of `fs::read`.
+
+```mermaid
+flowchart LR
+  F[session file] --> S[sealer 64 KiB] --> P[PartWriter] --> C[clone data.NNN] --> G[git push]
+  C2[clone data.NNN] --> R[chained reader] --> O[opener 64 KiB] --> T[hidden .tmp] --> V{hash ok} --> B[.bak] --> N[rename]
+```
+Top row is push, bottom row is pull, every arrow carries at most one frame at a time.
+
+**Push**: scan already hashed the file (streamed). The sealer returns the plaintext SHA-256
+and size it saw, the push callback compares them with the planned hash and size and returns
+an error "session changed while pushing, run again" when they differ, so a file that changed
+between scan and push is never committed with a manifest for the old content. `push_one` no
+longer reads the file itself.
+
+**Pull safety**: new `codec::atomic_write_raw_with(path, fill)` (same hidden temp, fsync,
+rename and temp removal on error as `atomic_write_raw`, the `commit` helper already does the
+removal). The fill closure, in this order: open the stream into the temp writer (every frame
+and the last flag verified), compare the returned SHA-256 with the manifest, then
+`backup_existing`. Only then does `commit` rename. Any failure (tag, truncation, hash, backup,
+disk) returns an error, the temp is removed, the local file and the `.bak` stay untouched.
+Unverified plaintext only ever sits in the hidden temp file next to the target (hidden-file
+rule from #160, scan skips it). A crash in the middle leaves the hidden temp, the next pull
+of that session truncates and reuses it.
+
+#### Memory bound
+
+Data path per direction: one plaintext chunk and one frame buffer (2 x 64 KiB), a `BufReader`
+(8 KiB default) and the hasher, under 256 KiB, independent of the session size. Peak RSS of the
+process is then the binary, the gist listing and the index, a few MiB to a few tens of MiB.
+Not counted: `git` child processes, git loads one blob at a time below `core.bigFileThreshold`
+(512 MiB), our parts are 45 MiB.
+
+**Perf test** (`tests/performance/sync_memory_test.rs`, `#[ignore]`, run with
+`cargo test --release --test performance -- --ignored sync`): same pattern as
+`gzip_memory_test.rs`. Builds a gzip of random bytes (`Compression::none()`, fast) at 64 MiB
+and at 512 MiB, runs the release binary under `/usr/bin/time` (`-l` macOS, `-v` Linux) with
+`AGR_SYNC_TEST_BACKEND_DIR` (file backend, no network, no git) for `agr sync push --yes` on
+machine A and `agr sync pull --yes` on machine B after `key import`. Prints all four peak RSS
+values and asserts the 512 MiB run is at most 16 MiB above the 64 MiB run for push and for
+pull, and every run stays under 64 MiB. Before D9 the same test shows roughly 2x the session.
+
+#### Migration
+
+Blob v1 (`AGR1 || 0x01` one-shot) was never released, nothing to migrate, same reasoning as D5.
+A v1 blob on a test gist fails to pull with "unsupported blob version 1", push replaces it on
+the next change or with `--overwrite`.
+
+#### Also in this round (same files)
+
+- **B1** (`push.rs` `adopt`): on `Changed(Some(theirs))` that is not our content, when `theirs`
+  opens with our path and its gen is at least max(index gen, row gen), describe the gist with
+  `theirs` (best effort, only `RateLimited` stops the run), then report CHANGED. So the
+  listing heals for the loser of a race and the next run plans against the real remote.
+- **B1** (`scan.rs` `row`): a pending index entry (sha256 `""`) is never `last`, it is
+  filtered out like its token already is.
+- **B2** (`pull.rs` `verified`): `engine.backend.pull(id).map_err(Fail::from)?`, a rate limit
+  during pull stops the run, `NotFound` stays `Gone`.
+
+#### Challenge
+
+1. **What can go wrong?**
+   - Session changes between scan and seal: caught by the hash check in the callback, the
+     push fails for that session and nothing is committed.
+   - The look-ahead is the one subtle bit: a decoder that calls `decrypt_last` on a full frame
+     without checking for more data would accept appended frames. Tests cover truncation at
+     every boundary, append, drop, swap and duplicate on a 3 to 4 frame blob.
+   - Backup inside the fill closure means the `.bak` is written while the hidden temp exists,
+     a failed backup removes the temp, nothing renamed. Ordering is tested.
+   - The reader returned by gist `pull` holds the scratch clone, an engine that keeps it
+     around keeps 1 GiB on disk longer. `verified` drops it at the end of the function.
+   - Disk use is unchanged in total (clone plus temp), only RAM drops.
+2. **What is over-engineered?** Dropped: chunk size or any parameter in the header (version
+   byte covers it), aligning parts to frames, own STREAM code, a streaming memory backend,
+   rekeying. Kept the plaintext SHA-256 although STREAM already authenticates, it is the sync
+   identity for the three-way compare and it catches a file that changed during push.
+   `seal_blob` / `open_blob` byte wrappers stay for tests only (thin, over a `Cursor`).
+3. **Code size**: the stream code goes into a new `src/sync/blob.rs` (crypto.rs is already
+   459 lines), about 150 lines with tests.
+
 ## Consequences
 
 - New deps: `chacha20poly1305`, `sha2`, `data-encoding` (all pure Rust, small).
@@ -582,3 +767,5 @@ created, edited or deleted, the ignored `tests/sync_gist_live.rs` was not run):*
 - 2026-11-06: Variant A decisions by user: D1 duplicates report only, no auto delete; D2 no `parts` in the manifest; D3 pace only (60 mutating calls per minute), no own hourly stop, stop when GitHub reports a rate limit; D4 no retry-after parsing, "run again later"; D5 unreleased v1 gists shown as unknown and left alone.
 - 2026-11-06: Batch 12 review decisions by user: D6 a deleted gist (gh API 404) is reported as "remote copy gone" and skipped, only `push --overwrite` recreates it (replaces the automatic recreate in ADR item 9); git "Repository not found" is never NotFound (auth/access failures must not cause duplicates). D7 missing created_at fails closed in the duplicate pick. D8 a duplicate pick may change once after a pending gist gets its description, reported, nothing deleted.
 - 2026-11-06: PO acceptance follow-ups by user: D9 stream the encryption in chunks so memory stays flat up to the 1 GiB cap (format change, gets its own design section and review); D10 keep `AGR_SYNC_TEST_BACKEND_DIR` in release builds, documented as test-only.
+- 2026-11-06: D9 design by the architect (autonomous, review in PR): STREAM (`aead` `stream` feature, `StreamBE32`, XChaCha20-Poly1305), 64 KiB chunks, blob v2 `AGR1 || 0x02 || prefix19`, parts and chunks independent, push callback and pull reader in the trait, verify into hidden temp then backup then rename, v1 not migrated (unreleased). B1 and B2 from the Variant A review go into the same round.
+- 2026-11-06: D9 design accepted by user: STREAM over XChaCha20-Poly1305 via `aead::stream`, 64 KiB chunks, plaintext SHA-256 check kept as sync identity.

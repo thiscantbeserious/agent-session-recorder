@@ -522,6 +522,135 @@ Owner: implementer
 Files: `README.md`, `docs/`, `.state/feature-sync-gist/ADR.md`
 Depends on: Stage 21
 
+### Stage 25: Variant A review fixes B1 and B2
+
+Goal: the loser of a push race heals the listing, a pending entry is never the last hash, a
+rate limit during pull stops the run.
+Owner: implementer
+
+- [ ] RED: `Changed(Some(theirs))` with another hash, `theirs` opens with our path and gen >=
+      max(index gen, row gen): the description is set to `theirs`, the session reports
+      CHANGED, nothing recorded. Lower gen, other path or other key: no describe.
+- [ ] RED: a `RateLimited` from that describe stops the run, any other describe error still
+      reports CHANGED.
+- [ ] RED: a pending index entry (sha256 `""`) gives `last = None` in the scan row.
+- [ ] RED: `RateLimited` from `backend.pull` stops the run with `SyncError::RateLimited`,
+      `NotFound` stays "remote copy gone".
+- [ ] GREEN in `push.rs` `adopt`, `scan.rs` `row`, `pull.rs` `verified` (`map_err(Fail::from)`).
+
+Files: `src/sync/push.rs`, `src/sync/pull.rs`, `src/sync/scan.rs`, `tests/integration/sync_engine_test.rs`
+Depends on: Stage 21
+
+### Stage 26: Streamed blob v2 (STREAM, 64 KiB chunks)
+
+Goal: seal and open a blob from a reader into a writer with bounded memory, ADR D9 format.
+Owner: implementer
+
+- [ ] `Cargo.toml`: `chacha20poly1305 = { version = "0.10", features = ["stream"] }`, no new crate
+      in `Cargo.lock` (check the diff).
+- [ ] RED: round trip for 0, 1, 65535, 65536, 65537, 3 x 65536 and 3 x 65536 + 5 bytes, sealed
+      length is `5 + 19 + n_frames * 16 + len`, an empty input is one 16 byte frame.
+- [ ] RED: seal returns the plaintext SHA-256 and size, open returns the same pair.
+- [ ] RED: tamper on a 4 frame blob, each rejected and the writer gets no byte after the
+      failing frame: truncate at every frame boundary and inside a frame, drop frame 1, drop the
+      last frame, swap frames 1 and 2, duplicate frame 1, append a copy of the last frame,
+      append one byte, flip a bit in the prefix, in a frame and in the last tag.
+- [ ] RED: wrong key, other path, other gen, v1 blob (`UnsupportedVersion(1)`), bad magic,
+      under 24 bytes (`Truncated`).
+- [ ] RED: fixed key and prefix vector (KAT) so the layout cannot drift silently.
+- [ ] GREEN: new `src/sync/blob.rs` with `seal_stream(key, path, gen, impl Read, impl Write)`,
+      `open_stream(key, path, gen, impl Read, impl Write)`, both `-> Result<(String, u64), _>`,
+      plus test-friendly `seal_blob` / `open_blob` over byte slices. `sha256_reader` in
+      `crypto.rs`. Look-ahead via `BufReader::fill_buf` as in the ADR.
+
+Files: `Cargo.toml`, `Cargo.lock`, `src/sync/blob.rs`, `src/sync/mod.rs`, `src/sync/crypto.rs`
+Depends on: Stage 21
+
+### Stage 27: Raw atomic write with a fill closure
+
+Goal: pull can stream into the hidden temp and decide before the rename.
+Owner: implementer
+
+- [ ] RED: `atomic_write_raw_with(path, |w| ...)` writes through the hidden `.tmp`, renames on
+      `Ok`, on `Err` the target is untouched and the temp is removed.
+- [ ] RED: an existing target is replaced only on `Ok`.
+- [ ] GREEN in `codec.rs`, `atomic_write_raw` becomes a one-line call of it.
+
+Files: `src/files/codec.rs`, `tests/integration/codec_test.rs`
+Depends on: Stage 3
+
+### Stage 28: Backend trait moves streams
+
+Goal: no backend holds a whole blob in memory, behaviour otherwise unchanged.
+Owner: implementer
+
+- [ ] Trait as in ADR D9: `push(.., blob: BlobSource)`, `pull -> (Option<String>, Box<dyn Read>)`.
+- [ ] RED (gist): the source is not called when `expected` does not match, a source error
+      commits and pushes nothing, parts roll over at `part_size` (fake runner, small part
+      size), `data.000` exists for an empty blob, stale parts removed, shrink and grow.
+- [ ] RED (gist): pull reader yields the parts in order, the scratch dir is gone after the
+      reader is dropped, missing or extra part still errors before reading.
+- [ ] RED (file, memory): push and pull round trip through the new signatures, CAS unchanged.
+- [ ] GREEN: `PartWriter` in `gist.rs` (or `parts.rs` if `gist.rs` passes ~400 lines without
+      tests), `split` and `join` removed from `parts.rs`. Engine adapted minimally: push passes
+      a source that writes today's sealed bytes, pull reads to end and opens as today.
+- [ ] Wrapper backend in `tests/integration/helpers/sync_net.rs` and `tests/sync_gist_live.rs`
+      follow the new signatures.
+
+Files: `src/sync/backend.rs`, `src/sync/gist.rs`, `src/sync/parts.rs`, `src/sync/file.rs`, `src/sync/memory.rs`, `src/sync/push.rs`, `src/sync/pull.rs`, `tests/integration/helpers/sync_net.rs`, `tests/sync_gist_live.rs`
+Depends on: Stage 25
+
+### Stage 29: Engine streams push, pull and scan
+
+Goal: push and pull never hold a session in memory, pull writes nothing unverified.
+Owner: implementer
+
+- [ ] RED: push of a session whose file changes after scan fails for that session with
+      "session changed while pushing, run again", the remote and the index are unchanged.
+- [ ] RED: pull of a tampered v2 blob (truncated, frame dropped, hash mismatch against the
+      manifest) leaves the local file, the `.bak` and the storage dir unchanged and no hidden
+      `.tmp` behind.
+- [ ] RED: pull of a good blob over an existing file writes the `.bak` first, then the file.
+- [ ] RED: scan hash of a file equals `sha256_hex` of its bytes (streamed hashing).
+- [ ] GREEN: push source calls `blob::seal_stream` on the opened file and checks hash and
+      size, pull uses `blob::open_stream` inside `atomic_write_raw_with`, then hash, then
+      `backup_existing`, scan uses `sha256_reader`. Remove `crypto::blob_aad` and the blob use
+      of `seal` / `open` (the meta token keeps them).
+- [ ] Test fixtures move to `blob::seal_blob` / `open_blob`: `sync_engine_test.rs`,
+      `sync_net.rs`, `auto.rs` tests.
+
+Files: `src/sync/push.rs`, `src/sync/pull.rs`, `src/sync/scan.rs`, `src/sync/crypto.rs`, `src/sync/auto.rs`, `tests/integration/sync_engine_test.rs`, `tests/integration/helpers/sync_net.rs`
+Depends on: Stage 26, Stage 27, Stage 28
+
+### Stage 30: Peak memory test for sync
+
+Goal: documented, flat peak memory up to large sessions.
+Owner: implementer
+
+- [ ] `tests/performance/sync_memory_test.rs`, `#[ignore]`, registered in
+      `tests/performance.rs`, reuses `parse_max_rss` from `gzip_memory_test.rs` (move it to
+      `tests/performance/mod.rs` if needed).
+- [ ] 64 MiB and 512 MiB stored gzip of random bytes, release binary under `/usr/bin/time`,
+      file backend through `AGR_SYNC_TEST_BACKEND_DIR`, push on home A, key import and pull on
+      home B, pulled file equals the source.
+- [ ] Prints the four peak RSS values, asserts 512 MiB minus 64 MiB run <= 16 MiB for push and
+      pull and every run < 64 MiB. Numbers go into the PLAN progress notes.
+
+Files: `tests/performance/sync_memory_test.rs`, `tests/performance.rs`, `tests/performance/mod.rs`, `tests/performance/gzip_memory_test.rs`
+Depends on: Stage 29
+
+### Stage 31: Docs for D9
+
+Goal: users and reviewers know the format and the memory bound.
+Owner: implementer
+
+- [ ] README sync section: sessions are encrypted in 64 KiB chunks, memory stays flat, the
+      1 GiB cap is the local `.cast.gz` size.
+- [ ] ADR D9 status to built, measured RSS numbers from Stage 30 in "To verify".
+
+Files: `README.md`, `.state/feature-sync-gist/ADR.md`
+Depends on: Stage 23, Stage 29
+
 ### Stage 24: Final verification for Variant A
 
 Goal: green, within limits, rules hold.
@@ -534,7 +663,7 @@ Owner: implementer
 - [ ] `git diff --stat main` under 100 files.
 
 Files: `.state/feature-sync-gist/PLAN.md`
-Depends on: Stage 11, Stage 22, Stage 23
+Depends on: Stage 11, Stage 22, Stage 23, Stage 30, Stage 31
 
 ## Batches
 
@@ -553,7 +682,11 @@ Depends on: Stage 11, Stage 22, Stage 23
 14. Stage 20
 14. Stage 21
 15. Stage 22, Stage 23 (parallel)
-16. Stage 24
+16. Stage 25, Stage 26, Stage 27 (parallel, engine vs new blob module vs codec)
+17. Stage 28
+18. Stage 29
+19. Stage 30, Stage 31 (parallel)
+20. Stage 24
 
 Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 
@@ -585,4 +718,11 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 21 | done | also the delete rate limit stop from Stage 20 |
 | 22 | pending | three machine concurrency test |
 | 23 | done | README, ADR status |
-| 24 | pending | |
+| 24 | pending | runs after D9 |
+| 25 | pending | B1, B2 |
+| 26 | pending | D9 blob v2 |
+| 27 | pending | |
+| 28 | pending | trait streams |
+| 29 | pending | |
+| 30 | pending | peak RSS numbers go here |
+| 31 | pending | |
