@@ -1,7 +1,7 @@
 //! Streamed blob v2: `AGR1 || 0x02 || nonce prefix [19] || frames`, STREAM (BE32) over
 //! XChaCha20-Poly1305 in 64 KiB frames, see ADR D9.
 
-use super::crypto::{CryptoError, Key};
+use super::{CryptoError, Key};
 use chacha20poly1305::aead::rand_core::RngCore;
 use chacha20poly1305::aead::stream::{DecryptorBE32, EncryptorBE32};
 use chacha20poly1305::aead::OsRng;

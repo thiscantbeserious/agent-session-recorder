@@ -2,6 +2,8 @@
 //!
 //! Blob format: `b"AGR1" || version u8 || nonce [24] || ciphertext+tag`, XChaCha20-Poly1305.
 
+pub mod blob;
+
 use chacha20poly1305::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
 use chacha20poly1305::XChaCha20Poly1305;
 use data_encoding::{BASE32_NOPAD, BASE64URL_NOPAD, HEXLOWER};

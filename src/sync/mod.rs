@@ -2,8 +2,8 @@
 
 pub mod auto;
 pub mod backend;
-pub mod blob;
 pub mod crypto;
+pub use crypto::blob;
 mod fail;
 pub mod file;
 pub mod format;

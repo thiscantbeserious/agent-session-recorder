@@ -694,10 +694,10 @@ tests/integration/snapshots/*/*.snap` to `/tmp`, after the stage both must be id
 Stage 40 adds one test name). Every stage ends with the full gates from the sdlc rules
 (fmt, clippy all-targets, test, Windows check, MSRV 1.88). Moves use `git mv` so history follows.
 
-- [ ] `git mv src/sync/crypto.rs src/sync/crypto/mod.rs`, `git mv src/sync/blob.rs src/sync/crypto/blob.rs`.
-- [ ] `crypto/mod.rs` declares `pub mod blob;`, `crypto/blob.rs` imports `super::{CryptoError, Key}`.
-- [ ] `sync/mod.rs`: `pub use crypto::blob;` shim, as such every `sync::blob` path still compiles.
-- [ ] Test names and snap hashes identical.
+- [x] `git mv src/sync/crypto.rs src/sync/crypto/mod.rs`, `git mv src/sync/blob.rs src/sync/crypto/blob.rs`.
+- [x] `crypto/mod.rs` declares `pub mod blob;`, `crypto/blob.rs` imports `super::{CryptoError, Key}`.
+- [x] `sync/mod.rs`: `pub use crypto::blob;` shim, as such every `sync::blob` path still compiles.
+- [x] Test names and snap hashes identical.
 
 Files: `src/sync/mod.rs`, `src/sync/crypto.rs`, `src/sync/crypto/mod.rs`, `src/sync/blob.rs`, `src/sync/crypto/blob.rs`
 Depends on: Stage 24
