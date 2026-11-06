@@ -215,15 +215,15 @@ Considerations:
 Goal: push the finished session in a detached child, never block or change the exit status.
 Owner: implementer
 
-- [ ] RED/GREEN: `auto::decide(config, state, key_present, path)` returns `Skip(hint)` for no
+- [x] RED/GREEN: `auto::decide(config, state, key_present, path)` returns `Skip(hint)` for no
       backend (silent), `auto_push = false` (silent), no privacy ack (hint to run
       `agr sync push` once), no key, plain `.cast`, live lock, `gh`/`git` not on PATH, else
       `Spawn(args)` with `sync push --auto <agent>/<name>`.
-- [ ] RED/GREEN: the `--auto` run never prompts, never pulls or deletes, skips conflicts, writes
+- [x] RED/GREEN: the `--auto` run never prompts, never pulls or deletes, skips conflicts, writes
       one-line `last_auto_push_error` to state on failure, returns quietly on `Busy`.
-- [ ] GREEN: hook in `Recorder::finish` after `finalize_recording`, prints at most one hint
+- [x] GREEN: hook in `Recorder::finish` after `finalize_recording`, prints at most one hint
       line, spawn with null stdio and `process_group(0)` on unix, no wait.
-- [ ] `src/recording.rs` stays under ~400 lines (logic lives in `src/sync/auto.rs`).
+- [x] `src/recording.rs` stays under ~400 lines (logic lives in `src/sync/auto.rs`).
 
 Files: `src/sync/mod.rs`, `src/sync/auto.rs`, `src/recording.rs`,
        `tests/integration/recording_test.rs`
@@ -284,6 +284,6 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 6 | done | |
 | 7 | done | live test written but not run, see ADR "To verify" |
 | 8 | done | test-only `AGR_SYNC_TEST_BACKEND_DIR` file backend (`src/sync/file.rs`) |
-| 9 | pending | |
+| 9 | done | |
 | 10 | pending | |
 | 11 | pending | |

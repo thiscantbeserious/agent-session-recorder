@@ -455,3 +455,59 @@ fn delete_removes_the_remote_and_keeps_the_local_file() {
     assert!(remote_files(remote.path(), ".blob").is_empty());
     assert!(local.exists());
 }
+
+#[test]
+fn auto_push_pushes_one_session_quietly_without_prompt_or_privacy_notice() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "one");
+    m.session("claude", "b.cast.gz", "two");
+    assert_eq!(m.run(&["push", "--yes", "claude/a.cast.gz"]).code, 0);
+    let out = m.run(&["push", "--auto", "claude/b.cast.gz"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert_eq!(out.all(), "", "auto push prints nothing");
+    assert_eq!(remote_files(remote.path(), ".blob").len(), 2);
+    assert!(!m.state().contains("last_auto_push_error"), "{}", m.state());
+}
+
+#[test]
+fn auto_push_without_privacy_ack_pushes_nothing_and_stays_quiet() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "one");
+    let out = m.run(&["push", "--auto", "claude/a.cast.gz"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(remote_files(remote.path(), ".blob").is_empty());
+    assert!(!m.key_path().exists());
+    assert_eq!(out.all(), "");
+    assert_eq!(m.state(), "");
+}
+
+#[cfg(unix)]
+#[test]
+fn auto_push_failure_is_stored_one_line_and_shown_once_by_status() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "one");
+    assert_eq!(m.run(&["push", "--yes"]).code, 0);
+    m.session("claude", "b.cast.gz", "two");
+    let bin = fake_bin(&[("git", "exit 0"), ("gh", "exit 1")]);
+    let mut cmd = m.base(&["push", "--auto", "claude/b.cast.gz"]);
+    cmd.env("PATH", bin.path())
+        .env_remove("AGR_SYNC_TEST_BACKEND_DIR");
+    let out = m.exec(cmd, None);
+    assert_eq!(out.code, 0, "{}", out.all());
+    let state = m.state();
+    let line = state
+        .lines()
+        .find(|l| l.starts_with("last_auto_push_error"))
+        .unwrap();
+    assert!(line.contains("gh"), "{line}");
+    let status = m.run(&["status"]);
+    assert!(
+        status.all().contains("Last automatic push failed"),
+        "{}",
+        status.all()
+    );
+    assert!(!m.state().contains("last_auto_push_error"));
+}

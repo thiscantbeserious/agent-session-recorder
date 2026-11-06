@@ -3,7 +3,8 @@
 use anyhow::Result;
 
 use agr::config::state::State;
-use agr::sync::backend::SyncBackend;
+use agr::sync::auto;
+use agr::sync::backend::{BackendError, SyncBackend};
 use agr::sync::format;
 use agr::sync::key;
 use agr::sync::run::{Engine, Options, Report, SyncError};
@@ -65,31 +66,47 @@ fn abort(message: &str, hint: Option<&str>) -> ! {
     std::process::exit(1)
 }
 
+/// A precondition that failed, message plus optional hint line.
+struct Failure(String, Option<String>);
+
+impl From<BackendError> for Failure {
+    fn from(e: BackendError) -> Self {
+        let (message, hint) = explain(&e);
+        Failure(message, hint)
+    }
+}
+
+impl From<SetupError> for Failure {
+    fn from(e: SetupError) -> Self {
+        match e {
+            SetupError::NoKey | SetupError::KeyOnRemote => Failure(
+                "No sync key on this machine.".into(),
+                Some(IMPORT_HINT.into()),
+            ),
+            SetupError::Backend(e) => e.into(),
+            e => Failure(e.to_string(), None),
+        }
+    }
+}
+
+impl From<anyhow::Error> for Failure {
+    fn from(e: anyhow::Error) -> Self {
+        Failure(format!("{e:#}"), None)
+    }
+}
+
 /// Config, backend, tool and login checks, then the key. Changes nothing.
-fn prepare(need: KeyNeed) -> Result<Ctx> {
+fn try_prepare(need: KeyNeed) -> Result<Ctx, Failure> {
     let config = Config::load()?;
     let test_dir = std::env::var_os("AGR_SYNC_TEST_BACKEND_DIR").map(Into::into);
     let Some(backend) = open_backend(config.sync.backend, test_dir) else {
-        abort(
-            "Sync is off.",
-            Some("Enable it with `[sync] backend = \"gist\"` in ~/.config/agr/config.toml."),
-        )
+        return Err(Failure(
+            "Sync is off.".into(),
+            Some("Enable it with `[sync] backend = \"gist\"` in ~/.config/agr/config.toml.".into()),
+        ));
     };
-    if let Err(e) = backend.check() {
-        let (message, hint) = explain(&e);
-        abort(&message, hint.as_deref());
-    }
-    let key = match resolve_key(&default_key_path()?, backend.as_ref(), need) {
-        Ok(key) => key,
-        Err(SetupError::NoKey | SetupError::KeyOnRemote) => {
-            abort("No sync key on this machine.", Some(IMPORT_HINT))
-        }
-        Err(SetupError::Backend(e)) => {
-            let (message, hint) = explain(&e);
-            abort(&message, hint.as_deref())
-        }
-        Err(e) => abort(&e.to_string(), None),
-    };
+    backend.check()?;
+    let key = resolve_key(&default_key_path()?, backend.as_ref(), need)?;
     let storage = StorageManager::new(config);
     storage.ensure_storage_dir()?;
     Ok(Ctx {
@@ -97,6 +114,10 @@ fn prepare(need: KeyNeed) -> Result<Ctx> {
         storage,
         key,
     })
+}
+
+fn prepare(need: KeyNeed) -> Result<Ctx> {
+    Ok(try_prepare(need).unwrap_or_else(|Failure(message, hint)| abort(&message, hint.as_deref())))
 }
 
 fn engine_failed(e: SyncError) -> ! {
@@ -138,7 +159,10 @@ pub fn status() -> Result<()> {
     Ok(())
 }
 
-pub fn push(args: Args, _auto: bool) -> Result<()> {
+pub fn push(args: Args, auto: bool) -> Result<()> {
+    if auto {
+        return push_auto(&args);
+    }
     let ctx = prepare(KeyNeed::MayCreate)?;
     let plan = ctx
         .engine()
@@ -220,6 +244,27 @@ pub fn delete(args: Args) -> Result<()> {
         return Ok(());
     }
     finish(ctx.engine().delete(&args.sessions))
+}
+
+/// Detached child of a recording, no prompt, no output, a failure is stored for later.
+fn push_auto(args: &Args) -> Result<()> {
+    let mut state = State::load();
+    if !state.sync_privacy_ack {
+        return Ok(());
+    }
+    let result = try_prepare(KeyNeed::Existing)
+        .map_err(|Failure(message, _)| SyncError::Failed(message))
+        .and_then(|ctx| {
+            auto::run(
+                &ctx.engine(),
+                args.sessions.first().map_or("", String::as_str),
+            )
+        });
+    if let Some(line) = auto::error_line(&result) {
+        state.last_auto_push_error = Some(line);
+        state.save()?;
+    }
+    Ok(())
 }
 
 /// Print the summary, exit non-zero when any session failed.

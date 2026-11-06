@@ -75,6 +75,10 @@ echo
 echo "Running compress offer tests..."
 source "$E2E_DIR/offer.sh"
 
+echo
+echo "Running sync tests..."
+source "$E2E_DIR/sync.sh"
+
 # Check for critical errors that should fail the test suite
 # These indicate real problems even if individual tests passed
 echo

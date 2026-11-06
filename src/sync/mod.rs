@@ -1,5 +1,6 @@
 //! Encrypted session sync.
 
+pub mod auto;
 pub mod backend;
 pub mod crypto;
 pub mod file;

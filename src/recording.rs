@@ -5,6 +5,7 @@
 //! 2. It performs complex process spawning and signal handling
 //! 3. It is thoroughly tested via e2e tests in tests/e2e_test.sh
 
+mod auto_push;
 mod finalize;
 pub use finalize::finalize_recording;
 
@@ -184,6 +185,7 @@ impl Recorder {
         lock::remove_lock(filepath);
         let actual_path = Self::resolve_actual_path(filepath, inode, &header, agent_dir);
         let final_path = finalize_recording(&actual_path, &self.config);
+        auto_push::after_finalize(&self.config, &final_path);
         let failed = !status.success() && !self.guard.is_interrupted();
         Self::print_stop(&final_path, filename, failed);
         final_path
