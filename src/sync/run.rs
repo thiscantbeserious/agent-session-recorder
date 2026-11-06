@@ -158,25 +158,20 @@ impl Engine<'_> {
     }
 
     fn load(&self, sessions: &[String]) -> Result<Loaded, SyncError> {
-        let dir = self.storage.storage_dir();
-        let (index, warning) = index::load(&dir);
+        let (index, warning) = index::load(&self.storage.storage_dir());
         let remote = self.backend.list()?;
-        let rows = scan(self.storage, self.key, &remote, &index)
+        let mut rows = scan(self.storage, self.key, &remote, &index)
             .map_err(|e| SyncError::Failed(e.to_string()))?;
         let mut report = Report {
             warning,
             ..Report::default()
         };
-        if sessions.is_empty() {
-            return Ok(Loaded {
-                rows,
-                index,
-                report,
-            });
-        }
-        let (rows, unmatched) = select(rows, self.storage, sessions);
-        for name in unmatched {
-            report.add(Command::Push, not_found(name));
+        if !sessions.is_empty() {
+            let (kept, unmatched) = select(rows, self.storage, sessions);
+            rows = kept;
+            for name in unmatched {
+                report.add(Command::Push, not_found(name));
+            }
         }
         Ok(Loaded {
             rows,
@@ -199,20 +194,10 @@ impl Engine<'_> {
             }
             (Decision::Push, Command::Push) => self.act(self.push_one(row, index)),
             (Decision::Pull, Command::Pull) => self.act(pull_one(self, row, index)),
-            (
-                Decision::InSync {
-                    refresh_index: true,
-                },
-                _,
-            ) if !opts.dry_run => match self.refresh(row, index) {
-                Ok(()) => Outcome::Nothing,
-                Err(message) => Outcome::Failed(message),
-            },
-            (Decision::Conflict, _) => Outcome::Skipped("conflict, use --overwrite".into()),
-            (Decision::Skip(reason), _) => Outcome::Skipped(skip_text(reason).into()),
-            (Decision::OtherKey, _) => Outcome::Skipped("sealed with another key".into()),
-            (Decision::UnknownVersion, _) => Outcome::Skipped("unknown remote version".into()),
-            _ => Outcome::Nothing,
+            (Decision::InSync { refresh_index }, _) if refresh_index && !opts.dry_run => self
+                .refresh(row, index)
+                .map_or_else(Outcome::Failed, |()| Outcome::Nothing),
+            _ => passive(decision),
         }
     }
 
@@ -284,6 +269,17 @@ impl Engine<'_> {
                 .map(|()| 0)
                 .map_err(|e| e.to_string()),
         )
+    }
+}
+
+/// Outcome of a decision that does not act.
+fn passive(decision: Decision) -> Outcome {
+    match decision {
+        Decision::Conflict => Outcome::Skipped("conflict, use --overwrite".into()),
+        Decision::Skip(reason) => Outcome::Skipped(skip_text(reason).into()),
+        Decision::OtherKey => Outcome::Skipped("sealed with another key".into()),
+        Decision::UnknownVersion => Outcome::Skipped("unknown remote version".into()),
+        _ => Outcome::Nothing,
     }
 }
 

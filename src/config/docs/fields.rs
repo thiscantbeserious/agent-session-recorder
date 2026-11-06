@@ -128,7 +128,7 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
         fields: &[
             FieldDoc {
                 name: "backend",
-                description: "Sync backend: \"gist\" (secret GitHub Gists via gh, link holders can read them but sessions are encrypted locally, losing the key makes them unrecoverable). Unset = sync off",
+                description: "Sync backend: \"gist\" (secret GitHub Gists via gh, link holders can read them but sessions are encrypted locally, losing the key makes them unrecoverable). Unset = sync off. One gist per session, sessions over 100MB are skipped",
                 default_display: "unset",
                 example: Some("\"gist\""),
             },

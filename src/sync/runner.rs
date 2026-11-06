@@ -44,3 +44,16 @@ impl Runner for ProcessRunner {
         })
     }
 }
+
+/// Start `exe args` detached, null stdio, own process group on unix, never waited on.
+pub fn spawn_detached(exe: &Path, args: &[String]) -> std::io::Result<()> {
+    let mut command = Command::new(exe);
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    command.spawn().map(drop)
+}

@@ -566,8 +566,8 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (key)
 _arguments "${_arguments_options[@]}" : \
-'-h[Print help]' \
-'--help[Print help]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
 ":: :_agr__sync__key_commands" \
 "*::: :->key" \
 && ret=0
@@ -589,7 +589,7 @@ _arguments "${_arguments_options[@]}" : \
 '--force[Replace a different existing key]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
-'::phrase -- Recovery phrase (read from stdin when omitted):_default' \
+'::phrase -- Recovery phrase (stdin when omitted, avoids shell history):_default' \
 && ret=0
 ;;
 (help)

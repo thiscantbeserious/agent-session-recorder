@@ -7,7 +7,7 @@ use agr::sync::auto;
 use agr::sync::backend::{BackendError, SyncBackend};
 use agr::sync::format;
 use agr::sync::key;
-use agr::sync::run::{Engine, Options, Report, SyncError};
+use agr::sync::run::{Engine, Options, Outcome, Report, SyncError};
 use agr::sync::setup::{
     default_key_path, explain, needs_privacy_ack, open_backend, resolve_key, KeyNeed, KeyState,
     SetupError, IMPORT_HINT,
@@ -147,8 +147,8 @@ fn opts(args: &Args, dry_run: bool) -> Options {
 /// Last failed auto push, shown once and cleared.
 fn show_auto_error() {
     let mut state = State::load();
-    if let Some(error) = state.last_auto_push_error.take() {
-        say(&[format!("Warning: Last automatic push failed: {error}")]);
+    if let Some(line) = auto::take_error_line(&mut state) {
+        say(&[format!("Warning: {line}")]);
         let _ = state.save();
     }
 }
@@ -164,6 +164,37 @@ pub fn status() -> Result<()> {
     Ok(())
 }
 
+/// Preview and problems, then the prompt. `false` when there is nothing to do, on
+/// `--dry-run` or when declined. `notice` is shown right before the prompt.
+fn confirm_planned(plan: &Report, verb: &str, args: &Args, notice: &[String]) -> Result<bool> {
+    say(&format::preview_lines(plan, verb));
+    say(&format::problem_lines(plan));
+    let planned = plan.items.iter().any(|i| i.outcome == Outcome::Planned);
+    if args.dry_run || !planned {
+        return Ok(false);
+    }
+    say(notice);
+    let question = format!("{}{} these sessions?", verb[..1].to_uppercase(), &verb[1..]);
+    let proceed = should_proceed(&question, args.yes)?;
+    if !proceed {
+        say(&["No changes made.".to_string()]);
+    }
+    Ok(proceed)
+}
+
+fn privacy_notice(plan: &Report, state: &State) -> Vec<String> {
+    let creating = plan
+        .items
+        .iter()
+        .filter(|i| i.outcome == Outcome::Planned && !i.on_remote)
+        .count();
+    if needs_privacy_ack(state.sync_privacy_ack, creating) {
+        format::privacy_lines()
+    } else {
+        Vec::new()
+    }
+}
+
 pub fn push(args: Args, auto: bool) -> Result<()> {
     if auto {
         return push_auto(&args);
@@ -173,35 +204,16 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
         .engine()
         .push(&opts(&args, true))
         .unwrap_or_else(|e| engine_failed(e));
-    say(&format::preview_lines(&plan, "push"));
-    say(&format::problem_lines(&plan));
-    if args.dry_run
-        || !plan
-            .items
-            .iter()
-            .any(|i| i.outcome == agr::sync::run::Outcome::Planned)
-    {
-        return Ok(());
-    }
     let mut state = State::load();
-    let creating = plan
-        .items
-        .iter()
-        .filter(|i| i.outcome == agr::sync::run::Outcome::Planned && !i.on_remote)
-        .count();
-    let notice = needs_privacy_ack(state.sync_privacy_ack, creating);
-    if notice {
-        say(&format::privacy_lines());
-    }
-    if !should_proceed("Push these sessions?", args.yes)? {
-        say(&["No changes made.".to_string()]);
+    let notice = privacy_notice(&plan, &state);
+    if !confirm_planned(&plan, "push", &args, &notice)? {
         return Ok(());
     }
     if let KeyState::Fresh(fresh) = &ctx.key {
         key::save_new(&default_key_path()?, fresh)?;
         say(&["Created a new sync key. Back up your key with agr sync key export.".to_string()]);
     }
-    if notice {
+    if !notice.is_empty() {
         state.sync_privacy_ack = true;
         state.save()?;
     }
@@ -214,18 +226,7 @@ pub fn pull(args: Args) -> Result<()> {
         .engine()
         .pull(&opts(&args, true))
         .unwrap_or_else(|e| engine_failed(e));
-    say(&format::preview_lines(&plan, "pull"));
-    say(&format::problem_lines(&plan));
-    if args.dry_run
-        || !plan
-            .items
-            .iter()
-            .any(|i| i.outcome == agr::sync::run::Outcome::Planned)
-    {
-        return Ok(());
-    }
-    if !should_proceed("Pull these sessions?", args.yes)? {
-        say(&["No changes made.".to_string()]);
+    if !confirm_planned(&plan, "pull", &args, &[])? {
         return Ok(());
     }
     finish(ctx.engine().pull(&opts(&args, false)))

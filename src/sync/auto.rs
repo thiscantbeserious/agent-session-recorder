@@ -108,44 +108,25 @@ pub fn take_error_line(state: &mut State) -> Option<String> {
 /// arguments to spawn, the caller prints and spawns.
 pub fn after_recording(config: &Config, path: &Path) -> (Vec<String>, Option<Vec<String>>) {
     let mut state = State::load();
-    let mut lines: Vec<String> = take_error_line(&mut state).into_iter().collect();
-    if !lines.is_empty() {
+    let stored = take_error_line(&mut state);
+    if stored.is_some() {
         let _ = state.save();
     }
+    let path_var = std::env::var_os("PATH").unwrap_or_default();
     let env = Env {
         key_present: key_exists(),
-        tools_present: on_path(
-            &["gh", "git"],
-            &std::env::var_os("PATH").unwrap_or_default(),
-        ),
+        tools_present: on_path(&["gh", "git"], &path_var),
     };
-    let spawn = match decide(config, &state, env, path) {
-        Auto::Silent => None,
-        Auto::Skip(hint) => {
-            lines.push(hint);
-            None
-        }
-        Auto::Spawn(args) => Some(args),
+    let (hint, spawn) = match decide(config, &state, env, path) {
+        Auto::Silent => (None, None),
+        Auto::Skip(hint) => (Some(hint), None),
+        Auto::Spawn(args) => (None, Some(args)),
     };
-    lines.truncate(1);
-    (lines, spawn)
+    (stored.or(hint).into_iter().collect(), spawn)
 }
 
 fn key_exists() -> bool {
     super::setup::default_key_path().is_ok_and(|p| p.exists())
-}
-
-/// Start `exe args` detached, null stdio, own process group on unix, never waited on.
-pub fn spawn_detached(exe: &Path, args: &[String]) -> std::io::Result<()> {
-    let mut command = std::process::Command::new(exe);
-    command
-        .args(args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
-    #[cfg(unix)]
-    std::os::unix::process::CommandExt::process_group(&mut command, 0);
-    command.spawn().map(drop)
 }
 
 /// The `--auto` run, pushes only the one session, never pulls or deletes, a conflict is

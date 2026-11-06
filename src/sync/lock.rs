@@ -22,6 +22,9 @@ impl SyncLock {
         if holder_alive(&path) {
             return Err(SyncError::Busy);
         }
+        // ponytail: two runs can both see a stale holder, one removes the other's fresh lock
+        // between our check and our remove. Window is microseconds and needs a dead pid
+        // first, upgrade to an flock on the lock file if it ever shows up.
         let _ = std::fs::remove_file(&path);
         if create(&path)? {
             return Ok(Self(path));

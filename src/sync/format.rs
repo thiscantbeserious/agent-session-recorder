@@ -77,18 +77,12 @@ pub fn preview_lines(report: &Report, verb: &str) -> Vec<String> {
             i.size
         }
     };
-    let total: u64 = planned.iter().map(|i| bytes(i)).sum();
-    let mut lines = vec![format!(
-        "Would {verb} {} session(s), {}",
-        planned.len(),
-        size(total)
-    )];
-    lines.extend(
-        planned
-            .iter()
-            .map(|i| format!("  {} ({})", i.path, size(bytes(i)))),
-    );
-    lines
+    let total: u64 = planned.iter().copied().map(bytes).sum();
+    let head = format!("Would {verb} {} session(s), {}", planned.len(), size(total));
+    let rows = planned
+        .iter()
+        .map(|i| format!("  {} ({})", i.path, size(bytes(i))));
+    std::iter::once(head).chain(rows).collect()
 }
 
 /// First push notice, privacy and key backup.
@@ -126,21 +120,7 @@ pub fn delete_preview_lines(report: &Report) -> Vec<String> {
 
 /// Result of a real run, counts, skipped, conflicts with both hashes and sizes, failures.
 pub fn summary_lines(report: &Report) -> Vec<String> {
-    let mut lines = Vec::new();
-    let counts = [
-        ("Pushed", report.pushed),
-        ("Pulled", report.pulled),
-        ("Deleted", report.deleted),
-    ];
-    lines.extend(
-        counts
-            .iter()
-            .filter(|(_, n)| *n > 0)
-            .map(|(name, n)| format!("{name}: {n}")),
-    );
-    if report.bytes > 0 {
-        lines.push(format!("Transferred: {}", size(report.bytes)));
-    }
+    let mut lines = count_lines(report);
     lines.extend(
         problem_lines(report)
             .into_iter()
@@ -150,6 +130,23 @@ pub fn summary_lines(report: &Report) -> Vec<String> {
         lines.push("Nothing to do.".into());
     }
     lines.extend(report.warning.iter().map(|w| format!("Warning: {w}")));
+    lines
+}
+
+fn count_lines(report: &Report) -> Vec<String> {
+    let counts = [
+        ("Pushed", report.pushed),
+        ("Pulled", report.pulled),
+        ("Deleted", report.deleted),
+    ];
+    let mut lines: Vec<String> = counts
+        .iter()
+        .filter(|(_, n)| *n > 0)
+        .map(|(name, n)| format!("{name}: {n}"))
+        .collect();
+    if report.bytes > 0 {
+        lines.push(format!("Transferred: {}", size(report.bytes)));
+    }
     lines
 }
 

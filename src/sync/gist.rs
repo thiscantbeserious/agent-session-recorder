@@ -42,7 +42,10 @@ impl Scratch {
     fn create(base: &Path) -> Result<Self, BackendError> {
         let n = CLONE_COUNTER.fetch_add(1, Ordering::Relaxed);
         let dir = base.join(format!("agr-sync-{}-{n}", std::process::id()));
-        std::fs::create_dir(&dir).map_err(|e| BackendError::Other(format!("temp dir: {e}")))?;
+        let builder = private_dir_builder();
+        builder
+            .create(&dir)
+            .map_err(|e| BackendError::Other(format!("temp dir: {e}")))?;
         Ok(Self(dir))
     }
 
@@ -55,6 +58,14 @@ impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
+}
+
+fn private_dir_builder() -> std::fs::DirBuilder {
+    #[allow(unused_mut)]
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder
 }
 
 fn strings(args: &[&str]) -> Vec<String> {
@@ -461,6 +472,16 @@ mod tests {
         let listing = format!(r#"[{{"id":"abc123","description":"{desc}"}}]"#);
         assert_eq!(parse_list(&listing).unwrap(), vec![]);
         assert!(!calls.iter().any(|c| c.contains("TOKEN")), "{calls:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn scratch_dir_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = tempfile::tempdir().unwrap();
+        let scratch = Scratch::create(base.path()).unwrap();
+        let mode = std::fs::metadata(&scratch.0).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
     }
 
     #[test]

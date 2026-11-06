@@ -313,7 +313,14 @@ EXAMPLE:
         yes: bool,
     },
     /// Export or import the sync key
-    #[command(subcommand)]
+    #[command(
+        subcommand,
+        long_about = "Export or import the sync key.
+
+SUBCOMMANDS:
+    agr sync key export              Print the recovery phrase
+    agr sync key import [PHRASE]     Install a recovery phrase (stdin when omitted)"
+    )]
     Key(SyncKeyCommands),
 }
 
@@ -332,12 +339,14 @@ EXAMPLE:
     #[command(long_about = "Import a recovery phrase (argument or stdin).
 
 Refuses to replace a different existing key without --force.
+Prefer stdin, an argument ends up in your shell history.
 
-EXAMPLE:
+EXAMPLES:
+    agr sync key import              Read the phrase from stdin
     agr sync key import agr1-XXXXX-...")]
     Import {
-        /// Recovery phrase (read from stdin when omitted)
-        #[arg(help = "Recovery phrase (read from stdin when omitted)")]
+        /// Recovery phrase (read from stdin when omitted, stdin avoids shell history)
+        #[arg(help = "Recovery phrase (stdin when omitted, avoids shell history)")]
         phrase: Option<String>,
         /// Replace a different existing key
         #[arg(long, help = "Replace a different existing key")]
