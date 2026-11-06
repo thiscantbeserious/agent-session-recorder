@@ -14,7 +14,21 @@ const STUB_BODY: &str = "\n";
 /// Placeholder until the blob is pushed, no `agr:v1 ` prefix so `parse_list` skips it.
 const PENDING_DESC: &str = "agr:pending";
 const LIST_ENDPOINT: &str = "gists?per_page=100";
-const GIT_IDENTITY: [&str; 4] = ["-c", "user.name=agr", "-c", "user.email=agr@localhost"];
+const GIT_IDENTITY: [&str; 6] = [
+    "-c",
+    "user.name=agr",
+    "-c",
+    "user.email=agr@localhost",
+    "-c",
+    "commit.gpgsign=false",
+];
+/// Env beats `-c user.*`, so a user's exported `GIT_AUTHOR_*` would leak without these.
+const IDENTITY_ENV: [(&str, &str); 4] = [
+    ("GIT_AUTHOR_NAME", "agr"),
+    ("GIT_AUTHOR_EMAIL", "agr@localhost"),
+    ("GIT_COMMITTER_NAME", "agr"),
+    ("GIT_COMMITTER_EMAIL", "agr@localhost"),
+];
 
 static CLONE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -194,10 +208,11 @@ impl<R: Runner> GistBackend<R> {
         let mut commit = GIT_IDENTITY.to_vec();
         commit.extend(["commit", "-m", "agr sync"]);
         let date = format!("@{} +0000", (self.clock)());
-        let env = [
+        let mut env = vec![
             ("GIT_AUTHOR_DATE", date.clone()),
             ("GIT_COMMITTER_DATE", date),
         ];
+        env.extend(IDENTITY_ENV.iter().map(|(k, v)| (*k, v.to_string())));
         self.run_ok_env("git", &commit, Some(repo), &env)?;
         self.run_ok("git", &["push"], Some(repo))?;
         Ok(())
@@ -653,10 +668,17 @@ mod tests {
             .push(Some("abc123"), "T", b"x")
             .unwrap();
         let date = "@1700000000 +0000".to_string();
-        let want = vec![
-            ("GIT_AUTHOR_DATE".to_string(), date.clone()),
-            ("GIT_COMMITTER_DATE".to_string(), date),
-        ];
+        let want: Vec<(String, String)> = [
+            ("GIT_AUTHOR_DATE", date.as_str()),
+            ("GIT_COMMITTER_DATE", date.as_str()),
+            ("GIT_AUTHOR_NAME", "agr"),
+            ("GIT_AUTHOR_EMAIL", "agr@localhost"),
+            ("GIT_COMMITTER_NAME", "agr"),
+            ("GIT_COMMITTER_EMAIL", "agr@localhost"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
         let calls = fake.calls();
         let envs = fake.envs.borrow();
         assert!(!calls.is_empty());
@@ -667,6 +689,7 @@ mod tests {
                 assert!(env.is_empty(), "{call}: {env:?}");
             }
         }
+        assert!(calls.iter().any(|c| c.contains("commit.gpgsign=false")));
         assert!(calls.iter().any(|c| c.contains("user.name=agr")));
         assert!(calls.iter().any(|c| c.contains("user.email=agr@localhost")));
     }
