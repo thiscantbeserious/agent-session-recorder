@@ -569,7 +569,7 @@ fn pull_without_tty_and_without_yes_aborts_and_changes_nothing() {
     assert_eq!(out.code, 0, "{}", out.all());
     assert!(out.stdout.contains("No changes made."), "{}", out.stdout);
     assert!(!b.storage.join("claude/a.cast.gz").exists());
-    assert!(!b.storage.join(".agr-sync-index.json").exists());
+    assert!(!b.storage.join(".agr-sync.json").exists());
     assert_eq!(b.state(), "");
 }
 
