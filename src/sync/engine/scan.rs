@@ -249,3 +249,6 @@ fn slashed(path: &Path) -> String {
         .collect();
     parts.join("/")
 }
+
+#[cfg(test)]
+mod tests;
