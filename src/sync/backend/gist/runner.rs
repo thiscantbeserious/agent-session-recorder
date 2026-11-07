@@ -3,11 +3,13 @@
 use std::io::{ErrorKind, Read};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{mpsc, Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
 const POLL: Duration = Duration::from_millis(100);
+/// How long to wait for a pipe to close after the child exited.
+const GRACE: Duration = Duration::from_secs(2);
 
 /// Finished process, stdout and stderr as lossy text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -98,34 +100,45 @@ fn supervise(mut child: Child, program: &str, stall: Duration) -> std::io::Resul
         }
         std::thread::sleep(POLL);
     };
-    let text = |h: thread::JoinHandle<Vec<u8>>| {
-        String::from_utf8_lossy(&h.join().unwrap_or_default()).into_owned()
-    };
     Ok(Output {
         code: status.code(),
-        stdout: text(stdout),
-        stderr: text(stderr),
+        stdout: finish(stdout),
+        stderr: finish(stderr),
     })
 }
 
-fn drain<R: Read + Send + 'static>(
-    pipe: Option<R>,
-    last: &Arc<Mutex<Instant>>,
-) -> thread::JoinHandle<Vec<u8>> {
+/// Bytes read so far and a signal that the pipe hit EOF.
+struct Drain {
+    bytes: Arc<Mutex<Vec<u8>>>,
+    eof: mpsc::Receiver<()>,
+}
+
+/// Text read, waits `GRACE` for EOF, a grandchild that kept the pipe open is left behind.
+fn finish(drain: Drain) -> String {
+    let _ = drain.eof.recv_timeout(GRACE);
+    let bytes = drain.bytes.lock().unwrap_or_else(PoisonError::into_inner);
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+fn drain<R: Read + Send + 'static>(pipe: Option<R>, last: &Arc<Mutex<Instant>>) -> Drain {
     let last = Arc::clone(last);
+    let bytes = Arc::new(Mutex::new(Vec::new()));
+    let (done, eof) = mpsc::channel();
+    let shared = Arc::clone(&bytes);
     thread::spawn(move || {
-        let mut bytes = Vec::new();
         let mut buf = [0u8; 8192];
-        let Some(mut pipe) = pipe else { return bytes };
+        let Some(mut pipe) = pipe else { return };
         while let Ok(n) = pipe.read(&mut buf) {
             if n == 0 {
                 break;
             }
             *last.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
-            bytes.extend_from_slice(&buf[..n]);
+            let mut all = shared.lock().unwrap_or_else(PoisonError::into_inner);
+            all.extend_from_slice(&buf[..n]);
         }
-        bytes
-    })
+        let _ = done.send(());
+    });
+    Drain { bytes, eof }
 }
 
 #[cfg(all(test, unix))]
