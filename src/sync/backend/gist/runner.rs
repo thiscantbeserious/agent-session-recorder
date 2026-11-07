@@ -189,3 +189,34 @@ mod tests {
         assert!(took < Duration::from_secs(10), "{took:?}");
     }
 }
+
+#[cfg(test)]
+mod drain_tests {
+    use super::{drain, finish};
+    use std::io::{ErrorKind, Read};
+    use std::sync::{Arc, Mutex};
+    use std::time::Instant;
+
+    /// "ab", then one `Interrupted`, then "cd", like a signal arriving mid-read.
+    struct Hiccup(u8);
+
+    impl Read for Hiccup {
+        fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+            self.0 += 1;
+            let chunk: &[u8] = match self.0 {
+                1 => b"ab",
+                2 => return Err(ErrorKind::Interrupted.into()),
+                3 => b"cd",
+                _ => b"",
+            };
+            out[..chunk.len()].copy_from_slice(chunk);
+            Ok(chunk.len())
+        }
+    }
+
+    #[test]
+    fn an_interrupted_read_does_not_end_the_drain() {
+        let last = Arc::new(Mutex::new(Instant::now()));
+        assert_eq!(finish(drain(Some(Hiccup(0)), &last)), "abcd");
+    }
+}
