@@ -23,6 +23,8 @@ pub struct Config {
     pub analysis: AnalysisConfig,
     #[serde(default)]
     pub agents: AgentsConfig,
+    #[serde(default)]
+    pub sync: SyncConfig,
 }
 
 fn default_config_version() -> u32 {
@@ -38,6 +40,37 @@ impl Default for Config {
             recording: RecordingConfig::default(),
             analysis: AnalysisConfig::default(),
             agents: AgentsConfig::default(),
+            sync: SyncConfig::default(),
+        }
+    }
+}
+
+/// Session sync configuration. Sync is off while `backend` is unset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyncConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<SyncBackendKind>,
+    /// Push new sessions automatically after recording (only when a backend is set).
+    #[serde(default = "default_auto_push")]
+    pub auto_push: bool,
+}
+
+/// Remote backend for session sync.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SyncBackendKind {
+    Gist,
+}
+
+pub fn default_auto_push() -> bool {
+    true
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            backend: None,
+            auto_push: default_auto_push(),
         }
     }
 }

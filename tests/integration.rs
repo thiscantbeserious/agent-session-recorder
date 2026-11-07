@@ -28,6 +28,9 @@ mod config_migrate_edge_test;
 #[path = "integration/config_migrate_test.rs"]
 mod config_migrate_test;
 
+#[path = "integration/dependency_features_test.rs"]
+mod dependency_features_test;
+
 #[path = "integration/config_test.rs"]
 mod config_test;
 
@@ -197,3 +200,18 @@ mod cli_offer_test;
 // CLI colour decision
 #[path = "integration/cli_color_test.rs"]
 mod cli_color_test;
+
+#[path = "integration/sync_engine_test.rs"]
+mod sync_engine_test;
+
+#[path = "integration/sync_index_fields_test.rs"]
+mod sync_index_fields_test;
+
+#[path = "integration/cli_sync_parse_test.rs"]
+mod cli_sync_parse_test;
+
+#[path = "integration/cli_sync_test.rs"]
+mod cli_sync_test;
+
+#[path = "integration/sync_multi_machine_test.rs"]
+mod sync_multi_machine_test;

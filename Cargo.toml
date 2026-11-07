@@ -16,7 +16,7 @@ categories = ["command-line-utilities"]
 # Allow tarpaulin_include cfg for coverage exclusion
 # See: https://github.com/xd009642/tarpaulin#ignoring-code-in-files
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)', 'cfg(tarpaulin)'] }
 
 [features]
 default = []
@@ -53,6 +53,12 @@ rayon = "1.10"
 libc = "0.2"
 signal-hook = "0.4.3"
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+chacha20poly1305 = { version = "0.11", features = ["zeroize"] }
+# Not a direct use: turns on poly1305 key wiping, the chacha20poly1305 zeroize feature does not.
+poly1305 = { version = "0.9", features = ["zeroize"] }
+sha2 = "0.10"
+data-encoding = "2"
+zeroize = "1"
 
 [dev-dependencies]
 tempfile = "3.10"

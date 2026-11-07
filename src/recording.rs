@@ -5,7 +5,9 @@
 //! 2. It performs complex process spawning and signal handling
 //! 3. It is thoroughly tested via e2e tests in tests/e2e_test.sh
 
+mod auto_push;
 mod finalize;
+mod post;
 pub use finalize::{finalize_recording, optimize_recording};
 
 use anyhow::{bail, Context, Result};
@@ -124,8 +126,11 @@ impl Recorder {
         println!();
         theme::print_done_banner();
         let final_path = self.finish(&filepath, &agent_dir, &filename, status);
-        self.maybe_auto_analyze(&final_path);
-        self.show_storage_warning()
+        post::after_stop(
+            || self.maybe_auto_analyze(&final_path),
+            || auto_push::after_finalize(&self.config, &final_path),
+            || self.show_storage_warning(),
+        )
     }
 
     fn print_start(agent: &str, filename: &str) {

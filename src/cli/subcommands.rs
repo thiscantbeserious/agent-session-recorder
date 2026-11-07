@@ -227,3 +227,130 @@ EXAMPLE:
     agr shell uninstall")]
     Uninstall,
 }
+
+#[derive(Subcommand)]
+pub enum SyncCommands {
+    /// Show what push and pull would do, per session
+    #[command(long_about = "Show what `agr sync push` and `agr sync pull` would do.
+
+Read only, never prompts. Needs the network to list the remote sessions.
+
+EXAMPLE:
+    agr sync status")]
+    Status,
+    /// Upload new and changed sessions (encrypted)
+    #[command(
+        long_about = "Upload new and changed sessions, encrypted with your sync key.
+
+Every push with planned changes asks for confirmation. Without a terminal
+it needs --yes, otherwise nothing changes. The first push that creates gists
+also shows a privacy notice.
+Conflicts are skipped unless --overwrite is given (local wins).
+
+EXAMPLES:
+    agr sync push                    Push everything that changed
+    agr sync push claude/a.cast.gz   Push one session
+    agr sync push --dry-run          Show what would be pushed"
+    )]
+    Push {
+        /// Sessions to push (default: all)
+        #[arg(help = "Sessions to push (default: all)")]
+        sessions: Vec<String>,
+        /// Show what would happen, change nothing
+        #[arg(long, help = "Show what would happen, change nothing")]
+        dry_run: bool,
+        /// Skip the confirmation prompt
+        #[arg(long, short = 'y', help = "Skip the confirmation prompt")]
+        yes: bool,
+        /// Resolve conflicts with the local session
+        #[arg(long, help = "Resolve conflicts with the local session")]
+        overwrite: bool,
+        /// Internal: push after a recording, never prompts
+        #[arg(long, hide = true)]
+        auto: bool,
+    },
+    /// Download new and changed sessions
+    #[command(
+        long_about = "Download remote sessions, decrypt and verify them before writing.
+
+Needs your sync key (`agr sync key import` on a second machine).
+Conflicts are skipped unless --overwrite is given (remote wins, the
+replaced file is kept as a hidden .bak).
+
+EXAMPLES:
+    agr sync pull                    Pull everything that is new or changed
+    agr sync pull --dry-run          Show what would be pulled"
+    )]
+    Pull {
+        /// Sessions to pull (default: all)
+        #[arg(help = "Sessions to pull (default: all)")]
+        sessions: Vec<String>,
+        /// Show what would happen, change nothing
+        #[arg(long, help = "Show what would happen, change nothing")]
+        dry_run: bool,
+        /// Skip the confirmation prompt
+        #[arg(long, short = 'y', help = "Skip the confirmation prompt")]
+        yes: bool,
+        /// Resolve conflicts with the remote session
+        #[arg(long, help = "Resolve conflicts with the remote session")]
+        overwrite: bool,
+    },
+    /// Remove sessions from the remote (the local file stays)
+    #[command(long_about = "Remove the remote copy of a session and its index entry.
+
+The local file is never touched.
+
+EXAMPLE:
+    agr sync delete claude/a.cast.gz")]
+    Delete {
+        /// Sessions to delete from the remote
+        #[arg(required = true, help = "Sessions to delete from the remote")]
+        sessions: Vec<String>,
+        /// Show what would happen, change nothing
+        #[arg(long, help = "Show what would happen, change nothing")]
+        dry_run: bool,
+        /// Skip the confirmation prompt
+        #[arg(long, short = 'y', help = "Skip the confirmation prompt")]
+        yes: bool,
+    },
+    /// Export or import the sync key
+    #[command(
+        subcommand,
+        long_about = "Export or import the sync key.
+
+SUBCOMMANDS:
+    agr sync key export              Print the recovery phrase
+    agr sync key import [PHRASE]     Install a recovery phrase (stdin when omitted)"
+    )]
+    Key(SyncKeyCommands),
+}
+
+#[derive(Subcommand)]
+pub enum SyncKeyCommands {
+    /// Print the recovery phrase of the sync key
+    #[command(long_about = "Print the recovery phrase of the sync key.
+
+Store it somewhere safe. Losing every copy of the key makes synced
+sessions unrecoverable.
+
+EXAMPLE:
+    agr sync key export")]
+    Export,
+    /// Import a recovery phrase on this machine
+    #[command(long_about = "Import a recovery phrase (argument or stdin).
+
+Refuses to replace a different existing key without --force.
+Prefer stdin, an argument ends up in your shell history.
+
+EXAMPLES:
+    agr sync key import              Read the phrase from stdin
+    agr sync key import agr1-XXXXX-...")]
+    Import {
+        /// Recovery phrase (read from stdin when omitted, stdin avoids shell history)
+        #[arg(help = "Recovery phrase (stdin when omitted, avoids shell history)")]
+        phrase: Option<String>,
+        /// Replace a different existing key
+        #[arg(long, help = "Replace a different existing key")]
+        force: bool,
+    },
+}

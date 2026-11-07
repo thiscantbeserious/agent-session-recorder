@@ -23,7 +23,10 @@ mod tests {
     fn v5_adds_auto_optimize_true() {
         let result = migrate_config("config_version = 4\n[recording]\n").unwrap();
         let parsed: Config = toml::from_str(&result.content).unwrap();
-        assert_eq!(parsed.config_version, 5);
+        assert_eq!(
+            parsed.config_version,
+            crate::config::migrate::CURRENT_VERSION
+        );
         assert!(parsed.recording.auto_optimize);
         assert!(result.content.contains("auto_optimize = true"));
         assert!(result.added_fields.contains(&KEY.to_string()));

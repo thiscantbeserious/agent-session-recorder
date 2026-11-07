@@ -1,0 +1,27 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH delete 1  "delete " 
+.SH NAME
+delete \- Remove sessions from the remote (the local file stays)
+.SH SYNOPSIS
+\fBdelete\fR [\fB\-\-dry\-run\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] <\fISESSIONS\fR> 
+.SH DESCRIPTION
+Remove the remote copy of a session and its index entry.
+.PP
+The local file is never touched.
+.PP
+EXAMPLE:
+    agr sync delete claude/a.cast.gz
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+Show what would happen, change nothing
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Skip the confirmation prompt
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+<\fISESSIONS\fR>
+Sessions to delete from the remote

@@ -1,0 +1,18 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH status 1  "status " 
+.SH NAME
+status \- Show what push and pull would do, per session
+.SH SYNOPSIS
+\fBstatus\fR [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Show what `agr sync push` and `agr sync pull` would do.
+.PP
+Read only, never prompts. Needs the network to list the remote sessions.
+.PP
+EXAMPLE:
+    agr sync status
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)

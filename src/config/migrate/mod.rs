@@ -14,7 +14,7 @@ use super::Config;
 
 /// The latest config schema version.
 /// Bump this and add a migration file when the schema changes.
-pub const CURRENT_VERSION: u32 = 5;
+pub const CURRENT_VERSION: u32 = 6;
 
 /// Result of a config migration operation
 #[derive(Debug, Clone, Default)]
@@ -124,6 +124,7 @@ const SECTION_ORDER: &[&str] = &[
     "recording",
     "analysis",
     "agents",
+    "sync",
 ];
 
 /// Reorder top-level sections to match `SECTION_ORDER`.

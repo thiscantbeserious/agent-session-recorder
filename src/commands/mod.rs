@@ -18,6 +18,7 @@ pub mod prompt;
 pub mod record;
 pub mod shell;
 pub mod status;
+pub mod sync;
 pub mod transform;
 
 /// Resolve `file` (absolute, short or fuzzy), fail if missing, warn if not `.cast` or `.cast.gz`.

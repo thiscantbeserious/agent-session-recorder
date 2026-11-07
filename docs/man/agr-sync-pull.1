@@ -1,0 +1,33 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH pull 1  "pull " 
+.SH NAME
+pull \- Download new and changed sessions
+.SH SYNOPSIS
+\fBpull\fR [\fB\-\-dry\-run\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fISESSIONS\fR] 
+.SH DESCRIPTION
+Download remote sessions, decrypt and verify them before writing.
+.PP
+Needs your sync key (`agr sync key import` on a second machine).
+Conflicts are skipped unless \-\-overwrite is given (remote wins, the
+replaced file is kept as a hidden .bak).
+.PP
+EXAMPLES:
+    agr sync pull                    Pull everything that is new or changed
+    agr sync pull \-\-dry\-run          Show what would be pulled
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+Show what would happen, change nothing
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Skip the confirmation prompt
+.TP
+\fB\-\-overwrite\fR
+Resolve conflicts with the remote session
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+[\fISESSIONS\fR]
+Sessions to pull (default: all)

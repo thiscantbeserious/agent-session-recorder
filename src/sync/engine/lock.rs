@@ -1,0 +1,127 @@
+//! Sync lock `<storage>/.agr-sync.lock`, pid inside, stale pids are reclaimed.
+
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+
+use super::index::LOCK_FILE;
+use super::run::SyncError;
+use crate::files::lock::{is_pid_alive, LockInfo};
+
+/// Held lock, removed on drop.
+#[derive(Debug)]
+pub(super) struct SyncLock(PathBuf);
+
+impl SyncLock {
+    /// Take the lock, `Busy` when a live process holds it.
+    pub(super) fn acquire(storage_dir: &Path) -> Result<Self, SyncError> {
+        let path = storage_dir.join(LOCK_FILE);
+        if create(&path)? {
+            return Ok(Self(path));
+        }
+        if holder_alive(&path) {
+            return Err(SyncError::Busy);
+        }
+        // ponytail: two runs can both see a stale holder, one removes the other's fresh lock
+        // between our check and our remove. Window is microseconds and needs a dead pid
+        // first, upgrade to an flock on the lock file if it ever shows up.
+        let _ = std::fs::remove_file(&path);
+        if create(&path)? {
+            return Ok(Self(path));
+        }
+        Err(SyncError::Busy)
+    }
+}
+
+impl Drop for SyncLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+/// `Ok(false)` when the lock exists. The JSON goes to a temp file first and is linked into
+/// place, so the lock never appears empty to a second process.
+fn create(path: &Path) -> Result<bool, SyncError> {
+    create_with(path, |from, to| std::fs::hard_link(from, to))
+}
+
+fn create_with(
+    path: &Path,
+    link: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<bool, SyncError> {
+    let fail = |e: std::io::Error| SyncError::Failed(format!("sync lock: {e}"));
+    let info = LockInfo {
+        pid: std::process::id(),
+        started: chrono::Utc::now().to_rfc3339(),
+    };
+    let json = serde_json::to_string(&info).unwrap_or_default();
+    let tmp = path.with_extension(format!("tmp{}", info.pid));
+    std::fs::write(&tmp, &json).map_err(fail)?;
+    let linked = link(&tmp, path);
+    let _ = std::fs::remove_file(&tmp);
+    match linked {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(false),
+        Err(_) => create_new(path, &json).map_err(fail),
+    }
+}
+
+/// No hard links on this filesystem, create and write in place. A second process may see the
+/// file empty for a moment, `holder_alive` counts that as held.
+fn create_new(path: &Path, json: &str) -> std::io::Result<bool> {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(mut file) => std::io::Write::write_all(&mut file, json.as_bytes()).map(|()| true),
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
+/// An empty file is a lock written by an older build that is still writing, so it counts.
+fn holder_alive(path: &Path) -> bool {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    text.is_empty()
+        || serde_json::from_str::<LockInfo>(&text).is_ok_and(|info| is_pid_alive(info.pid))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filesystem_without_hard_links_falls_back_to_create_new() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(LOCK_FILE);
+        let no_links = |_: &Path, _: &Path| Err(std::io::Error::from(ErrorKind::Unsupported));
+        assert!(matches!(create_with(&path, no_links), Ok(true)));
+        assert!(holder_alive(&path));
+        assert!(matches!(create_with(&path, no_links), Ok(false)));
+    }
+
+    #[test]
+    fn empty_lock_file_is_busy_not_reclaimed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(LOCK_FILE);
+        std::fs::write(&path, "").unwrap();
+        assert!(matches!(
+            SyncLock::acquire(dir.path()),
+            Err(SyncError::Busy)
+        ));
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn stale_lock_is_reclaimed_and_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(LOCK_FILE);
+        std::fs::write(&path, r#"{"pid":4294967,"started":"x"}"#).unwrap();
+        let lock = SyncLock::acquire(dir.path()).unwrap();
+        assert!(holder_alive(&path));
+        drop(lock);
+        assert!(!path.exists());
+    }
+}

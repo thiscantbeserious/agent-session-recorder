@@ -18,4 +18,5 @@ Welcome to the AGR (Agent Session Recorder) wiki.
 - [[agents|Command-agents]] - Manage configured agents
 - [[config|Command-config]] - Configuration management
 - [[shell|Command-shell]] - Manage shell integration
+- [[sync|Command-sync]] - Sync encrypted sessions to a remote (secret gists)
 - [[optimize|Command-optimize]] - Optimize asciicast recordings (removes silence)

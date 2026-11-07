@@ -42,3 +42,18 @@ pub fn generate_large_cast(event_count: usize) -> String {
 
     content
 }
+
+/// macOS: `<n>  maximum resident set size` (bytes), Linux: `Maximum resident set size (kbytes): <n>`.
+pub fn parse_max_rss(stderr: &str) -> Option<u64> {
+    stderr.lines().find_map(|l| {
+        let l = l.trim();
+        if l.ends_with("maximum resident set size") {
+            l.split_whitespace().next()?.parse().ok()
+        } else {
+            l.strip_prefix("Maximum resident set size (kbytes):")?
+                .trim()
+                .parse()
+                .ok()
+        }
+    })
+}

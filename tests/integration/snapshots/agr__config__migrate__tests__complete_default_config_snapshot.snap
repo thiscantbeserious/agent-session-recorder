@@ -2,7 +2,7 @@
 source: src/config/migrate/mod.rs
 expression: result.content
 ---
-config_version = 5
+config_version = 6
 
 [shell]
 auto_wrap = true
@@ -54,3 +54,7 @@ analyze_extra_args = []
 curate_extra_args = []
 rename_extra_args = []
 # token_budget = 100000
+
+[sync]
+auto_push = true
+# backend = "gist"

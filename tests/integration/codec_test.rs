@@ -188,6 +188,72 @@ fn same_content_compares_decoded_bytes() {
     assert!(!codec::same_content(&a, &c).unwrap());
 }
 
+fn no_temp(path: &Path) -> bool {
+    !codec::temp_path_for(path).exists()
+}
+
+#[test]
+fn raw_with_writes_bytes_exactly() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("a.cast.gz");
+    let result = codec::atomic_write_raw_with(&path, |w| Ok(w.write_all(b"\x1f\x8bnot gzip")?));
+    assert_eq!(
+        std::fs::read(&path).ok().as_deref(),
+        Some(&b"\x1f\x8bnot gzip"[..])
+    );
+    assert!(result.is_ok());
+    assert!(no_temp(&path));
+}
+
+#[test]
+fn raw_with_fill_error_leaves_no_target_and_no_temp() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("a.cast");
+    let result = codec::atomic_write_raw_with(&path, |_| anyhow::bail!("boom"));
+    assert!(result.is_err());
+    assert!(!path.exists());
+    assert!(no_temp(&path));
+}
+
+#[test]
+fn raw_with_replaces_existing_only_on_success() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("a.cast");
+    write_bytes(&path, b"old");
+    codec::atomic_write_raw_with(&path, |w| Ok(w.write_all(b"new")?)).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), b"new");
+}
+
+#[test]
+fn raw_with_error_carries_path() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("a.cast");
+    let result = codec::atomic_write_raw_with(&path, |_| anyhow::bail!("boom"));
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(
+        chain(&err).contains(&path.display().to_string()),
+        "{}",
+        chain(&err)
+    );
+    assert!(chain(&err).contains("boom"));
+}
+
+#[test]
+fn raw_with_partial_write_then_error_keeps_old_target() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("a.cast");
+    write_bytes(&path, b"old content");
+    let result = codec::atomic_write_raw_with(&path, |w| {
+        w.write_all(&vec![7u8; 200_000])?;
+        w.flush()?;
+        anyhow::bail!("late failure")
+    });
+    assert!(result.is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), b"old content");
+    assert!(no_temp(&path));
+}
+
 fn chain(err: &anyhow::Error) -> String {
     format!("{err:#}")
 }
@@ -337,4 +403,56 @@ fn trailing_garbage_after_last_gzip_member_is_an_error_with_path() {
         message.as_deref().is_some_and(|m| m.contains("t.cast.gz")),
         "{result:?} / {out:?}"
     );
+}
+
+fn gz_bytes(body: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut enc = flate2::write::GzEncoder::new(&mut out, flate2::Compression::default());
+    std::io::Write::write_all(&mut enc, body).unwrap();
+    enc.finish().unwrap();
+    out
+}
+
+#[test]
+fn atomic_write_raw_keeps_gzip_bytes_exactly() {
+    let dir = TempDir::new().unwrap();
+    let p = dir.path().join("x.cast.gz");
+    let bytes = gz_bytes(b"hello\n");
+    let _ = codec::atomic_write_raw(&p, &bytes);
+    assert!(p.exists(), "target must be written");
+    assert_eq!(std::fs::read(&p).unwrap(), bytes);
+    assert!(!codec::temp_path_for(&p).exists());
+}
+
+#[test]
+fn atomic_write_raw_replaces_existing_target() {
+    let dir = TempDir::new().unwrap();
+    let p = dir.path().join("x.cast.gz");
+    std::fs::write(&p, b"old").unwrap();
+    codec::atomic_write_raw(&p, b"new").unwrap();
+    assert_eq!(std::fs::read(&p).unwrap(), b"new");
+}
+
+#[test]
+fn atomic_write_raw_create_error_names_temp_path_and_leaves_nothing() {
+    let dir = TempDir::new().unwrap();
+    let p = dir.path().join("missing").join("x.cast.gz");
+    let res = codec::atomic_write_raw(&p, b"a");
+    assert!(res.is_err(), "write into a missing dir must fail");
+    let msg = chain(&res.unwrap_err());
+    assert!(msg.contains(".x.cast.gz.tmp"), "{msg}");
+    assert!(!p.exists());
+}
+
+#[test]
+fn atomic_write_raw_rename_error_names_target_and_removes_temp() {
+    let dir = TempDir::new().unwrap();
+    let p = dir.path().join("x.cast.gz");
+    std::fs::create_dir(&p).unwrap();
+    std::fs::write(p.join("keep"), b"k").unwrap();
+    let res = codec::atomic_write_raw(&p, b"a");
+    assert!(res.is_err(), "rename onto a non-empty dir must fail");
+    let msg = chain(&res.unwrap_err());
+    assert!(msg.contains("x.cast.gz"), "{msg}");
+    assert!(!codec::temp_path_for(&p).exists());
 }

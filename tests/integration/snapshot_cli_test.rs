@@ -154,6 +154,16 @@ fn snapshot_cli_help_cleanup() {
 // ============================================================================
 
 #[test]
+fn snapshot_cli_help_sync() {
+    let (stdout, stderr, exit_code) = run_agr(&["sync", "--help"]);
+    let output = format!(
+        "=== agr sync --help ===\nExit code: {}\n\n--- stdout ---\n{}\n--- stderr ---\n{}",
+        exit_code, stdout, stderr
+    );
+    insta::assert_snapshot!("cli_help_sync", output);
+}
+
+#[test]
 fn snapshot_cli_no_subcommand() {
     let (stdout, stderr, exit_code) = run_agr(&[]);
     let output = format!(
