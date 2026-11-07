@@ -1,9 +1,13 @@
 //! Process runner behind a small trait, the only place that spawns `gh` and `git`.
 
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Read};
 use std::path::Path;
-use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::thread;
+use std::time::{Duration, Instant};
+
+const POLL: Duration = Duration::from_millis(100);
 
 /// Finished process, stdout and stderr as lossy text.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,14 +68,64 @@ impl Runner for ProcessRunner {
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
-        let out = command.output()?;
-        let _ = self.stall;
-        Ok(Output {
-            code: out.status.code(),
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-        })
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        let child = command.spawn()?;
+        supervise(child, program, self.stall)
     }
+}
+
+/// Drain both pipes in threads that stamp every read, kill the child once nothing was read
+/// for `stall`.
+fn supervise(mut child: Child, program: &str, stall: Duration) -> std::io::Result<Output> {
+    let last = Arc::new(Mutex::new(Instant::now()));
+    let stdout = drain(child.stdout.take(), &last);
+    let stderr = drain(child.stderr.take(), &last);
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        let silent = last
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .elapsed();
+        if silent >= stall {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(std::io::Error::new(
+                ErrorKind::TimedOut,
+                format!("{program} printed nothing for {} s", stall.as_secs_f32()),
+            ));
+        }
+        std::thread::sleep(POLL);
+    };
+    let text = |h: thread::JoinHandle<Vec<u8>>| {
+        String::from_utf8_lossy(&h.join().unwrap_or_default()).into_owned()
+    };
+    Ok(Output {
+        code: status.code(),
+        stdout: text(stdout),
+        stderr: text(stderr),
+    })
+}
+
+fn drain<R: Read + Send + 'static>(
+    pipe: Option<R>,
+    last: &Arc<Mutex<Instant>>,
+) -> thread::JoinHandle<Vec<u8>> {
+    let last = Arc::clone(last);
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let mut buf = [0u8; 8192];
+        let Some(mut pipe) = pipe else { return bytes };
+        while let Ok(n) = pipe.read(&mut buf) {
+            if n == 0 {
+                break;
+            }
+            *last.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
+            bytes.extend_from_slice(&buf[..n]);
+        }
+        bytes
+    })
 }
 
 #[cfg(all(test, unix))]

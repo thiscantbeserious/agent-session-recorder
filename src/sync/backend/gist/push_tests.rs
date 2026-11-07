@@ -16,10 +16,10 @@ fn push_clones_commits_and_pushes_without_touching_the_description() {
     assert_eq!(
         calls,
         [
-            "gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1",
+            "gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1 --progress",
             "git add --all -- data.000 manifest",
             "git -c user.name=agr -c user.email=agr@localhost -c commit.gpgsign=false -c core.hooksPath=<tmp>/agr-sync-N/no-hooks commit -m agr sync",
-            "git push --no-verify",
+            "git push --no-verify --progress",
         ]
     );
     assert_eq!(
@@ -81,7 +81,11 @@ fn push_never_forces_and_a_rejection_is_not_retried() {
         assert_eq!(got, Err(BackendError::Changed(None)), "{stderr}");
         let calls = fake.calls();
         let pushes: Vec<_> = calls.iter().filter(|c| c.contains("push")).collect();
-        assert_eq!(pushes, ["git push --no-verify"], "one push, no retry");
+        assert_eq!(
+            pushes,
+            ["git push --no-verify --progress"],
+            "one push, no retry"
+        );
         let forced = |a: &str| a == "--force" || a == "-f" || a.starts_with('+');
         assert!(!calls.iter().flat_map(|c| c.split(' ')).any(forced));
     }

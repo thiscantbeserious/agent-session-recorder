@@ -244,7 +244,7 @@ fn every_mutating_call_waits_one_second_on_the_pacer() {
     b.delete("abc123").unwrap();
     let mutating = |c: &str| {
         c.starts_with("gh gist create")
-            || c == "git push --no-verify"
+            || c == "git push --no-verify --progress"
             || c.contains("PATCH")
             || c.contains("delete")
     };

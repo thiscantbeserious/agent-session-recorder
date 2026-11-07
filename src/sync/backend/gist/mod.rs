@@ -156,6 +156,9 @@ impl<R: Runner> GistBackend<R> {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 Err(BackendError::NotInstalled(tool))
             }
+            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Err(BackendError::Other(
+                format!("{tool} stalled, nothing came back in time, retry with `agr sync push`"),
+            )),
             Err(e) => Err(BackendError::Other(format!("{tool}: {}", e.kind()))),
         }
     }
@@ -189,7 +192,16 @@ impl<R: Runner> GistBackend<R> {
         let target = dir.to_string_lossy().into_owned();
         self.run_ok(
             "gh",
-            &["gist", "clone", id, &target, "--", "--depth", "1"],
+            &[
+                "gist",
+                "clone",
+                id,
+                &target,
+                "--",
+                "--depth",
+                "1",
+                "--progress",
+            ],
             None,
         )?;
         Ok(dir)
@@ -237,9 +249,10 @@ impl<R: Runner> GistBackend<R> {
         ];
         env.extend(IDENTITY_ENV.iter().map(|(k, v)| (*k, v.to_string())));
         self.run_ok_env("git", &commit, Some(repo), &env)?;
+        // `--progress` keeps stderr talking off a terminal, the runner's stall timer needs it.
         // Plain push, never forced and never retried, a rejection is `Changed(None)`.
         self.pace();
-        self.run_ok("git", &["push", "--no-verify"], Some(repo))?;
+        self.run_ok("git", &["push", "--no-verify", "--progress"], Some(repo))?;
         Ok(())
     }
 

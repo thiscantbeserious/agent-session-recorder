@@ -16,7 +16,7 @@ fn pull_clones_and_reads_the_blob() {
     let calls = scrub(&fake.calls(), base.path());
     assert_eq!(
         calls,
-        ["gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1"]
+        ["gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1 --progress"]
     );
     assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 0);
 }
