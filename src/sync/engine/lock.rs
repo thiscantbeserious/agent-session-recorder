@@ -55,13 +55,27 @@ fn create_with(
     };
     let json = serde_json::to_string(&info).unwrap_or_default();
     let tmp = path.with_extension(format!("tmp{}", info.pid));
-    std::fs::write(&tmp, json).map_err(fail)?;
+    std::fs::write(&tmp, &json).map_err(fail)?;
     let linked = link(&tmp, path);
     let _ = std::fs::remove_file(&tmp);
     match linked {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(false),
-        Err(e) => Err(fail(e)),
+        Err(_) => create_new(path, &json).map_err(fail),
+    }
+}
+
+/// No hard links on this filesystem, create and write in place. A second process may see the
+/// file empty for a moment, `holder_alive` counts that as held.
+fn create_new(path: &Path, json: &str) -> std::io::Result<bool> {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        Ok(mut file) => std::io::Write::write_all(&mut file, json.as_bytes()).map(|()| true),
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(e),
     }
 }
 
