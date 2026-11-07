@@ -46,7 +46,13 @@ fn aad(path: &str, gen: u64) -> Vec<u8> {
 fn read_frame<R: Read>(src: &mut BufReader<R>, buf: &mut Vec<u8>, max: usize) -> io::Result<bool> {
     buf.clear();
     src.by_ref().take(max as u64).read_to_end(buf)?;
-    Ok(src.fill_buf()?.is_empty())
+    loop {
+        match src.fill_buf() {
+            Ok(rest) => return Ok(rest.is_empty()),
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 /// Seals `src` into `dst`, one frame in memory at a time, returns plaintext hash and size.
