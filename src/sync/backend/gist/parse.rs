@@ -98,6 +98,8 @@ pub(super) fn map_failure(tool: &'static str, stderr: &str, code: Option<i32>) -
         BackendError::Unreachable("no connection to github.com".into())
     } else if tool == "git" && has(&CREDENTIALS) {
         BackendError::Other("git has no credentials for gists, run `gh auth setup-git`".into())
+    } else if tool == "gh" && text.contains("unknown flag") {
+        BackendError::Other("gh is too old for agr sync, update gh".into())
     } else if tool == "git" && text.contains(GIT_NO_ACCESS) {
         BackendError::Other("git cannot open the gist (no access or it is gone)".into())
     } else {
