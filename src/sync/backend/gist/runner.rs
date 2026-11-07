@@ -128,10 +128,13 @@ fn drain<R: Read + Send + 'static>(pipe: Option<R>, last: &Arc<Mutex<Instant>>) 
     thread::spawn(move || {
         let mut buf = [0u8; 8192];
         let Some(mut pipe) = pipe else { return };
-        while let Ok(n) = pipe.read(&mut buf) {
-            if n == 0 {
-                break;
-            }
+        loop {
+            let n = match pipe.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(_) => break,
+            };
             *last.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
             let mut all = shared.lock().unwrap_or_else(PoisonError::into_inner);
             all.extend_from_slice(&buf[..n]);
