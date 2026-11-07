@@ -88,8 +88,8 @@ impl Fake {
             let stub = std::fs::read_to_string(&args[2]).unwrap();
             *self.stub_seen.borrow_mut() = Some(stub);
         }
-        if program == "gh" && args.get(1).map(String::as_str) == Some("clone") {
-            let dir = PathBuf::from(&args[3]);
+        if program == "git" && args.iter().any(|a| a == "clone") {
+            let dir = PathBuf::from(args.last().unwrap());
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(dir.join(STUB_FILE), STUB_BODY).unwrap();
             for (name, body) in &self.remote {
@@ -254,7 +254,7 @@ fn every_mutating_call_waits_one_second_on_the_pacer() {
     b.delete("abc123").unwrap();
     let mutating = |c: &str| {
         c.starts_with("gh gist create")
-            || c == "git push --no-verify --progress"
+            || c == "git -c credential.helper= -c credential.helper=!gh auth git-credential push --no-verify --progress"
             || c.contains("PATCH")
             || c.contains("delete")
     };

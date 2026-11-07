@@ -19,7 +19,7 @@ fn push_clones_commits_and_pushes_without_touching_the_description() {
             "git -c credential.helper= -c credential.helper=!gh auth git-credential clone --depth 1 --progress https://gist.github.com/abc123.git <tmp>/agr-sync-N/clone",
             "git add --all -- data.000 manifest",
             "git -c user.name=agr -c user.email=agr@localhost -c commit.gpgsign=false -c core.hooksPath=<tmp>/agr-sync-N/no-hooks commit -m agr sync",
-            "git push --no-verify --progress",
+            "git -c credential.helper= -c credential.helper=!gh auth git-credential push --no-verify --progress",
         ]
     );
     assert_eq!(
@@ -86,7 +86,7 @@ fn push_never_forces_and_a_rejection_is_not_retried() {
         let pushes: Vec<_> = calls.iter().filter(|c| c.contains("push")).collect();
         assert_eq!(
             pushes,
-            ["git push --no-verify --progress"],
+            ["git -c credential.helper= -c credential.helper=!gh auth git-credential push --no-verify --progress"],
             "one push, no retry"
         );
         let forced = |a: &str| a == "--force" || a == "-f" || a.starts_with('+');

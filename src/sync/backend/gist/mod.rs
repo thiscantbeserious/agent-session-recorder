@@ -191,17 +191,22 @@ impl<R: Runner> GistBackend<R> {
     fn clone_gist(&self, id: &str, scratch: &Scratch) -> Result<PathBuf, BackendError> {
         let dir = scratch.join("clone");
         let target = dir.to_string_lossy().into_owned();
+        // HTTPS with gh as the credential helper, never SSH: `gh gist clone` follows the
+        // user's git_protocol and an unknown host key would prompt and stall the run.
+        let url = format!("https://gist.github.com/{id}.git");
         self.run_ok(
-            "gh",
+            "git",
             &[
-                "gist",
+                "-c",
+                "credential.helper=",
+                "-c",
+                "credential.helper=!gh auth git-credential",
                 "clone",
-                id,
-                &target,
-                "--",
                 "--depth",
                 "1",
                 "--progress",
+                &url,
+                &target,
             ],
             None,
         )?;
@@ -253,7 +258,19 @@ impl<R: Runner> GistBackend<R> {
         // `--progress` keeps stderr talking off a terminal, the runner's stall timer needs it.
         // Plain push, never forced and never retried, a rejection is `Changed(None)`.
         self.pace();
-        self.run_ok("git", &["push", "--no-verify", "--progress"], Some(repo))?;
+        self.run_ok(
+            "git",
+            &[
+                "-c",
+                "credential.helper=",
+                "-c",
+                "credential.helper=!gh auth git-credential",
+                "push",
+                "--no-verify",
+                "--progress",
+            ],
+            Some(repo),
+        )?;
         Ok(())
     }
 
