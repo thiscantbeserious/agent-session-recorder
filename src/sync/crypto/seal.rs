@@ -1,58 +1,18 @@
-//! Sealing, metadata tokens, recovery phrase and hashing for session sync.
-//!
-//! Blob format: `b"AGR1" || version u8 || nonce [24] || ciphertext+tag`, XChaCha20-Poly1305.
+//! One-shot v1 seal and open (`AGR1 || 0x01`) and the sealed metadata token.
 
-use chacha20poly1305::aead::{Aead, AeadCore, KeyInit, OsRng, Payload};
+use super::{CryptoError, Key};
+use chacha20poly1305::aead::{Aead, AeadCore, OsRng, Payload};
 use chacha20poly1305::XChaCha20Poly1305;
-use data_encoding::{BASE32_NOPAD, BASE64URL_NOPAD, HEXLOWER};
+use data_encoding::BASE64URL_NOPAD;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use thiserror::Error;
-use zeroize::Zeroize;
 
-const KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 24;
 const TAG_LEN: usize = 16;
-const CHECKSUM_LEN: usize = 2;
 const MAGIC: &[u8] = b"AGR1";
 const VERSION: u8 = 1;
 const HEADER_LEN: usize = MAGIC.len() + 1;
 const MIN_BLOB_LEN: usize = HEADER_LEN + NONCE_LEN + TAG_LEN;
 const META_AAD: &[u8] = b"agr:meta";
-const PHRASE_PREFIX: &str = "agr1";
-const PHRASE_BODY_LEN: usize = 55;
-
-/// Errors from opening a sealed blob or token.
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum CryptoError {
-    #[error("sealed data is too short")]
-    Truncated,
-    #[error("not an agr blob")]
-    BadMagic,
-    #[error("unsupported blob version {0}")]
-    UnsupportedVersion(u8),
-    #[error("authentication failed (tampered data, wrong key or wrong context)")]
-    Authentication,
-    #[error("sealed with another key")]
-    OtherKey,
-    #[error("metadata token is not valid base64url")]
-    BadToken,
-    #[error("metadata is not valid")]
-    BadMeta,
-}
-
-/// Errors from importing a recovery phrase.
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum PhraseError {
-    #[error("recovery phrase must start with agr1-")]
-    Prefix,
-    #[error("recovery phrase has the wrong length")]
-    Length,
-    #[error("recovery phrase has invalid characters")]
-    Encoding,
-    #[error("recovery phrase checksum does not match, check for typos")]
-    Checksum,
-}
 
 /// Sealed session metadata, carried in the gist description.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,50 +22,6 @@ pub struct Meta {
     pub sha256: String,
     pub size: u64,
     pub gen: u64,
-}
-
-/// 256-bit sync key. Never printed, zeroized on drop.
-pub struct Key([u8; KEY_LEN]);
-
-impl std::fmt::Debug for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Key(..)")
-    }
-}
-
-impl Drop for Key {
-    fn drop(&mut self) {
-        self.0.zeroize();
-    }
-}
-
-impl Key {
-    pub fn generate() -> Self {
-        Key(XChaCha20Poly1305::generate_key(&mut OsRng).into())
-    }
-
-    pub fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
-        Key(bytes)
-    }
-
-    pub fn as_bytes(&self) -> &[u8; KEY_LEN] {
-        &self.0
-    }
-
-    pub(super) fn cipher(&self) -> XChaCha20Poly1305 {
-        XChaCha20Poly1305::new(&self.0.into())
-    }
-}
-
-pub fn sha256_hex(data: &[u8]) -> String {
-    HEXLOWER.encode(&Sha256::digest(data))
-}
-
-/// SHA-256 (hex) and byte count of a reader, streamed.
-pub fn sha256_reader(mut src: impl std::io::Read) -> std::io::Result<(String, u64)> {
-    let mut hasher = Sha256::new();
-    let size = std::io::copy(&mut src, &mut hasher)?;
-    Ok((HEXLOWER.encode(&hasher.finalize()), size))
 }
 
 pub fn seal(key: &Key, aad: &[u8], plain: &[u8]) -> Vec<u8> {
@@ -122,7 +38,7 @@ fn seal_with_nonce(key: &Key, nonce: &[u8; NONCE_LEN], aad: &[u8], plain: &[u8])
     [MAGIC, &[VERSION], nonce, &ct].concat()
 }
 
-pub fn open(key: &Key, aad: &[u8], blob: &[u8]) -> Result<Vec<u8>, CryptoError> {
+pub(super) fn open(key: &Key, aad: &[u8], blob: &[u8]) -> Result<Vec<u8>, CryptoError> {
     if blob.len() < MIN_BLOB_LEN {
         return Err(CryptoError::Truncated);
     }
@@ -155,49 +71,9 @@ pub fn open_meta(key: &Key, token: &str) -> Result<Meta, CryptoError> {
     serde_json::from_slice(&json).map_err(|_| CryptoError::BadMeta)
 }
 
-fn checksum(key: &[u8]) -> [u8; CHECKSUM_LEN] {
-    let digest = Sha256::digest(key);
-    [digest[0], digest[1]]
-}
-
-/// `agr1-` plus the base32 of `key || sha256(key)[..2]` in groups of five.
-pub fn export_phrase(key: &Key) -> String {
-    let mut raw = key.0.to_vec();
-    raw.extend_from_slice(&checksum(&key.0));
-    let encoded = BASE32_NOPAD.encode(&raw);
-    let groups: Vec<&str> = encoded
-        .as_bytes()
-        .chunks(5)
-        .map(|c| std::str::from_utf8(c).expect("base32 is ascii"))
-        .collect();
-    format!("{PHRASE_PREFIX}-{}", groups.join("-"))
-}
-
-pub fn import_phrase(phrase: &str) -> Result<Key, PhraseError> {
-    let clean: String = phrase
-        .chars()
-        .filter(|c| !c.is_whitespace() && *c != '-')
-        .collect::<String>()
-        .to_uppercase();
-    let body = clean
-        .strip_prefix(&PHRASE_PREFIX.to_uppercase())
-        .ok_or(PhraseError::Prefix)?;
-    if body.len() != PHRASE_BODY_LEN {
-        return Err(PhraseError::Length);
-    }
-    let raw = BASE32_NOPAD
-        .decode(body.as_bytes())
-        .map_err(|_| PhraseError::Encoding)?;
-    let (key, sum) = raw.split_at(KEY_LEN);
-    if checksum(key) != sum {
-        return Err(PhraseError::Checksum);
-    }
-    Ok(Key(key.try_into().expect("split at KEY_LEN")))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{open, open_meta, seal, seal_meta, seal_with_nonce, CryptoError, Key, Meta};
 
     const KAT_KEY: &str = "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f";
     const KAT_NONCE: &str = "404142434445464748494a4b4c4d4e4f5051525354555657";
@@ -216,22 +92,6 @@ mod tests {
     fn sealed() -> Vec<u8> {
         seal(&key(1), b"aad", b"hello session")
     }
-
-    #[test]
-    fn sha256_matches_nist_abc() {
-        assert_eq!(
-            sha256_hex(b"abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
-    }
-
-    #[test]
-    fn sha256_reader_hashes_and_counts() {
-        let got = sha256_reader(&b"abc"[..]).unwrap();
-        assert_eq!(got, (sha256_hex(b"abc"), 3));
-        assert_eq!(sha256_reader(&b""[..]).unwrap(), (sha256_hex(b""), 0));
-    }
-
     #[test]
     fn seal_matches_xchacha_known_answer() {
         let key = Key::from_bytes(hex(KAT_KEY).try_into().unwrap());
@@ -369,66 +229,5 @@ mod tests {
             open(&key(1), b"agr:blob:claude/x.cast.gz:4", &raw),
             Err(CryptoError::Authentication)
         );
-    }
-
-    #[test]
-    fn generated_keys_differ_and_debug_is_redacted() {
-        let (a, b) = (Key::generate(), Key::generate());
-        assert_ne!(a.as_bytes(), b.as_bytes());
-        assert_eq!(format!("{a:?}"), "Key(..)");
-    }
-
-    #[test]
-    fn phrase_round_trips_with_prefix_and_groups() {
-        let k = key(7);
-        let phrase = export_phrase(&k);
-        assert!(phrase.starts_with("agr1-"));
-        assert_eq!(phrase.len(), 5 + 55 + 10);
-        assert_eq!(import_phrase(&phrase).unwrap().as_bytes(), k.as_bytes());
-    }
-
-    #[test]
-    fn phrase_import_is_lenient_about_format() {
-        let k = key(9);
-        let phrase = export_phrase(&k);
-        let messy = format!("  {} ", phrase.to_lowercase().replace('-', " "));
-        assert_eq!(import_phrase(&messy).unwrap().as_bytes(), k.as_bytes());
-        let nodash = phrase.replace('-', "");
-        assert_eq!(import_phrase(&nodash).unwrap().as_bytes(), k.as_bytes());
-    }
-
-    #[test]
-    fn phrase_rejects_wrong_prefix_and_length() {
-        let phrase = export_phrase(&key(3));
-        let bad_prefix = phrase.replacen("agr1", "agr2", 1);
-        assert_eq!(import_phrase(&bad_prefix).err(), Some(PhraseError::Prefix));
-        assert_eq!(
-            import_phrase(&phrase[..phrase.len() - 6]).err(),
-            Some(PhraseError::Length)
-        );
-        assert_eq!(import_phrase("agr1-").err(), Some(PhraseError::Length));
-    }
-
-    #[test]
-    fn phrase_rejects_any_single_changed_character() {
-        let phrase = export_phrase(&key(5));
-        let body_start = 5;
-        assert_eq!(phrase.len(), 70);
-        for i in (body_start..phrase.len()).filter(|&i| phrase.as_bytes()[i] != b'-') {
-            let mut bytes = phrase.clone().into_bytes();
-            bytes[i] = if bytes[i] == b'A' { b'B' } else { b'A' };
-            let changed = String::from_utf8(bytes).unwrap();
-            assert!(import_phrase(&changed).is_err(), "change at {i} accepted");
-        }
-    }
-
-    #[test]
-    fn phrase_rejects_checksum_mismatch() {
-        let phrase = export_phrase(&key(5));
-        let mut bytes = phrase.into_bytes();
-        let i = 11;
-        bytes[i] = if bytes[i] == b'A' { b'B' } else { b'A' };
-        let changed = String::from_utf8(bytes).unwrap();
-        assert_eq!(import_phrase(&changed).err(), Some(PhraseError::Checksum));
     }
 }

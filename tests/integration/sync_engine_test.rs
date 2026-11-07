@@ -1,12 +1,10 @@
 //! Sync engine against the in-memory backend
 
 use agr::files::{codec, lock};
-use agr::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
-use agr::sync::crypto::{seal, seal_meta, sha256_hex, Key, Meta};
-use agr::sync::index::{self, Index};
-use agr::sync::memory::MemoryBackend;
-use agr::sync::plan::{Decision, SkipReason};
-use agr::sync::run::{Engine, Options, Outcome, SyncError};
+use agr::sync::testing::index::{self, Index};
+use agr::sync::testing::{seal, seal_meta, sha256_hex, MemoryBackend, Meta};
+use agr::sync::{BackendError, BlobSource, RemoteEntry, SyncBackend};
+use agr::sync::{Decision, Engine, Key, Options, Outcome, SkipReason, SyncError};
 use agr::{Config, StorageManager};
 
 use crate::helpers::sync_net::{open_blob, seal_blob};
@@ -297,7 +295,7 @@ fn dry_run_returns_the_plan_and_changes_nothing() {
     assert_eq!(planned.items.len(), 3);
     assert!(planned.items.iter().all(|i| i.outcome == Outcome::Planned));
     let real = m.engine(&backend, &key).push(&opts()).unwrap();
-    let decisions = |r: &agr::sync::run::Report| -> Vec<_> {
+    let decisions = |r: &agr::sync::Report| -> Vec<_> {
         r.items
             .iter()
             .map(|i| (i.path.clone(), i.decision))
@@ -349,7 +347,7 @@ fn held_lock_is_busy() {
     let held = format!("{{\"pid\":{},\"started\":\"x\"}}", std::process::id());
     fs::write(m.dir().join(index::LOCK_FILE), held).unwrap();
     let result = m.engine(&backend, &key).push(&opts());
-    assert_eq!(result.err(), Some(agr::sync::run::SyncError::Busy));
+    assert_eq!(result.err(), Some(agr::sync::SyncError::Busy));
     assert!(backend.is_empty());
 }
 
@@ -574,7 +572,7 @@ fn v1_token_is_unknown_version_and_never_touched() {
 fn first_push_is_v2_gen_1_and_the_next_push_is_gen_2_with_a_gen_2_blob() {
     let (m, backend, key) = pushed_machine();
     let first = backend.list().unwrap().remove(0);
-    let meta = agr::sync::crypto::open_meta(&key, &first.meta_token).unwrap();
+    let meta = agr::sync::testing::open_meta(&key, &first.meta_token).unwrap();
     assert_eq!((meta.v, meta.gen), (2, 1));
     let blob = backend.blob(&first.id).unwrap();
     assert!(open_blob(&key, &meta.path, 1, &blob).is_ok());
@@ -582,7 +580,7 @@ fn first_push_is_v2_gen_1_and_the_next_push_is_gen_2_with_a_gen_2_blob() {
     m.engine(&backend, &key).push(&opts()).unwrap();
     let id = only_entry(&m, "claude/a.cast.gz").remote_id;
     let token = backend.manifest(&id).unwrap();
-    let meta = agr::sync::crypto::open_meta(&key, &token).unwrap();
+    let meta = agr::sync::testing::open_meta(&key, &token).unwrap();
     assert_eq!(meta.gen, 2);
     let blob = backend.blob(&id).unwrap();
     assert!(open_blob(&key, &meta.path, 2, &blob).is_ok());
@@ -599,7 +597,7 @@ fn push_stores_the_manifest_and_then_describes_with_the_same_token() {
     }
 }
 
-fn only_entry(m: &Machine, path: &str) -> agr::sync::index::IndexEntry {
+fn only_entry(m: &Machine, path: &str) -> agr::sync::testing::index::IndexEntry {
     index::load(m.dir()).0.entries[path].clone()
 }
 
@@ -658,7 +656,8 @@ fn pull_records_the_manifest_gen_and_token_and_repair_is_marked() {
     assert_eq!((entry.gen, entry.token.as_deref()), (2, Some(t2.as_str())));
     backend.set_description(&id, Some(t1));
     let index = index::load(b.dir()).0;
-    let rows = agr::sync::scan::scan(&b.storage, &key, &backend.list().unwrap(), &index).unwrap();
+    let rows =
+        agr::sync::testing::scan(&b.storage, &key, &backend.list().unwrap(), &index).unwrap();
     assert!(
         rows.iter()
             .find(|r| r.path == path)
@@ -676,7 +675,7 @@ fn gone_machine() -> (Machine, MemoryBackend, Key, String) {
     (m, backend, key, id)
 }
 
-fn item_of<'a>(report: &'a agr::sync::run::Report, path: &str) -> &'a agr::sync::run::Item {
+fn item_of<'a>(report: &'a agr::sync::Report, path: &str) -> &'a agr::sync::Item {
     report.items.iter().find(|i| i.path == path).unwrap()
 }
 
@@ -710,15 +709,13 @@ impl SyncBackend for GoneOnPull {
     fn name(&self) -> &'static str {
         "gone"
     }
-    fn check(&self) -> Result<(), agr::sync::backend::BackendError> {
+    fn check(&self) -> Result<(), agr::sync::BackendError> {
         self.0.check()
     }
-    fn list(
-        &self,
-    ) -> Result<Vec<agr::sync::backend::RemoteEntry>, agr::sync::backend::BackendError> {
+    fn list(&self) -> Result<Vec<agr::sync::RemoteEntry>, agr::sync::BackendError> {
         self.0.list()
     }
-    fn create(&self) -> Result<String, agr::sync::backend::BackendError> {
+    fn create(&self) -> Result<String, agr::sync::BackendError> {
         self.0.create()
     }
     fn push(
@@ -727,19 +724,19 @@ impl SyncBackend for GoneOnPull {
         e: Option<&str>,
         m: &str,
         b: BlobSource,
-    ) -> Result<(), agr::sync::backend::BackendError> {
+    ) -> Result<(), agr::sync::BackendError> {
         self.0.push(id, e, m, b)
     }
-    fn describe(&self, id: &str, t: &str) -> Result<(), agr::sync::backend::BackendError> {
+    fn describe(&self, id: &str, t: &str) -> Result<(), agr::sync::BackendError> {
         self.0.describe(id, t)
     }
     fn pull(
         &self,
         _id: &str,
-    ) -> Result<(Option<String>, Box<dyn std::io::Read>), agr::sync::backend::BackendError> {
-        Err(agr::sync::backend::BackendError::NotFound)
+    ) -> Result<(Option<String>, Box<dyn std::io::Read>), agr::sync::BackendError> {
+        Err(agr::sync::BackendError::NotFound)
     }
-    fn delete(&self, id: &str) -> Result<(), agr::sync::backend::BackendError> {
+    fn delete(&self, id: &str) -> Result<(), agr::sync::BackendError> {
         self.0.delete(id)
     }
 }
@@ -1433,7 +1430,7 @@ fn local_with_bak() -> Machine {
     m
 }
 
-fn pull_overwrite(m: &Machine, backend: &dyn SyncBackend, key: &Key) -> agr::sync::run::Report {
+fn pull_overwrite(m: &Machine, backend: &dyn SyncBackend, key: &Key) -> agr::sync::Report {
     m.engine(backend, key).pull(&overwrite()).unwrap()
 }
 

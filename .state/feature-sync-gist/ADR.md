@@ -266,6 +266,8 @@ Inputs per path: local hash (or skip reason), remote hash and id, last synced ha
 
 ### Module layout
 
+**Superseded** by "Module structure (refinement 2026-11-06)" below, the table shows the old flat files.
+
 | File | Content |
 |------|---------|
 | `src/sync/mod.rs` | module list, `SessionPath`, re-exports |
@@ -788,7 +790,7 @@ created, edited or deleted, the ignored `tests/sync_gist_live.rs` was not run):*
 
 ## Module structure (refinement 2026-11-06)
 
-**Status**: Proposed by the architect, waits for user approval. Nothing moves before that.
+**Status**: Accepted (approved by the user on 2026-11-06).
 
 **Problem**: `src/sync/` is 24 flat files (about 6.6k lines), almost every module is `pub mod`, five
 files are over 400 lines (`gist.rs` 1028, `blob.rs` 551, `format.rs` 511, `crypto.rs` 434,
@@ -865,8 +867,8 @@ src/sync/
 6. Cross-layer imports are written `crate::sync::<layer>::...`, inside a layer `super::...`,
    never `super::super` (keeps the check below a plain text match).
 7. `Command::new` only in `backend/gist/runner.rs` (gh, git) and `app/auto/mod.rs` (the
-   detached `agr sync push --auto` child). Today both sit in `runner.rs`, but the detached child
-   is the auto push feature and not gist transport.
+   detached `agr sync push --auto` child), as the detached child is the auto push feature and not
+   gist transport.
 
 Rust has no visibility between sibling modules of one crate that could enforce rules 1 to 4, as
 such `sync/mod.rs` carries one `#[cfg(test)]` test that reads `src/sync/<layer>/**/*.rs` and
@@ -992,5 +994,5 @@ with the moves, that is the point of the moves.
   the fake runner in `push_tests.rs` (one file of headroom). Architect recommendation: (a).
   **Open for the user.**
 - **#167**: whichever way it goes, the change stays in `crypto/` plus `Cargo.toml` and `Cargo.lock`.
-- **ADR Module layout table** above is superseded once this is accepted, Stage 41 marks it.
+- **ADR Module layout table** above is superseded by this refinement, marked in Stage 41.
 - **Stage 24 grep rule** (`Command::new` only in `runner.rs`) becomes rule 7 above.

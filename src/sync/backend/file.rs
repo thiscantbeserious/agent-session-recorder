@@ -5,16 +5,16 @@ use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
 
-use super::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
+use super::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 
 /// `<id>.blob`, `<id>.manifest` and `<id>.desc` per entry inside `dir`, same rules as the
 /// memory backend (no `.desc` means pending and unlisted).
-pub struct FileBackend {
+pub(in crate::sync) struct FileBackend {
     dir: PathBuf,
 }
 
 impl FileBackend {
-    pub fn new(dir: PathBuf) -> Self {
+    pub(in crate::sync) fn new(dir: PathBuf) -> Self {
         Self { dir }
     }
 
@@ -143,8 +143,8 @@ impl SyncBackend for FileBackend {
 
 #[cfg(test)]
 mod tests {
-    use super::super::backend::{pull_bytes, push_bytes};
-    use super::*;
+    use super::{BackendError, FileBackend, SyncBackend};
+    use crate::sync::backend::{pull_bytes, push_bytes};
 
     fn backend() -> (tempfile::TempDir, FileBackend) {
         let dir = tempfile::tempdir().unwrap();

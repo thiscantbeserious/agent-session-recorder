@@ -1,17 +1,16 @@
-//! status, push, pull and delete, thin layer over `agr::sync::run::Engine`.
+//! status, push, pull and delete, thin layer over `agr::sync::Engine`.
 
 use anyhow::Result;
 
 use agr::config::state::State;
 use agr::sync::auto;
-use agr::sync::backend::{BackendError, SyncBackend};
 use agr::sync::format;
 use agr::sync::key;
-use agr::sync::run::{Engine, Options, Outcome, Report, SyncError};
 use agr::sync::setup::{
     default_key_path, explain, needs_privacy_ack, open_backend, resolve_key, KeyNeed, KeyState,
     SetupError, IMPORT_HINT,
 };
+use agr::sync::{BackendError, Engine, Options, Outcome, Report, SyncBackend, SyncError};
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
 

@@ -1,15 +1,15 @@
 use std::io::{Read, Write};
 use std::path::Path;
 
-use super::backend::BackendError;
-use super::blob::open_stream;
-use super::crypto::{open_meta, Key, Meta};
 use super::fail::{msg, Fail};
 use super::index::Index;
 use super::record::{record, save_index, Synced};
 use super::run::Engine;
 use super::scan::Row;
 use crate::files::{backup, codec};
+use crate::sync::backend::BackendError;
+use crate::sync::crypto::blob::open_stream;
+use crate::sync::crypto::{open_meta, Key, Meta};
 
 const OLDER: &str = "remote version is older than the last sync, not pulling";
 
@@ -112,8 +112,8 @@ fn backup_existing(target: &std::path::Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::sync::blob::seal_blob;
+    use super::{verify_into, Key, Meta, Read, Write};
+    use crate::sync::crypto::blob::seal_blob;
     use crate::sync::crypto::sha256_hex;
 
     struct Full;

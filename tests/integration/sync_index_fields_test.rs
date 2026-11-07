@@ -1,11 +1,10 @@
 //! Index fields, remote id fallback and duplicate pick for sync rows
 
 use agr::files::codec;
-use agr::sync::backend::RemoteEntry;
-use agr::sync::crypto::{seal_meta, Key, Meta};
-use agr::sync::index::{self, Index, IndexEntry};
-use agr::sync::plan::{decide, resolve, Command, Decision, Remote};
-use agr::sync::scan::{scan, Row};
+use agr::sync::testing::index::{self, Index, IndexEntry};
+use agr::sync::testing::{decide, resolve, scan, seal_meta, Command, Meta, Remote, Row};
+use agr::sync::RemoteEntry;
+use agr::sync::{Decision, Key};
 use agr::{Config, StorageManager};
 use tempfile::TempDir;
 

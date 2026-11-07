@@ -1,8 +1,8 @@
 //! Live gist round trip, creates and deletes a real secret gist with the logged in `gh`.
 //! Run by hand only: `cargo test --test sync_gist_live -- --ignored`.
 
-use agr::sync::backend::{pull_bytes, push_bytes, SyncBackend};
-use agr::sync::gist::GistBackend;
+use agr::sync::testing::{pull_bytes, push_bytes, GistBackend};
+use agr::sync::SyncBackend;
 
 /// Deterministic pseudo random bytes, incompressible enough for a binary push check.
 fn binary_blob(len: usize) -> Vec<u8> {
@@ -81,7 +81,7 @@ fn gist_round_trip_binary_blob() {
 #[test]
 #[ignore = "creates a real secret gist, run by hand"]
 fn gist_compare_and_swap_and_manifest() {
-    use agr::sync::backend::BackendError;
+    use agr::sync::BackendError;
     let backend = GistBackend::new();
     backend.check().unwrap();
     let id = backend.create().unwrap();

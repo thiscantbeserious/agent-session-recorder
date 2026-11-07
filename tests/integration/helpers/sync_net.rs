@@ -1,12 +1,11 @@
 //! Simulated machines on one shared remote, for the multi-machine sync tests.
 
 use agr::files::{backup, codec};
-use agr::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
-use agr::sync::blob::{open_stream, seal_stream, BlobError};
-use agr::sync::crypto::{open_meta, sha256_hex, Key};
-use agr::sync::index;
-use agr::sync::memory::MemoryBackend;
-use agr::sync::run::{Engine, Options, Report};
+use agr::sync::testing::{
+    index, open_meta, open_stream, seal_stream, sha256_hex, BlobError, MemoryBackend,
+};
+use agr::sync::{BackendError, BlobSource, RemoteEntry, SyncBackend};
+use agr::sync::{Engine, Key, Options, Report};
 use agr::{Config, StorageManager};
 use std::cell::{Cell, RefCell};
 use std::fs;
@@ -105,7 +104,7 @@ impl Mach {
         report
     }
 
-    pub fn index_entry(&self) -> Option<agr::sync::index::IndexEntry> {
+    pub fn index_entry(&self) -> Option<agr::sync::testing::index::IndexEntry> {
         index::load(self.dir()).0.entries.get(PATH).cloned()
     }
 

@@ -5,19 +5,19 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::backend::RemoteEntry;
-use super::crypto::{open_meta, sha256_reader, CryptoError, Key, Meta};
 use super::index::Index;
 use super::plan::{Input, Local, Remote, SkipReason};
 use crate::files::{codec, lock};
 use crate::storage::SessionInfo;
+use crate::sync::backend::RemoteEntry;
+use crate::sync::crypto::{open_meta, sha256_reader, CryptoError, Key, Meta};
 use crate::StorageManager;
 
 /// Manifest version this build reads, older tokens are never touched.
 const META_VERSION: u8 = 2;
 
 /// On-disk size cap per session, from GitHub repository size guidance.
-pub const MAX_BYTES: u64 = 1024 * 1024 * 1024;
+pub(super) const MAX_BYTES: u64 = 1024 * 1024 * 1024;
 
 /// One path with everything the engine needs to act on it.
 #[derive(Debug, Clone)]
@@ -207,7 +207,7 @@ fn valid_path(path: &str) -> bool {
 }
 
 /// Keep rows matching `names`, returns the names that matched nothing.
-pub fn select(
+pub(super) fn select(
     rows: Vec<Row>,
     storage: &StorageManager,
     names: &[String],

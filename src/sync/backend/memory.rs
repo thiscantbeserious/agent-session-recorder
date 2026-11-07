@@ -1,11 +1,10 @@
 //! In-memory backend for tests and dry runs of the engine.
-
 use std::collections::{BTreeMap, HashSet};
 use std::sync::Mutex;
 
 use std::io::{Cursor, Read};
 
-use super::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
+use super::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 
 #[derive(Default, Clone)]
 struct Stored {
@@ -202,8 +201,8 @@ impl SyncBackend for MemoryBackend {
 
 #[cfg(test)]
 mod tests {
-    use super::super::backend::{pull_bytes, push_bytes};
-    use super::*;
+    use super::{BackendError, MemoryBackend, SyncBackend};
+    use crate::sync::backend::{pull_bytes, push_bytes};
 
     fn pushed(b: &MemoryBackend, manifest: &str, blob: &[u8]) -> String {
         let id = b.create().unwrap();

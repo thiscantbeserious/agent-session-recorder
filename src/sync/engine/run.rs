@@ -2,8 +2,6 @@
 
 use thiserror::Error;
 
-use super::backend::{BackendError, SyncBackend};
-use super::crypto::Key;
 use super::fail::{Fail, Stop};
 use super::index::{self, Index};
 use super::lock::SyncLock;
@@ -12,6 +10,8 @@ use super::pull::pull_one;
 use super::push::{heal, push_one};
 use super::record::{record, save_index, Synced};
 use super::scan::{scan, select, Duplicate, Row};
+use crate::sync::backend::{BackendError, SyncBackend};
+use crate::sync::crypto::Key;
 use crate::StorageManager;
 
 /// Whole-run failures, per-session failures live in the report.
