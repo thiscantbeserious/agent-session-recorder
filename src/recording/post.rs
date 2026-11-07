@@ -6,8 +6,8 @@ pub(super) fn after_stop<T>(
     push: impl FnOnce(),
     warn: impl FnOnce() -> T,
 ) -> T {
-    push();
     analyze();
+    push();
     warn()
 }
 
