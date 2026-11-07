@@ -46,8 +46,8 @@ fn gist_parts_stub_and_shrink() {
     backend.check().unwrap();
     let blob = binary_blob(3 * 1024 * 1024 + 5);
     let id = backend.create().unwrap();
-    push_bytes(&backend, &id, None, "live-parts", &blob).unwrap();
     let _cleanup = Cleanup(&backend, id.clone());
+    push_bytes(&backend, &id, None, "live-parts", &blob).unwrap();
     assert_eq!(
         gist_files(&id),
         [".keep", "data.000", "data.001", "data.002", "data.003", "manifest"]
@@ -67,9 +67,9 @@ fn gist_round_trip_binary_blob() {
     let blob = binary_blob(2 * 1024 * 1024);
     let token = "live-test-token".repeat(17);
     let id = backend.create().unwrap();
+    let _cleanup = Cleanup(&backend, id.clone());
     push_bytes(&backend, &id, None, &token, &blob).unwrap();
     backend.describe(&id, &token).unwrap();
-    let _cleanup = Cleanup(&backend, id.clone());
     let listed = backend.list().unwrap();
     assert!(listed.iter().any(|e| e.id == id && e.meta_token == token));
     assert_eq!(pull_bytes(&backend, &id).unwrap().1, blob);
