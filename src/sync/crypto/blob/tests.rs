@@ -332,42 +332,6 @@ fn frames_sealed_without_the_header_in_the_aad_are_rejected() {
 }
 
 #[test]
-fn known_answer_for_fixed_key_prefix_path_and_gen() {
-    let k = Key::from_bytes(core::array::from_fn(|i| i as u8));
-    let prefix: [u8; PREFIX_LEN] = core::array::from_fn(|i| 0x40 + i as u8);
-    let mut out = Vec::new();
-    seal_with_prefix(
-        &k,
-        "a/b.cast.gz",
-        7,
-        &prefix,
-        &b"known answer"[..],
-        &mut out,
-    )
-    .unwrap();
-    assert_eq!(hex(&out), KAT_SMALL);
-    let mut two = Vec::new();
-    seal_with_prefix(
-        &k,
-        "a/b.cast.gz",
-        7,
-        &prefix,
-        plain(FRAME + 1).as_slice(),
-        &mut two,
-    )
-    .unwrap();
-    assert_eq!(sha256_hex(&two), KAT_TWO_FRAMES_SHA256);
-}
-
-fn hex(b: &[u8]) -> String {
-    data_encoding::HEXLOWER.encode(b)
-}
-
-const KAT_SMALL: &str = "4147523102404142434445464748494a4b4c4d4e4f5051520fcdef0aba5292f8959407780543edc8c71e885971e5e03bbe10372e";
-const KAT_TWO_FRAMES_SHA256: &str =
-    "28cb7cd33a57e94b9fc001c82f323a10cbbfb2722b9e276f55e1b9b937bed85a";
-
-#[test]
 fn only_the_final_frame_carries_the_last_flag() {
     use chacha20poly1305::aead::{Aead, KeyInit, Payload};
     let k = key(1);

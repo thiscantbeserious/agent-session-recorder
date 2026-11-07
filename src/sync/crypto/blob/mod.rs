@@ -175,4 +175,6 @@ pub fn open_blob(key: &Key, path: &str, gen: u64, blob: &[u8]) -> Result<Vec<u8>
 }
 
 #[cfg(test)]
+mod kat_tests;
+#[cfg(test)]
 mod tests;
