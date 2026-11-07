@@ -63,3 +63,31 @@ fn holder_alive(path: &Path) -> bool {
     };
     serde_json::from_str::<LockInfo>(&text).is_ok_and(|info| is_pid_alive(info.pid))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_lock_file_is_busy_not_reclaimed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(LOCK_FILE);
+        std::fs::write(&path, "").unwrap();
+        assert!(matches!(
+            SyncLock::acquire(dir.path()),
+            Err(SyncError::Busy)
+        ));
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn stale_lock_is_reclaimed_and_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(LOCK_FILE);
+        std::fs::write(&path, r#"{"pid":4294967,"started":"x"}"#).unwrap();
+        let lock = SyncLock::acquire(dir.path()).unwrap();
+        assert!(holder_alive(&path));
+        drop(lock);
+        assert!(!path.exists());
+    }
+}
