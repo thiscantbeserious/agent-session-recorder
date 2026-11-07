@@ -35,6 +35,15 @@ impl State {
         self.save_to(&Config::config_dir()?.join(FILE))
     }
 
+    /// Store the last auto push error in the file at `path`.
+    pub fn store_auto_error(path: &Path, line: String) -> Result<()> {
+        let state = Self {
+            last_auto_push_error: Some(line),
+            ..Self::default()
+        };
+        state.save_to(path)
+    }
+
     /// Load from a path, default when the file is missing or malformed (warns on stderr).
     pub fn load_from(path: &Path) -> Self {
         let (state, warning) = Self::load_checked(path);
@@ -71,6 +80,23 @@ impl State {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn store_auto_error_keeps_fields_written_by_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(super::FILE);
+        let other = State {
+            sync_privacy_ack: true,
+            compress_offer_version: Some("9".into()),
+            ..State::default()
+        };
+        other.save_to(&path).unwrap();
+        State::store_auto_error(&path, "offline".into()).unwrap();
+        let got = State::load_from(&path);
+        assert_eq!(got.compress_offer_version.as_deref(), Some("9"));
+        assert!(got.sync_privacy_ack);
+        assert_eq!(got.last_auto_push_error.as_deref(), Some("offline"));
+    }
+
     use super::*;
 
     #[test]
