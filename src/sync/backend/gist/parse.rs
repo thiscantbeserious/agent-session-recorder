@@ -312,4 +312,9 @@ mod tests {
         let fine_grained = "github.com\n  - Logged in to github.com account me\n";
         assert_eq!(check_auth(fine_grained), Ok(()));
     }
+    #[test]
+    fn old_gh_without_a_flag_asks_for_an_update() {
+        let err = map_failure("gh", "unknown flag: --yes\n\nUsage: ...", Some(1));
+        assert!(err.to_string().contains("update gh"), "{err}");
+    }
 }
