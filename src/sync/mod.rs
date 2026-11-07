@@ -99,8 +99,29 @@ mod layer_check {
             .collect()
     }
 
+    /// Drops `//` line comments and `/* */` block comments (not nested, not string aware).
+    fn strip_comments(text: &str) -> String {
+        let mut out = String::new();
+        let mut rest = text;
+        while let Some(i) = rest.find('/') {
+            out.push_str(&rest[..i]);
+            let tail = &rest[i..];
+            rest = if tail.starts_with("//") {
+                tail.find('\n').map_or("", |n| &tail[n..])
+            } else if tail.starts_with("/*") {
+                tail.find("*/").map_or("", |n| &tail[n + 2..])
+            } else {
+                out.push('/');
+                &tail[1..]
+            };
+        }
+        out.push_str(rest);
+        out
+    }
+
     /// Rule violations of one file, `rel` is relative to `src/sync`.
     fn violations(rel: &str, text: &str) -> Vec<String> {
+        let text = &strip_comments(text);
         let paths = use_paths(text);
         let mut bad = Vec::new();
         for (layer, needle) in RULES.iter().filter(|(l, _)| rel.starts_with(l)) {
