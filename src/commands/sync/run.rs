@@ -261,15 +261,11 @@ fn push_auto(args: &Args) -> Result<()> {
     if !state.sync_privacy_ack {
         return Ok(());
     }
+    let session = args.sessions.first().map_or("", String::as_str);
     let result = try_prepare(KeyNeed::Existing, false)
         .map_err(|Failure(message, _)| SyncError::Failed(message))
-        .and_then(|ctx| {
-            auto::run(
-                &ctx.engine(),
-                args.sessions.first().map_or("", String::as_str),
-            )
-        });
-    if let Some(line) = auto::error_line(&result) {
+        .and_then(|ctx| auto::run(&ctx.engine(), session));
+    if let Some(line) = auto::error_line(&result, session) {
         state.last_auto_push_error = Some(line);
         state.save()?;
     }
