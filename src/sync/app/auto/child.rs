@@ -228,6 +228,19 @@ mod tests {
     }
 
     #[test]
+    fn an_identical_rewrite_is_hashed_once_then_restamped() {
+        let w = World::new();
+        w.write("old", b"v1");
+        w.manual_push("old");
+        w.write("old", b"v1"); // same bytes, new mtime
+        w.write("new", b"fresh");
+        assert_eq!(w.auto("new").pushed, 1);
+        let index = crate::sync::engine::index::load(w.dir.path()).0;
+        let changed = crate::sync::engine::index::maybe_changed(w.dir.path(), &index);
+        assert!(changed.is_empty(), "still re-hashed every run: {changed:?}");
+    }
+
+    #[test]
     fn a_renamed_synced_session_is_not_pushed_twice() {
         let w = World::new();
         w.write("old", b"v1");
