@@ -1,7 +1,6 @@
 //! Sync lock `<storage>/.agr-sync.lock`, pid inside, stale pids are reclaimed.
 
-use std::fs::OpenOptions;
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use super::index::LOCK_FILE;
@@ -39,29 +38,33 @@ impl Drop for SyncLock {
     }
 }
 
-/// `Ok(false)` when the file already exists.
+/// `Ok(false)` when the lock exists. The JSON goes to a temp file first and is linked into
+/// place, so the lock never appears empty to a second process.
 fn create(path: &Path) -> Result<bool, SyncError> {
-    let file = OpenOptions::new().write(true).create_new(true).open(path);
-    let mut file = match file {
-        Ok(file) => file,
-        Err(e) if e.kind() == ErrorKind::AlreadyExists => return Ok(false),
-        Err(e) => return Err(SyncError::Failed(format!("sync lock: {e}"))),
-    };
+    let fail = |e: std::io::Error| SyncError::Failed(format!("sync lock: {e}"));
     let info = LockInfo {
         pid: std::process::id(),
         started: chrono::Utc::now().to_rfc3339(),
     };
     let json = serde_json::to_string(&info).unwrap_or_default();
-    file.write_all(json.as_bytes())
-        .map_err(|e| SyncError::Failed(format!("sync lock: {e}")))?;
-    Ok(true)
+    let tmp = path.with_extension(format!("tmp{}", info.pid));
+    std::fs::write(&tmp, json).map_err(fail)?;
+    let linked = std::fs::hard_link(&tmp, path);
+    let _ = std::fs::remove_file(&tmp);
+    match linked {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => Ok(false),
+        Err(e) => Err(fail(e)),
+    }
 }
 
+/// An empty file is a lock written by an older build that is still writing, so it counts.
 fn holder_alive(path: &Path) -> bool {
     let Ok(text) = std::fs::read_to_string(path) else {
         return false;
     };
-    serde_json::from_str::<LockInfo>(&text).is_ok_and(|info| is_pid_alive(info.pid))
+    text.is_empty()
+        || serde_json::from_str::<LockInfo>(&text).is_ok_and(|info| is_pid_alive(info.pid))
 }
 
 #[cfg(test)]
