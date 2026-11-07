@@ -847,6 +847,84 @@ Owner: implementer
 Files: `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
 Depends on: Stage 40
 
+### Stage 42: Own STREAM module, RED invariant tests first (still on 0.10)
+
+Goal: `crypto/blob/stream.rs` per ADR "Own STREAM layer on chacha20poly1305 0.11", proven
+byte-identical to `aead::stream::StreamBE32` while 0.10 is still in the tree. `blob/mod.rs` not
+switched yet.
+Owner: implementer
+
+- [ ] RED: `nonce_layout_is_prefix_counter_be_and_flag` (I1), counters 0, 1, 0x01020304,
+      `u32::MAX`, both flags, against hand-built bytes.
+- [ ] RED: `matches_aead_stream_be32` (I2), `Sealer` output equals `EncryptorBE32` output for
+      every size in `SIZES`, `Opener` opens what `EncryptorBE32` sealed.
+- [ ] RED: `next_is_refused_at_u32_max_and_last_still_works` (I3) for `Sealer` and `Opener`,
+      `TooLong`, `buf` untouched, `last` at `u32::MAX` seals under `prefix || ffffffff || 01`.
+- [ ] RED: `counter_moves_before_the_aead_and_never_repeats` (I10), `failed_open_clears_the_buffer` (I9).
+- [ ] GREEN: `Stream`, `Sealer`, `Opener` as in the ADR API, `CryptoError::TooLong` in `crypto/mod.rs`.
+- [ ] Mutants from the ADR invariant table for I1, I3, I9, I10 each fail their test, reverted,
+      not committed.
+- [ ] Existing `blob/tests.rs` and both KAT constants untouched (`git diff` shows nothing there).
+
+Files: `src/sync/crypto/blob/stream.rs`, `src/sync/crypto/mod.rs`
+Depends on: Stage 41
+
+### Stage 43: Blob v2 on the own STREAM layer (still on 0.10)
+
+Goal: `blob/mod.rs` uses `Sealer` and `Opener`, `aead::stream` no longer used in production code.
+Owner: implementer
+
+- [ ] RED: `only_the_final_frame_carries_the_last_flag` (I4) and `empty_last_frame_is_just_a_tag`
+      (I8) in `blob/tests.rs`, new tests only, no existing test or vector edited.
+- [ ] GREEN: `Option<Sealer>` and `Option<Opener>` replace `EncryptorBE32` and `DecryptorBE32`,
+      `seal_frame` and `open_frame` stay as dispatchers, `TooLong` passes through, tag failure
+      stays `Authentication`.
+- [ ] Every existing test in `blob/tests.rs` passes unchanged, `KAT_SMALL` and
+      `KAT_TWO_FRAMES_SHA256` included.
+- [ ] Mutants for I4, I5, I6, I7, I8 from the ADR table each fail their named test, reverted.
+
+Files: `src/sync/crypto/blob/mod.rs`, `src/sync/crypto/blob/tests.rs`
+Depends on: Stage 42
+
+### Stage 44: chacha20poly1305 0.11, seal.rs and Key on the new API
+
+Goal: the bump, nothing outside `crypto/`, `Cargo.toml` and `Cargo.lock` changes.
+Owner: implementer
+
+- [ ] `Cargo.toml`: `chacha20poly1305 = { version = "0.11", features = ["zeroize"] }`,
+      `cargo update -p chacha20poly1305`, the `Cargo.lock` diff equals the ADR dependency table
+      (no other crate moves).
+- [ ] `stream.rs` on `AeadInOut::encrypt_in_place` and `decrypt_in_place` (no deprecated
+      `AeadInPlace`), `Key::generate` and the prefix via `Generate` (no `OsRng`, no deprecated
+      `generate_key`), `seal.rs` nonce via `XNonce::generate()`, `Aead::encrypt` and `Payload` kept.
+- [ ] `matches_aead_stream_be32` removed with the 0.10 reference, test helpers in
+      `blob/tests.rs` switch `as_slice().into()` to `try_into().unwrap()`, and
+      `frames_sealed_without_the_header_in_the_aad_are_rejected` seals with a hand-built nonce
+      instead of `EncryptorBE32` (I11). Assertions and both KAT constants byte-identical
+      (check with `git diff -U0` on the `KAT_` lines and `assert_eq!` lines).
+- [ ] `seal_matches_xchacha_known_answer`, `KAT_SMALL`, `KAT_TWO_FRAMES_SHA256` and
+      `frame_nonce_is_prefix_counter_and_last_flag` pass.
+- [ ] `layer_rules_hold` green, `rg 'chacha20poly1305|aead::' src --glob '!src/sync/crypto/**'` empty.
+
+Files: `Cargo.toml`, `Cargo.lock`, `src/sync/crypto/mod.rs`, `src/sync/crypto/seal.rs`, `src/sync/crypto/blob/stream.rs`, `src/sync/crypto/blob/mod.rs`, `src/sync/crypto/blob/tests.rs`
+Depends on: Stage 43
+
+### Stage 45: #167 final verification
+
+Goal: all gates green, docs match.
+Owner: implementer
+
+- [ ] `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`,
+      `cargo +1.88 check --all-targets --locked`, `cargo check --target x86_64-pc-windows-msvc`,
+      `cargo build --release && ./tests/e2e_test.sh`.
+- [ ] A v2 blob sealed before Stage 42 (sealed from HEAD of Stage 41 into a temp file) opens after
+      Stage 44.
+- [ ] `stream.rs` about 100 lines or less without tests, ADR status of the section set to
+      Accepted (built), memory note facts unchanged, #167 gets a comment with the dependency diff.
+
+Files: `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
+Depends on: Stage 44
+
 ## Batches
 
 1. Stage 1, Stage 2, Stage 3 (parallel, no shared files)
@@ -877,6 +955,10 @@ Depends on: Stage 40
 26. Stage 39
 27. Stage 40
 28. Stage 41
+29. Stage 42
+30. Stage 43
+31. Stage 44
+32. Stage 45
 
 Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 
@@ -926,3 +1008,7 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 39 | todo | module refactor, waits for ADR approval |
 | 40 | done | layers, facade, testing module, layer check |
 | 41 | done | docs match the tree, 100 files changed vs main, largest file 370 lines, Command::new only in runner.rs and app/auto/mod.rs |
+| 42 | todo | own STREAM module, ADR section of 2026-11-07 |
+| 43 | todo | |
+| 44 | todo | chacha20poly1305 0.11 |
+| 45 | todo | |

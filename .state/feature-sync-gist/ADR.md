@@ -1005,3 +1005,282 @@ with the moves, that is the point of the moves.
 - **#167**: whichever way it goes, the change stays in `crypto/` plus `Cargo.toml` and `Cargo.lock`.
 - **ADR Module layout table** above is superseded by this refinement, marked in Stage 41.
 - **Stage 24 grep rule** (`Command::new` only in `runner.rs`) becomes rule 7 above.
+
+## Own STREAM layer on chacha20poly1305 0.11 (2026-11-07)
+
+**Status**: Accepted direction (user decision 2026-11-07), design by the architect, review in PR.
+
+**Problem**: blob v2 (D9) gets STREAM from `aead::stream` (`aead` 0.5.2 behind the `stream`
+feature of `chacha20poly1305` 0.10.1). `chacha20poly1305` 0.11.0 (stable, `rust-version = "1.85"`)
+depends on `aead` ^0.6, which has no `stream` module and no `stream` feature (features of 0.11:
+`alloc`, `getrandom`, `arrayvec`, `bytes`, `rand_core`, `reduced-round`, `zeroize`, checked with
+`cargo info chacha20poly1305@0.11`). STREAM moved to the separate `aead-stream` 0.6.0 crate.
+Issue #167, audit facts in the memory note of 2026-11-06.
+
+**User decision (2026-11-07), quoted**: "0.11 with our own stream layer if that can be implemented
+101% robust and if possible not overengineered but robust adjustable and growable".
+
+**Approach**: one small module `crypto/blob/stream.rs` (about 80 lines plus tests) that builds the
+STREAM BE32 nonce itself and calls the plain AEAD of 0.11 in place. Blob v2 stays byte-identical,
+the vectors in `crypto/blob/tests.rs` (`KAT_SMALL`, `KAT_TWO_FRAMES_SHA256`, computed in Python)
+are the compatibility proof and do not change. Before the bump, the new layer is tested
+differentially against `aead::stream::EncryptorBE32` while 0.10 is still in the tree.
+
+### Options weighed
+
+1. **Own STREAM layer on 0.11** (chosen by the user). About 80 lines we own and can read in one
+   sitting, no extra crate, no type parameters we do not use. Cost: the protections that
+   `aead::stream` gave for free (counter overflow check, one last frame) are now our code, as
+   such every one of them gets its own test and its own mutant below.
+2. **`aead-stream` 0.6** (0.6.0, published 2026-08-05). Same wire format, but about 546 lines
+   generic over five AEAD and counter variants, one publisher, never audited (the NCC review of
+   2019/2020 did not cover the stream module either). It is a packaging move of code we would
+   still have to trust without having written it. Rejected by the user ("no aead-stream crate").
+3. **Stay on 0.10.1 with `stream`**. Zero work today, but the 0.10 line gets no new features,
+   the next RustSec fix lands on 0.11 first, and #167 stays open. Rejected by the user.
+
+### Verified facts about 0.11 (2026-11-07)
+
+- **AEAD in place**: `AeadInPlace` is deprecated in `aead` 0.6.1 ("use `AeadInOut` instead").
+  The successor `AeadInOut` (re-exported as `chacha20poly1305::AeadInOut`) has
+  `encrypt_in_place(&self, nonce: &Nonce<Self>, associated_data: &[u8], buffer: &mut dyn Buffer)`
+  and `decrypt_in_place` with the same signature, `Vec<u8>` implements `Buffer` under `alloc`
+  (default on). `decrypt_inout_detached` checks the tag before it applies the keystream
+  (`chacha20poly1305-0.11.0/src/cipher.rs` line 75 onwards), on failure the buffer still holds
+  ciphertext and tag.
+- **One-shot**: `Aead::encrypt(&self, nonce, impl Into<Payload>)` and `Aead::decrypt` still exist
+  (blanket impl for every `AeadInOut` under `alloc`), `Payload { msg, aad }` too. `seal.rs`
+  keeps its calls.
+- **Keys and randomness**: `OsRng` and `AeadCore::generate_nonce` are gone. `KeyInit::generate_key`
+  is deprecated. The successor is the `Generate` trait (`crypto-common` 0.2.2, re-exported as
+  `chacha20poly1305::aead::Generate`): `Key::generate()`, `XNonce::generate()` and
+  `<[u8; 19]>::generate()` draw from `getrandom::SysRng` and panic if the OS RNG fails, the same
+  behavior as `OsRng` today. `KeyInit::new(&Key)` is unchanged.
+- **Arrays**: `generic-array` is replaced by `hybrid-array` 0.4.15. `From<[u8; N]>` and
+  `From<&[u8; N]>` still work, `From<&[u8]>` does not (only `TryFrom`). Test helpers that do
+  `nonce.as_slice().into()` switch to `try_into().unwrap()` (or build a `[u8; 24]`).
+- **Zeroize**: 0.10 wiped the key copy inside the cipher on drop unconditionally, in 0.11 this
+  needs the `zeroize` feature (`chacha20poly1305-0.11.0/src/lib.rs`, `impl Drop`). We enable it,
+  it adds no crate (`zeroize` 1.9.1 is already in `Cargo.lock`).
+- **Probe**: a scratch crate on 0.11 built the v2 nonce by hand, sealed `b"known answer"` and
+  reproduced `KAT_SMALL` byte for byte, on toolchain 1.88 (aarch64-apple-darwin). The same crate
+  passes `cargo check --target x86_64-pc-windows-msvc` (local stable, the local 1.88 has no
+  Windows std, CI `windows-check` runs 1.88).
+
+### Nonce layout (source)
+
+`aead` 0.5.2, `src/stream.rs`, `impl StreamBE32`, lines 437 to 449, the reference we must match:
+
+```rust
+fn aead_nonce(&self, position: u32, last_block: bool) -> crate::Nonce<A> {
+    let mut result = GenericArray::default();
+    let (prefix, tail) = result.split_at_mut(NonceSize::<A, Self>::to_usize());
+    prefix.copy_from_slice(&self.nonce);
+    let (counter, flag) = tail.split_at_mut(4);
+    counter.copy_from_slice(&position.to_be_bytes());
+    flag[0] = last_block as u8;
+    result
+}
+```
+
+With XChaCha20-Poly1305 (24 byte nonce, `NonceOverhead = U5`):
+
+```
+byte  0..=18  prefix (19 bytes, random per blob, stored in the header)
+byte 19..=22  frame counter, u32 big endian, starts at 0
+byte 23       last flag, 0x00 for every frame but the final one, 0x01 for the final one
+```
+
+Counter limit, same file, lines 289 to 294 (the in-place `next` methods, generated for both
+`encrypt_next_in_place` and `decrypt_next_in_place`):
+`if self.position == S::COUNTER_MAX { return Err(Error) }` with `COUNTER_MAX = u32::MAX`, the
+counter moves on only after a successful call, and the `*_last_in_place` methods take `self` and
+use the current position. As such non-last frames use counters `0..=u32::MAX - 1` and the last
+frame may use `u32::MAX`. Our layer keeps exactly this rule.
+
+### Module API (`src/sync/crypto/blob/stream.rs`)
+
+```rust
+//! STREAM BE32 (Hoang, Reyhanitabar, Rogaway, Vizar 2015) over XChaCha20-Poly1305.
+//! Nonce = prefix[19] || counter u32 BE || last flag u8, as aead 0.5 StreamBE32.
+
+pub(super) const PREFIX_LEN: usize = 19;
+pub(super) const TAG_LEN: usize = 16;
+
+/// Shared state. Deliberately not Clone or Copy: two copies would hand out the same nonces.
+struct Stream {
+    aead: XChaCha20Poly1305,
+    prefix: [u8; PREFIX_LEN],
+    counter: u32,
+}
+
+impl Stream {
+    fn new(key: &Key, prefix: [u8; PREFIX_LEN]) -> Self;
+    /// prefix || counter BE || flag, the only place a nonce is built.
+    fn nonce(&self, last: bool) -> XNonce;
+    /// Nonce for a non-last frame. The counter moves on BEFORE the AEAD runs,
+    /// `counter.checked_add(1)` refuses at u32::MAX with TooLong, nothing is encrypted then.
+    fn take_next(&mut self) -> Result<XNonce, CryptoError>;
+    #[cfg(test)]
+    fn at(key: &Key, prefix: [u8; PREFIX_LEN], counter: u32) -> Self; // overflow test seam
+}
+
+pub(super) struct Sealer(Stream);
+impl Sealer {
+    pub(super) fn new(key: &Key, prefix: [u8; PREFIX_LEN]) -> Self;
+    /// Plaintext in `buf` becomes ciphertext || tag.
+    pub(super) fn next(&mut self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError>;
+    /// Consumes the sealer, a second last frame or a frame after it does not compile.
+    pub(super) fn last(self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError>;
+}
+
+pub(super) struct Opener(Stream);
+impl Opener {
+    pub(super) fn new(key: &Key, prefix: [u8; PREFIX_LEN]) -> Self;
+    /// ciphertext || tag in `buf` becomes plaintext, on any error `buf` is cleared.
+    pub(super) fn next(&mut self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError>;
+    pub(super) fn last(self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError>;
+}
+```
+
+`blob/mod.rs` keeps its shape: `Option<Sealer>` and `Option<Opener>` with `take()` for the last
+frame replace `Option<EncryptorBE32<_>>`, `seal_frame` and `open_frame` stay as the two tiny
+dispatchers. Frame size, magic, version, AAD and the look-ahead stay in `blob/mod.rs`, the
+stream layer knows nothing about frame size or files. `seal_stream`, `open_stream`, `BlobError`
+and every caller outside `crypto/` are untouched.
+
+Generic only where it buys something: nothing is generic today. The only real axis of change is
+the cipher, and it changes the nonce length and so the prefix length, as such it is cheaper to
+add one type parameter on the day a v3 needs it than to carry `hybrid-array` arithmetic now.
+
+### State machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Ready: new(key, prefix), counter 0
+    Ready --> Ready: next, nonce(prefix, c, 0), c + 1 before AEAD
+    Ready --> Refused: next at c = u32 MAX, TooLong, no AEAD call
+    Ready --> Failed: open tag mismatch, buf cleared
+    Ready --> Done: last, nonce(prefix, c, 1), consumes self
+    Refused --> [*]
+    Failed --> [*]
+    Done --> [*]
+```
+Legend: one `Sealer` or `Opener` per blob, `c` is the frame counter, `Done` is reached at most once because `last` takes `self`, `Refused` and `Failed` end the blob with an error.
+
+Frames on the wire are decided by `blob/mod.rs` with the existing look-ahead:
+
+| Input after reading up to one frame | Sealer | Opener |
+|---|---|---|
+| more bytes follow | `next` | `next` (frame must be exactly 65552 bytes, enforced by `take`) |
+| no more bytes | `last` (0 to 65536 plaintext bytes) | `last` (16 to 65552 bytes) |
+| fewer than 16 bytes in a frame | n/a | `Truncated` before the AEAD runs |
+
+An empty plaintext gives exactly one `last` call on an empty buffer, the frame is 16 bytes of
+tag under nonce `prefix || 00000000 || 01`, the blob is 40 bytes, as today.
+
+### Error mapping
+
+| Cause | Today (0.10) | New |
+|---|---|---|
+| tag mismatch on open (tamper, wrong key, path, gen, flag, counter) | `Authentication` | `Authentication` |
+| frame shorter than the tag | `Truncated` (blob) | `Truncated` (blob, unchanged) |
+| counter at `u32::MAX` on `next`, seal or open | `Authentication` (opaque `aead::Error`) | `TooLong` (new variant) |
+| AEAD refuses to encrypt (only above 256 GiB per frame, unreachable at 64 KiB) | `Authentication` | `TooLong` |
+| header short, bad magic, other version | unchanged | unchanged |
+
+`CryptoError::TooLong` ("blob is too long for one stream") is the only API change and lives in
+`crypto/mod.rs`. Outside `crypto/` only `engine/scan.rs` matches on `CryptoError` and it has a
+`_` arm, as such no caller changes. A refusal on the sealing side was reported as
+"authentication failed" before, which named the wrong cause.
+
+### Invariants and their tests
+
+Every row gets a manual mutant in the stage that adds it (the mutant is applied, the named test
+must fail, the mutant is reverted and not committed, as in Stage 40). New tests go into
+`stream.rs` (`#[cfg(test)] mod tests`, inline to keep the file count down), blob level ones into
+`blob/tests.rs`. Existing tests and both KAT constants stay byte for byte.
+
+| # | Invariant | Test | Mutant that must fail it |
+|---|---|---|---|
+| I1 | nonce is `prefix \|\| ctr BE32 \|\| flag` | new `nonce_layout_is_prefix_counter_be_and_flag` (counters 0, 1, 0x01020304, `u32::MAX`, both flags, hand-built bytes) plus existing `frame_nonce_is_prefix_counter_and_last_flag`, `KAT_SMALL`, `KAT_TWO_FRAMES_SHA256` | `to_le_bytes`, flag byte at 19, prefix at offset 5 |
+| I2 | byte-identical to `aead` 0.5 `StreamBE32` | new `matches_aead_stream_be32` (Stage 42 only, differential over the 8 `SIZES`, then removed with 0.10 in Stage 44, the KATs carry it on) | any I1 mutant |
+| I3 | counter overflow refused before wraparound | new `next_is_refused_at_u32_max_and_last_still_works` (`Stream::at(.., u32::MAX - 1)`: one `next` ok, the second gives `TooLong` and leaves `buf` untouched, `last` then seals under `prefix \|\| ffffffff \|\| 01`), same for `Opener` | `wrapping_add` instead of `checked_add` |
+| I4 | exactly one last frame | compile time (`last(self)`), plus new blob test `only_the_final_frame_carries_the_last_flag` (opens every frame of a 4 frame blob by hand, flag 1 only on frame 3) | `seal_frame` calls `next` for the last frame, or `last` for every frame |
+| I5 | nothing after the last frame | existing `appended_bytes_or_frames_after_the_last_frame_are_rejected`, `valid_last_frame_followed_by_a_valid_frame_is_rejected_by_lookahead_alone`, `a_full_final_frame_without_the_last_flag_plus_appended_data_is_rejected` | look-ahead removed (`last = buf.len() < max`) |
+| I6 | truncation at any frame boundary | existing `truncation_at_every_frame_boundary_and_inside_a_frame_is_rejected`, `full_frame_sealed_as_next_cannot_pass_as_last_at_a_boundary` | `Opener::last` builds `nonce(false)` |
+| I7 | reorder or duplication detected | existing `dropping_swapping_and_duplicating_frames_is_rejected` | counter not advanced in `take_next` |
+| I8 | zero-length final frame as today | new `empty_last_frame_is_just_a_tag` (equals a hand-sealed empty message under `prefix \|\| 0 \|\| 1`), existing `round_trips_and_has_exact_length` (n = 0 gives 40 bytes) | `seal_with_prefix` skips an empty last frame |
+| I9 | no plaintext before its frame verified | new `failed_open_clears_the_buffer`, existing `assert_rejected` (writer holds only whole, correct, earlier frames) and `valid_last_frame_followed...` (no output) | `Opener` without `buf.clear()`, or `dst.write_all` before the open |
+| I10 | a nonce is never reused within a stream | new `counter_moves_before_the_aead_and_never_repeats` (seals 5 frames, recovers each frame with the hand-built nonce `0..=3` flag 0 and `4` flag 1, asserts the counter after each call), plus `Stream` is not `Clone` (stated in its doc) | `take_next` returns the nonce without advancing, or advances before building it (off by one, also caught by the KATs) |
+| I11 | header bound through AAD | existing `frames_sealed_without_the_header_in_the_aad_are_rejected`, rewritten in Stage 44 to seal the bare-AAD frame with a hand-built nonce instead of `EncryptorBE32` (same bytes, the reference type is gone) | AAD without `AGR1 \|\| 0x02` |
+
+Seal side, randomness: the prefix stays 19 fresh bytes per blob from the OS RNG
+(`<[u8; 19]>::generate()`), 152 random bits, as such two blobs under one key share a prefix with
+negligible chance. Existing `two_seals_differ` covers it.
+
+### How a v3 slots in
+
+`read_header` is the only place that reads the version byte. Today it compares with `VERSION`,
+for a v3 it becomes a match that returns the frame size (and later the cipher) next to the
+prefix:
+
+```rust
+match head[4] {
+    2 => Format::V2,      // 64 KiB frames, XChaCha20-Poly1305
+    // 3 => Format::V3,   // another frame size or cipher
+    v => return Err(CryptoError::UnsupportedVersion(v).into()),
+}
+```
+
+- **Another frame size**: a new constant and the match arm, `stream.rs` is untouched (it never
+  sees frame size). The sealer always writes the newest version.
+- **Another cipher**: `Stream` gets one type parameter `A: AeadInOut + KeyInit`, the prefix
+  length becomes nonce length minus 5. `seal_stream`, `open_stream` and every caller outside
+  `crypto/` stay as they are.
+- Not built now, there is no v3 on the table.
+
+### Dependency diff (`cargo update -p chacha20poly1305` after the bump, measured in a scratch worktree)
+
+`Cargo.toml`: `chacha20poly1305 = { version = "0.11", features = ["zeroize"] }` (was
+`{ version = "0.10", features = ["stream"] }`). The `zeroize` feature changes nothing in the lock.
+
+| Crate | Change | Owners (crates.io) |
+|---|---|---|
+| chacha20poly1305 | 0.10.1 to 0.11.0 | newpavlov, rustcrypto team |
+| aead | 0.5.2 to 0.6.1 | rustcrypto |
+| chacha20 | 0.9.1 to 0.10.2 | rustcrypto |
+| poly1305 | 0.8.0 to 0.9.1 | rustcrypto |
+| cipher | 0.4.4 to 0.5.2 | rustcrypto |
+| universal-hash | 0.5.1 to 0.6.1 | rustcrypto |
+| inout | 0.1.4 to 0.2.5 | rustcrypto |
+| rand_core | 0.6.4 to 0.10.1 (0.6.4 leaves the lock) | rust-random |
+| crypto-common | 0.2.2 added, 0.1.7 stays for `sha2` | rustcrypto |
+| block-buffer | 0.12.1 added, 0.10.4 stays for `sha2` | newpavlov, github:rustcrypto:utils |
+| cpufeatures | 0.3.1 added, 0.2.17 stays for `sha2` | tarcieri, github:rustcrypto:utils |
+| getrandom | 0.4.3 added, 0.2.17 (`dirs`) and 0.3.4 (`tempfile`) stay | dhardy, github:rust-random:maintainers |
+| r-efi | 6.0.0 added (only `target_os = "uefi"` with `getrandom_backend = "efi_rng"`, never built for us) | dvdhrm |
+| **hybrid-array** | **new** 0.4.15 (replaces `generic-array` for the cipher, `generic-array` 0.14.7 stays for `sha2`) | tarcieri, github:rustcrypto:utils |
+| **ctutils** | **new** 0.4.8 (constant-time helpers, `rust-version = "1.87"`) | tarcieri, github:rustcrypto:utils |
+| **cmov** | **new** 0.5.4 (constant-time select, used by ctutils) | tarcieri, github:rustcrypto:utils |
+| opaque-debug | 0.3.1 removed | |
+| subtle | 2.6.1 removed (tag compare now through `ctutils`) | |
+
+Every new crate is RustCrypto or rust-random, every `rust-version` is 1.85 or lower except
+`ctutils` (1.87), all fit MSRV 1.88. `cargo tree --target x86_64-pc-windows-msvc` shows no
+Windows-only crate for the cipher. `sha2` 0.10 is not touched (a `sha2` 0.11 bump would be its
+own decision).
+
+### Consequences and risks
+
+- **Tag compare moves from `subtle` to `ctutils`/`cmov`**: younger code, same maintainers. Our
+  tests cannot prove constant time, this is trust in RustCrypto as before. Worth a line in #167.
+- **`zeroize` feature is opt-in in 0.11**: without it the cipher's key copy is not wiped on drop,
+  a silent regression against 0.10. Stage 44 checks `Cargo.toml` names it.
+- **Differential proof only while 0.10 is in the tree**: Stage 42 runs before the bump for that
+  reason, after Stage 44 the Python KATs and the nonce layout test carry the proof alone.
+- **Overflow test needs a seam** (`Stream::at`, `#[cfg(test)]`), 2^32 frames cannot be run.
+- **PR size**: `stream.rs` is one new file, #166 goes from 103 to 104 changed files vs main.
+- **Wire format**: unchanged, existing v2 blobs keep opening, no migration.
+- **Out of scope**: dropping the SIMD backends (`chacha20` soft backend), `sha2` 0.11, an audit
+  of `ctutils`. Re-open only if #167 asks for it.
