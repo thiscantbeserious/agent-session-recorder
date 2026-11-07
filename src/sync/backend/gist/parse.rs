@@ -105,13 +105,15 @@ pub(super) fn map_failure(tool: &'static str, stderr: &str, code: Option<i32>) -
     }
 }
 
-/// Check `gh auth status` output, stdout and stderr together.
+/// Check `gh auth status` output, stdout and stderr together. Only called after exit 0.
+/// Fine-grained tokens print no scopes line, a missing gist permission then shows on
+/// the first gist call.
 pub(super) fn check_auth(output: &str) -> Result<(), BackendError> {
     let scopes = output.lines().find(|l| l.contains("Token scopes"));
     match scopes {
         Some(line) if line.contains("gist") => Ok(()),
         Some(_) => Err(BackendError::MissingScope),
-        None => Err(BackendError::NotLoggedIn),
+        None => Ok(()),
     }
 }
 
