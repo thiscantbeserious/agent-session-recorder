@@ -215,7 +215,6 @@ Analyze a recording with AI
 - `--debug`: Enable debug mode (required for --output)
 - `-o, --output`: Save cleaned content and exit (optionally specify filename)
 - `--fast`: Skip JSON schema enforcement (faster but less reliable)
-- `--wait`: Wait for keypress before exiting (used by TUI)
 
 ### Description
 
@@ -648,7 +647,6 @@ Upload new and changed sessions (encrypted)
 - `--dry-run`: Show what would happen, change nothing
 - `-y, --yes`: Skip the confirmation prompt
 - `--overwrite`: Resolve conflicts with the local session
-- `--auto`: Internal: push after a recording, never prompts
 
 ```
 Upload new and changed sessions, encrypted with your sync key.

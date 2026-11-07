@@ -201,7 +201,7 @@ fn generate_man_pages(output: &Path) -> Result<()> {
 
 /// Arguments of a command as documented, hidden ones are left out.
 fn visible_args(cmd: &clap::Command) -> Vec<&clap::Arg> {
-    cmd.get_arguments().collect()
+    cmd.get_arguments().filter(|a| !a.is_hide_set()).collect()
 }
 
 /// Generate COMMANDS.md markdown documentation
