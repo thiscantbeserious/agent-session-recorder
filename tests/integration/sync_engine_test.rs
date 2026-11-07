@@ -657,7 +657,7 @@ fn pull_records_the_manifest_gen_and_token_and_repair_is_marked() {
     backend.set_description(&id, Some(t1));
     let index = index::load(b.dir()).0;
     let rows =
-        agr::sync::testing::scan(&b.storage, &key, &backend.list().unwrap(), &index).unwrap();
+        agr::sync::testing::scan(&b.storage, &key, &backend.list().unwrap(), &index, None).unwrap();
     assert!(
         rows.iter()
             .find(|r| r.path == path)

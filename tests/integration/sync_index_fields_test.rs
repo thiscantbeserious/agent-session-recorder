@@ -52,7 +52,7 @@ fn index_with(entry: IndexEntry) -> Index {
 }
 
 fn rows(temp: &TempDir, key: &Key, remote: &[RemoteEntry], index: &Index) -> Vec<Row> {
-    scan(&storage(temp), key, remote, index).unwrap()
+    scan(&storage(temp), key, remote, index, None).unwrap()
 }
 
 fn row_of(rows: Vec<Row>) -> Row {
@@ -244,4 +244,27 @@ fn pending_entry_is_never_the_last_hash() {
     };
     let row = row_of(rows(&temp, &key, &[], &index_with(entry)));
     assert_eq!(row.input.last, None);
+}
+
+#[cfg(unix)]
+#[test]
+fn name_filter_does_not_hash_other_sessions() {
+    use std::os::unix::fs::PermissionsExt;
+    let temp = TempDir::new().unwrap();
+    local_file(&temp, "wanted");
+    let other = temp.path().join("claude/b.cast.gz");
+    std::fs::write(&other, "x").unwrap();
+    std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let names = [PATH.to_string()];
+    let rows = scan(
+        &storage(&temp),
+        &Key::generate(),
+        &[],
+        &Index::default(),
+        Some(&names),
+    )
+    .unwrap();
+    std::fs::set_permissions(&other, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let b = rows.iter().find(|r| r.path == "claude/b.cast.gz").unwrap();
+    assert!(!format!("{:?}", b.input.local).contains("Unreadable"));
 }

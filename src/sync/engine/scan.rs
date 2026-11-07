@@ -75,6 +75,7 @@ pub fn scan(
     key: &Key,
     remote: &[RemoteEntry],
     index: &Index,
+    names: Option<&[String]>,
 ) -> Result<Vec<Row>> {
     let mut rows = BTreeMap::new();
     for session in storage.list_sessions(None)? {
