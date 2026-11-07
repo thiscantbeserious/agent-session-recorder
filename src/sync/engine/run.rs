@@ -237,9 +237,12 @@ impl Engine<'_> {
                 return self.act(push_one(self, row, index, opts.overwrite))
             }
             (Decision::Pull, Command::Pull) => return self.act(pull_one(self, row, index)),
-            (Decision::InSync { refresh_index }, _) if refresh_index && !opts.dry_run => self
-                .refresh(row, index)
-                .map_or_else(Outcome::Failed, |()| Outcome::Nothing),
+            (Decision::InSync { refresh_index }, _)
+                if !opts.dry_run && (refresh_index || self.stale_stamp(row, index)) =>
+            {
+                self.refresh(row, index)
+                    .map_or_else(Outcome::Failed, |()| Outcome::Nothing)
+            }
             _ => passive(decision),
         })
     }
@@ -272,6 +275,16 @@ impl Engine<'_> {
     }
 
     /// Hashes already agree, only the index lacks the entry.
+    /// The index stamp no longer matches the file (old index, or same bytes rewritten),
+    /// restamp so the next auto run does not hash it again.
+    fn stale_stamp(&self, row: &Row, index: &Index) -> bool {
+        let Some(entry) = index.entries.get(&row.path) else {
+            return false;
+        };
+        let now = index::stamp(&self.storage.storage_dir().join(&row.path));
+        now != (entry.size, entry.mtime_ns)
+    }
+
     fn refresh(&self, row: &Row, index: &mut Index) -> Result<(), String> {
         let (Local::Hash(hash), Some(id), Some(token)) =
             (&row.input.local, &row.remote_id, &row.token)
