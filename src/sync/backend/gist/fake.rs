@@ -309,6 +309,21 @@ fn nonzero_exit_maps_through_stderr_samples() {
     assert!(matches!(err, BackendError::Unreachable(_)));
 }
 
+#[test]
+fn a_stalled_call_says_so_and_names_the_retry() {
+    let fake = Fake::with(vec![Err(std::io::Error::new(
+        std::io::ErrorKind::TimedOut,
+        "gh printed nothing",
+    ))]);
+    let base = tempfile::tempdir().unwrap();
+    let err = backend(&fake, base.path()).list().unwrap_err();
+    let text = err.to_string();
+    assert!(
+        text.contains("stalled") && text.contains("agr sync push"),
+        "{text}"
+    );
+}
+
 pub(super) fn source_of(
     bytes: &'static [u8],
 ) -> impl Fn(&mut dyn std::io::Write) -> std::io::Result<()> {
