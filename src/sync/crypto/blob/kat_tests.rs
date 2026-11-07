@@ -46,7 +46,7 @@ fn known_answer_for_fixed_key_prefix_path_and_gen() {
 
 /// sha256 of a three-frame blob (2*FRAME+3 bytes): counters 0, 1 and 2, last flag on frame 2.
 const KAT_THREE_FRAMES_SHA256: &str =
-    "0000000000000000000000000000000000000000000000000000000000000000";
+    "cdc3099cb194b948999316b21966ddc2820c3c2c96c03dc63b2b3cb5f7742dd8";
 
 #[test]
 fn known_answer_for_three_frames_pins_counter_two_and_the_last_flag() {
