@@ -854,17 +854,17 @@ byte-identical to `aead::stream::StreamBE32` while 0.10 is still in the tree. `b
 switched yet.
 Owner: implementer
 
-- [ ] RED: `nonce_layout_is_prefix_counter_be_and_flag` (I1), counters 0, 1, 0x01020304,
+- [x] RED: `nonce_layout_is_prefix_counter_be_and_flag` (I1), counters 0, 1, 0x01020304,
       `u32::MAX`, both flags, against hand-built bytes.
-- [ ] RED: `matches_aead_stream_be32` (I2), `Sealer` output equals `EncryptorBE32` output for
+- [x] RED: `matches_aead_stream_be32` (I2), `Sealer` output equals `EncryptorBE32` output for
       every size in `SIZES`, `Opener` opens what `EncryptorBE32` sealed.
-- [ ] RED: `next_is_refused_at_u32_max_and_last_still_works` (I3) for `Sealer` and `Opener`,
+- [x] RED: `next_is_refused_at_u32_max_and_last_still_works` (I3) for `Sealer` and `Opener`,
       `TooLong`, `buf` untouched, `last` at `u32::MAX` seals under `prefix || ffffffff || 01`.
-- [ ] RED: `counter_moves_before_the_aead_and_never_repeats` (I10), `failed_open_clears_the_buffer` (I9).
-- [ ] GREEN: `Stream`, `Sealer`, `Opener` as in the ADR API, `CryptoError::TooLong` in `crypto/mod.rs`.
-- [ ] Mutants from the ADR invariant table for I1, I3, I9, I10 each fail their test, reverted,
+- [x] RED: `counter_moves_before_the_aead_and_never_repeats` (I10), `failed_open_clears_the_buffer` (I9).
+- [x] GREEN: `Stream`, `Sealer`, `Opener` as in the ADR API, `CryptoError::TooLong` in `crypto/mod.rs`.
+- [x] Mutants from the ADR invariant table for I1, I3, I9, I10 each fail their test, reverted,
       not committed.
-- [ ] Existing `blob/tests.rs` and both KAT constants untouched (`git diff` shows nothing there).
+- [x] Existing `blob/tests.rs` and both KAT constants untouched (`git diff` shows nothing there).
 
 Files: `src/sync/crypto/blob/stream.rs`, `src/sync/crypto/mod.rs`
 Depends on: Stage 41

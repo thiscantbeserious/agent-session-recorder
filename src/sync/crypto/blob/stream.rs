@@ -2,6 +2,7 @@
 //! Nonce = prefix[19] || counter u32 BE || last flag u8, as aead 0.5 `StreamBE32`.
 
 use crate::sync::crypto::{CryptoError, Key};
+use chacha20poly1305::aead::AeadInPlace;
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 
 pub(super) const PREFIX_LEN: usize = 19;
@@ -23,12 +24,35 @@ impl Stream {
         }
     }
 
-    fn nonce(&self, _last: bool) -> XNonce {
-        XNonce::default()
+    /// prefix || counter BE || flag, the only place a nonce is built.
+    fn nonce(&self, last: bool) -> XNonce {
+        let mut n = [0u8; 24];
+        n[..PREFIX_LEN].copy_from_slice(&self.prefix);
+        n[PREFIX_LEN..PREFIX_LEN + 4].copy_from_slice(&self.counter.to_be_bytes());
+        n[PREFIX_LEN + 4] = u8::from(last);
+        XNonce::from(n)
     }
 
+    /// Nonce for a non-last frame. The counter moves on BEFORE the AEAD runs, and
+    /// `checked_add` refuses at u32::MAX, nothing is encrypted then.
     fn take_next(&mut self) -> Result<XNonce, CryptoError> {
-        Ok(self.nonce(false))
+        let next = self.counter.checked_add(1).ok_or(CryptoError::TooLong)?;
+        let nonce = self.nonce(false);
+        self.counter = next;
+        Ok(nonce)
+    }
+
+    fn seal(&self, nonce: &XNonce, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
+        let res = self.aead.encrypt_in_place(nonce, aad, buf);
+        res.map_err(|_| CryptoError::TooLong)
+    }
+
+    /// Any failure clears `buf`, so no plaintext leaves a frame that did not verify.
+    fn open(&self, nonce: &XNonce, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
+        self.aead.decrypt_in_place(nonce, aad, buf).map_err(|_| {
+            buf.clear();
+            CryptoError::Authentication
+        })
     }
 
     #[cfg(test)]
@@ -47,12 +71,13 @@ impl Sealer {
         Sealer(Stream::new(key, prefix))
     }
 
-    pub(super) fn next(&mut self, _aad: &[u8], _buf: &mut Vec<u8>) -> Result<(), CryptoError> {
-        self.0.take_next().map(drop)
+    pub(super) fn next(&mut self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
+        let nonce = self.0.take_next()?;
+        self.0.seal(&nonce, aad, buf)
     }
 
-    pub(super) fn last(self, _aad: &[u8], _buf: &mut Vec<u8>) -> Result<(), CryptoError> {
-        Ok(())
+    pub(super) fn last(self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
+        self.0.seal(&self.0.nonce(true), aad, buf)
     }
 }
 
@@ -63,12 +88,13 @@ impl Opener {
         Opener(Stream::new(key, prefix))
     }
 
-    pub(super) fn next(&mut self, _aad: &[u8], _buf: &mut Vec<u8>) -> Result<(), CryptoError> {
-        self.0.take_next().map(drop)
+    pub(super) fn next(&mut self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
+        let nonce = self.0.take_next()?;
+        self.0.open(&nonce, aad, buf)
     }
 
-    pub(super) fn last(self, _aad: &[u8], _buf: &mut Vec<u8>) -> Result<(), CryptoError> {
-        Ok(())
+    pub(super) fn last(self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
+        self.0.open(&self.0.nonce(true), aad, buf)
     }
 }
 
