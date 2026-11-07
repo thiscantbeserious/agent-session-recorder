@@ -914,12 +914,12 @@ Depends on: Stage 43
 Goal: all gates green, docs match.
 Owner: implementer
 
-- [ ] `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`,
+- [x] `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`,
       `cargo +1.88 check --all-targets --locked`, `cargo check --target x86_64-pc-windows-msvc`,
       `cargo build --release && ./tests/e2e_test.sh`.
-- [ ] A v2 blob sealed before Stage 42 (sealed from HEAD of Stage 41 into a temp file) opens after
+- [x] A v2 blob sealed before Stage 42 (sealed from HEAD of Stage 41 into a temp file) opens after
       Stage 44.
-- [ ] `stream.rs` about 100 lines or less without tests, ADR status of the section set to
+- [x] `stream.rs` about 100 lines or less without tests, ADR status of the section set to
       Accepted (built), memory note facts unchanged, #167 gets a comment with the dependency diff.
 
 Files: `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
