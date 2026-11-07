@@ -1,0 +1,56 @@
+name: Dependency audit
+
+# Fails on a new RustSEC advisory, a non-permissive license or a non crates.io source.
+# Known advisories are listed with their tracking issue in deny.toml and .cargo/audit.toml.
+# Weekly as well, as such a new advisory against an unchanged main shows up too.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'deny.toml'
+      - '.cargo/audit.toml'
+      - '.github/workflows/audit.yml'
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_DENY_VERSION: "0.20.2"
+  CARGO_AUDIT_VERSION: "0.22.2"
+
+jobs:
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache audit tools
+        id: cache-tools
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/cargo-deny
+            ~/.cargo/bin/cargo-audit
+          key: ${{ runner.os }}-audit-tools-${{ env.CARGO_DENY_VERSION }}-${{ env.CARGO_AUDIT_VERSION }}
+
+      - name: Install cargo-deny and cargo-audit
+        if: steps.cache-tools.outputs.cache-hit != 'true'
+        run: |
+          cargo install cargo-deny --version ${{ env.CARGO_DENY_VERSION }} --locked
+          cargo install cargo-audit --version ${{ env.CARGO_AUDIT_VERSION }} --locked
+
+      - name: cargo deny (advisories, licenses, bans, sources)
+        run: cargo deny check
+
+      - name: cargo audit (second advisory snapshot)
+        run: cargo audit -D warnings
