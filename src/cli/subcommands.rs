@@ -242,8 +242,9 @@ EXAMPLE:
     #[command(
         long_about = "Upload new and changed sessions, encrypted with your sync key.
 
-The first push that creates gists shows a privacy notice and asks for
-confirmation. Without a terminal it needs --yes, otherwise nothing changes.
+Every push with planned changes asks for confirmation. Without a terminal
+it needs --yes, otherwise nothing changes. The first push that creates gists
+also shows a privacy notice.
 Conflicts are skipped unless --overwrite is given (local wins).
 
 EXAMPLES:
