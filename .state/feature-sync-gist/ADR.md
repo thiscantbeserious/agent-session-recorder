@@ -1008,7 +1008,7 @@ with the moves, that is the point of the moves.
 
 ## Own STREAM layer on chacha20poly1305 0.11 (2026-11-07)
 
-**Status**: Accepted direction (user decision 2026-11-07), design by the architect, review in PR.
+**Status**: Accepted (built 2026-11-07). Independent security review found no blocking or major issue. Follow-ups done in the same PR: a three-frame known answer computed outside this code (Python `cryptography` plus a hand-written HChaCha20 checked against draft-irtf-cfrg-xchacha-03 2.2.1) pins counter 2 and the last flag, `poly1305` is built with `zeroize` (the chacha20poly1305 feature does not enable it), and the frame look-ahead retries `Interrupted`.
 
 **Problem**: blob v2 (D9) gets STREAM from `aead::stream` (`aead` 0.5.2 behind the `stream`
 feature of `chacha20poly1305` 0.10.1). `chacha20poly1305` 0.11.0 (stable, `rust-version = "1.85"`)
