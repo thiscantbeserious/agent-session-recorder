@@ -304,4 +304,10 @@ mod tests {
         let none = "github.com\n  - Token scopes: 'read:org', 'repo'\n";
         assert_eq!(check_auth(none), Err(BackendError::MissingScope));
     }
+
+    #[test]
+    fn auth_status_without_scopes_line_passes() {
+        let fine_grained = "github.com\n  - Logged in to github.com account me\n";
+        assert_eq!(check_auth(fine_grained), Ok(()));
+    }
 }
