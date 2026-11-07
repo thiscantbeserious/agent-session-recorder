@@ -199,6 +199,11 @@ fn generate_man_pages(output: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Arguments of a command as documented, hidden ones are left out.
+fn visible_args(cmd: &clap::Command) -> Vec<&clap::Arg> {
+    cmd.get_arguments().collect()
+}
+
 /// Generate COMMANDS.md markdown documentation
 fn generate_markdown(output: &Path) -> Result<()> {
     fs::create_dir_all(output).context("Failed to create output directory")?;
@@ -246,7 +251,7 @@ fn generate_markdown(output: &Path) -> Result<()> {
         }
 
         // Arguments
-        let args: Vec<_> = subcommand.get_arguments().collect();
+        let args: Vec<_> = visible_args(subcommand);
         if !args.is_empty() {
             let positional: Vec<_> = args.iter().filter(|a| a.is_positional()).collect();
             let options: Vec<_> = args.iter().filter(|a| !a.is_positional()).collect();
@@ -322,7 +327,7 @@ fn generate_markdown(output: &Path) -> Result<()> {
                 }
 
                 // Nested arguments
-                let nested_args: Vec<_> = nested_cmd.get_arguments().collect();
+                let nested_args: Vec<_> = visible_args(nested_cmd);
                 let nested_positional: Vec<_> =
                     nested_args.iter().filter(|a| a.is_positional()).collect();
                 let nested_options: Vec<_> =
@@ -446,7 +451,7 @@ fn generate_wiki(output: &Path) -> Result<()> {
         page.push_str(&format!("```\nagr {} [OPTIONS]", name));
 
         // Add positional args to usage
-        for arg in subcommand.get_arguments() {
+        for arg in visible_args(subcommand) {
             if arg.is_positional() {
                 let arg_name = arg.get_id().as_str();
                 if arg_name != "help" && arg_name != "version" {
@@ -461,7 +466,7 @@ fn generate_wiki(output: &Path) -> Result<()> {
         page.push_str("\n```\n\n");
 
         // Arguments
-        let args: Vec<_> = subcommand.get_arguments().collect();
+        let args: Vec<_> = visible_args(subcommand);
         let positional: Vec<_> = args.iter().filter(|a| a.is_positional()).collect();
         let options: Vec<_> = args.iter().filter(|a| !a.is_positional()).collect();
 
@@ -695,4 +700,21 @@ fn update_wiki(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn visible_args_skips_hidden_flags() {
+        let cmd = clap::Command::new("x")
+            .arg(clap::Arg::new("shown").long("shown"))
+            .arg(clap::Arg::new("secret").long("secret").hide(true));
+        let ids: Vec<_> = visible_args(&cmd)
+            .iter()
+            .map(|a| a.get_id().as_str())
+            .collect();
+        assert_eq!(ids, ["shown"]);
+    }
 }
