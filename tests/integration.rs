@@ -28,6 +28,9 @@ mod config_migrate_edge_test;
 #[path = "integration/config_migrate_test.rs"]
 mod config_migrate_test;
 
+#[path = "integration/dependency_features_test.rs"]
+mod dependency_features_test;
+
 #[path = "integration/config_test.rs"]
 mod config_test;
 
