@@ -55,7 +55,7 @@ pub struct GistBackend<R: Runner = ProcessRunner> {
 
 impl GistBackend<ProcessRunner> {
     pub fn new() -> Self {
-        Self::with_runner(ProcessRunner, std::env::temp_dir())
+        Self::with_runner(ProcessRunner::default(), std::env::temp_dir())
     }
 }
 
