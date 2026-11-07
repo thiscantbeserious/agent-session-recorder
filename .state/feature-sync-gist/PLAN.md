@@ -874,14 +874,14 @@ Depends on: Stage 41
 Goal: `blob/mod.rs` uses `Sealer` and `Opener`, `aead::stream` no longer used in production code.
 Owner: implementer
 
-- [ ] RED: `only_the_final_frame_carries_the_last_flag` (I4) and `empty_last_frame_is_just_a_tag`
+- [x] RED: `only_the_final_frame_carries_the_last_flag` (I4) and `empty_last_frame_is_just_a_tag`
       (I8) in `blob/tests.rs`, new tests only, no existing test or vector edited.
-- [ ] GREEN: `Option<Sealer>` and `Option<Opener>` replace `EncryptorBE32` and `DecryptorBE32`,
+- [x] GREEN: `Option<Sealer>` and `Option<Opener>` replace `EncryptorBE32` and `DecryptorBE32`,
       `seal_frame` and `open_frame` stay as dispatchers, `TooLong` passes through, tag failure
       stays `Authentication`.
-- [ ] Every existing test in `blob/tests.rs` passes unchanged, `KAT_SMALL` and
+- [x] Every existing test in `blob/tests.rs` passes unchanged, `KAT_SMALL` and
       `KAT_TWO_FRAMES_SHA256` included.
-- [ ] Mutants for I4, I5, I6, I7, I8 from the ADR table each fail their named test, reverted.
+- [x] Mutants for I4, I5, I6, I7, I8 from the ADR table each fail their named test, reverted.
 
 Files: `src/sync/crypto/blob/mod.rs`, `src/sync/crypto/blob/tests.rs`
 Depends on: Stage 42

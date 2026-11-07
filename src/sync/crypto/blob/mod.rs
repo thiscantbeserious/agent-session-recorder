@@ -3,22 +3,19 @@
 
 use super::{CryptoError, Key};
 use chacha20poly1305::aead::rand_core::RngCore;
-use chacha20poly1305::aead::stream::{DecryptorBE32, EncryptorBE32};
 use chacha20poly1305::aead::OsRng;
-use chacha20poly1305::XChaCha20Poly1305;
 use data_encoding::HEXLOWER;
 use sha2::{Digest as _, Sha256};
 use std::io::{self, BufRead, BufReader, Read, Write};
+use stream::{Opener, Sealer};
 use thiserror::Error;
 
-#[allow(dead_code)] // switched over in Stage 43
 mod stream;
+use stream::{PREFIX_LEN, TAG_LEN};
 
 const MAGIC: &[u8] = b"AGR1";
 const VERSION: u8 = 2;
-const PREFIX_LEN: usize = 19;
 const HEADER_LEN: usize = MAGIC.len() + 1 + PREFIX_LEN;
-const TAG_LEN: usize = 16;
 const FRAME: usize = 64 * 1024;
 const AAD_PREFIX: &[u8] = b"agr:blob:";
 
@@ -66,42 +63,32 @@ pub fn seal_stream(
     seal_with_prefix(key, path, gen, &prefix, src, dst)
 }
 
-/// `encrypt_last` consumes the encryptor, so the Option makes a second last frame impossible.
+/// `last` consumes the sealer, so the Option makes a second last frame impossible.
 fn seal_frame(
-    enc: &mut Option<EncryptorBE32<XChaCha20Poly1305>>,
+    enc: &mut Option<Sealer>,
     last: bool,
     aad: &[u8],
     buf: &mut Vec<u8>,
 ) -> Result<(), CryptoError> {
-    let res = if last {
-        enc.take()
-            .expect("one last frame")
-            .encrypt_last_in_place(aad, buf)
+    if last {
+        enc.take().expect("one last frame").last(aad, buf)
     } else {
-        enc.as_mut()
-            .expect("not yet last")
-            .encrypt_next_in_place(aad, buf)
-    };
-    res.map_err(|_| CryptoError::Authentication)
+        enc.as_mut().expect("not yet last").next(aad, buf)
+    }
 }
 
 /// Mirror of `seal_frame`.
 fn open_frame(
-    dec: &mut Option<DecryptorBE32<XChaCha20Poly1305>>,
+    dec: &mut Option<Opener>,
     last: bool,
     aad: &[u8],
     buf: &mut Vec<u8>,
 ) -> Result<(), CryptoError> {
-    let res = if last {
-        dec.take()
-            .expect("one last frame")
-            .decrypt_last_in_place(aad, buf)
+    if last {
+        dec.take().expect("one last frame").last(aad, buf)
     } else {
-        dec.as_mut()
-            .expect("not yet last")
-            .decrypt_next_in_place(aad, buf)
-    };
-    res.map_err(|_| CryptoError::Authentication)
+        dec.as_mut().expect("not yet last").next(aad, buf)
+    }
 }
 
 fn seal_with_prefix(
@@ -113,7 +100,7 @@ fn seal_with_prefix(
     mut dst: impl Write,
 ) -> Result<Digest, BlobError> {
     dst.write_all(&[MAGIC, &[VERSION], prefix].concat())?;
-    let mut enc = Some(EncryptorBE32::from_aead(key.cipher(), prefix.into()));
+    let mut enc = Some(Sealer::new(key, *prefix));
     let (aad, mut src) = (aad(path, gen), BufReader::new(src));
     let (mut hasher, mut size, mut buf) =
         (Sha256::new(), 0u64, Vec::with_capacity(FRAME + TAG_LEN));
@@ -155,7 +142,7 @@ pub fn open_stream(
 ) -> Result<Digest, BlobError> {
     let mut src = BufReader::new(src);
     let prefix = read_header(&mut src)?;
-    let mut dec = Some(DecryptorBE32::from_aead(key.cipher(), (&prefix).into()));
+    let mut dec = Some(Opener::new(key, prefix));
     let aad = aad(path, gen);
     let (mut hasher, mut size, mut buf) =
         (Sha256::new(), 0u64, Vec::with_capacity(FRAME + TAG_LEN));
