@@ -217,6 +217,16 @@ fn list_calls_gh_api_with_pagination_and_parses() {
 }
 
 #[test]
+fn the_stub_is_not_blank_as_gh_requires() {
+    // gh rejects files whose content is empty after strings.TrimSpace ("a gist file
+    // cannot be blank", cli/cli pkg/cmd/gist/create/create.go detectEmptyFiles).
+    assert!(
+        !STUB_BODY.trim().is_empty(),
+        "stub {STUB_BODY:?} is blank to gh"
+    );
+}
+
+#[test]
 fn create_makes_a_pending_stub_gist_and_nothing_else() {
     let fake = Fake::with(vec![ok("https://gist.github.com/me/abc123\n")]);
     let base = tempfile::tempdir().unwrap();
