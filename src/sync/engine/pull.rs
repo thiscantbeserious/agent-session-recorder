@@ -33,7 +33,7 @@ pub(super) fn pull_one(engine: &Engine<'_>, row: &Row, index: &mut Index) -> Res
         gen: meta.gen,
         token: token.clone(),
     };
-    record(index, &meta.path, synced);
+    record(index, &engine.storage.storage_dir(), &meta.path, synced);
     save_index(engine.storage, index)?;
     if row.token.as_deref() != Some(&token) {
         repair(engine, id, &token)?;

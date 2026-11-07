@@ -284,7 +284,7 @@ impl Engine<'_> {
             gen: row.gen,
             token: token.clone(),
         };
-        record(index, &row.path, synced);
+        record(index, &self.storage.storage_dir(), &row.path, synced);
         save_index(self.storage, index)
     }
 

@@ -334,7 +334,7 @@ agr sync pull
 
 ### Auto push
 
-Once a backend is set, a finished recording is pushed in the background by default. Only that one session is pushed, never a pull or a delete, and a failure never changes the exit status of the recording. Auto push waits until you confirmed the privacy notice with one manual `agr sync push`, until then the recording prints one hint line. A failed background push is stored in `state.toml`, shown as one warning on the next recording and by `agr sync status`.
+Once a backend is set, a finished recording is pushed in the background by default. The new session is pushed together with every session you synced before that changed since (markers, optimize), a session that was never synced stays out until a manual `agr sync push`, and a rename is only picked up by a manual push. Auto push never pulls or deletes, and a failure never changes the exit status of the recording. Auto push waits until you confirmed the privacy notice with one manual `agr sync push`, until then the recording prints one hint line. A failed background push is stored in `state.toml`, shown as one warning on the next recording and by `agr sync status`.
 
 To turn it off:
 

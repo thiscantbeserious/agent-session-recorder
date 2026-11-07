@@ -25,6 +25,9 @@ Sessions only live on one machine. We want to sync them between machines, with G
     pushed automatically, enabled by default (`[sync] auto_push = true`) whenever a sync
     backend is configured. Push only, never pull, never delete. Without a configured backend
     nothing is synced.
+    (2026-11-07: user decision, changed synced sessions go with the next recording. The auto
+    push sends the new session and every session that has an index entry and changed locally
+    since, never a session that was not synced before, and a rename waits for a manual push.)
 5. Config is `[sync] backend = "gist"`, unset means sync is off. Added through a versioned migration (v5, current is v4).
    (Update 2026-11-06: became v6 because auto-optimize took v5 on main.)
 6. Gists are created as secret by default.

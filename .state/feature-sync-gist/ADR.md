@@ -170,6 +170,15 @@ on unix, no wait. On failure the child stores one line in `state.toml`
 clears it. The child takes the sync lock non-blocking and quietly skips if a push already runs,
 the next push picks the session up. Exit status of the recording is never touched.
 
+### 5a. Changed sessions go with the next recording (2026-11-07, user decision)
+
+The auto child pushes the new session plus every session with an index entry whose local file
+differs in size or mtime from the stamp stored at its last sync (`size` and `mtime_ns` in the
+index entry, `serde(default)` for old indexes). Only those files are hashed, the plan still
+decides by hash, so a touched but identical file is a no-op. The first sync of a session stays
+manual because of the privacy notice. A rename is a new path without an index entry, so it is
+not picked up and a second copy is never uploaded, a manual `agr sync push` handles it.
+
 ### 6. Hash
 
 **Decision: `sha2 = "0.10"`**, SHA-256 over the `.cast.gz` bytes (plaintext of the cipher). The

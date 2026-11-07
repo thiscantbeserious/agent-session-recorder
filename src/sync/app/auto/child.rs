@@ -1,6 +1,7 @@
 //! The `--auto` child run and the error line it leaves in the state file.
 
 use crate::config::state::State;
+use crate::sync::engine::index;
 use crate::sync::engine::run::{Engine, Options, Outcome, Report, SyncError};
 
 /// One line for the state file after an `--auto` run for `session`, `None` when it
@@ -32,11 +33,22 @@ pub fn take_error_line(state: &mut State) -> Option<String> {
     ))
 }
 
-/// The `--auto` run, pushes only the one session, never pulls or deletes, a conflict is
-/// skipped (no overwrite) and reported.
+/// The `--auto` run, pushes the new session and the synced ones that changed since (markers,
+/// optimize), never pulls or deletes, a conflict is skipped (no overwrite) and reported.
+// ponytail: only the same path with other content counts as changed. A renamed file is a new
+// path with no index entry and its old path is gone, so a rename is left to a manual
+// `agr sync push` (pushing it here would upload a second copy). Selection is size and mtime from
+// the index, so only those files get hashed, a touched but identical file is hashed each time.
 pub fn run(engine: &Engine<'_>, session: &str) -> Result<Report, SyncError> {
+    let (index, _) = index::load(&engine.storage.storage_dir());
+    let mut sessions = vec![session.to_string()];
+    for path in index::maybe_changed(&engine.storage.storage_dir(), &index) {
+        if path != session {
+            sessions.push(path);
+        }
+    }
     engine.push(&Options {
-        sessions: vec![session.to_string()],
+        sessions,
         ..Options::default()
     })
 }
@@ -202,7 +214,7 @@ mod tests {
         w.write("never", b"old");
         w.write("new", b"fresh");
         assert_eq!(w.auto("new").pushed, 1);
-        assert_eq!(w.backend.len(), 2);
+        assert_eq!(w.backend.len(), 1);
     }
 
     #[test]

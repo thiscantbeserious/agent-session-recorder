@@ -1,5 +1,7 @@
 //! Index entry written after a push, refresh or pull.
 
+use std::path::Path;
+
 use super::fail::msg;
 use super::index::{self, Index, IndexEntry};
 use crate::StorageManager;
@@ -12,7 +14,8 @@ pub(super) struct Synced {
     pub token: String,
 }
 
-pub(super) fn record(index: &mut Index, path: &str, synced: Synced) {
+pub(super) fn record(index: &mut Index, dir: &Path, path: &str, synced: Synced) {
+    let (size, mtime_ns) = index::stamp(&dir.join(path));
     let entry = IndexEntry {
         sha256: synced.sha256,
         remote_id: synced.remote_id,
@@ -20,6 +23,8 @@ pub(super) fn record(index: &mut Index, path: &str, synced: Synced) {
         gen: synced.gen,
         token: Some(synced.token),
         pending: false,
+        size,
+        mtime_ns,
     };
     index.entries.insert(path.to_string(), entry);
 }

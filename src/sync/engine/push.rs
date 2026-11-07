@@ -200,7 +200,12 @@ impl Push<'_> {
             gen,
             token: token.to_string(),
         };
-        record(index, &self.row.path, synced);
+        record(
+            index,
+            &self.engine.storage.storage_dir(),
+            &self.row.path,
+            synced,
+        );
         self.save(index)?;
         describe(self.engine, id, token)
     }

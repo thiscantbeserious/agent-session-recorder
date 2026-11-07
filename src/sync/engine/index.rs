@@ -24,6 +24,37 @@ pub struct IndexEntry {
     /// The gist was created but its first push is not recorded yet, the next run resumes it.
     #[serde(default)]
     pub pending: bool,
+    /// On-disk size and mtime of the local file when it was synced, 0 when unknown (old index).
+    /// A cheap "might have changed" check, never an input of the plan, the hash decides.
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub mtime_ns: u64,
+}
+
+/// On-disk size and mtime in nanoseconds of a file, zeros when it cannot be read.
+pub fn stamp(path: &Path) -> (u64, u64) {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return (0, 0);
+    };
+    let nanos = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .and_then(|d| u64::try_from(d.as_nanos()).ok())
+        .unwrap_or(0);
+    (meta.len(), nanos)
+}
+
+/// Paths whose file exists and no longer matches the size and mtime of their last sync.
+/// Old entries without a stamp are listed too (hashed once, the plan finds them unchanged). Pending entries are left to a manual push.
+pub fn maybe_changed(storage_dir: &Path, index: &Index) -> Vec<String> {
+    let differs = |(path, e): &(&String, &IndexEntry)| {
+        let now = stamp(&storage_dir.join(path));
+        !e.pending && now != (0, 0) && now != (e.size, e.mtime_ns)
+    };
+    let all = index.entries.iter().filter(differs);
+    all.map(|(path, _)| path.clone()).collect()
 }
 
 /// Index keyed by `agent/name.cast.gz`.
@@ -82,6 +113,32 @@ mod tests {
             synced_at: "2026-11-06T10:00:00+00:00".into(),
             ..IndexEntry::default()
         }
+    }
+
+    #[test]
+    fn old_entries_load_without_a_stamp_and_changed_files_are_found() {
+        let json = r#"{"version":1,"entries":{"a/x.cast.gz":{"sha256":"h","remote_id":"i","synced_at":"t"}}}"#;
+        let mut index: Index = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            (
+                index.entries["a/x.cast.gz"].size,
+                index.entries["a/x.cast.gz"].mtime_ns
+            ),
+            (0, 0)
+        );
+        let dir = tempfile::tempdir().unwrap();
+        assert!(
+            super::maybe_changed(dir.path(), &index).is_empty(),
+            "missing file"
+        );
+        std::fs::create_dir_all(dir.path().join("a")).unwrap();
+        let file = dir.path().join("a/x.cast.gz");
+        std::fs::write(&file, "abc").unwrap();
+        assert_eq!(super::maybe_changed(dir.path(), &index), ["a/x.cast.gz"]);
+        let (size, mtime_ns) = super::stamp(&file);
+        let entry = index.entries.get_mut("a/x.cast.gz").unwrap();
+        (entry.size, entry.mtime_ns) = (size, mtime_ns);
+        assert!(super::maybe_changed(dir.path(), &index).is_empty());
     }
 
     #[test]
