@@ -37,11 +37,15 @@ impl State {
 
     /// Store the last auto push error in the file at `path`.
     pub fn store_auto_error(path: &Path, line: String) -> Result<()> {
-        let state = Self {
-            last_auto_push_error: Some(line),
-            ..Self::default()
-        };
+        let mut state = Self::load_from(path);
+        state.last_auto_push_error = Some(line);
         state.save_to(path)
+    }
+
+    /// Like `store_auto_error` for `~/.config/agr/state.toml`, re-reads the file so a writer
+    /// that ran meanwhile is not overwritten.
+    pub fn store_auto_error_default(line: String) -> Result<()> {
+        Self::store_auto_error(&Config::config_dir()?.join(FILE), line)
     }
 
     /// Load from a path, default when the file is missing or malformed (warns on stderr).

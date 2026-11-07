@@ -257,8 +257,7 @@ pub fn delete(args: Args) -> Result<()> {
 
 /// Detached child of a recording, no prompt, no output, a failure is stored for later.
 fn push_auto(args: &Args) -> Result<()> {
-    let mut state = State::load();
-    if !state.sync_privacy_ack {
+    if !State::load().sync_privacy_ack {
         return Ok(());
     }
     let session = args.sessions.first().map_or("", String::as_str);
@@ -266,8 +265,7 @@ fn push_auto(args: &Args) -> Result<()> {
         .map_err(|Failure(message, _)| SyncError::Failed(message))
         .and_then(|ctx| auto::run(&ctx.engine(), session));
     if let Some(line) = auto::error_line(&result, session) {
-        state.last_auto_push_error = Some(line);
-        state.save()?;
+        State::store_auto_error_default(line)?;
     }
     Ok(())
 }
