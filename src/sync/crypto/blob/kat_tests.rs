@@ -57,3 +57,40 @@ fn known_answer_for_three_frames_pins_counter_two_and_the_last_flag() {
     seal_with_prefix(&k, "a/b.cast.gz", 7, &prefix, src.as_slice(), &mut out).unwrap();
     assert_eq!(sha256_hex(&out), KAT_THREE_FRAMES_SHA256);
 }
+
+/// Returns `Interrupted` once after every frame-sized chunk, like a signal mid-pull.
+struct Flaky {
+    data: Vec<u8>,
+    pos: usize,
+    hiccup: bool,
+}
+
+impl std::io::Read for Flaky {
+    fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+        if self.hiccup && self.pos > 0 && self.pos % FRAME == 0 {
+            self.hiccup = false;
+            return Err(std::io::ErrorKind::Interrupted.into());
+        }
+        self.hiccup = true;
+        let n = out
+            .len()
+            .min(self.data.len() - self.pos)
+            .min(FRAME - self.pos % FRAME);
+        out[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
+    }
+}
+
+#[test]
+fn an_interrupted_read_is_retried_not_failed() {
+    let k = Key::from_bytes([3; 32]);
+    let src = Flaky {
+        data: plain(2 * FRAME + 3),
+        pos: 0,
+        hiccup: true,
+    };
+    let mut out = Vec::new();
+    let res = super::seal_stream(&k, "a/b.cast.gz", 1, src, &mut out);
+    assert!(res.is_ok(), "{res:?}");
+}
