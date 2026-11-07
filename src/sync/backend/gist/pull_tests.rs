@@ -16,7 +16,7 @@ fn pull_clones_and_reads_the_blob() {
     let calls = scrub(&fake.calls(), base.path());
     assert_eq!(
         calls,
-        ["gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1 --progress"]
+        ["git -c credential.helper= -c credential.helper=!gh auth git-credential clone --depth 1 --progress https://gist.github.com/abc123.git <tmp>/agr-sync-N/clone"]
     );
     assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 0);
 }

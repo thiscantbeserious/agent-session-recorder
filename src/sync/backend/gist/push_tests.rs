@@ -16,7 +16,7 @@ fn push_clones_commits_and_pushes_without_touching_the_description() {
     assert_eq!(
         calls,
         [
-            "gh gist clone abc123 <tmp>/agr-sync-N/clone -- --depth 1 --progress",
+            "git -c credential.helper= -c credential.helper=!gh auth git-credential clone --depth 1 --progress https://gist.github.com/abc123.git <tmp>/agr-sync-N/clone",
             "git add --all -- data.000 manifest",
             "git -c user.name=agr -c user.email=agr@localhost -c commit.gpgsign=false -c core.hooksPath=<tmp>/agr-sync-N/no-hooks commit -m agr sync",
             "git push --no-verify --progress",
@@ -49,7 +49,10 @@ fn a_stale_expected_is_changed_and_nothing_is_written() {
         assert_eq!(got, Err(want));
         let calls = scrub(&fake.calls(), base.path());
         assert_eq!(calls.len(), 1, "{calls:?}");
-        assert!(calls[0].starts_with("gh gist clone"), "{calls:?}");
+        assert!(
+            calls[0].contains(" clone --depth 1 --progress https://gist.github.com/"),
+            "{calls:?}"
+        );
         assert!(fake.pushed.borrow().is_none());
     }
 }
