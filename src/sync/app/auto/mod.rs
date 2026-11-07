@@ -76,6 +76,11 @@ fn session_name(path: &Path) -> Option<String> {
     Some(format!("{agent}/{name}"))
 }
 
+/// File names to look for, Windows ships `gh.exe`, not `gh`.
+pub(super) fn candidates(program: &str, _windows: bool) -> Vec<String> {
+    vec![program.to_string()]
+}
+
 /// True when every program is an executable file in one of the `PATH` directories.
 pub(super) fn on_path(programs: &[&str], path_var: &std::ffi::OsStr) -> bool {
     programs
@@ -125,7 +130,7 @@ pub fn spawn_detached(exe: &Path, args: &[String]) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decide, on_path, Auto, Config, Env, Path, State};
+    use super::{candidates, decide, on_path, Auto, Config, Env, Path, State};
     use crate::config::SyncBackendKind;
     use std::fs;
 
@@ -231,6 +236,12 @@ mod tests {
                     .to_vec()
             )
         );
+    }
+
+    #[test]
+    fn candidates_add_exe_on_windows_only() {
+        assert_eq!(candidates("gh", false), ["gh"]);
+        assert_eq!(candidates("gh", true), ["gh", "gh.exe"]);
     }
 
     #[test]
