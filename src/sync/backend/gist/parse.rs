@@ -319,4 +319,9 @@ mod tests {
         let err = map_failure("gh", "unknown flag: --yes\n\nUsage: ...", Some(1));
         assert!(err.to_string().contains("update gh"), "{err}");
     }
+    #[test]
+    fn git_repository_not_found_is_not_found() {
+        let text = "remote: Repository not found.\nfatal: repository 'https://gist.github.com/x.git/' not found";
+        assert_eq!(map_failure("git", text, Some(128)), BackendError::NotFound);
+    }
 }
