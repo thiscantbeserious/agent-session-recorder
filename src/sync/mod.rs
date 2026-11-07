@@ -166,6 +166,13 @@ mod layer_check {
     }
 
     #[test]
+    fn violations_ignores_use_inside_comments() {
+        let src = "// we use the engine later\n/* use this */\nuse crate::sync::engine::index;";
+        let v = violations("crypto/x.rs", src);
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
     fn violations_flags_sha2_and_aead_outside_crypto() {
         assert_eq!(violations("app/x.rs", "use sha2::Sha256;").len(), 1);
         assert_eq!(violations("engine/x.rs", "use aead::Aead;").len(), 1);
