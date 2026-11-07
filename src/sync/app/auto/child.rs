@@ -138,6 +138,99 @@ mod tests {
         assert_eq!(fs::read(&path).unwrap(), b"changed locally");
     }
 
+    /// Storage with `claude/<name>.cast.gz` files, all pushed once by a manual push.
+    struct World {
+        dir: tempfile::TempDir,
+        backend: crate::sync::backend::memory::MemoryBackend,
+        key: crate::sync::crypto::Key,
+        storage: crate::StorageManager,
+    }
+
+    impl World {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let mut cfg = Config::default();
+            cfg.storage.directory = dir.path().to_string_lossy().into_owned();
+            Self {
+                storage: crate::StorageManager::new(cfg),
+                backend: crate::sync::backend::memory::MemoryBackend::new(),
+                key: crate::sync::crypto::Key::generate(),
+                dir,
+            }
+        }
+
+        fn engine(&self) -> Engine<'_> {
+            Engine {
+                backend: &self.backend,
+                key: &self.key,
+                storage: &self.storage,
+            }
+        }
+
+        fn write(&self, name: &str, body: &[u8]) {
+            fs::create_dir_all(self.dir.path().join("claude")).unwrap();
+            fs::write(self.dir.path().join(format!("claude/{name}.cast.gz")), body).unwrap();
+        }
+
+        fn manual_push(&self, name: &str) {
+            let opts = crate::sync::engine::run::Options {
+                sessions: vec![format!("claude/{name}.cast.gz")],
+                ..Default::default()
+            };
+            assert_eq!(self.engine().push(&opts).unwrap().pushed, 1);
+        }
+
+        fn auto(&self, name: &str) -> Report {
+            run(&self.engine(), &format!("claude/{name}.cast.gz")).unwrap()
+        }
+    }
+
+    #[test]
+    fn auto_run_also_pushes_a_synced_session_changed_since() {
+        let w = World::new();
+        w.write("old", b"v1");
+        w.manual_push("old");
+        w.write("old", b"v2 with markers");
+        w.write("new", b"fresh");
+        let report = w.auto("new");
+        assert_eq!(report.pushed, 2, "{:?}", report.items);
+    }
+
+    #[test]
+    fn auto_run_leaves_never_synced_older_sessions_alone() {
+        let w = World::new();
+        w.write("never", b"old");
+        w.write("new", b"fresh");
+        assert_eq!(w.auto("new").pushed, 1);
+        assert_eq!(w.backend.len(), 2);
+    }
+
+    #[test]
+    fn auto_run_does_not_repush_an_unchanged_synced_session() {
+        let w = World::new();
+        w.write("old", b"v1");
+        w.manual_push("old");
+        w.write("new", b"fresh");
+        assert_eq!(w.auto("new").pushed, 1);
+        assert_eq!(w.auto("new").pushed, 0);
+    }
+
+    #[test]
+    fn a_renamed_synced_session_is_not_pushed_twice() {
+        let w = World::new();
+        w.write("old", b"v1");
+        w.manual_push("old");
+        let dir = w.dir.path().join("claude");
+        fs::rename(dir.join("old.cast.gz"), dir.join("renamed.cast.gz")).unwrap();
+        w.write("new", b"fresh");
+        assert_eq!(w.auto("new").pushed, 1);
+        assert!(!w
+            .auto("new")
+            .items
+            .iter()
+            .any(|i| i.path.contains("renamed")));
+    }
+
     #[test]
     fn take_error_line_returns_and_clears_the_stored_error() {
         let mut state = State {
