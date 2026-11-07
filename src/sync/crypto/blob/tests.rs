@@ -361,3 +361,39 @@ fn hex(b: &[u8]) -> String {
 const KAT_SMALL: &str = "4147523102404142434445464748494a4b4c4d4e4f5051520fcdef0aba5292f8959407780543edc8c71e885971e5e03bbe10372e";
 const KAT_TWO_FRAMES_SHA256: &str =
     "28cb7cd33a57e94b9fc001c82f323a10cbbfb2722b9e276f55e1b9b937bed85a";
+
+#[test]
+fn only_the_final_frame_carries_the_last_flag() {
+    use chacha20poly1305::aead::{Aead, KeyInit, Payload};
+    let k = key(1);
+    let b = blob(FOUR);
+    let (head, frames) = split(&b);
+    assert_eq!(frames.len(), 4);
+    let prefix = &head[5..];
+    let cipher = chacha20poly1305::XChaCha20Poly1305::new(k.as_bytes().into());
+    let aad = aad(PATH, 3);
+    let opens = |i: usize, flag: u8| {
+        let nonce = [prefix, &(i as u32).to_be_bytes(), &[flag]].concat();
+        let pay = Payload {
+            msg: &frames[i],
+            aad: &aad,
+        };
+        cipher.decrypt(nonce.as_slice().into(), pay).is_ok()
+    };
+    for i in 0..4 {
+        assert!(opens(i, u8::from(i == 3)), "frame {i} not under its flag");
+        assert!(
+            !opens(i, u8::from(i != 3)),
+            "frame {i} opens under the other flag"
+        );
+    }
+}
+
+#[test]
+fn empty_last_frame_is_just_a_tag() {
+    let prefix = [3u8; PREFIX_LEN];
+    let mut out = Vec::new();
+    seal_with_prefix(&key(1), PATH, 3, &prefix, &b""[..], &mut out).unwrap();
+    assert_eq!(out.len(), HEADER_LEN + TAG_LEN);
+    assert_eq!(out[HEADER_LEN..], raw_frame(&key(1), &prefix, 0, 1, b""));
+}
