@@ -200,7 +200,8 @@ impl Engine<'_> {
     fn load(&self, sessions: &[String]) -> Result<Loaded, SyncError> {
         let (index, warning) = index::load(&self.storage.storage_dir());
         let remote = self.backend.list()?;
-        let mut rows = scan(self.storage, self.key, &remote, &index, None)
+        let names = (!sessions.is_empty()).then_some(sessions);
+        let mut rows = scan(self.storage, self.key, &remote, &index, names)
             .map_err(|e| SyncError::Failed(e.to_string()))?;
         let mut report = Report {
             warning,

@@ -77,10 +77,17 @@ pub fn scan(
     index: &Index,
     names: Option<&[String]>,
 ) -> Result<Vec<Row>> {
+    let wanted: Option<BTreeSet<String>> =
+        names.map(|n| n.iter().map(|name| wanted_path(storage, name)).collect());
     let mut rows = BTreeMap::new();
     for session in storage.list_sessions(None)? {
         let path = format!("{}/{}", session.agent, session.filename);
-        rows.insert(path.clone(), row(&path, local_state(&session), index));
+        // Rows that `select` drops are listed but never hashed.
+        let local = match &wanted {
+            Some(w) if !w.contains(&path) => Local::Absent,
+            _ => local_state(&session),
+        };
+        rows.insert(path.clone(), row(&path, local, index));
     }
     merge_remotes(&mut rows, key, remote, index);
     fall_back_to_index(&mut rows, index);
@@ -230,13 +237,18 @@ pub(super) fn select(
 
 /// Same lookup as other commands, falls back to the name as a remote-only path.
 fn matching(rows: &[Row], storage: &StorageManager, name: &str) -> Option<String> {
-    let wanted = storage
-        .resolve_cast_path(name)
-        .and_then(|p| relative(storage, &p))
-        .unwrap_or_else(|| slashed(&codec::gzip_sibling(Path::new(name))));
+    let wanted = wanted_path(storage, name);
     rows.iter()
         .find(|r| r.path == wanted)
         .map(|r| r.path.clone())
+}
+
+/// The path a user-given name stands for.
+fn wanted_path(storage: &StorageManager, name: &str) -> String {
+    storage
+        .resolve_cast_path(name)
+        .and_then(|p| relative(storage, &p))
+        .unwrap_or_else(|| slashed(&codec::gzip_sibling(Path::new(name))))
 }
 
 fn relative(storage: &StorageManager, path: &Path) -> Option<String> {
