@@ -77,15 +77,23 @@ fn session_name(path: &Path) -> Option<String> {
 }
 
 /// File names to look for, Windows ships `gh.exe`, not `gh`.
-pub(super) fn candidates(program: &str, _windows: bool) -> Vec<String> {
-    vec![program.to_string()]
+pub(super) fn candidates(program: &str, windows: bool) -> Vec<String> {
+    let mut names = vec![program.to_string()];
+    if windows {
+        names.push(format!("{program}.exe"));
+    }
+    names
 }
 
 /// True when every program is an executable file in one of the `PATH` directories.
 pub(super) fn on_path(programs: &[&str], path_var: &std::ffi::OsStr) -> bool {
     programs
         .iter()
-        .all(|program| std::env::split_paths(path_var).any(|dir| dir.join(program).is_file()))
+        .map(|program| candidates(program, cfg!(windows)))
+        .all(|names| {
+            std::env::split_paths(path_var)
+                .any(|dir| names.iter().any(|name| dir.join(name).is_file()))
+        })
 }
 
 /// Local checks after a recording. Returns the lines to print (at most one) and the
@@ -115,7 +123,13 @@ fn key_exists() -> bool {
         .is_ok_and(std::path::Path::exists)
 }
 
-/// Start `exe args` detached, null stdio, own process group on unix, never waited on.
+/// Windows process creation flags, no console of the parent and no shared Ctrl-C group.
+#[cfg(windows)]
+const DETACHED_PROCESS: u32 = 0x0000_0008;
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+
+/// Start `exe args` detached, null stdio, own group on unix, detached on Windows, never waited on.
 pub fn spawn_detached(exe: &Path, args: &[String]) -> std::io::Result<()> {
     let mut command = Command::new(exe);
     command
@@ -125,6 +139,11 @@ pub fn spawn_detached(exe: &Path, args: &[String]) -> std::io::Result<()> {
         .stderr(Stdio::null());
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    #[cfg(windows)]
+    std::os::windows::process::CommandExt::creation_flags(
+        &mut command,
+        DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+    );
     command.spawn().map(drop)
 }
 
