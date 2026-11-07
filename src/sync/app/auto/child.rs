@@ -159,10 +159,14 @@ mod tests {
     }
 
     #[test]
-    fn error_line_is_none_for_success_and_busy() {
+    fn error_line_is_none_for_success() {
         let ok = report(item(Outcome::Done(1), Decision::Push), 0, 0, 0);
         assert_eq!(error_line(&Ok(ok)), None);
-        assert_eq!(error_line(&Err(SyncError::Busy)), None);
+    }
+
+    #[test]
+    fn error_line_names_the_skipped_session_when_busy() {
+        assert!(error_line(&Err(SyncError::Busy)).is_some());
     }
 
     #[test]
