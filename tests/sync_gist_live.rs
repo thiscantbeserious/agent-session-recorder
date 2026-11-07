@@ -50,12 +50,12 @@ fn gist_parts_stub_and_shrink() {
     let _cleanup = Cleanup(&backend, id.clone());
     assert_eq!(
         gist_files(&id),
-        [".keep", "data.000", "data.001", "data.002", "data.003"]
+        [".keep", "data.000", "data.001", "data.002", "data.003", "manifest"]
     );
     assert_eq!(pull_bytes(&backend, &id).unwrap().1, blob);
     let small = binary_blob(10);
     push_bytes(&backend, &id, Some("live-parts"), "live-shrunk", &small).unwrap();
-    assert_eq!(gist_files(&id), [".keep", "data.000"]);
+    assert_eq!(gist_files(&id), [".keep", "data.000", "manifest"]);
     assert_eq!(pull_bytes(&backend, &id).unwrap().1, small);
 }
 
