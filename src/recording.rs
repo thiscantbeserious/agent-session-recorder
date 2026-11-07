@@ -7,6 +7,7 @@
 
 mod auto_push;
 mod finalize;
+mod post;
 pub use finalize::{finalize_recording, optimize_recording};
 
 use anyhow::{bail, Context, Result};
@@ -125,8 +126,11 @@ impl Recorder {
         println!();
         theme::print_done_banner();
         let final_path = self.finish(&filepath, &agent_dir, &filename, status);
-        self.maybe_auto_analyze(&final_path);
-        self.show_storage_warning()
+        post::after_stop(
+            || self.maybe_auto_analyze(&final_path),
+            || auto_push::after_finalize(&self.config, &final_path),
+            || self.show_storage_warning(),
+        )
     }
 
     fn print_start(agent: &str, filename: &str) {
@@ -187,7 +191,6 @@ impl Recorder {
         let actual_path = Self::resolve_actual_path(filepath, inode, &header, agent_dir);
         self.maybe_optimize(&actual_path);
         let final_path = finalize_recording(&actual_path, &self.config);
-        auto_push::after_finalize(&self.config, &final_path);
         let failed = !status.success() && !self.guard.is_interrupted();
         Self::print_stop(&final_path, filename, failed);
         final_path
