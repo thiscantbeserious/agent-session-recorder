@@ -43,3 +43,17 @@ fn known_answer_for_fixed_key_prefix_path_and_gen() {
     .unwrap();
     assert_eq!(sha256_hex(&two), KAT_TWO_FRAMES_SHA256);
 }
+
+/// sha256 of a three-frame blob (2*FRAME+3 bytes): counters 0, 1 and 2, last flag on frame 2.
+const KAT_THREE_FRAMES_SHA256: &str =
+    "0000000000000000000000000000000000000000000000000000000000000000";
+
+#[test]
+fn known_answer_for_three_frames_pins_counter_two_and_the_last_flag() {
+    let k = Key::from_bytes(core::array::from_fn(|i| i as u8));
+    let prefix: [u8; PREFIX_LEN] = core::array::from_fn(|i| 0x40 + i as u8);
+    let mut out = Vec::new();
+    let src = plain(2 * FRAME + 3);
+    seal_with_prefix(&k, "a/b.cast.gz", 7, &prefix, src.as_slice(), &mut out).unwrap();
+    assert_eq!(sha256_hex(&out), KAT_THREE_FRAMES_SHA256);
+}
