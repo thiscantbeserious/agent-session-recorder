@@ -168,4 +168,11 @@ mod tests {
             ("out\n", "err\n")
         );
     }
+
+    #[test]
+    fn a_grandchild_holding_the_pipe_does_not_block_the_result() {
+        let (out, took) = sh(5000, "(sleep 30 &) ; echo done");
+        assert_eq!(out.unwrap().stdout, "done\n");
+        assert!(took < Duration::from_secs(10), "{took:?}");
+    }
 }
