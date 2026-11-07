@@ -30,6 +30,8 @@ pub enum CryptoError {
     UnsupportedVersion(u8),
     #[error("authentication failed (tampered data, wrong key or wrong context)")]
     Authentication,
+    #[error("blob is too long for one stream")]
+    TooLong,
     #[error("sealed with another key")]
     OtherKey,
     #[error("metadata token is not valid base64url")]

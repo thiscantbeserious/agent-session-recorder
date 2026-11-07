@@ -11,6 +11,9 @@ use sha2::{Digest as _, Sha256};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use thiserror::Error;
 
+#[allow(dead_code)] // switched over in Stage 43
+mod stream;
+
 const MAGIC: &[u8] = b"AGR1";
 const VERSION: u8 = 2;
 const PREFIX_LEN: usize = 19;
