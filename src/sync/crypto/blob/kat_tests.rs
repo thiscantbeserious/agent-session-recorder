@@ -67,7 +67,7 @@ struct Flaky {
 
 impl std::io::Read for Flaky {
     fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
-        if self.hiccup && self.pos > 0 && self.pos % FRAME == 0 {
+        if self.hiccup && self.pos > 0 && self.pos.is_multiple_of(FRAME) {
             self.hiccup = false;
             return Err(std::io::ErrorKind::Interrupted.into());
         }
