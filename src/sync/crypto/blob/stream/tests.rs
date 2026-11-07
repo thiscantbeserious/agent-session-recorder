@@ -1,21 +1,9 @@
 use super::{Opener, Sealer, Stream, PREFIX_LEN};
 use crate::sync::crypto::{CryptoError, Key};
-use chacha20poly1305::aead::stream::EncryptorBE32;
 use chacha20poly1305::aead::{Aead, Payload};
 use chacha20poly1305::XNonce;
 
 const AAD: &[u8] = b"agr:test";
-const FRAME: usize = 64 * 1024;
-const SIZES: [usize; 8] = [
-    0,
-    1,
-    65535,
-    65536,
-    65537,
-    3 * 65536,
-    3 * 65536 + 5,
-    4 * 65536,
-];
 
 fn key() -> Key {
     Key::from_bytes([5; 32])
@@ -50,10 +38,6 @@ fn unhand(ctr: u32, flag: u8, frame: &[u8]) -> Option<Vec<u8>> {
     key().cipher().decrypt(&n, pay).ok()
 }
 
-fn plain(n: usize) -> Vec<u8> {
-    (0..n).map(|i| (i * 31 + 7) as u8).collect()
-}
-
 #[test]
 fn nonce_layout_is_prefix_counter_be_and_flag() {
     for ctr in [0, 1, 0x0102_0304, u32::MAX] {
@@ -64,39 +48,6 @@ fn nonce_layout_is_prefix_counter_be_and_flag() {
                 &nonce(ctr, flag)[..],
                 "{ctr} {flag}"
             );
-        }
-    }
-}
-
-#[test]
-fn matches_aead_stream_be32() {
-    for n in SIZES {
-        let msg = plain(n);
-        let chunks: Vec<&[u8]> = msg.chunks(FRAME).collect();
-        let chunks = if chunks.is_empty() {
-            vec![&msg[..]]
-        } else {
-            chunks
-        };
-        let mut theirs = EncryptorBE32::from_aead(key().cipher(), (&prefix()).into());
-        let mut mine = Sealer::new(&key(), prefix());
-        let mut opener = Opener::new(&key(), prefix());
-        for (i, c) in chunks.iter().enumerate() {
-            let (mut a, mut b) = (c.to_vec(), c.to_vec());
-            if i + 1 < chunks.len() {
-                theirs.encrypt_next_in_place(AAD, &mut a).unwrap();
-                mine.next(AAD, &mut b).unwrap();
-                assert_eq!(a, b, "size {n} frame {i}");
-                opener.next(AAD, &mut a).unwrap();
-                assert_eq!(a, *c, "open size {n} frame {i}");
-            } else {
-                theirs.encrypt_last_in_place(AAD, &mut a).unwrap();
-                mine.last(AAD, &mut b).unwrap();
-                assert_eq!(a, b, "size {n} last");
-                opener.last(AAD, &mut a).unwrap();
-                assert_eq!(a, *c, "open size {n} last");
-                break;
-            }
         }
     }
 }

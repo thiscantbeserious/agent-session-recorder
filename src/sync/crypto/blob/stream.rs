@@ -2,7 +2,7 @@
 //! Nonce = prefix[19] || counter u32 BE || last flag u8, as aead 0.5 `StreamBE32`.
 
 use crate::sync::crypto::{CryptoError, Key};
-use chacha20poly1305::aead::AeadInPlace;
+use chacha20poly1305::aead::AeadInOut;
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 
 pub(super) const PREFIX_LEN: usize = 19;

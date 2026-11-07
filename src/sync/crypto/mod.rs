@@ -10,7 +10,7 @@ pub use phrase::PhraseError;
 pub(in crate::sync) use phrase::{export_phrase, import_phrase};
 pub use seal::{open_meta, seal, seal_meta, Meta};
 
-use chacha20poly1305::aead::{KeyInit, OsRng};
+use chacha20poly1305::aead::{Generate, KeyInit};
 use chacha20poly1305::XChaCha20Poly1305;
 use data_encoding::HEXLOWER;
 use sha2::{Digest, Sha256};
@@ -57,7 +57,7 @@ impl Drop for Key {
 
 impl Key {
     pub fn generate() -> Self {
-        Key(XChaCha20Poly1305::generate_key(&mut OsRng).into())
+        Key(chacha20poly1305::Key::generate().into())
     }
 
     pub(in crate::sync) fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
@@ -103,6 +103,14 @@ mod tests {
         let got = sha256_reader(&b"abc"[..]).unwrap();
         assert_eq!(got, (sha256_hex(b"abc"), 3));
         assert_eq!(sha256_reader(&b""[..]).unwrap(), (sha256_hex(b""), 0));
+    }
+
+    /// 0.11 wipes the key copy in the cipher only with the `zeroize` feature, this stops
+    /// compiling when the feature is dropped from Cargo.toml.
+    #[test]
+    fn cipher_wipes_its_key_on_drop() {
+        fn assert_zod<T: zeroize::ZeroizeOnDrop>() {}
+        assert_zod::<chacha20poly1305::XChaCha20Poly1305>();
     }
 
     #[test]

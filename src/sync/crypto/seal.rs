@@ -1,8 +1,8 @@
 //! One-shot v1 seal and open (`AGR1 || 0x01`) and the sealed metadata token.
 
 use super::{CryptoError, Key};
-use chacha20poly1305::aead::{Aead, AeadCore, OsRng, Payload};
-use chacha20poly1305::XChaCha20Poly1305;
+use chacha20poly1305::aead::{Aead, Generate, Payload};
+use chacha20poly1305::XNonce;
 use data_encoding::BASE64URL_NOPAD;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +25,7 @@ pub struct Meta {
 }
 
 pub fn seal(key: &Key, aad: &[u8], plain: &[u8]) -> Vec<u8> {
-    let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let nonce = XNonce::generate();
     seal_with_nonce(key, &nonce.into(), aad, plain)
 }
 
@@ -33,7 +33,7 @@ fn seal_with_nonce(key: &Key, nonce: &[u8; NONCE_LEN], aad: &[u8], plain: &[u8])
     let payload = Payload { msg: plain, aad };
     let ct = key
         .cipher()
-        .encrypt(nonce.into(), payload)
+        .encrypt(&XNonce::from(*nonce), payload)
         .expect("XChaCha20-Poly1305 encryption cannot fail for in-memory input");
     [MAGIC, &[VERSION], nonce, &ct].concat()
 }
@@ -51,7 +51,10 @@ pub(super) fn open(key: &Key, aad: &[u8], blob: &[u8]) -> Result<Vec<u8>, Crypto
     let (nonce, ct) = blob[HEADER_LEN..].split_at(NONCE_LEN);
     let payload = Payload { msg: ct, aad };
     key.cipher()
-        .decrypt(nonce.into(), payload)
+        .decrypt(
+            &XNonce::try_from(nonce).expect("split at NONCE_LEN"),
+            payload,
+        )
         .map_err(|_| CryptoError::Authentication)
 }
 

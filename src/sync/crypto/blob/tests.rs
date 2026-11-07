@@ -269,22 +269,32 @@ fn frame_nonce_is_prefix_counter_and_last_flag() {
     let pay = |msg| Payload { msg, aad: &aad };
     let all = plain(FRAME + 1);
     let f0 = cipher
-        .encrypt(n0.as_slice().into(), pay(&all[..FRAME]))
+        .encrypt(n0.as_slice().try_into().unwrap(), pay(&all[..FRAME]))
         .unwrap();
     let f1 = cipher
-        .encrypt(n1.as_slice().into(), pay(&all[FRAME..]))
+        .encrypt(n1.as_slice().try_into().unwrap(), pay(&all[FRAME..]))
         .unwrap();
     assert_eq!(out[HEADER_LEN..], [f0, f1].concat());
 }
 
 /// Raw frame sealed by hand: `prefix || ctr BE || flag` nonce, same AAD.
 fn raw_frame(k: &Key, prefix: &[u8; PREFIX_LEN], ctr: u32, flag: u8, msg: &[u8]) -> Vec<u8> {
+    raw_frame_aad(k, prefix, ctr, flag, msg, &aad(PATH, 3))
+}
+
+fn raw_frame_aad(
+    k: &Key,
+    prefix: &[u8; PREFIX_LEN],
+    ctr: u32,
+    flag: u8,
+    msg: &[u8],
+    aad: &[u8],
+) -> Vec<u8> {
     use chacha20poly1305::aead::{Aead, KeyInit, Payload};
     let nonce = [&prefix[..], &ctr.to_be_bytes(), &[flag]].concat();
-    let aad = aad(PATH, 3);
     let cipher = chacha20poly1305::XChaCha20Poly1305::new(k.as_bytes().into());
     cipher
-        .encrypt(nonce.as_slice().into(), Payload { msg, aad: &aad })
+        .encrypt(nonce.as_slice().try_into().unwrap(), Payload { msg, aad })
         .unwrap()
 }
 
@@ -310,16 +320,11 @@ fn valid_last_frame_followed_by_a_valid_frame_is_rejected_by_lookahead_alone() {
 
 #[test]
 fn frames_sealed_without_the_header_in_the_aad_are_rejected() {
-    use chacha20poly1305::aead::stream::EncryptorBE32;
     let k = key(1);
     let prefix = [6u8; PREFIX_LEN];
     let bare = format!("agr:blob:{PATH}:3");
-    let enc = EncryptorBE32::from_aead(k.cipher(), (&prefix).into());
-    let frame = enc.encrypt_last(chacha20poly1305::aead::Payload {
-        msg: b"x",
-        aad: bare.as_bytes(),
-    });
-    let blob = [b"AGR1\x02".as_slice(), &prefix, &frame.unwrap()].concat();
+    let frame = raw_frame_aad(&k, &prefix, 0, 1, b"x", bare.as_bytes());
+    let blob = [b"AGR1\x02".as_slice(), &prefix, &frame].concat();
     assert_eq!(
         crypto_err(open_raw(&k, PATH, 3, &blob).0),
         Some(CryptoError::Authentication)
@@ -378,7 +383,9 @@ fn only_the_final_frame_carries_the_last_flag() {
             msg: &frames[i],
             aad: &aad,
         };
-        cipher.decrypt(nonce.as_slice().into(), pay).is_ok()
+        cipher
+            .decrypt(nonce.as_slice().try_into().unwrap(), pay)
+            .is_ok()
     };
     for i in 0..4 {
         assert!(opens(i, u8::from(i == 3)), "frame {i} not under its flag");

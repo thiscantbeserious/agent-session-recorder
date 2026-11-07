@@ -2,8 +2,7 @@
 //! XChaCha20-Poly1305 in 64 KiB frames, see ADR D9.
 
 use super::{CryptoError, Key};
-use chacha20poly1305::aead::rand_core::RngCore;
-use chacha20poly1305::aead::OsRng;
+use chacha20poly1305::aead::Generate;
 use data_encoding::HEXLOWER;
 use sha2::{Digest as _, Sha256};
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -58,8 +57,7 @@ pub fn seal_stream(
     src: impl Read,
     dst: impl Write,
 ) -> Result<Digest, BlobError> {
-    let mut prefix = [0u8; PREFIX_LEN];
-    OsRng.fill_bytes(&mut prefix);
+    let prefix = <[u8; PREFIX_LEN]>::generate();
     seal_with_prefix(key, path, gen, &prefix, src, dst)
 }
 

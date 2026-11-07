@@ -891,20 +891,20 @@ Depends on: Stage 42
 Goal: the bump, nothing outside `crypto/`, `Cargo.toml` and `Cargo.lock` changes.
 Owner: implementer
 
-- [ ] `Cargo.toml`: `chacha20poly1305 = { version = "0.11", features = ["zeroize"] }`,
+- [x] `Cargo.toml`: `chacha20poly1305 = { version = "0.11", features = ["zeroize"] }`,
       `cargo update -p chacha20poly1305`, the `Cargo.lock` diff equals the ADR dependency table
       (no other crate moves).
-- [ ] `stream.rs` on `AeadInOut::encrypt_in_place` and `decrypt_in_place` (no deprecated
+- [x] `stream.rs` on `AeadInOut::encrypt_in_place` and `decrypt_in_place` (no deprecated
       `AeadInPlace`), `Key::generate` and the prefix via `Generate` (no `OsRng`, no deprecated
       `generate_key`), `seal.rs` nonce via `XNonce::generate()`, `Aead::encrypt` and `Payload` kept.
-- [ ] `matches_aead_stream_be32` removed with the 0.10 reference, test helpers in
+- [x] `matches_aead_stream_be32` removed with the 0.10 reference, test helpers in
       `blob/tests.rs` switch `as_slice().into()` to `try_into().unwrap()`, and
       `frames_sealed_without_the_header_in_the_aad_are_rejected` seals with a hand-built nonce
       instead of `EncryptorBE32` (I11). Assertions and both KAT constants byte-identical
       (check with `git diff -U0` on the `KAT_` lines and `assert_eq!` lines).
-- [ ] `seal_matches_xchacha_known_answer`, `KAT_SMALL`, `KAT_TWO_FRAMES_SHA256` and
+- [x] `seal_matches_xchacha_known_answer`, `KAT_SMALL`, `KAT_TWO_FRAMES_SHA256` and
       `frame_nonce_is_prefix_counter_and_last_flag` pass.
-- [ ] `layer_rules_hold` green, `rg 'chacha20poly1305|aead::' src --glob '!src/sync/crypto/**'` empty.
+- [x] `layer_rules_hold` green, `rg 'chacha20poly1305|aead::' src --glob '!src/sync/crypto/**'` empty.
 
 Files: `Cargo.toml`, `Cargo.lock`, `src/sync/crypto/mod.rs`, `src/sync/crypto/seal.rs`, `src/sync/crypto/blob/stream.rs`, `src/sync/crypto/blob/mod.rs`, `src/sync/crypto/blob/tests.rs`
 Depends on: Stage 43
