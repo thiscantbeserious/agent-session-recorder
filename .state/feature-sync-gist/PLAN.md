@@ -919,7 +919,7 @@ Owner: implementer
       `cargo build --release && ./tests/e2e_test.sh`.
 - [x] A v2 blob sealed before Stage 42 (sealed from HEAD of Stage 41 into a temp file) opens after
       Stage 44.
-- [x] `stream.rs` about 100 lines or less without tests, ADR status of the section set to
+- [ ] `stream.rs` about 100 lines or less without tests, ADR status of the section set to
       Accepted (built), memory note facts unchanged, #167 gets a comment with the dependency diff.
 
 Files: `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
