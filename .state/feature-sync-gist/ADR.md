@@ -145,7 +145,7 @@ wrong prefix, wrong length or bad checksum.
 
 **Decision: Option B**, decided autonomously (review in PR). `token = base64url(sealed JSON)`,
 JSON is `{"v":1,"path":"claude/x.cast.gz","sha256":"<hex>","size":123}`. `.keep` in the gist
-holds only a newline (gists need one text file at create time, `gh gist create` cannot create
+holds a fixed `agr` line (gists need one text file at create time, and `gh` refuses a blank one, `gh gist create` cannot create
 the binary file), the blob lives in `data.000`, `data.001`, ... (see "Large sessions").
 File names reveal neither the tool nor the content, only the `agr:v1 ` description prefix does
 (second machines find their gists by it).

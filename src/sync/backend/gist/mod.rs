@@ -18,7 +18,8 @@ use crate::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 
 /// Neutral dotfile, only there because `gh gist create` refuses an empty gist.
 const STUB_FILE: &str = ".keep";
-const STUB_BODY: &str = "\n";
+/// gh refuses a file that is blank after trimming, so the stub carries a fixed word, no metadata.
+const STUB_BODY: &str = "agr\n";
 /// Holds the sealed manifest token the compare-and-swap checks.
 const MANIFEST_FILE: &str = "manifest";
 /// Placeholder until the blob is pushed, no `agr:v1 ` prefix so `parse_list` skips it.

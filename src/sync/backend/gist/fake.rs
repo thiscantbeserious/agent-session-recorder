@@ -232,7 +232,7 @@ fn create_makes_a_pending_stub_gist_and_nothing_else() {
     let base = tempfile::tempdir().unwrap();
     let id = backend(&fake, base.path()).create().unwrap();
     assert_eq!(id, "abc123");
-    assert_eq!(fake.stub_seen.borrow().as_deref(), Some("\n"));
+    assert_eq!(fake.stub_seen.borrow().as_deref(), Some(STUB_BODY));
     assert_eq!(
         scrub(&fake.calls(), base.path()),
         ["gh gist create <tmp>/agr-sync-N/.keep --desc agr:pending"]
