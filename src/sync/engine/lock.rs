@@ -41,6 +41,13 @@ impl Drop for SyncLock {
 /// `Ok(false)` when the lock exists. The JSON goes to a temp file first and is linked into
 /// place, so the lock never appears empty to a second process.
 fn create(path: &Path) -> Result<bool, SyncError> {
+    create_with(path, |from, to| std::fs::hard_link(from, to))
+}
+
+fn create_with(
+    path: &Path,
+    link: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<bool, SyncError> {
     let fail = |e: std::io::Error| SyncError::Failed(format!("sync lock: {e}"));
     let info = LockInfo {
         pid: std::process::id(),
@@ -49,7 +56,7 @@ fn create(path: &Path) -> Result<bool, SyncError> {
     let json = serde_json::to_string(&info).unwrap_or_default();
     let tmp = path.with_extension(format!("tmp{}", info.pid));
     std::fs::write(&tmp, json).map_err(fail)?;
-    let linked = std::fs::hard_link(&tmp, path);
+    let linked = link(&tmp, path);
     let _ = std::fs::remove_file(&tmp);
     match linked {
         Ok(()) => Ok(true),
@@ -70,6 +77,16 @@ fn holder_alive(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn filesystem_without_hard_links_falls_back_to_create_new() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(LOCK_FILE);
+        let no_links = |_: &Path, _: &Path| Err(std::io::Error::from(ErrorKind::Unsupported));
+        assert!(matches!(create_with(&path, no_links), Ok(true)));
+        assert!(holder_alive(&path));
+        assert!(matches!(create_with(&path, no_links), Ok(false)));
+    }
 
     #[test]
     fn empty_lock_file_is_busy_not_reclaimed() {
