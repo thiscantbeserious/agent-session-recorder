@@ -202,7 +202,7 @@ fn valid_path(path: &str) -> bool {
     parts.len() == 2
         && parts
             .iter()
-            .all(|p| !p.is_empty() && !p.starts_with('.') && !p.contains('\\'))
+            .all(|p| !p.is_empty() && !p.starts_with('.') && !p.contains(['\\', ':']))
         && parts[1].ends_with(".cast.gz")
 }
 
