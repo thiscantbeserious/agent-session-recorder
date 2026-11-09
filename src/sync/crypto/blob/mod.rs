@@ -30,6 +30,13 @@ pub enum BlobError {
 /// Plaintext SHA-256 (hex) and size seen by the sealer or opener.
 pub(super) type Digest = (String, u64);
 
+/// Exact byte count of a sealed blob for `size` plain bytes: header, one tag per frame, an
+/// empty input still has one (last) frame.
+pub fn sealed_len(size: u64) -> u64 {
+    let frames = size.div_ceil(FRAME as u64).max(1);
+    HEADER_LEN as u64 + size + frames * TAG_LEN as u64
+}
+
 fn aad(path: &str, gen: u64) -> Vec<u8> {
     let tail = format!(":{gen}");
     [

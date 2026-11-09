@@ -2,7 +2,7 @@
 
 #![allow(dead_code)] // Repo of Stage 51 uses it
 
-use crate::sync::crypto::blob::{seal_stream, BlobError};
+use crate::sync::crypto::blob::{open_stream, seal_stream, sealed_len, BlobError};
 use crate::sync::crypto::Key;
 use crate::sync::pack::index::Entry;
 use crate::sync::store::{PackStore, StoreError};
@@ -28,7 +28,7 @@ pub fn segment<'a>(
     file: &'a Path,
 ) -> io::Result<FileSegment<'a>> {
     Ok(FileSegment {
-        len: 0,
+        len: sealed_len(std::fs::metadata(file)?.len()),
         key,
         path,
         gen,
@@ -40,7 +40,11 @@ impl FileSegment<'_> {
     /// Streams the sealed blob into `dst`, one frame in memory at a time.
     pub fn write(&self, dst: &mut dyn Write) -> io::Result<()> {
         let src = File::open(self.file)?;
-        seal_stream(self.key, self.path, self.gen, src, dst).map_err(io::Error::other)?;
+        let (_, size) =
+            seal_stream(self.key, self.path, self.gen, src, dst).map_err(io::Error::other)?;
+        if sealed_len(size) != self.len {
+            return Err(io::Error::other("session file changed while sealing"));
+        }
         Ok(())
     }
 }
@@ -56,13 +60,18 @@ pub enum RangeError {
 
 /// Opens the range of `entry` from pack `id` into `out`, returns plaintext hash and size.
 pub fn open_range(
-    _key: &Key,
-    _store: &dyn PackStore,
-    _id: &str,
-    _entry: &Entry,
-    _out: &mut Vec<u8>,
+    key: &Key,
+    store: &dyn PackStore,
+    id: &str,
+    entry: &Entry,
+    out: &mut Vec<u8>,
 ) -> Result<(String, u64), RangeError> {
-    Ok((String::new(), 0))
+    let src = store.read(id, entry.offset, entry.length)?;
+    // ponytail: whole session in memory, `out` only gets plaintext once every frame verified
+    let mut opened = Vec::new();
+    let digest = open_stream(key, &entry.path, entry.gen, src, &mut opened)?;
+    *out = opened;
+    Ok(digest)
 }
 
 #[cfg(test)]

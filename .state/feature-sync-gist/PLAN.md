@@ -1039,7 +1039,7 @@ PR: B
   - `range_read_opens_the_second_session` [`assert_eq!(sha256(opened), sha256(file))` after two appends to a `MemoryStore`]
   - `blob_under_other_path_or_gen_fails` [`assert!(matches!(err, CryptoError::Authentication))`]
   - `truncated_range_fails` [`assert!(open_range(.., len - 1).is_err())` and `assert!(out.is_empty())`, no partial plaintext]
-- [ ] GREEN commit: `segment(path, gen, file)`, `open_range`. The sealed length comes from a pure `sealed_len(size)` in `crypto/blob`, added there when it does not exist yet.
+- [x] GREEN commit: `segment(path, gen, file)`, `open_range`. The sealed length comes from a pure `sealed_len(size)` in `crypto/blob`, added there when it does not exist yet.
 
 Files: `src/sync/pack/mod.rs`, `src/sync/pack/stream.rs`, `src/sync/crypto/blob/mod.rs`
 Depends on: Stage 48
