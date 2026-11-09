@@ -139,3 +139,13 @@ fn duplicated_pack_is_merged_and_reported() {
     assert_eq!(view.get("x").unwrap().places.len(), 2);
     assert!(view.get("t").unwrap().is_deleted());
 }
+
+#[test]
+fn both_ids_of_a_duplicate_are_frozen() {
+    let rows = || vec![entry("x", 1, "h", 10, false)];
+    let (a, b) = (pack("a", "T", 10, rows()), pack("b", "T", 10, rows()));
+    let c = pack("c", "U", 10, rows());
+    let view = merge(&[a, b, c]);
+    assert!(view.is_frozen("a") && view.is_frozen("b"));
+    assert!(!view.is_frozen("c"));
+}

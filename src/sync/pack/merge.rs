@@ -143,8 +143,8 @@ fn duplicates(packs: &[PackIn], view: &mut View) {
             for b in &ids[i + 1..] {
                 view.duplicates.push((a.to_string(), b.to_string()));
             }
-            view.frozen.insert(a.to_string());
         }
+        view.frozen.extend(ids.iter().map(|id| id.to_string()));
     }
 }
 
