@@ -113,7 +113,7 @@ fn pack_description_is_agr_v2_and_uuid_only() {
 
 fn range_calls(calls: &[String]) -> Vec<String> {
     let mut out = Vec::new();
-    for call in calls.iter().filter(|c| c.starts_with("curl ")) {
+    for call in calls.iter().filter(|c| c.starts_with("gh api -H Range: ")) {
         let name = call.rsplit('/').next().unwrap_or_default();
         let range = call
             .split("Range: ")
@@ -148,10 +148,44 @@ fn read_range_requests_only_covering_parts() {
 }
 
 #[test]
+fn read_range_uses_gh_api_not_curl() {
+    let mut fake = Fake::with(vec![ok(&pages(&[vec![three_parts()]])), ok("")]);
+    fake.remote = vec![("data.001".into(), (0..100).collect())];
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(&fake, dir.path());
+    store.list().unwrap();
+    std::io::Read::read_to_end(&mut store.read("a", 105, 10).unwrap(), &mut Vec::new()).unwrap();
+    let calls = fake.calls();
+    assert!(calls.iter().all(|c| !c.starts_with("curl")));
+    assert!(calls
+        .iter()
+        .any(|c| c.starts_with("gh api -H Range: bytes=")));
+}
+
+#[test]
+fn read_range_is_binary_safe() {
+    let original: Vec<u8> = (0..=255u8).chain([0xff, 0xfe, 0xc3, 0x28]).collect();
+    let files = [("index", 10), ("data.000", original.len() as u64)];
+    let item = gist("a", "agr:v2 TAG", "t1", &files);
+    let mut fake = Fake::with(vec![ok(&pages(&[vec![item]])), ok("")]);
+    fake.remote = vec![("data.000".into(), original.clone())];
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(&fake, dir.path());
+    store.list().unwrap();
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(
+        &mut store.read("a", 0, original.len() as u64).unwrap(),
+        &mut bytes,
+    )
+    .unwrap();
+    assert_eq!(bytes, original);
+}
+
+#[test]
 fn failed_raw_url_read_is_a_store_error_no_clone() {
     let fake = Fake::with(vec![
         ok(&pages(&[vec![three_parts()]])),
-        fail("curl: (7) Failed to connect"),
+        fail("dial tcp: no such host"),
     ]);
     let dir = tempfile::tempdir().unwrap();
     let store = store(&fake, dir.path());

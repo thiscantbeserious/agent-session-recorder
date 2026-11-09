@@ -90,9 +90,6 @@ impl Fake {
             let stub = std::fs::read_to_string(&args[2]).unwrap();
             *self.stub_seen.borrow_mut() = Some(stub);
         }
-        if program == "curl" {
-            self.curl_body(args);
-        }
         if program == "git" && args.iter().any(|a| a == "clone") {
             let dir = PathBuf::from(args.last().unwrap());
             std::fs::create_dir_all(&dir).unwrap();
@@ -111,20 +108,15 @@ impl Fake {
 }
 
 impl Fake {
-    /// A `curl -H "Range: bytes=a-b" -o <file> <url>`: writes that range of the `remote` file
-    /// named like the last url segment.
-    fn curl_body(&self, args: &[String]) {
-        let after = |flag: &str| args.iter().skip_while(|a| *a != flag).nth(1);
-        let range = args.iter().find_map(|a| a.strip_prefix("Range: bytes="));
-        let name = args.last().and_then(|u| u.rsplit('/').next());
-        let (Some(out), Some(range), Some(name)) = (after("-o"), range, name) else {
-            return;
-        };
-        let (from, to) = range.split_once('-').expect("a-b range");
-        let (from, to): (usize, usize) = (from.parse().unwrap(), to.parse().unwrap());
-        if let Some((_, body)) = self.remote.iter().find(|(n, _)| n == name) {
-            std::fs::write(out, &body[from..=to]).unwrap();
-        }
+    /// The `remote` bytes a `gh api -H "Range: bytes=a-b" <raw_url>` reads, the file is named like
+    /// the last url segment.
+    fn raw_body(&self, program: &str, args: &[String]) -> Option<Vec<u8>> {
+        let range = args.iter().find_map(|a| a.strip_prefix("Range: bytes="))?;
+        let name = args.last()?.rsplit('/').next()?;
+        let (from, to) = range.split_once('-')?;
+        let (from, to): (usize, usize) = (from.parse().ok()?, to.parse().ok()?);
+        let (_, body) = self.remote.iter().find(|(n, _)| n == name)?;
+        (program == "gh").then(|| body[from..=to].to_vec())
     }
 }
 
@@ -160,10 +152,12 @@ impl Runner for &Fake {
         }
         self.calls.borrow_mut().push(call);
         self.side_effects(program, args, cwd);
-        self.replies
-            .borrow_mut()
-            .pop_front()
-            .unwrap_or_else(|| ok(""))
+        let reply = self.replies.borrow_mut().pop_front();
+        let mut out = reply.unwrap_or_else(|| ok(""))?;
+        if let (true, Some(body)) = (out.success(), self.raw_body(program, args)) {
+            out.stdout = String::from_utf8_lossy(&body).into_owned();
+        }
+        Ok(out)
     }
 }
 

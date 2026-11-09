@@ -35,6 +35,20 @@ pub trait Runner {
         env: &[(&str, String)],
     ) -> std::io::Result<Output>;
 
+    /// Like `run`, stdout goes byte for byte into the file `dest`, `Output.stdout` stays empty.
+    /// The default writes the lossy text of `run`.
+    fn run_to_file(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &[(&str, String)],
+        dest: &Path,
+    ) -> std::io::Result<Output> {
+        let mut out = self.run(program, args, None, env)?;
+        std::fs::write(dest, std::mem::take(&mut out.stdout))?;
+        Ok(out)
+    }
+
     /// Like `run`, `on_line` also sees every line the process prints on stderr while it runs.
     /// `\r` and `\n` both end a line, git redraws its progress with `\r`. The default ignores them.
     fn run_watched(
