@@ -23,7 +23,7 @@ HOME_B="$SYNC_ROOT/home_b"
 # sync_setup <home>: isolated HOME with sync on and its own sessions dir
 sync_setup() {
     mkdir -p "$1/.config/agr" "$1/sessions"
-    printf '[storage]\ndirectory = "%s"\n[sync]\nbackend = "gist"\n[recording]\nfilename_template = "{directory}_{date}_{time:%%H%%M%%S%%f}"\n' "$1/sessions" > "$1/.config/agr/config.toml"
+    printf '[storage]\ndirectory = "%s"\n[sync]\nbackend = "gist"\nauto_push = true\n[recording]\nfilename_template = "{directory}_{date}_{time:%%H%%M%%S%%f}"\n' "$1/sessions" > "$1/.config/agr/config.toml"
 }
 
 # sync_agr <home> <args...>: run agr as that machine
@@ -134,7 +134,7 @@ else
 fi
 
 test_header "auto push off keeps the session local"
-printf '[sync]\nbackend = "gist"\nauto_push = false\n' >> "$HOME_A/.config/agr/config.toml"
+sed -i.bak 's/^auto_push = true/auto_push = false/' "$HOME_A/.config/agr/config.toml"
 BEFORE=$(ls "$SYNC_REMOTE"/*.blob | wc -l | tr -d ' ')
 HOME="$HOME_A" XDG_CONFIG_HOME="$HOME_A/.config" PATH="$SYNC_ROOT/fakebin:$PATH" \
     AGR_SYNC_TEST_BACKEND_DIR="$SYNC_REMOTE" "$AGR" record echo -- "stay local" </dev/null >/dev/null 2>&1 || true

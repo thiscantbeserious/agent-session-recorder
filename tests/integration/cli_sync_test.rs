@@ -138,6 +138,7 @@ fn sync_off_prints_how_to_enable_and_spawns_nothing() {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn status_without_gh_and_git_names_both_tools_and_the_install_hint() {
     let remote = remote();
