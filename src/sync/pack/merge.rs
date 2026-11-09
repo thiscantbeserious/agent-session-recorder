@@ -121,6 +121,7 @@ pub fn merge(packs: &[PackIn]) -> View {
 fn reject(err: &IndexError) -> Rejected {
     match err {
         IndexError::OtherKey => Rejected::OtherKey,
+        IndexError::OtherPack => Rejected::OtherPack,
         IndexError::UnknownVersion(v) => Rejected::UnknownVersion(*v),
         _ => Rejected::Bad,
     }
