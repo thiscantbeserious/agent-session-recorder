@@ -105,3 +105,9 @@ fn unknown_version_pack_is_reported() {
     let view = merge(&[rejected_pack("bad", IndexError::UnknownVersion(4))]);
     assert_eq!(view.rejected[0].1, Rejected::UnknownVersion(4));
 }
+
+#[test]
+fn index_of_other_pack_is_reported() {
+    let view = merge(&[rejected_pack("bad", IndexError::OtherPack)]);
+    assert_eq!(view.rejected[0].1, Rejected::OtherPack);
+}
