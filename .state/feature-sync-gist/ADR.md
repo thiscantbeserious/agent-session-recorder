@@ -1418,16 +1418,17 @@ Restic defaults to 16 MiB and allows 4 to 128 MiB. **Decision**: `[sync] pack_si
 
 #### Append and seal (one machine, its open pack)
 1. **Find the open pack**: the gist id sits in the local sync index as `open_pack`. When it is missing, the merged view is searched for an unsealed pack with our writer id, and when there is none `create` makes a new gist with an empty index (the index is non-blank text, as such `gh gist create` takes it, no `.keep` any more). The id is saved locally right after the create.
-2. **Clone**: `git clone --depth 1 --filter=blob:none --no-checkout` into a temp dir outside the storage dir, which downloads the commit and the tree only. The index blob is read from that clone, so index and parts belong to the same commit.
-3. **Check**: the index opens with our key, its writer is ours, it is not sealed and its `len` equals the sum of the part sizes in the tree and the `expected_len` the engine planned against. Anything else is `Moved`.
+2. **Cached clone**: the machine keeps one full clone of its own open pack in the cache dir, at most one pack size (64 MiB by default). The first append clones it, every later append does a `git fetch` plus fast-forward only, which downloads nothing new when only this machine writes. A missing cache is cloned again once. The index blob is read from that clone, so index and parts belong to the same commit. A partial clone does not work here, git fetches the existing parts during commit and push (second probe, 2026-11-09).
+   - **Cache path and cleanup**: `<user cache dir>/agr/packs/<gist id>` (`dirs::cache_dir()`), created with 0700 on unix, deleted when the pack is sealed, on `Moved` and when its writer id or length does not match.
+3. **Check**: the index opens with our key, its writer is ours (a cache from another writer id is deleted and cloned again), it is not sealed and its `len` equals the sum of the part sizes in the tree and the `expected_len` the engine planned against. Anything else is `Moved`.
 4. **Write**: the sessions are sealed straight from their files into new part files behind the last one, never into an existing part.
 5. **Index**: the new index is the old entries plus the new ones, the new `len`, and `sealed: true` when a seal threshold is reached.
-6. **Commit and push**: one commit with the new parts and the new index, one plain `git push`, never forced.
+6. **Commit and push**: one commit with the new parts and the new index, one plain `git push`, never forced. Only the new parts are uploaded, the old ones are already in the cached clone and on the remote.
 7. **Local index**: saved after the push returned, with sha256, gen and stamp per session and the new `open_pack` length. After a seal `open_pack` is cleared and the next append creates a new pack.
 
 **Why a crash leaves a consistent pack**: a git push moves the branch from the old commit to the new one in one step, as such a reader sees either the old index with the old parts or the new index with all new parts, never parts without their index or an index without its parts. A crash before the push changes nothing remote. A crash after the push but before the local save leaves remote entries whose hash equals the local file, the next run plans them `InSync` and refreshes the local index, which the plan already does today. Old bytes are never rewritten, as such no crash can damage data that was already pushed.
 
-**Rejected push**: only possible when two machines share a writer id (config dir copied). The append drops its local commit, clones again, re-checks the index (sealed or longer than planned means we start a fresh pack) and redoes the append once on top, then it fails with "changed on the remote, run again". Part numbers are recomputed on the retry, so the two writers never overwrite each other.
+**Rejected push**: only possible when two machines share a writer id (config dir copied). The append deletes its cached clone, clones again, re-checks the index (sealed or longer than planned means we start a fresh pack) and redoes the append once on top, then it fails with "changed on the remote, run again". Part numbers are recomputed on the retry, so the two writers never overwrite each other.
 
 #### Merge and what replaces compare-and-swap
 **Merge rules** (pure, `pack::merge`), over the indexes of all `agr:v2` packs:
@@ -1477,20 +1478,22 @@ sequenceDiagram
     P->>P: open and merge indexes
     E->>E: scan, plan against merged view
     P->>S: append(open pack, expected_len, segments, index)
-    S->>G: clone --depth 1 --filter=blob:none
-    S->>S: check len, write new data parts, new index
-    S->>G: commit, plain push (paced 10 s per gist)
+    S->>S: cached clone of the open pack, clone once if missing
+    S->>G: fetch, fast-forward only
+    S->>S: check writer and len, write new data parts, new index
+    S->>G: commit, plain push of the new parts only (paced 10 s per gist)
+    S->>S: delete the cached clone on seal
     E->>E: local index: sha256, gen, stamp, open_pack len
     P->>P: seal threshold reached, next append creates a new pack
     P->>S: read_index of all packs once more, report a fork
 ```
-Legend: data parts and index land in one commit, the local index is saved only after the push returned, a manual push of many sessions repeats the append per pack.
+Legend: data parts and index land in one commit, the local index is saved only after the push returned, a manual push of many sessions repeats the append per pack, the cache holds only the own open pack.
 
 #### Status and pull cost
 - **Status**: one paginated `gh api gists` listing, then one `gh api gists/<id>` per pack, which returns the index content in full because it stays under 1 MB. No git clone at all. With the 721 sessions of 440 MiB from the first push that is about 7 sealed packs plus one open pack per machine, so about 10 API calls against the limit of 5000 per hour. A local cache of sealed indexes is a quick win later, sealed packs never change.
-- **Pull of one session**: a `--filter=blob:none --depth 1` clone of its pack gist (commit and tree only), the index read from that clone, then `git cat-file` on only the parts that cover its range. Cost: a small session at most one part of 8 MiB, a big session its own parts. We take partial clone for every pull because it is verified on gists and needs no size rule. `raw_url` would work for single parts too (every part is under 10 MB, the docs require a clone only above that), but serving binary parts of a secret gist through `raw_url` is not verified, as such it is an option for Stage 1, not the plan.
+- **Pull of one session**: the index from the API, then a `raw_url` plus `Range` read of only the parts that cover its range (verified on secret gists for 8 MiB binary parts, Stage 46). Fallback when `raw_url` fails: a `--filter=blob:none --depth 1` clone of its pack gist (commit and tree only) and `git cat-file` on the covering parts. Cost: a small session at most one part of 8 MiB, a big session its own parts. Reads need no cached clone, only appends do.
 - **Pull of everything**: every live part once, plus the dead bytes that share a part with a live session.
-- **Range reads**: not used. `read(id, offset, len)` already takes a range, a store that can do HTTP range requests (S3) uses it later without a trait change.
+- **Range reads**: the gist store uses them through `raw_url`, `read(id, offset, len)` already takes a range, as such an S3 store uses the same call later without a trait change.
 
 #### Changes, deletes and `agr sync prune`
 A changed session (markers, optimize) is a new blob at gen + 1 in the open pack, the old blob is dead bytes. A delete is a tombstone, its blobs are dead bytes too. Small packs do not need cleanup any more, packs only end small when a big session got its own pack. Prune exists only for dead data.
@@ -1573,7 +1576,7 @@ The dry-run prints `N sessions to move (size), M already moved, K empty stubs to
 - A directory or S3 store implements six methods later, the format above it does not change.
 
 ### Open risks
-1. **Append from a partial clone**: partly verified on 2026-11-09. Commit and push from a `--depth 1 --filter=blob:none --no-checkout` clone work and the full clone is byte-identical, but git lazily fetched the existing `data.000` during the append, so with a 64 MiB pack every append would download it. The second probe `append_fetch_trigger` (which step fetches, which recipe avoids it) is pending. Fallback if no recipe exists: keep a clone of the own open pack in the cache dir, only this machine writes it so it stays current.
+1. **Append from a partial clone**: resolved on 2026-11-09, not possible (second probe, see Verified facts). **Branch C chosen**: a cached clone of the own open pack in the cache dir, at most one pack size (64 MiB) locally, deleted on seal, cloned again once if missing. `expected_len` and the writer check still guard against a stale cache, and an append uploads only its new parts.
 2. **Forks after the write**: two machines can both report success and then a fork, which is new for users used to "changed on the remote, run again". Wording in status has to make the next step obvious.
 3. **Writer id copied** with the config dir: two machines then append to one open pack. The `expected_len` check plus the rejected push, re-clone and one retry keep it safe, but it is the one place where two writers meet, a test with two writers on one id is mandatory.
 4. **Lost writer id or local state**: a machine that loses `state.toml` gets a new writer id and its old open pack stays open forever. Harmless (readable, merged, never written), prune leaves it alone, a `prune --seal-orphans` can come later if it matters.
@@ -1619,18 +1622,26 @@ The dry-run prints `N sessions to move (size), M already moved, K empty stubs to
 - A 700 KiB index comes back `truncated:false` through `gh api`, 1.2 MiB comes back truncated at about 900 KiB.
 - **Failed**: `append.data000_never_fetched`. After commit and push `data.000` (3 MiB) was in the local object store and the odb grew 6163 KiB, which is `data.000` plus `data.001`. Git lazily fetched the existing blob during the append, so every append of a 64 MiB pack would download it. The second probe `append_fetch_trigger` finds the step that does it.
 
+**Second probe `append_fetch_trigger`, run by the user on 2026-11-09** (`tests/pack_probe_live.rs`, git 2.50.1 Apple Git-155, the test gist deleted afterwards, 404 confirmed):
+- `clone`, `read_tree` and `add` pass, `data.000` stays missing and the odb stays at up to 74 KiB.
+- `commit_plain`, `commit_fsmonitor_off` and `commit_tree` fail, `data.000` (about 3155 KiB) is fetched during the commit, even with `git commit-tree`.
+- Every push variant pushes fine but fetches `data.000`: plain, `--no-thin`, `pack.useBitmaps=false` and `fetch.negotiationAlgorithm=noop`.
+- With `GIT_NO_LAZY_FETCH=1` the push fails with "could not fetch 02a8... from promisor remote, failed to push some refs", so git really needs the old blob.
+- `clone_sparse_cone` fails. `sparse_noncone_checkout` passes, the steps after it did not run because `git add` outside the sparse definition needs `--sparse` (a probe bug, fixed, no finding).
+- **Conclusion**: appending to a gist from a partial clone without downloading the existing parts is not possible, Stage 53 takes branch C.
+
 ### Stages (rough, no PLAN yet)
 1. **Probe**: ignored live test against a real secret gist, append from a `--depth 1 --filter=blob:none` clone, binary part round trip through clone and through `raw_url`, index read through the API with `truncated: false`, file cap. Decides risk 1 and the `raw_url` option.
 2. **Store trait**: `PackStore` with memory and directory stores, layer rules for `pack/` and `store/`.
 3. **Pack index and stream**: index format, seal thresholds, sealing sessions into segments, reading a range back into blob v2, pure tests for every boundary.
 4. **Merge**: forks, tombstones, multiple places, `OtherKey` and `UnknownVersion` per pack, pure tests.
 5. **Engine on the repo**: plan against the merged view, push as appends, pull via range read, delete as tombstone, local index v2 with `open_pack`, fork after push.
-6. **Gist store**: one gist per pack, parts moved from `parts.rs` with 8 MiB cut at session boundaries, index via API, append via partial clone, `Moved` and one retry, 10 s pacing per gist, progress per append.
+6. **Gist store**: one gist per pack, parts moved from `parts.rs` with 8 MiB cut at session boundaries, index via API, append via a cached clone of the own open pack, `Moved` and one retry, 10 s pacing per gist, progress per append.
 7. **Auto push**: one append per drain round on top of the queue.
 8. **Status and output**: forks, `OtherKey` per pack, prune hint, live line per append.
 9. **Prune**: planner (pure), copy live sessions and tombstones, visibility check, delete sealed pack gists.
 10. **Migrate**: recognise, dry-run, move with the old reader, delete, resume. Then drop the old gist code.
 11. **Docs**: `docs/architecture/sync.md`, wiki command pages.
-12. **Later**: `agr share`, `raw_url` reads if Stage 1 allows, a local cache of sealed indexes, S3.
+12. **Later**: `agr share`, a local cache of sealed indexes, S3.
     - the backend name should state host and kind, for example `github-gist`.
     - a self-hosted GitLab backend comes later.

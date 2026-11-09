@@ -949,9 +949,8 @@ Rough size: PR B about 26 files, PR C about 60 files (the deleted `backend/` fil
 - The reviewer checks `git log --oneline` for the RED and GREEN pair of every item, a missing RED commit is a blocking finding.
 - Sizes: functions about 20 lines, files under 400 lines, tests move into a sibling `tests.rs` once a module passes about 250 lines. Every stage names where a split is expected.
 
-**Probe branches**: Stage 46 decides ADR Open risk 1. Result of 2026-11-09: partial clone append works and secret gists read, but git lazily fetched the existing 3 MiB blob during the append, so the second probe `append_fetch_trigger` decides the recipe.
-- **Branch P** (partial clone plus the recipe from the second probe): append and pull clone with `--depth 1 --filter=blob:none --no-checkout` into a temp dir outside the storage dir, nothing is cached, plus the commit and push recipe from `append_fetch_trigger` that fetches no old part. Taken only if the probe finds a recipe with zero download.
-- **Branch C** (cached clone of the own open pack): kept under `<cache dir>/agr/packs/<id>`, fast-forwarded before every append and removed after its seal or on `Moved`. Taken if no recipe exists.
+**Probe branches**: Stage 46 decided ADR Open risk 1 on 2026-11-09. Partial clone append works and secret gists read, but the second probe `append_fetch_trigger` showed git fetches the existing parts during every commit and push variant, and with `GIT_NO_LAZY_FETCH=1` the push fails. No recipe exists, as such branch C is the plan.
+- **Branch C** (cached clone of the own open pack): kept under `<cache dir>/agr/packs/<id>` with 0700 on unix, at most one pack size locally, fast-forwarded before every append, removed after its seal, on `Moved` and on a writer id or length mismatch, cloned again once if missing.
 - **Reads**: the `raw_url` plus `Range` read is the planned primary read for single sessions (verified on secret gists for 8 MiB binary parts), partial clone plus `git cat-file` is the fallback.
 
 ### Stage 46: Pack probe against real secret gists (live, by hand)
@@ -964,8 +963,8 @@ PR: B
 - [ ] Default `cargo test` stays offline, the probe only runs with `--ignored`.
 - [ ] The user runs `cargo test --test pack_probe_live -- --ignored --nocapture --test-threads=1` by hand and hands over the `PROBE:` lines.
 - [x] First live run (2026-11-09) recorded in the ADR: partial clone push and `raw_url` plus Range pass, the existing blob was fetched during the append.
-- [ ] Second probe `append_fetch_trigger` written (compile only) and run by the user: `cargo test --test pack_probe_live append_fetch_trigger -- --ignored --nocapture --test-threads=1`. Every `PROBE: fetch.<step>` line says which step fetches `data.000`.
-- [ ] ADR Open risk 1 is closed as branch P (with the recipe written down) or branch C (no recipe exists).
+- [x] Second probe `append_fetch_trigger` written (compile only) and run by the user (2026-11-09, every commit and push fetched `data.000`): `cargo test --test pack_probe_live append_fetch_trigger -- --ignored --nocapture --test-threads=1`. Every `PROBE: fetch.<step>` line says which step fetches `data.000`.
+- [x] ADR Open risk 1 is closed as branch C (no recipe exists).
 
 Files: `tests/pack_probe_live.rs`, `.state/feature-sync-gist/ADR.md`
 Depends on: Stage 45
@@ -1079,21 +1078,21 @@ Considerations: `layout.rs` pure (about 150 lines), `mod.rs` only the `PackStore
 
 ### Stage 53: Gist store append, PR B gates
 
-Goal: `append` per ADR "Append and seal" steps 2, 4 and 6 (steps 3 and 5 are the pack layer), in the branch Stage 46 picked (second probe `append_fetch_trigger`).
+Goal: `append` per ADR "Append and seal" steps 2, 4 and 6 (steps 3 and 5 are the pack layer), in branch C (cached clone of the own open pack), picked by the second probe `append_fetch_trigger` on 2026-11-09.
 Owner: implementer
 PR: B
 
 - [ ] RED commit: `tree_len_not_expected_is_moved`, the sum of the part sizes in the tree differs from `expected_len`, fails on `assert!(matches!(err, StoreError::Moved))` with a stub that pushes anyway.
 - [ ] RED commit: `rejected_push_is_moved` (non-fast-forward stderr, no `--force` in the args), `append_is_one_commit_with_parts_and_index`, `pushes_to_one_gist_are_paced_10s` (second append on the same id waits 10 s on the fake clock, other mutating calls keep 1 s), `progress_percent_belongs_to_the_append`.
-- [ ] Branch P (partial clone plus the recipe from the second probe): GREEN commit clones `--depth 1 --filter=blob:none --no-checkout` into a temp dir and commits and pushes with the recipe that fetched no old part. A RED test `append_commands_match_the_recipe` pins the recorded git calls.
-- [ ] Branch C (cached clone of the own open pack, only if no recipe exists): extra RED commit `cached_clone_is_reused_then_dropped_on_seal` and `cached_clone_dropped_on_moved`, then GREEN with the clone under `<cache dir>/agr/packs/<id>`, fast-forward only.
+- [ ] RED commit (branch C, cached clone of the own open pack, Stage 46 second probe ruled out partial clone appends): `cached_clone_is_reused_across_appends` (second append runs `git fetch` plus `merge --ff-only`, no second `clone` in the recorded calls), `cached_clone_removed_on_seal`, `missing_cached_clone_is_cloned_once` (exactly one `clone`, a second failure is `Other`, no loop), `cached_clone_of_other_writer_is_rejected_and_recloned`, `cached_clone_with_stale_len_is_rejected_and_recloned`, `cached_clone_dropped_on_moved`, `cache_path_is_inside_user_cache_dir` (`<cache dir>/agr/packs/<id>`), `cache_dir_is_0700_on_unix` (`#[cfg(unix)]`).
+- [ ] GREEN commit: full clone into `<cache dir>/agr/packs/<id>` on first use, `git fetch` plus fast-forward only after that, the push uploads only the new parts.
 - [ ] `tests/pack_gist_live.rs` (ignored): create, two appends, read both ranges, delete. The user runs it once.
 - [ ] PR B gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo +1.88 check --all-targets --locked`, `cargo check --target x86_64-pc-windows-msvc`, `git diff --stat origin/feature/sync-gist...HEAD` under 100 files, `wc -l` of every new file under 400.
 
-Files: `src/sync/store/gist/mod.rs`, `src/sync/store/gist/append.rs`, `src/sync/store/gist/tests.rs`, `src/sync/backend/gist/pace.rs`, `tests/pack_gist_live.rs`
+Files: `src/sync/store/gist/mod.rs`, `src/sync/store/gist/append.rs`, `src/sync/store/gist/cache.rs`, `src/sync/store/gist/tests.rs`, `src/sync/backend/gist/pace.rs`, `tests/pack_gist_live.rs`
 Depends on: Stage 46, Stage 51, Stage 52
 
-Considerations: the one retry lives in `Repo` (Stage 51), the store only reports `Moved`. `append.rs` under 250 lines in branch P, branch C may need `append/cache.rs`.
+Considerations: the one retry lives in `Repo` (Stage 51), the store only reports `Moved`. `append.rs` under 250 lines, the cache handling goes into `cache.rs`.
 
 ### Stage 54: Engine and app on the Repo, local index v2
 
@@ -1125,7 +1124,7 @@ PR: C
 - [ ] RED commit: `burst_during_drain_lands_in_the_next_round_together` (2 appends), `single_recording_is_pushed_without_waiting` (no local buffering).
 - [ ] RED commit: `n_parallel_recordings_pushed_exactly_once` (P13): 8 threads finish a recording each while a drain runs on a `MemoryStore`, afterwards the merged view has all 8 paths, every path has exactly one entry at gen 1 and the queue is empty. Fails on `assert_eq!(view.len(), 8)` with a stub drain that takes the queue once and drops what arrives during the round.
 - [ ] GREEN commit.
-- [ ] Probe dependency: no code difference here. Cost per round is a tree only clone in branch P and a fetch of the cached clone in branch C, both covered by Stage 53.
+- [ ] Probe dependency: no code difference here. Cost per round is a fetch of the cached clone (branch C), covered by Stage 53.
 
 Files: `src/sync/app/auto/mod.rs`, `src/sync/app/auto/child.rs`, `src/sync/engine/queue.rs`, `src/recording/auto_push.rs`, `tests/integration/sync_queue_test.rs`
 Depends on: Stage 54
@@ -1296,7 +1295,7 @@ Depends on: Stage 61
 35. Stage 49
 36. Stage 50
 37. Stage 51
-38. Stage 53 (waits for the Stage 46 result)
+38. Stage 53
 39. Stage 54
 40. Stage 55
 41. Stage 56
