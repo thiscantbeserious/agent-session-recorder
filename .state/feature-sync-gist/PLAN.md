@@ -1034,17 +1034,17 @@ Goal: `pack/stream.rs` turns session files into `Segment`s (blob v2 with path an
 Owner: implementer
 PR: B
 
-- [ ] RED commit: `segment_len_equals_written_bytes` for plain sizes 0, 1, 64 KiB, 64 KiB + 1 [`assert_eq!(seg.len, written)`, stub `len` of 0].
-- [ ] RED commit:
+- [x] RED commit: `segment_len_equals_written_bytes` for plain sizes 0, 1, 64 KiB, 64 KiB + 1 [`assert_eq!(seg.len, written)`, stub `len` of 0].
+- [x] RED commit:
   - `range_read_opens_the_second_session` [`assert_eq!(sha256(opened), sha256(file))` after two appends to a `MemoryStore`]
   - `blob_under_other_path_or_gen_fails` [`assert!(matches!(err, CryptoError::Authentication))`]
   - `truncated_range_fails` [`assert!(open_range(.., len - 1).is_err())` and `assert!(out.is_empty())`, no partial plaintext]
-- [ ] GREEN commit: `segment(path, gen, file)`, `open_range`. The sealed length comes from a pure `sealed_len(size)` in `crypto/blob`, added there when it does not exist yet.
+- [x] GREEN commit: `segment(path, gen, file)`, `open_range`. The sealed length comes from a pure `sealed_len(size)` in `crypto/blob`, added there when it does not exist yet.
 
 Files: `src/sync/pack/mod.rs`, `src/sync/pack/stream.rs`, `src/sync/crypto/blob/mod.rs`
 Depends on: Stage 48
 
-Considerations: `stream.rs` under 200 lines. `crypto/blob/mod.rs` is 186 lines, `sealed_len` stays a few lines, KAT constants untouched.
+Considerations: `stream.rs` under 200 lines. `crypto/blob/mod.rs` is 252 lines (pack AAD and `sealed_len` included), KAT constants untouched. `open_range` streams into a writer, `segment` and `open_range` take the pack uuid for the segment AAD.
 
 ### Stage 50: Merge
 
@@ -1096,6 +1096,7 @@ PR: B
 - [ ] RED commit: `read_pack_takes_the_key_as_argument` (P9, room for `agr share`): `pack::read_pack(store, id, &key)` opens one pack sealed with a test key that is not the sync key, without the merge and without any global or app key [`assert_eq!(sessions.len(), 2)`, the stub returns an empty vec].
 - [ ] RED commit:
   - `read_session_tries_next_place_on_not_found` [`assert_eq!(sha, want)` with the first place deleted]
+  - `read_session_writes_to_temp_and_renames_only_on_success` [`assert!(!target.exists())` and no hidden temp file left after an error, `open_range` streams into a hidden temp file, digest and size are checked, rename only on success, the temp is deleted on error]
   - `read_session_checks_sha256_after_open` [`assert!(matches!(err, ReadError::HashMismatch))` and `assert!(!target.exists())`, a range that opens under the right AAD but whose plaintext hash differs from the index is never written]
   - `tombstone_appends_deleted_at_gen_plus_one` [`assert_eq!((e.gen, e.deleted), (4, true))`]
   - `fork_created_by_push_is_reported_by_the_re_read` [`assert_eq!(report.forks, vec!["x"])`]

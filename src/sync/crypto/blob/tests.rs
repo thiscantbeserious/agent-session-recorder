@@ -1,6 +1,6 @@
 use super::{
-    aad, open_blob, open_stream, seal_blob, seal_stream, seal_with_prefix, BlobError, CryptoError,
-    Digest, Key, FRAME, HEADER_LEN, PREFIX_LEN, TAG_LEN,
+    aad, open_blob, open_stream, seal_blob, seal_stream, seal_with_prefix, sealed_len, BlobError,
+    CryptoError, Digest, Key, FRAME, HEADER_LEN, PREFIX_LEN, TAG_LEN,
 };
 use crate::sync::crypto::sha256_hex;
 
@@ -367,4 +367,11 @@ fn empty_last_frame_is_just_a_tag() {
     seal_with_prefix(&key(1), PATH, 3, &prefix, &b""[..], &mut out).unwrap();
     assert_eq!(out.len(), HEADER_LEN + TAG_LEN);
     assert_eq!(out[HEADER_LEN..], raw_frame(&key(1), &prefix, 0, 1, b""));
+}
+
+#[test]
+fn sealed_len_matches_the_sealed_blob() {
+    for n in SIZES {
+        assert_eq!(sealed_len(n as u64), blob(n).len() as u64, "plain size {n}");
+    }
 }

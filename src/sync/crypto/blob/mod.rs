@@ -17,6 +17,7 @@ const VERSION: u8 = 2;
 const HEADER_LEN: usize = MAGIC.len() + 1 + PREFIX_LEN;
 const FRAME: usize = 64 * 1024;
 const AAD_PREFIX: &[u8] = b"agr:blob:";
+const PACK_AAD_PREFIX: &[u8] = b"agr:pack-blob:";
 
 /// Errors from sealing or opening a streamed blob.
 #[derive(Debug, Error)]
@@ -28,7 +29,14 @@ pub enum BlobError {
 }
 
 /// Plaintext SHA-256 (hex) and size seen by the sealer or opener.
-pub(super) type Digest = (String, u64);
+pub type Digest = (String, u64);
+
+/// Exact byte count of a sealed blob for `size` plain bytes: header, one tag per frame, an
+/// empty input still has one (last) frame.
+pub fn sealed_len(size: u64) -> u64 {
+    let frames = size.div_ceil(FRAME as u64).max(1);
+    HEADER_LEN as u64 + size + frames * TAG_LEN as u64
+}
 
 fn aad(path: &str, gen: u64) -> Vec<u8> {
     let tail = format!(":{gen}");
@@ -36,6 +44,21 @@ fn aad(path: &str, gen: u64) -> Vec<u8> {
         MAGIC,
         &[VERSION],
         AAD_PREFIX,
+        path.as_bytes(),
+        tail.as_bytes(),
+    ]
+    .concat()
+}
+
+/// AAD of a pack segment, the pack uuid (base32, no colon) binds it to its pack.
+fn pack_aad(pack: &str, path: &str, gen: u64) -> Vec<u8> {
+    let tail = format!(":{gen}");
+    [
+        MAGIC,
+        &[VERSION],
+        PACK_AAD_PREFIX,
+        pack.as_bytes(),
+        b":",
         path.as_bytes(),
         tail.as_bytes(),
     ]
@@ -65,6 +88,19 @@ pub fn seal_stream(
 ) -> Result<Digest, BlobError> {
     let prefix = <[u8; PREFIX_LEN]>::generate();
     seal_with_prefix(key, path, gen, &prefix, src, dst)
+}
+
+/// `seal_stream` for a segment of pack `pack`, the pack uuid is part of the AAD.
+pub fn seal_pack_stream(
+    key: &Key,
+    pack: &str,
+    path: &str,
+    gen: u64,
+    src: impl Read,
+    dst: impl Write,
+) -> Result<Digest, BlobError> {
+    let prefix = <[u8; PREFIX_LEN]>::generate();
+    seal_with_aad(key, &pack_aad(pack, path, gen), &prefix, src, dst)
 }
 
 /// `last` consumes the sealer, so the Option makes a second last frame impossible.
@@ -101,18 +137,28 @@ fn seal_with_prefix(
     gen: u64,
     prefix: &[u8; PREFIX_LEN],
     src: impl Read,
+    dst: impl Write,
+) -> Result<Digest, BlobError> {
+    seal_with_aad(key, &aad(path, gen), prefix, src, dst)
+}
+
+fn seal_with_aad(
+    key: &Key,
+    aad: &[u8],
+    prefix: &[u8; PREFIX_LEN],
+    src: impl Read,
     mut dst: impl Write,
 ) -> Result<Digest, BlobError> {
     dst.write_all(&[MAGIC, &[VERSION], prefix].concat())?;
     let mut enc = Some(Sealer::new(key, *prefix));
-    let (aad, mut src) = (aad(path, gen), BufReader::new(src));
+    let mut src = BufReader::new(src);
     let (mut hasher, mut size, mut buf) =
         (Sha256::new(), 0u64, Vec::with_capacity(FRAME + TAG_LEN));
     loop {
         let last = read_frame(&mut src, &mut buf, FRAME)?;
         hasher.update(&buf);
         size += buf.len() as u64;
-        seal_frame(&mut enc, last, &aad, &mut buf)?;
+        seal_frame(&mut enc, last, aad, &mut buf)?;
         dst.write_all(&buf)?;
         if last {
             return Ok((HEXLOWER.encode(&hasher.finalize()), size));
@@ -142,12 +188,32 @@ pub fn open_stream(
     path: &str,
     gen: u64,
     src: impl Read,
+    dst: impl Write,
+) -> Result<Digest, BlobError> {
+    open_with_aad(key, &aad(path, gen), src, dst)
+}
+
+/// `open_stream` for a segment of pack `pack`.
+pub fn open_pack_stream(
+    key: &Key,
+    pack: &str,
+    path: &str,
+    gen: u64,
+    src: impl Read,
+    dst: impl Write,
+) -> Result<Digest, BlobError> {
+    open_with_aad(key, &pack_aad(pack, path, gen), src, dst)
+}
+
+fn open_with_aad(
+    key: &Key,
+    aad: &[u8],
+    src: impl Read,
     mut dst: impl Write,
 ) -> Result<Digest, BlobError> {
     let mut src = BufReader::new(src);
     let prefix = read_header(&mut src)?;
     let mut dec = Some(Opener::new(key, prefix));
-    let aad = aad(path, gen);
     let (mut hasher, mut size, mut buf) =
         (Sha256::new(), 0u64, Vec::with_capacity(FRAME + TAG_LEN));
     loop {
@@ -155,7 +221,7 @@ pub fn open_stream(
         if buf.len() < TAG_LEN {
             return Err(CryptoError::Truncated.into());
         }
-        open_frame(&mut dec, last, &aad, &mut buf)?;
+        open_frame(&mut dec, last, aad, &mut buf)?;
         hasher.update(&buf);
         size += buf.len() as u64;
         dst.write_all(&buf)?;
