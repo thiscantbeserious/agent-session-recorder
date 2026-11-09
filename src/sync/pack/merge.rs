@@ -92,10 +92,13 @@ pub fn merge(packs: &[PackIn]) -> View {
     for p in packs {
         if let Ok(idx) = &p.index {
             for e in &idx.entries {
-                let slot = view.merged.entry(e.path.clone());
-                let cur = slot.or_insert_with(|| first(&p.id, e));
-                if e.gen > cur.gen {
-                    *cur = first(&p.id, e);
+                match view.merged.get_mut(&e.path) {
+                    None => {
+                        view.merged.insert(e.path.clone(), first(&p.id, e));
+                    }
+                    Some(cur) if e.gen > cur.gen => *cur = first(&p.id, e),
+                    Some(cur) if e.gen == cur.gen => cur.places.push(place(&p.id, e)),
+                    Some(_) => {}
                 }
             }
         }
@@ -109,11 +112,15 @@ fn first(pack: &str, e: &Entry) -> Merged {
         top: Top::Live {
             sha256: e.sha256.clone(),
         },
-        places: vec![Place {
-            pack: pack.to_string(),
-            offset: e.offset,
-            length: e.length,
-            sha256: e.sha256.clone(),
-        }],
+        places: vec![place(pack, e)],
+    }
+}
+
+fn place(pack: &str, e: &Entry) -> Place {
+    Place {
+        pack: pack.to_string(),
+        offset: e.offset,
+        length: e.length,
+        sha256: e.sha256.clone(),
     }
 }
