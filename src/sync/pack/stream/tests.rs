@@ -167,3 +167,16 @@ fn segment_write_returns_the_sealed_digest() {
     assert_eq!(digest.0, sha256_hex(&std::fs::read(&file).unwrap()));
     assert_eq!(digest.1, 12);
 }
+
+#[test]
+fn same_size_rewrite_is_caught_by_the_digest() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("s.cast");
+    std::fs::write(&file, b"before").unwrap();
+    let planned = sha256_hex(&std::fs::read(&file).unwrap());
+    let key = Key::generate();
+    let seg = segment(&key, "a/s.cast", 1, &file).unwrap();
+    std::fs::write(&file, b"after!").unwrap();
+    let (digest, _) = seg.write(&mut Vec::new()).unwrap();
+    assert_ne!(digest, planned);
+}

@@ -21,6 +21,11 @@ pub struct FileSegment<'a> {
 }
 
 /// Seals `file` under `path` and `gen` (both in the AAD) once `write` runs.
+///
+/// `len` comes from the size now, only the digest `write` returns is authoritative: the caller
+/// compares it to the planned entry, a same-size rewrite in between changes the digest. A
+/// session still being recorded is skipped by caller policy, the engine skips locked sessions
+/// (`SkipReason::Locked`, `engine/scan.rs`) before it plans anything.
 pub fn segment<'a>(
     key: &'a Key,
     path: &'a str,
