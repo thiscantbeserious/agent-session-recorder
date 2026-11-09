@@ -4,6 +4,7 @@ mod app;
 mod backend;
 mod crypto;
 mod engine;
+mod store;
 
 pub use app::{auto, format, key, setup};
 pub use backend::gist::ProgressSink;
@@ -26,6 +27,7 @@ pub mod testing {
     pub use crate::sync::engine::plan::{decide, resolve, Command, Remote};
     pub use crate::sync::engine::queue;
     pub use crate::sync::engine::scan::{scan, Row};
+    pub use crate::sync::store::{Listing, PackInfo, PackStore, Segment, StoreError};
 }
 
 #[cfg(test)]
