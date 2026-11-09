@@ -231,6 +231,14 @@ mod layer_check {
     }
 
     #[test]
+    fn violations_match_whole_path_segments_only() {
+        // `super::supervise` is not `super::super`, `crate::sync::appx` is not `crate::sync::app`.
+        assert!(violations("store/x.rs", "fn f() { super::supervise(); }").is_empty());
+        assert!(violations("engine/x.rs", "use crate::sync::appx::Thing;").is_empty());
+        assert_eq!(violations("store/x.rs", "use super::super::x;").len(), 1);
+    }
+
+    #[test]
     fn violations_allows_sibling_imports_within_layer() {
         let src = "use crate::sync::{engine::index, backend::BlobSource};";
         assert!(violations("engine/x.rs", src).is_empty());
