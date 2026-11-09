@@ -18,7 +18,7 @@ mod tests_session;
 pub use push::{PushItem, PushReport};
 pub use read::{read_pack, ReadError};
 
-use crate::sync::crypto::Key;
+use crate::sync::crypto::{open_meta, Key};
 use crate::sync::pack::index::{open_index, Index};
 use crate::sync::pack::merge::{merge, PackIn, View};
 use crate::sync::store::{PackStore, StoreError};
@@ -88,6 +88,14 @@ impl<'a> Repo<'a> {
         target: u64,
         hint: Option<&str>,
     ) -> Result<Self, RepoError> {
+        let legacy = store.list()?.legacy;
+        let ours = |d: &String| {
+            let token = d.strip_prefix("agr:v1 ").unwrap_or_default().trim();
+            open_meta(key, token).is_ok()
+        };
+        if legacy.iter().any(ours) {
+            return Err(RepoError::NeedsMigrate);
+        }
         Self::open_for_migrate(store, key, writer, target, hint)
     }
 
