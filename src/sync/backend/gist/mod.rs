@@ -11,7 +11,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use self::pace::{Clock, Pacer, SystemClock};
-use self::parse::{check_auth, id_from_create_output, map_failure, parse_list, DESC_PREFIX};
+use self::parse::{
+    check_auth, id_from_create_output, map_failure, parse_list, receiving_percent, writing_percent,
+    DESC_PREFIX,
+};
 use self::parts::{check_sequence, part_names, PartReader, PartWriter, PART_SIZE};
 use self::runner::{Output, ProcessRunner, Runner};
 use self::scratch::Scratch;
@@ -74,6 +77,17 @@ fn strings(args: &[&str]) -> Vec<String> {
     args.iter().map(ToString::to_string).collect()
 }
 
+fn io_result(tool: &'static str, result: std::io::Result<Output>) -> Result<Output, BackendError> {
+    match result {
+        Ok(out) => Ok(out),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(BackendError::NotInstalled(tool)),
+        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Err(BackendError::Other(format!(
+            "{tool} stalled, nothing came back in time, retry with `agr sync push`"
+        ))),
+        Err(e) => Err(BackendError::Other(format!("{tool}: {}", e.kind()))),
+    }
+}
+
 /// The stored manifest of a clone, `None` when the gist has none yet.
 fn read_manifest(repo: &Path) -> Result<Option<String>, BackendError> {
     match std::fs::read_to_string(repo.join(MANIFEST_FILE)) {
@@ -130,16 +144,29 @@ impl<R: Runner> GistBackend<R> {
         cwd: Option<&Path>,
         env: &[(&str, String)],
     ) -> Result<Output, BackendError> {
-        match self.runner.run(tool, &strings(args), cwd, env) {
-            Ok(out) => Ok(out),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                Err(BackendError::NotInstalled(tool))
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Err(BackendError::Other(
-                format!("{tool} stalled, nothing came back in time, retry with `agr sync push`"),
-            )),
-            Err(e) => Err(BackendError::Other(format!("{tool}: {}", e.kind()))),
+        io_result(tool, self.runner.run(tool, &strings(args), cwd, env))
+    }
+
+    /// Like `run_ok`, the percent that `parse` finds in the stderr lines goes to the progress
+    /// sink, when there is one.
+    fn run_progress(
+        &self,
+        args: &[&str],
+        cwd: Option<&Path>,
+        parse: fn(&str) -> Option<u8>,
+    ) -> Result<Output, BackendError> {
+        let Some(sink) = &self.progress else {
+            return self.run_ok("git", args, cwd);
+        };
+        let mut on_line = |line: &str| parse(line).iter().for_each(|p| sink(*p));
+        let out = self
+            .runner
+            .run_watched("git", &strings(args), cwd, &[], &mut on_line);
+        let out = io_result("git", out)?;
+        if out.success() {
+            return Ok(out);
         }
+        Err(map_failure("git", &out.stderr, out.code))
     }
 
     /// Like `run` but a non-zero exit becomes a mapped error.
@@ -166,14 +193,18 @@ impl<R: Runner> GistBackend<R> {
         Err(map_failure(tool, &out.stderr, out.code))
     }
 
-    fn clone_gist(&self, id: &str, scratch: &Scratch) -> Result<PathBuf, BackendError> {
+    fn clone_gist(
+        &self,
+        id: &str,
+        scratch: &Scratch,
+        parse: fn(&str) -> Option<u8>,
+    ) -> Result<PathBuf, BackendError> {
         let dir = scratch.join("clone");
         let target = dir.to_string_lossy().into_owned();
         // HTTPS with gh as the credential helper, never SSH: `gh gist clone` follows the
         // user's git_protocol and an unknown host key would prompt and stall the run.
         let url = format!("https://gist.github.com/{id}.git");
-        self.run_ok(
-            "git",
+        self.run_progress(
             &[
                 "-c",
                 "credential.helper=",
@@ -187,6 +218,7 @@ impl<R: Runner> GistBackend<R> {
                 &target,
             ],
             None,
+            parse,
         )?;
         Ok(dir)
     }
@@ -236,8 +268,7 @@ impl<R: Runner> GistBackend<R> {
         // `--progress` keeps stderr talking off a terminal, the runner's stall timer needs it.
         // Plain push, never forced and never retried, a rejection is `Changed(None)`.
         self.pace();
-        self.run_ok(
-            "git",
+        self.run_progress(
             &[
                 "-c",
                 "credential.helper=",
@@ -248,6 +279,7 @@ impl<R: Runner> GistBackend<R> {
                 "--progress",
             ],
             Some(repo),
+            writing_percent,
         )?;
         Ok(())
     }
@@ -311,7 +343,7 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
         blob: BlobSource,
     ) -> Result<(), BackendError> {
         let scratch = Scratch::create(&self.temp_base)?;
-        let repo = self.clone_gist(id, &scratch)?;
+        let repo = self.clone_gist(id, &scratch, |_| None)?;
         let current = read_manifest(&repo)?;
         if current.as_deref() != expected {
             return Err(BackendError::Changed(current));
@@ -327,7 +359,7 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
     /// clone and removes it when dropped.
     fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn Read>), BackendError> {
         let scratch = Scratch::create(&self.temp_base)?;
-        let repo = self.clone_gist(id, &scratch)?;
+        let repo = self.clone_gist(id, &scratch, receiving_percent)?;
         let manifest = read_manifest(&repo)?;
         let names =
             part_names(&repo).map_err(|e| BackendError::Other(format!("read clone: {e}")))?;

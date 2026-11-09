@@ -122,13 +122,19 @@ pub(super) fn check_auth(output: &str) -> Result<(), BackendError> {
 }
 
 /// Percent of a `git push --progress` line like `Writing objects:  45% (9/20), 12.00 MiB | 3.00 MiB/s`.
-pub(super) fn writing_percent(_line: &str) -> Option<u8> {
-    None
+pub(super) fn writing_percent(line: &str) -> Option<u8> {
+    percent_after(line, "Writing objects:")
 }
 
 /// Percent of a `git clone --progress` line like `Receiving objects:  45% (9/20), 12.00 MiB | 3.00 MiB/s`.
-pub(super) fn receiving_percent(_line: &str) -> Option<u8> {
-    None
+pub(super) fn receiving_percent(line: &str) -> Option<u8> {
+    percent_after(line, "Receiving objects:")
+}
+
+fn percent_after(line: &str, label: &str) -> Option<u8> {
+    let rest = line.strip_prefix(label)?.trim_start();
+    let (digits, _) = rest.split_once('%')?;
+    digits.parse::<u8>().ok().filter(|p| *p <= 100)
 }
 
 #[cfg(test)]

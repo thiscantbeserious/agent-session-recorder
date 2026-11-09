@@ -59,12 +59,21 @@ pub(super) struct Lines {
 impl Lines {
     /// Calls `f` for every line the chunk completes, empty lines are skipped.
     pub(super) fn push(&mut self, chunk: &[u8], f: &mut dyn FnMut(&str)) {
-        let _ = (chunk, f);
+        for byte in chunk {
+            if matches!(byte, b'\r' | b'\n') {
+                self.finish(f);
+            } else {
+                self.tail.push(*byte);
+            }
+        }
     }
 
     /// The last line when the stream ended without a line break.
     pub(super) fn finish(&mut self, f: &mut dyn FnMut(&str)) {
-        let _ = f;
+        if !self.tail.is_empty() {
+            f(&String::from_utf8_lossy(&self.tail));
+            self.tail.clear();
+        }
     }
 }
 
@@ -92,6 +101,17 @@ impl Runner for ProcessRunner {
         cwd: Option<&Path>,
         env: &[(&str, String)],
     ) -> std::io::Result<Output> {
+        self.run_watched(program, args, cwd, env, &mut |_| {})
+    }
+
+    fn run_watched(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: Option<&Path>,
+        env: &[(&str, String)],
+        on_line: &mut dyn FnMut(&str),
+    ) -> std::io::Result<Output> {
         let mut command = Command::new(program);
         command
             .args(args)
@@ -104,17 +124,24 @@ impl Runner for ProcessRunner {
         }
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
         let child = command.spawn()?;
-        supervise(child, program, self.stall)
+        supervise(child, program, self.stall, on_line)
     }
 }
 
 /// Drain both pipes in threads that stamp every read, kill the child once nothing was read
-/// for `stall`.
-fn supervise(mut child: Child, program: &str, stall: Duration) -> std::io::Result<Output> {
+/// for `stall`. New stderr bytes go to `on_line` on every poll and once more after the exit.
+fn supervise(
+    mut child: Child,
+    program: &str,
+    stall: Duration,
+    on_line: &mut dyn FnMut(&str),
+) -> std::io::Result<Output> {
     let last = Arc::new(Mutex::new(Instant::now()));
     let stdout = drain(child.stdout.take(), &last);
     let stderr = drain(child.stderr.take(), &last);
+    let mut watcher = Watcher::default();
     let status = loop {
+        watcher.feed(&stderr.bytes, on_line);
         if let Some(status) = child.try_wait()? {
             break status;
         }
@@ -132,11 +159,39 @@ fn supervise(mut child: Child, program: &str, stall: Duration) -> std::io::Resul
         }
         std::thread::sleep(POLL);
     };
+    let (stdout, stderr_text) = (
+        finish(stdout),
+        finish_watched(stderr, &mut watcher, on_line),
+    );
     Ok(Output {
         code: status.code(),
-        stdout: finish(stdout),
-        stderr: finish(stderr),
+        stdout,
+        stderr: stderr_text,
     })
+}
+
+/// How far into the stderr bytes the lines were cut.
+#[derive(Default)]
+struct Watcher {
+    seen: usize,
+    lines: Lines,
+}
+
+impl Watcher {
+    fn feed(&mut self, bytes: &Mutex<Vec<u8>>, on_line: &mut dyn FnMut(&str)) {
+        let all = bytes.lock().unwrap_or_else(PoisonError::into_inner);
+        self.lines.push(&all[self.seen..], on_line);
+        self.seen = all.len();
+    }
+}
+
+/// `finish`, then the bytes that came after the last poll and the unterminated last line.
+fn finish_watched(drain: Drain, watcher: &mut Watcher, on_line: &mut dyn FnMut(&str)) -> String {
+    let _ = drain.eof.recv_timeout(GRACE);
+    watcher.feed(&drain.bytes, on_line);
+    watcher.lines.finish(on_line);
+    let bytes = drain.bytes.lock().unwrap_or_else(PoisonError::into_inner);
+    String::from_utf8_lossy(&bytes).into_owned()
 }
 
 /// Bytes read so far and a signal that the pipe hit EOF.
