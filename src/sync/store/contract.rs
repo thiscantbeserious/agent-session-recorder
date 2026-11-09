@@ -70,6 +70,15 @@ pub fn append_is_all_or_nothing(store: &dyn PackStore) {
     assert_eq!(store.read_index(&id).expect("index"), "i1");
 }
 
+pub fn segment_len_mismatch_is_rejected(store: &dyn PackStore) {
+    let id = pack_with_abc(store);
+    let w = put(b"defg");
+    let res = store.append(&id, 3, "i1", &[seg(3, &w)], "i2");
+    assert!(matches!(res, Err(StoreError::Other(_))), "{res:?}");
+    assert_eq!(len_of(store, &id), 3);
+    assert_eq!(store.read_index(&id).expect("index"), "i1");
+}
+
 pub fn read_returns_the_exact_range(store: &dyn PackStore) {
     let id = pack_with_abc(store);
     let w = put(b"defg");
@@ -107,6 +116,7 @@ pub fn contract(store: &dyn PackStore) {
     moved_carries_the_current_index(store);
     zero_segment_append_replaces_only_the_index(store);
     append_is_all_or_nothing(store);
+    segment_len_mismatch_is_rejected(store);
     read_returns_the_exact_range(store);
     create_then_list_shows_len_zero_and_tag(store);
     delete_then_read_index_is_not_found(store);
@@ -121,6 +131,7 @@ macro_rules! contract_tests {
             moved_carries_the_current_index,
             zero_segment_append_replaces_only_the_index,
             append_is_all_or_nothing,
+            segment_len_mismatch_is_rejected,
             read_returns_the_exact_range,
             create_then_list_shows_len_zero_and_tag,
             delete_then_read_index_is_not_found
