@@ -21,7 +21,18 @@ pub enum StoreError {
 
 impl fmt::Display for StoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("")
+        match self {
+            Self::NotInstalled(tool) => write!(f, "{tool} is not installed or not on PATH"),
+            Self::NotLoggedIn => f.write_str("not logged in, run `gh auth login`"),
+            Self::MissingScope => {
+                f.write_str("the gh token has no `gist` scope, run `gh auth refresh -s gist`")
+            }
+            Self::Unreachable(why) => write!(f, "remote not reachable: {why}"),
+            Self::RateLimited => f.write_str("GitHub rate limit reached, run again later"),
+            Self::NotFound => f.write_str("remote pack not found"),
+            Self::Moved(_) => f.write_str("changed on the remote, run again"),
+            Self::Other(msg) => f.write_str(msg),
+        }
     }
 }
 
