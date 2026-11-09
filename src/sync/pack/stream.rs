@@ -67,11 +67,7 @@ pub fn open_range(
     dst: &mut dyn Write,
 ) -> Result<Digest, RangeError> {
     let src = store.read(id, entry.offset, entry.length)?;
-    // ponytail: whole session in memory, `dst` only gets plaintext once every frame verified
-    let mut opened = Vec::new();
-    let digest = open_stream(key, &entry.path, entry.gen, src, &mut opened)?;
-    dst.write_all(&opened).map_err(BlobError::Io)?;
-    Ok(digest)
+    Ok(open_stream(key, &entry.path, entry.gen, src, dst)?)
 }
 
 #[cfg(test)]
