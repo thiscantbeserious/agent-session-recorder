@@ -97,7 +97,7 @@ pub trait PackStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::StoreError;
 
     #[test]
     fn store_error_messages_name_the_next_step() {
@@ -109,5 +109,11 @@ mod tests {
         assert!(msg.contains("run again later"), "{msg}");
         let msg = StoreError::NotFound.to_string();
         assert!(msg.contains("not found"), "{msg}");
+    }
+
+    #[test]
+    fn debug_of_moved_hides_the_index() {
+        let shown = format!("{:?}", StoreError::Moved("secret".into()));
+        assert!(!shown.contains("secret"), "{shown}");
     }
 }
