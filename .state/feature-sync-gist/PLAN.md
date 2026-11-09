@@ -1052,7 +1052,7 @@ Goal: `pack/merge.rs`, the five merge rules of the ADR as pure functions over op
 Owner: implementer
 PR: B
 
-- [ ] RED commit: `highest_gen_wins` [`assert_eq!(view.get("a").unwrap().gen, 4)`, the stub keeps the first entry seen].
+- [x] RED commit: `highest_gen_wins` [`assert_eq!(view.get("a").unwrap().gen, 4)`, the stub keeps the first entry seen].
 - [ ] RED commit:
   - `same_hash_twice_is_one_session_two_places` [`assert_eq!(view.get("a").unwrap().places.len(), 2)`]
   - `different_hash_same_top_gen_is_fork` [`assert_eq!(view.forks, vec!["a"])`]

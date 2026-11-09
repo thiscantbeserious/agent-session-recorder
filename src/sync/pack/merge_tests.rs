@@ -1,0 +1,43 @@
+use crate::sync::pack::index::{Entry, Index};
+use crate::sync::pack::merge::{merge, PackIn};
+
+pub(super) fn entry(path: &str, gen: u64, sha: &str, length: u64, deleted: bool) -> Entry {
+    Entry {
+        path: path.to_string(),
+        gen,
+        sha256: sha.to_string(),
+        size: length,
+        offset: 0,
+        length,
+        deleted,
+        at: "2026-11-09T10:00:00Z".to_string(),
+    }
+}
+
+pub(super) fn pack(id: &str, tag: &str, len: u64, entries: Vec<Entry>) -> PackIn {
+    let index = Index {
+        v: 3,
+        pack: tag.to_string(),
+        writer: "w".to_string(),
+        sealed: false,
+        len,
+        entries,
+    };
+    PackIn {
+        id: id.to_string(),
+        tag: tag.to_string(),
+        index: Ok(index),
+    }
+}
+
+#[test]
+fn highest_gen_wins() {
+    let p = pack(
+        "p",
+        "P",
+        90,
+        vec![entry("a", 2, "x", 40, false), entry("a", 4, "y", 50, false)],
+    );
+    let view = merge(&[p]);
+    assert_eq!(view.get("a").unwrap().gen, 4);
+}
