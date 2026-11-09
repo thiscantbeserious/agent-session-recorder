@@ -156,6 +156,41 @@ fn read_range_requests_only_covering_parts() {
     assert_eq!(bytes, (5..15).collect::<Vec<u8>>());
 }
 
+/// Reads `offset..offset + len` of the three parts (100, 100, 50 bytes) of `joined`.
+fn read_joined(offset: u64, len: u64) -> (Vec<u8>, Vec<u8>) {
+    let joined: Vec<u8> = (0..250u32).map(|i| (i * 7 % 251) as u8).collect();
+    let mut replies = vec![ok(&pages(&[vec![three_parts()]]))];
+    replies.extend((0..3).map(|_| ok("206")));
+    let mut fake = Fake::with(replies);
+    fake.remote = (0..3)
+        .map(|i| {
+            let (a, b) = (i * 100, (i * 100 + 100).min(250));
+            (format!("data.{i:03}"), joined[a..b].to_vec())
+        })
+        .collect();
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(&fake, dir.path());
+    store.list().unwrap();
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut store.read("a", offset, len).unwrap(), &mut bytes).unwrap();
+    (
+        bytes,
+        joined[offset as usize..(offset + len) as usize].to_vec(),
+    )
+}
+
+#[test]
+fn a_range_over_several_parts_is_joined_in_order() {
+    let (bytes, want) = read_joined(90, 130);
+    assert_eq!(bytes, want);
+}
+
+#[test]
+fn a_range_starting_on_a_part_boundary_skips_the_part_before() {
+    let (bytes, want) = read_joined(100, 60);
+    assert_eq!(bytes, want);
+}
+
 #[test]
 fn read_range_uses_gh_api_not_curl() {
     let mut fake = Fake::with(vec![ok(&pages(&[vec![three_parts()]])), ok("")]);
