@@ -252,8 +252,15 @@ mod tests {
     #[test]
     fn sync_backend_defaults_to_gist() {
         assert_eq!(SyncConfig::default().backend, SyncBackendKind::Gist);
-        let parsed: Config = toml::from_str("[sync]\nauto_push = true\n").unwrap();
+        let parsed: Config = toml::from_str("[sync]\nauto_push = false\n").unwrap();
         assert_eq!(parsed.sync.backend, SyncBackendKind::Gist);
+    }
+
+    #[test]
+    fn auto_push_is_off_by_default() {
+        assert!(!SyncConfig::default().auto_push);
+        let parsed: Config = toml::from_str("[sync]\n").unwrap();
+        assert!(!parsed.sync.auto_push);
     }
 
     #[test]

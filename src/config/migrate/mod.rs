@@ -14,7 +14,7 @@ use super::Config;
 
 /// The latest config schema version.
 /// Bump this and add a migration file when the schema changes.
-pub const CURRENT_VERSION: u32 = 7;
+pub const CURRENT_VERSION: u32 = 6;
 
 /// Result of a config migration operation
 #[derive(Debug, Clone, Default)]
@@ -71,12 +71,6 @@ pub fn migrate_config(existing_content: &str) -> Result<MigrateResult> {
         .unwrap_or(0);
 
     result.old_version = stored_version;
-
-    if stored_version < 7 {
-        doc = migrations::strip_v6_template(&doc.to_string())
-            .parse()
-            .context("Failed to parse existing config as TOML")?;
-    }
 
     // Run versioned migrations from separate files
     migrations::run(stored_version, doc.as_table_mut(), &mut result);

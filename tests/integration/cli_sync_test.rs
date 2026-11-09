@@ -120,9 +120,9 @@ fn remote() -> TempDir {
 }
 
 #[test]
-fn sync_unset_prints_how_to_enable_and_spawns_nothing() {
+fn sync_off_prints_how_to_enable_and_spawns_nothing() {
     let remote = remote();
-    let m = Machine::new(remote.path(), "");
+    let m = Machine::new(remote.path(), "[sync]\nbackend = \"off\"\n");
     let empty_path = TempDir::new().unwrap();
     for sub in ["status", "push", "pull"] {
         let mut cmd = m.base(&[sub]);
@@ -136,6 +136,60 @@ fn sync_unset_prints_how_to_enable_and_spawns_nothing() {
             out.all()
         );
     }
+}
+
+#[test]
+fn status_without_gh_and_git_names_both_tools_and_the_install_hint() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    let empty_path = TempDir::new().unwrap();
+    for sub in ["status", "push", "pull"] {
+        let out = gist_cmd(&m, &empty_path, &[sub]);
+        assert_eq!(out.code, 1, "{sub}: {}", out.all());
+        let all = out.all();
+        assert!(all.contains("gh and git"), "{sub}: {all}");
+        assert!(all.contains("https://cli.github.com"), "{sub}: {all}");
+        assert!(all.contains("gh auth login"), "{sub}: {all}");
+        assert!(!all.contains("panicked"), "{sub}: {all}");
+    }
+}
+
+/// A recording with the default config and no `gh` or `git` on PATH works and prints no sync hint.
+#[cfg(unix)]
+#[test]
+fn recording_without_gh_and_git_prints_no_sync_hint() {
+    let Ok(asciinema) = which_asciinema() else {
+        return;
+    };
+    let remote = remote();
+    let m = Machine::new(remote.path(), "");
+    let bin = TempDir::new().unwrap();
+    for (name, target) in [("asciinema", asciinema.as_str()), ("echo", "/bin/echo")] {
+        std::os::unix::fs::symlink(target, bin.path().join(name)).unwrap();
+    }
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_agr"));
+    cmd.args(["record", "echo", "--", "hi"])
+        .env("NO_COLOR", "1")
+        .env("HOME", m.home.path())
+        .env("XDG_CONFIG_HOME", m.home.path().join(".config"))
+        .env("PATH", bin.path());
+    let out = m.exec(cmd, None);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(!out.all().to_lowercase().contains("sync"), "{}", out.all());
+    assert!(!out.all().contains("auto push"), "{}", out.all());
+    assert!(m.storage.join("echo").is_dir(), "{}", out.all());
+}
+
+#[cfg(unix)]
+fn which_asciinema() -> Result<String, ()> {
+    std::env::var_os("PATH")
+        .and_then(|p| {
+            std::env::split_paths(&p)
+                .map(|d| d.join("asciinema"))
+                .find(|f| f.is_file())
+        })
+        .map(|f| f.to_string_lossy().into_owned())
+        .ok_or(())
 }
 
 #[cfg(unix)]

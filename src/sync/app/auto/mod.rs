@@ -218,6 +218,28 @@ mod tests {
     }
 
     #[test]
+    fn default_config_without_gh_or_git_stays_silent() {
+        let dir = tempfile::tempdir().unwrap();
+        let no_tools = Env {
+            tools_present: false,
+            ..READY
+        };
+        let got = decide_in(dir.path(), &Config::default(), &acked(), no_tools);
+        assert_eq!(got, Auto::Silent);
+    }
+
+    #[test]
+    fn auto_push_on_without_tools_gives_one_hint() {
+        let dir = tempfile::tempdir().unwrap();
+        let no_tools = Env {
+            tools_present: false,
+            ..READY
+        };
+        let got = decide_in(dir.path(), &config(true, true), &acked(), no_tools);
+        assert!(matches!(got, Auto::Skip(_)), "{got:?}");
+    }
+
+    #[test]
     fn other_local_blockers_skip_with_a_hint() {
         let dir = tempfile::tempdir().unwrap();
         let on = config(true, true);

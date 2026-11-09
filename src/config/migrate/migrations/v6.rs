@@ -1,6 +1,6 @@
-//! v5 -> v6: Add the `[sync]` section (`auto_push = true`).
+//! v5 -> v6: Add the `[sync]` section (`backend = "gist"`, `auto_push = false`).
 //!
-//! Nothing to rewrite: `auto_push` is filled from `Config::default()` after
+//! Nothing to rewrite: `backend` and `auto_push` are filled from `Config::default()` after
 //! migrations run, and existing values are left alone.
 
 use toml_edit::Table;
@@ -26,11 +26,13 @@ mod tests {
             parsed.config_version,
             crate::config::migrate::CURRENT_VERSION
         );
-        assert!(parsed.sync.auto_push);
+        assert!(!parsed.sync.auto_push);
+        assert!(result.added_fields.contains(&"sync.backend".to_string()));
+        assert!(!result.content.contains("# backend"));
         assert_eq!(parsed.sync.backend, SyncBackendKind::Gist);
         assert!(result
             .content
-            .contains("[sync]\nbackend = \"gist\"\nauto_push = true"));
+            .contains("[sync]\nbackend = \"gist\"\nauto_push = false"));
     }
 
     #[test]
@@ -43,6 +45,15 @@ mod tests {
         let parsed: Config = toml::from_str(&once.content).unwrap();
         assert_eq!(parsed.sync.backend, SyncBackendKind::Gist);
         assert!(!parsed.sync.auto_push);
+    }
+
+    #[test]
+    fn v6_keeps_off_and_explicit_auto_push_true() {
+        let input = "config_version = 5\n[sync]\nbackend = \"off\"\nauto_push = true\n";
+        let result = migrate_config(input).unwrap();
+        let parsed: Config = toml::from_str(&result.content).unwrap();
+        assert_eq!(parsed.sync.backend, SyncBackendKind::Off);
+        assert!(parsed.sync.auto_push);
     }
 
     #[test]
