@@ -6,9 +6,11 @@ use crate::sync::engine::plan::Decision;
 use crate::sync::engine::run::{Item, Outcome, Report};
 use crate::sync::engine::scan::Duplicate;
 
+mod live;
 mod status;
 mod summary;
 
+pub use live::{live_head, LiveLine};
 pub use status::compact_status_lines;
 pub use summary::{
     delete_preview_lines, preview_lines, privacy_lines, problem_lines, progress_line,
