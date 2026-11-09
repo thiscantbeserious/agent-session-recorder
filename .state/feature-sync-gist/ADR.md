@@ -1512,6 +1512,8 @@ Legend: only sealed packs are repacked, the copies are pushed and visible before
 - **When**: manual `agr sync prune [--dry-run]`, restic-like. `status` prints a hint line when dead bytes are over 20 percent of the remote. No automatic prune.
 - **Same gen**: copies keep path, gen and sha256, so the merge treats original and copy as one session with two places, and the rollback floors of other machines stay valid.
 - **Tombstones** of a repacked pack are copied too, they are never dropped.
+- **Pattern delete** (P10, user answers 2 to 4 of 2026-11-09): `agr sync delete` matches `*` and `?` (or `--all`) against `<agent>/<name>` of the merged remote view only, collects first and prints the preview, asks yes/no, and above 10 matches also asks to type the count. `--yes` skips only the yes/no, above 10 without a TTY needs `--force`. All matches become tombstones in one append, prune frees the bytes later. Built in PR C with the engine switch.
+- **Backend name** (P17): the string `gist` appears only in `store/gist/`, `store/legacy/` and the config value match in `app/setup.rs`, checked by `layer_rules_hold`.
 - **Open packs are never touched**: another machine may be appending to its own. This is also why we need no remote lock: restic needs an exclusive lock because a writer could reference a pack that prune deletes, here nobody writes into a sealed pack and nobody references bytes in another pack.
 - **Readers during prune**: a pull that gets `NotFound` on a pack re-reads the indexes once and retries with the copy.
 - **Two prunes at once**: both copy the same live data into their own open pack, the merge sees two places for one session and the next prune drops one. Harmless, only bandwidth.
