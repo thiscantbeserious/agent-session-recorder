@@ -249,12 +249,12 @@ Sync copies your compressed sessions to a second place so another machine can pu
 
 ### Setup
 
-The backend defaults to `gist`, nothing is uploaded until you confirm the privacy notice with a first `agr sync push` and import or create a key. To switch sync off set `backend = "off"` in `~/.config/agr/config.toml`:
+The backend defaults to `gist` but nothing is uploaded on its own, `auto_push` is off by default. A push needs `gh` and `git` and the privacy notice confirmed with a first `agr sync push`. To switch sync off set `backend = "off"` in `~/.config/agr/config.toml`:
 
 ```toml
 [sync]
 backend = "gist"   # default, "off" disables sync
-auto_push = true   # default, no effect while backend = "off"
+auto_push = false  # default, true pushes each new recording
 ```
 
 ```bash

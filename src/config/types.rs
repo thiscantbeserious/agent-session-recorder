@@ -68,7 +68,7 @@ pub fn default_backend() -> SyncBackendKind {
 }
 
 pub fn default_auto_push() -> bool {
-    true
+    false
 }
 
 impl Default for SyncConfig {

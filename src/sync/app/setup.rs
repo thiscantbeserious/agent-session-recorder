@@ -78,10 +78,15 @@ pub fn resolve_key(
 pub fn explain(error: &BackendError) -> (String, Option<String>) {
     match error {
         BackendError::NotInstalled("gh") => (
-            "gh not found".into(),
-            Some("Install it from https://cli.github.com".into()),
+            "gh not found, the gist backend needs gh and git".into(),
+            Some("Install gh from https://cli.github.com, then run `gh auth login`".into()),
         ),
-        BackendError::NotInstalled(tool) => (format!("{tool} not found"), None),
+        BackendError::NotInstalled(tool) => (
+            format!("{tool} not found, the gist backend needs gh and git"),
+            Some(format!(
+                "Install {tool} and gh (https://cli.github.com), then run `gh auth login`"
+            )),
+        ),
         BackendError::NotLoggedIn => (
             "gh not logged in".into(),
             Some("Run `gh auth login`".into()),
@@ -243,7 +248,7 @@ mod tests {
     #[test]
     fn explain_gives_message_and_hint() {
         let (msg, hint) = explain(&BackendError::NotInstalled("gh"));
-        assert_eq!(msg, "gh not found");
+        assert!(msg.starts_with("gh not found"), "{msg}");
         assert!(hint.unwrap().contains("https://cli.github.com"));
         let (_, hint) = explain(&BackendError::NotLoggedIn);
         assert!(hint.unwrap().contains("gh auth login"));

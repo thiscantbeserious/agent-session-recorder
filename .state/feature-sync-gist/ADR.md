@@ -1286,3 +1286,5 @@ own decision).
   of `ctutils`. Re-open only if #167 asks for it.
 
 **2026-11-09:** user decision, backend defaults to gist, `off` disables. Supersedes the autonomous decision to keep it unset.
+
+**2026-11-09:** user decision, auto_push off by default, nobody is forced to upload.

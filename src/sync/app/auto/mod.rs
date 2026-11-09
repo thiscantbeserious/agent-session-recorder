@@ -214,6 +214,10 @@ mod tests {
     fn default_config_without_ack_does_not_push() {
         let dir = tempfile::tempdir().unwrap();
         let got = decide_in(dir.path(), &Config::default(), &State::default(), READY);
+        assert_eq!(got, Auto::Silent);
+        let mut on = Config::default();
+        on.sync.auto_push = true;
+        let got = decide_in(dir.path(), &on, &State::default(), READY);
         assert!(matches!(got, Auto::Skip(_)), "{got:?}");
     }
 

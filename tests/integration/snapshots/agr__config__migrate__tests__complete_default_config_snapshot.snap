@@ -2,7 +2,7 @@
 source: src/config/migrate/mod.rs
 expression: result.content
 ---
-config_version = 7
+config_version = 6
 
 [shell]
 auto_wrap = true
@@ -57,4 +57,4 @@ rename_extra_args = []
 
 [sync]
 backend = "gist"
-auto_push = true
+auto_push = false

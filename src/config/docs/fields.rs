@@ -140,8 +140,8 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
             },
             FieldDoc {
                 name: "auto_push",
-                description: "Push new sessions automatically after recording, on by default unless the backend is \"off\" (needs one manual push first to confirm the privacy notice)",
-                default_display: "true",
+                description: "Push new sessions automatically after recording, off by default, set true to push each new recording (needs one manual push first to confirm the privacy notice)",
+                default_display: "false",
                 example: None,
             },
         ],
