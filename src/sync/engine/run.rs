@@ -205,7 +205,7 @@ impl Engine<'_> {
         let mut rows = std::mem::take(&mut loaded.rows).into_iter();
         while let Some(row) = rows.next() {
             let item = self
-                .one(command, opts, row, &mut loaded.index)
+                .one(command, opts, row, &mut loaded.index, observer)
                 .map_err(|Stop| SyncError::RateLimited {
                     left: rows.len() + 1,
                 })?;
@@ -222,6 +222,7 @@ impl Engine<'_> {
         opts: &Options,
         mut row: Row,
         index: &mut Index,
+        observer: &mut dyn FnMut(Step<'_>),
     ) -> Result<Item, Stop> {
         let healed = match (command, opts.dry_run) {
             (Command::Push, false) => heal(self, &mut row, index, opts.overwrite),
@@ -229,7 +230,7 @@ impl Engine<'_> {
         };
         let decision = resolve(decide(&row.input), command, opts.overwrite);
         let outcome = match healed {
-            Ok(()) => self.step(command, opts, decision, &row, index)?,
+            Ok(()) => self.step(command, opts, decision, &row, (index, observer))?,
             Err(fail) => fail.outcome()?,
         };
         Ok(self.item(&row, decision, outcome))
@@ -265,16 +266,20 @@ impl Engine<'_> {
         opts: &Options,
         decision: Decision,
         row: &Row,
-        index: &mut Index,
+        (index, observer): (&mut Index, &mut dyn FnMut(Step<'_>)),
     ) -> Result<Outcome, Stop> {
         Ok(match (decision, command) {
             (Decision::Push, Command::Push) | (Decision::Pull, Command::Pull) if opts.dry_run => {
                 Outcome::Planned
             }
             (Decision::Push, Command::Push) => {
-                return self.act(push_one(self, row, index, opts.overwrite))
+                self.started(row, observer, false);
+                return self.act(push_one(self, row, index, opts.overwrite));
             }
-            (Decision::Pull, Command::Pull) => return self.act(pull_one(self, row, index)),
+            (Decision::Pull, Command::Pull) => {
+                self.started(row, observer, true);
+                return self.act(pull_one(self, row, index));
+            }
             (Decision::InSync { refresh_index }, _)
                 if !opts.dry_run && (refresh_index || self.stale_stamp(row, index)) =>
             {
@@ -283,6 +288,23 @@ impl Engine<'_> {
             }
             _ => passive(decision),
         })
+    }
+
+    /// Tells the observer which session is about to move and how big it is.
+    fn started(&self, row: &Row, observer: &mut dyn FnMut(Step<'_>), pull: bool) {
+        let remote = row.meta.as_ref().map(|m| m.size);
+        let local = std::fs::metadata(self.storage.storage_dir().join(&row.path))
+            .map(|m| m.len())
+            .ok();
+        let size = if pull {
+            remote.or(local)
+        } else {
+            local.or(remote)
+        };
+        observer(Step::Started {
+            path: &row.path,
+            size: size.unwrap_or(0),
+        });
     }
 
     fn item(&self, row: &Row, decision: Decision, outcome: Outcome) -> Item {

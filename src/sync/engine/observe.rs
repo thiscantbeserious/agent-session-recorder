@@ -33,19 +33,28 @@ pub(super) fn counted<'o>(
     observer: &'o mut Observer<'o>,
 ) -> impl FnMut(Step<'_>) + 'o {
     let mut seen = 0;
-    move |step: Step<'_>| {
-        if let Step::Finished(item) = step {
-            if matches!(
-                item.outcome,
-                Outcome::Done(_) | Outcome::Skipped(_) | Outcome::Failed(_)
-            ) {
-                seen += 1;
-                observer(&Event::Finished {
-                    item,
-                    i: seen,
-                    n: total,
-                });
-            }
+    move |step: Step<'_>| match step {
+        Step::Started { path, size } => observer(&Event::Started {
+            path,
+            size,
+            i: seen + 1,
+            n: total,
+        }),
+        Step::Finished(item) if acted(item) => {
+            seen += 1;
+            observer(&Event::Finished {
+                item,
+                i: seen,
+                n: total,
+            });
         }
+        Step::Finished(_) => {}
     }
+}
+
+fn acted(item: &Item) -> bool {
+    matches!(
+        item.outcome,
+        Outcome::Done(_) | Outcome::Skipped(_) | Outcome::Failed(_)
+    )
 }
