@@ -129,7 +129,13 @@ impl PackStore for MemoryStore {
         }
         let mut grown = pack.data.clone();
         for s in segments {
+            let before = grown.len() as u64;
             (s.write)(&mut grown).map_err(|e| StoreError::Other(e.to_string()))?;
+            if grown.len() as u64 - before != s.len {
+                return Err(StoreError::Other(
+                    "segment len differs from its bytes".into(),
+                ));
+            }
         }
         pack.data = grown;
         pack.files += segments.len();

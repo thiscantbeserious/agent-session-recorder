@@ -32,6 +32,19 @@ fn io_err(e: io::Error) -> StoreError {
     }
 }
 
+/// Writes one segment and checks it wrote exactly `len` bytes.
+fn write_segment(file: &mut File, s: &Segment) -> Result<(), StoreError> {
+    let before = file.stream_position().map_err(io_err)?;
+    (s.write)(file).map_err(|e| StoreError::Other(e.to_string()))?;
+    let after = file.stream_position().map_err(io_err)?;
+    if after - before != s.len {
+        return Err(StoreError::Other(
+            "segment len differs from its bytes".into(),
+        ));
+    }
+    Ok(())
+}
+
 impl DirStore {
     pub fn new(root: &Path) -> Self {
         Self {
@@ -75,10 +88,12 @@ impl DirStore {
     fn write_part(&self, id: &str, name: &str, segments: &[Segment]) -> Result<u64, StoreError> {
         let path = self.root.join(id).join(name);
         let mut file = File::create(&path).map_err(io_err)?;
-        let written = segments.iter().try_for_each(|s| (s.write)(&mut file));
+        let written = segments
+            .iter()
+            .try_for_each(|s| write_segment(&mut file, s));
         if let Err(e) = written {
             drop(fs::remove_file(&path));
-            return Err(StoreError::Other(e.to_string()));
+            return Err(e);
         }
         Ok(file.metadata().map_err(io_err)?.len())
     }
