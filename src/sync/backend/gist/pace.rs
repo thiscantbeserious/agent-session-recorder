@@ -6,25 +6,41 @@ use std::time::{Duration, Instant, SystemTime};
 
 use crate::sync::backend::BackendError;
 
+/// The system clock is before 1970.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClockError;
+
+impl std::fmt::Display for ClockError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the system clock is before 1970")
+    }
+}
+
+impl From<ClockError> for BackendError {
+    fn from(e: ClockError) -> Self {
+        Self::Other(e.to_string())
+    }
+}
+
 /// Mutating calls stay at least this far apart, which is at most 60 per minute.
-pub(super) const MIN_GAP: Duration = Duration::from_secs(1);
+pub(crate) const MIN_GAP: Duration = Duration::from_secs(1);
 
 /// Time source and sleeper, `&self` so tests can keep their state behind a mutex.
 pub trait Clock: Send + Sync {
     /// Monotonic time since any fixed start.
     fn mono(&self) -> Duration;
     /// Unix seconds, an error when the system clock is before 1970.
-    fn unix_secs(&self) -> Result<u64, BackendError>;
+    fn unix_secs(&self) -> Result<u64, ClockError>;
     fn sleep(&self, time: Duration);
 }
 
 /// The real clock, the only wall clock and the only sleep of the sync code.
-pub(super) struct SystemClock {
+pub(crate) struct SystemClock {
     start: Instant,
 }
 
 impl SystemClock {
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             start: Instant::now(),
         }
@@ -42,7 +58,7 @@ impl Clock for SystemClock {
         self.start.elapsed()
     }
 
-    fn unix_secs(&self) -> Result<u64, BackendError> {
+    fn unix_secs(&self) -> Result<u64, ClockError> {
         secs_since_epoch(SystemTime::now())
     }
 
@@ -51,27 +67,27 @@ impl Clock for SystemClock {
     }
 }
 
-fn secs_since_epoch(time: SystemTime) -> Result<u64, BackendError> {
+fn secs_since_epoch(time: SystemTime) -> Result<u64, ClockError> {
     time.duration_since(SystemTime::UNIX_EPOCH)
         .as_ref()
         .map(std::time::Duration::as_secs)
-        .map_err(|_| BackendError::Other("the system clock is before 1970".into()))
+        .map_err(|_| ClockError)
 }
 
 /// Waits before a mutating call so two calls are at least `MIN_GAP` apart.
 /// There is no call budget, a real rate limit stops the run as `BackendError::RateLimited`.
-pub(super) struct Pacer {
+pub(crate) struct Pacer {
     clock: Arc<dyn Clock>,
     last: Option<Duration>,
 }
 
 impl Pacer {
-    pub(super) fn new(clock: Arc<dyn Clock>) -> Self {
+    pub(crate) fn new(clock: Arc<dyn Clock>) -> Self {
         Self { clock, last: None }
     }
 
     /// Call right before each mutating call.
-    pub(super) fn wait(&mut self) {
+    pub(crate) fn wait(&mut self) {
         let now = self.clock.mono();
         if let Some(last) = self.last {
             let wait = MIN_GAP.saturating_sub(now.saturating_sub(last));
@@ -85,7 +101,7 @@ impl Pacer {
 
 #[cfg(test)]
 pub mod tests {
-    use super::{secs_since_epoch, Arc, BackendError, Clock, Duration, Pacer, SystemTime};
+    use super::{secs_since_epoch, Arc, Clock, ClockError, Duration, Pacer, SystemTime};
     use std::sync::Mutex;
 
     /// Stateful fake, `sleep` advances `mono` and is recorded.
@@ -116,7 +132,7 @@ pub mod tests {
             self.state.lock().unwrap().0
         }
 
-        fn unix_secs(&self) -> Result<u64, BackendError> {
+        fn unix_secs(&self) -> Result<u64, ClockError> {
             Ok(self.unix)
         }
 

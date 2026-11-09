@@ -1,12 +1,12 @@
 //! Percent of the `git push` and `git clone` progress lines, pure text parsing.
 
 /// Percent of a `git push --progress` line like `Writing objects:  45% (9/20), 12.00 MiB | 3.00 MiB/s`.
-pub(super) fn writing_percent(line: &str) -> Option<u8> {
+pub(crate) fn writing_percent(line: &str) -> Option<u8> {
     percent_after(line, "Writing objects:")
 }
 
 /// Percent of a `git clone --progress` line like `Receiving objects:  45% (9/20), 12.00 MiB | 3.00 MiB/s`.
-pub(super) fn receiving_percent(line: &str) -> Option<u8> {
+pub(crate) fn receiving_percent(line: &str) -> Option<u8> {
     percent_after(line, "Receiving objects:")
 }
 

@@ -1112,7 +1112,7 @@ Goal: `store/gist` lists `agr:v2` gists, reads the index through `gh api` with a
 Owner: implementer
 PR: B
 
-- [ ] Visibility and error changes in `backend/gist/` (no behaviour change, a commit `refactor(sync): ...` before the first RED): `mod progress` and `writing_percent`, `receiving_percent` become `pub(crate)`, `Pacer`, `SystemClock`, `MIN_GAP` and `runner::Lines` become `pub(crate)`, `Fake`, `ok`, `fail` in `fake.rs` become `pub(crate)` under `cfg(test)`. `Clock::unix_secs` returns `Result<u64, ClockError>` (a small error in `pace.rs`) instead of `BackendError`, `BackendError` and `StoreError` both get `From<ClockError>`. The existing `pace.rs` tests stay green.
+- [x] Visibility and error changes in `backend/gist/` (no behaviour change, a commit `refactor(sync): ...` before the first RED): `mod progress` and `writing_percent`, `receiving_percent` become `pub(crate)`, `Pacer`, `SystemClock`, `MIN_GAP` and `runner::Lines` become `pub(crate)`, `Fake`, `ok`, `fail` in `fake.rs` become `pub(crate)` under `cfg(test)`. `Clock::unix_secs` returns `Result<u64, ClockError>` (a small error in `pace.rs`) instead of `BackendError`, `BackendError` and `StoreError` both get `From<ClockError>`. The existing `pace.rs` tests stay green.
 - [ ] RED commit: `parts_cut_at_session_boundaries` [`assert_eq!(parts, vec![7 * MIB, 2 * MIB])` for lens 3, 4 and 2 MiB, the stub gives one part per session].
 - [ ] RED commit:
   - `session_over_8_mib_gets_own_parts` [`assert_eq!(parts, vec![8 * MIB, 8 * MIB, 4 * MIB])` for 20 MiB]

@@ -52,13 +52,13 @@ pub trait Runner {
 
 /// Cuts a byte stream into lines at `\r` and `\n`, an unfinished line waits for more bytes.
 #[derive(Default)]
-pub(super) struct Lines {
+pub(crate) struct Lines {
     tail: Vec<u8>,
 }
 
 impl Lines {
     /// Calls `f` for every line the chunk completes, empty lines are skipped.
-    pub(super) fn push(&mut self, chunk: &[u8], f: &mut dyn FnMut(&str)) {
+    pub(crate) fn push(&mut self, chunk: &[u8], f: &mut dyn FnMut(&str)) {
         for byte in chunk {
             if matches!(byte, b'\r' | b'\n') {
                 self.finish(f);
@@ -69,7 +69,7 @@ impl Lines {
     }
 
     /// The last line when the stream ended without a line break.
-    pub(super) fn finish(&mut self, f: &mut dyn FnMut(&str)) {
+    pub(crate) fn finish(&mut self, f: &mut dyn FnMut(&str)) {
         if !self.tail.is_empty() {
             f(&String::from_utf8_lossy(&self.tail));
             self.tail.clear();
