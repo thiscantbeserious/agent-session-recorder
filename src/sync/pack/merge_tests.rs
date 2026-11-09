@@ -1,5 +1,5 @@
-use crate::sync::pack::index::{Entry, Index};
-use crate::sync::pack::merge::{merge, PackIn, Top};
+use crate::sync::pack::index::{Entry, Index, IndexError};
+use crate::sync::pack::merge::{merge, PackIn, Rejected, Top};
 
 pub(super) fn entry(path: &str, gen: u64, sha: &str, length: u64, deleted: bool) -> Entry {
     Entry {
@@ -81,4 +81,21 @@ fn tombstone_on_top_is_deleted_with_its_gen() {
     );
     let view = merge(&[p]);
     assert_eq!(view.get("a").unwrap().top, Top::Deleted { gen: 5 });
+}
+
+fn rejected_pack(id: &str, err: IndexError) -> PackIn {
+    PackIn {
+        id: id.to_string(),
+        tag: id.to_uppercase(),
+        index: Err(err),
+    }
+}
+
+#[test]
+fn other_key_pack_is_reported_never_merged() {
+    let x = rejected_pack("bad", IndexError::OtherKey);
+    let ok = pack("p", "P", 10, vec![entry("a", 1, "x", 10, false)]);
+    let view = merge(&[x, ok]);
+    assert_eq!(view.rejected, vec![("bad".to_string(), Rejected::OtherKey)]);
+    assert!(view.get("x").is_none());
 }
