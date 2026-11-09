@@ -57,6 +57,7 @@ impl Merged {
         matches!(self.top, Top::Deleted { .. })
     }
 
+    /// The place in the highest pack id, `finish` sorts the places that way.
     pub fn keeper(&self) -> &Place {
         &self.places[0]
     }
@@ -159,10 +160,9 @@ fn reject(err: &IndexError) -> Rejected {
 
 fn finish(view: &mut View) {
     for (path, m) in view.merged.iter_mut() {
-        for pl in &m.places {
-            if let Some(d) = view.dead_bytes.get_mut(&pl.pack) {
-                *d -= pl.length;
-            }
+        m.places.sort_by(|a, b| b.pack.cmp(&a.pack));
+        if let Some(d) = view.dead_bytes.get_mut(&m.keeper().pack) {
+            *d -= m.keeper().length;
         }
         if m.places
             .iter()
