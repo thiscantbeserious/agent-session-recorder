@@ -167,6 +167,13 @@ fn older_index_of_same_pack_is_not_accepted() {
     let view = merge(&[new, old]);
     assert_eq!(view.pack("a").unwrap().len, 200);
     assert_eq!(view.get("x").unwrap().gen, 4);
+    let (new, old) = (
+        pack("a", "A", 200, vec![entry("x", 4, "h", 200, false)]),
+        pack("a", "A", 100, vec![entry("x", 3, "g", 100, false)]),
+    );
+    let view = merge(&[old, new]);
+    assert_eq!(view.pack("a").unwrap().len, 200);
+    assert_eq!(view.get("x").unwrap().gen, 4);
 }
 
 #[test]
@@ -180,12 +187,12 @@ fn pack_order_does_not_change_the_view() {
         rejected_pack("e", IndexError::OtherPack),
         pack("f", "F", 30, vec![entry("x", 0, "h", 30, false)]),
     ];
-    let want = format!("{:?}", merge(&all));
+    let want = merge(&all);
     for shift in 1..all.len() {
         all.rotate_left(shift);
-        assert_eq!(format!("{:?}", merge(&all)), want);
+        assert_eq!(merge(&all), want);
         all.reverse();
-        assert_eq!(format!("{:?}", merge(&all)), want);
+        assert_eq!(merge(&all), want);
     }
 }
 
