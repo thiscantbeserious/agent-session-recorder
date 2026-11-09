@@ -1,14 +1,18 @@
 //! Repo: the merged view of one store and the writes of one machine.
 
 mod push;
+mod read;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_fits;
 #[cfg(test)]
+mod tests_read;
+#[cfg(test)]
 mod tests_retry;
 
 pub use push::{PushItem, PushReport};
+pub use read::read_pack;
 
 use crate::sync::crypto::Key;
 use crate::sync::pack::index::{open_index, Index};
