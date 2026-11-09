@@ -281,10 +281,15 @@ Legend: the hook runs in the recording process, the child runs detached and only
 
 **Status:** `agr sync status` prints the backend line, one line per category with count and size (`721 to push (128.4 MiB)`, one `skipped: <reason>` line per reason) and a hint to use `-v` ([format/status.rs](../../src/sync/app/format/status.rs#L12)). Conflicts, failures, other-key entries and duplicates are always listed per session, because they need action. `-v` keeps the full per-session list and the totals line.
 
+**Preview and summary:** `push`, `pull` and `delete` print the same compact shape as status by default, one head line (`Would push 721 session(s), 440.77 MiB`), one `N skipped: <reason>` line per reason, and conflicts, failures and other-key entries per session, then a hint to use `-v` ([format/status.rs](../../src/sync/app/format/status.rs#L13)). `-v` keeps the full per-session list, also with `--dry-run`. The summary after a real run follows the same rule.
+
+**Load events:** every run starts by listing the remote and hashing local sessions, which is all `status` does. The observer gets `Listing` first, then `Scanning { done, total }` for every local session, throttled to about every 1% and never more than 25 sessions apart, all before the first `Started` ([engine/observe.rs](../../src/sync/engine/observe.rs)). `status` and the dry-run plan use the same observer through `status_with`.
+
 **Progress events:** the engine calls the observer with `Started { path, size, i, n }` before a push or pull and `Finished { item, i, n }` after it, `Started` always comes first and nothing is sent for in-sync items or dry runs ([engine/observe.rs](../../src/sync/engine/observe.rs#L7)). The engine never prints, the command decides what to show.
 
 **Live line:** only when stderr is a terminal, and never for `--auto`, `--dry-run` or a pipe. The command ([commands/sync/live.rs](../../src/commands/sync/live.rs#L12)) owns one line per running session, redrawn with `\r` and padded with spaces, no escape codes:
 
+- **While loading:** `Listing remote sessions...`, then `Scanning local sessions 312/727`, wiped completely (padding back to the full width) before the normal output or the first session line ([format/live.rs](../../src/sync/app/format/live.rs)). It also shows for `status`, `delete` and the dry-run and confirmation previews, and `key export` and `key import` never touch the backend so they have none.
 - **While running:** `[12/721] claude/x.cast.gz 47.40 MiB, uploading 45%` (`downloading` on pull), redrawn only when the percent changes ([format/live.rs](../../src/sync/app/format/live.rs#L10)).
 - **When done:** the old line is overwritten by `[12/721] pushed claude/x.cast.gz (47.40 MiB)`.
 
