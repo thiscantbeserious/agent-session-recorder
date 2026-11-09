@@ -92,9 +92,11 @@ pub fn merge(packs: &[PackIn]) -> View {
     for p in packs {
         if let Ok(idx) = &p.index {
             for e in &idx.entries {
-                view.merged
-                    .entry(e.path.clone())
-                    .or_insert_with(|| first(&p.id, e));
+                let slot = view.merged.entry(e.path.clone());
+                let cur = slot.or_insert_with(|| first(&p.id, e));
+                if e.gen > cur.gen {
+                    *cur = first(&p.id, e);
+                }
             }
         }
     }
