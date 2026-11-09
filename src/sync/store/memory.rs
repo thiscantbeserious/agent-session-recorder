@@ -156,7 +156,8 @@ impl PackStore for MemoryStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{MemoryStore, PackStore, Segment};
+    use std::io::Write;
 
     contract_tests!(|| (MemoryStore::new(), ()));
 
@@ -170,5 +171,12 @@ mod tests {
         store.append(&id, 1, "i1", &[seg()], "i2").unwrap();
         let info = store.list().unwrap().packs.remove(0);
         assert!(!store.fits(&info, &[1]));
+    }
+
+    #[test]
+    fn read_with_overflowing_range_is_an_error() {
+        let store = MemoryStore::new();
+        let id = store.create("t", "i0").unwrap();
+        assert!(store.read(&id, u64::MAX, 2).is_err());
     }
 }
