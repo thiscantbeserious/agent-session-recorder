@@ -107,7 +107,11 @@ impl Engine<'_> {
             };
             self.drain_held(&mut next, &mut tried, &mut total, &mut observer)?;
             drop(lock);
-            return Ok(total);
+            next = list(&dir);
+            next.retain(|s| !tried.contains(s));
+            if next.is_empty() {
+                return Ok(total);
+            }
         }
     }
 
@@ -121,10 +125,11 @@ impl Engine<'_> {
     ) -> Result<(), SyncError> {
         let dir = self.storage.storage_dir();
         loop {
-            if !tried.is_empty() || next.is_empty() {
+            next.extend(list(&dir));
+            next.retain(|s| tried.insert(s.clone()));
+            if next.is_empty() {
                 return Ok(());
             }
-            tried.extend(next.iter().cloned());
             let sessions = std::mem::take(next);
             let opts = Options {
                 sessions,
