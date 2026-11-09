@@ -1035,7 +1035,7 @@ Owner: implementer
 PR: B
 
 - [x] RED commit: `segment_len_equals_written_bytes` for plain sizes 0, 1, 64 KiB, 64 KiB + 1 [`assert_eq!(seg.len, written)`, stub `len` of 0].
-- [ ] RED commit:
+- [x] RED commit:
   - `range_read_opens_the_second_session` [`assert_eq!(sha256(opened), sha256(file))` after two appends to a `MemoryStore`]
   - `blob_under_other_path_or_gen_fails` [`assert!(matches!(err, CryptoError::Authentication))`]
   - `truncated_range_fails` [`assert!(open_range(.., len - 1).is_err())` and `assert!(out.is_empty())`, no partial plaintext]
