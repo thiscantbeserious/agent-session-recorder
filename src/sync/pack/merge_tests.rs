@@ -159,3 +159,12 @@ fn keeper_is_the_place_in_the_highest_pack_id() {
     assert_eq!(view.dead_bytes["a"], 10);
     assert_eq!(view.dead_bytes["b"], 0);
 }
+
+#[test]
+fn older_index_of_same_pack_is_not_accepted() {
+    let new = pack("a", "A", 200, vec![entry("x", 4, "h", 200, false)]);
+    let old = pack("a", "A", 100, vec![entry("x", 3, "g", 100, false)]);
+    let view = merge(&[new, old]);
+    assert_eq!(view.pack("a").unwrap().len, 200);
+    assert_eq!(view.get("x").unwrap().gen, 4);
+}

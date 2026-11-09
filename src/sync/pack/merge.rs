@@ -162,7 +162,7 @@ fn finish(view: &mut View) {
     for (path, m) in view.merged.iter_mut() {
         m.places.sort_by(|a, b| b.pack.cmp(&a.pack));
         if let Some(d) = view.dead_bytes.get_mut(&m.keeper().pack) {
-            *d -= m.keeper().length;
+            *d = d.saturating_sub(m.keeper().length);
         }
         if m.places
             .iter()
