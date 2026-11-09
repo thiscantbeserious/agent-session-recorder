@@ -1,8 +1,9 @@
 //! In-memory pack store for tests.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Cursor, Read};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use super::{Listing, PackInfo, PackStore, Segment, StoreError};
 
@@ -19,6 +20,8 @@ struct Inner {
     packs: BTreeMap<String, Pack>,
     next: u64,
     failing: HashSet<String>,
+    /// Reads of these packs fail after that many bytes.
+    cut: HashMap<String, usize>,
 }
 
 /// Packs in a `Mutex`, ids are `mem-<n>`. One lock around check and write models the git ref.
@@ -26,7 +29,13 @@ struct Inner {
 pub struct MemoryStore {
     inner: Mutex<Inner>,
     slots: Option<usize>,
+    lists: AtomicUsize,
+    list_fails: AtomicBool,
+    before_append: Mutex<Option<AppendHook>>,
 }
+
+/// Runs before every append with the store and the pack id, a writer that wins the race.
+type AppendHook = Arc<dyn Fn(&MemoryStore, &str) + Send + Sync>;
 
 impl MemoryStore {
     pub fn new() -> Self {
@@ -38,6 +47,29 @@ impl MemoryStore {
         self.lock().failing.insert(id.to_string());
     }
 
+    /// Every later `read` of `id` yields `bytes` bytes, then fails, a place that dies mid-stream.
+    pub fn fail_read_after(&self, id: &str, bytes: usize) {
+        self.lock().cut.insert(id.to_string(), bytes);
+    }
+
+    /// How often `list` ran.
+    pub fn list_calls(&self) -> usize {
+        self.lists.load(Ordering::SeqCst)
+    }
+
+    /// Every later `list` fails.
+    pub fn fail_list(&self) {
+        self.list_fails.store(true, Ordering::SeqCst);
+    }
+
+    /// `hook` runs before every later append, outside the store lock.
+    pub fn before_append(&self, hook: impl Fn(&MemoryStore, &str) + Send + Sync + 'static) {
+        *self
+            .before_append
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(hook));
+    }
+
     /// Store whose packs hold at most `n` file slots, one per segment, for `fits`.
     pub fn with_slots(n: usize) -> Self {
         Self {
@@ -46,10 +78,36 @@ impl MemoryStore {
         }
     }
 
+    /// The hook is out of its slot while it runs, its own appends do not call it again.
+    fn run_hook(&self, id: &str) {
+        let slot = || {
+            (self.before_append)
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        };
+        let hook = slot().take();
+        if let Some(hook) = hook {
+            hook(self, id);
+            *slot() = Some(hook);
+        }
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// The rest of a read that was cut off.
+struct Dies;
+
+impl Read for Dies {
+    fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "read cut off on purpose",
+        ))
     }
 }
 
@@ -63,6 +121,10 @@ impl PackStore for MemoryStore {
     }
 
     fn list(&self) -> Result<Listing, StoreError> {
+        self.lists.fetch_add(1, Ordering::SeqCst);
+        if self.list_fails.load(Ordering::SeqCst) {
+            return Err(StoreError::Unreachable("list failed on purpose".into()));
+        }
         let inner = self.lock();
         let packs = inner
             .packs
@@ -72,6 +134,7 @@ impl PackStore for MemoryStore {
                 tag: p.tag.clone(),
                 len: p.data.len() as u64,
                 updated_at: String::new(),
+                files: p.files,
             })
             .collect();
         Ok(Listing {
@@ -82,8 +145,7 @@ impl PackStore for MemoryStore {
 
     fn fits(&self, info: &PackInfo, lens: &[u64]) -> bool {
         let Some(max) = self.slots else { return true };
-        let used = self.lock().packs.get(&info.id).map_or(0, |p| p.files);
-        used + lens.len() <= max
+        info.files + lens.len() <= max
     }
 
     fn read_index(&self, id: &str) -> Result<String, StoreError> {
@@ -122,6 +184,7 @@ impl PackStore for MemoryStore {
         segments: &[Segment],
         index: &str,
     ) -> Result<(), StoreError> {
+        self.run_hook(id);
         let mut inner = self.lock();
         let pack = inner.packs.get_mut(id).ok_or(StoreError::NotFound)?;
         if pack.data.len() as u64 != expected_len || pack.index != expected_index {
@@ -150,7 +213,11 @@ impl PackStore for MemoryStore {
         let range = data
             .get(offset as usize..end as usize)
             .ok_or(StoreError::NotFound)?;
-        Ok(Box::new(Cursor::new(range.to_vec())))
+        let Some(&cut) = inner.cut.get(id) else {
+            return Ok(Box::new(Cursor::new(range.to_vec())));
+        };
+        let head = Cursor::new(range[..cut.min(range.len())].to_vec());
+        Ok(Box::new(head.chain(Dies)))
     }
 
     fn delete(&self, id: &str) -> Result<(), StoreError> {

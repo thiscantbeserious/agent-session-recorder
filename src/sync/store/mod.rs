@@ -75,6 +75,8 @@ pub struct PackInfo {
     /// Logical pack length, sum of all parts.
     pub len: u64,
     pub updated_at: String,
+    /// Data files of the pack (the index not counted), what `fits` weighs against the file limit.
+    pub files: usize,
 }
 
 /// One listing pass: the packs plus the descriptions of old per-session entries, unopened.
@@ -112,6 +114,11 @@ pub trait PackStore {
     /// Whether one more append with these segment lengths fits the pack (file slots on gists).
     fn fits(&self, _info: &PackInfo, _lens: &[u64]) -> bool {
         true
+    }
+    /// How many data files an append with these segment lengths adds, one per segment unless
+    /// the store packs segments together.
+    fn files_for(&self, lens: &[u64]) -> usize {
+        lens.len()
     }
     /// Streams the logical range `offset..offset + len` of the pack.
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError>;

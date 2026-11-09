@@ -1078,30 +1078,30 @@ Goal: `pack::Repo` with `open`, `view`, `push_batch`, `read_session`, `tombstone
 Owner: implementer
 PR: B
 
-- [ ] RED commit: `push_batch_appends_to_own_open_pack` [`assert_eq!(store.list()?.packs.len(), 1)` after two pushes on one writer, the stub creates a pack per push].
-- [ ] RED commit:
+- [x] RED commit: `push_batch_appends_to_own_open_pack` [`assert_eq!(store.list()?.packs.len(), 1)` after two pushes on one writer, the stub creates a pack per push].
+- [x] RED commit:
   - `seal_then_next_push_creates_a_pack` [`assert_eq!(store.list()?.packs.len(), 2)`]
   - `big_session_gets_own_sealed_pack_and_open_pack_stays_open` [`assert!(own.sealed)` and `assert_eq!(repo.open_pack(), Some(old_id))`]
   - `open_pack_found_by_writer_when_local_id_missing` [`assert_eq!(repo.open_pack(), Some(id))`]
   - `index_of_other_writer_or_sealed_is_moved` [`assert!(matches!(err, StoreError::Moved(_)))`]
   - `own_open_pack_duplicated_starts_a_new_pack` [`assert_ne!(repo.open_pack(), Some(a))` and `assert_eq!(store.list()?.packs.len(), 3)` after a push when the own open pack `a` has a copy `b`, the stub appends to `a`]
-  - `push_of_440_mib_is_six_sealed_and_one_open_pack` (P1, scaled by 1/1024: 721 sessions summing to 440 KiB against a 64 KiB target, the target is an argument) [`assert_eq!((sealed, open), (6, 1))`] and `pack_tag_is_the_index_uuid` [`assert_eq!(info.tag, index.pack)`]
-- [ ] RED commit (P3, `fits`):
+  - `push_of_721_small_sessions_is_six_sealed_and_one_open_pack` (P1, scaled by 1/1024: 721 sessions of 560 plain bytes, about 422 KiB sealed (394 KiB plain plus 40 bytes header and tag per session), against a 64 KiB target, the target is an argument) [`assert_eq!((sealed, open), (6, 1))`] and `pack_tag_is_the_index_uuid` [`assert_eq!(info.tag, index.pack)`]
+- [x] RED commit (P3, `fits`):
   - `seal_when_fits_is_false` [`assert!(old.sealed)` and `assert_eq!(store.list()?.packs.len(), 2)` on `MemoryStore::with_slots(3)`, the stub ignores `fits`]
   - `no_file_slot_left_seals_with_zero_byte_append` [`assert_eq!(old_info.len, len_before)` and `assert!(old_index.sealed)`]
-- [ ] RED commit: `two_writers_on_one_id_retry_once` (ADR Open risk 3, mandatory), two cases:
+- [x] RED commit: `two_writers_on_one_id_retry_once` (ADR Open risk 3, mandatory), two cases:
   - data case [`assert!(matches!(first, Err(StoreError::Moved(_))))` for the second writer, then after the retry `assert_eq!(view.len(), 2)`, a second `Moved` gives `assert_eq!(err.to_string(), "changed on the remote, run again")`]
   - `retry_uses_the_index_from_moved` [`assert_eq!(store.read_index_calls(id), 0)` during the retry and the retry's `expected_index` equals the `Moved` text, the stub re-reads through `read_index`]
   - tombstone case: A tombstones s, B tombstones t on an index read before A's push [`assert!(view.get("s").unwrap().is_deleted() && view.get("t").unwrap().is_deleted())`, the stub guards on length only and s comes back]
-- [ ] RED commit: `read_pack_takes_the_key_as_argument` (P9, room for `agr share`): `pack::read_pack(store, id, &key)` opens one pack sealed with a test key that is not the sync key, without the merge and without any global or app key [`assert_eq!(sessions.len(), 2)`, the stub returns an empty vec].
-- [ ] RED commit:
+- [x] RED commit: `read_pack_takes_the_key_as_argument` (P9, room for `agr share`): `pack::read_pack(store, id, &key)` opens one pack sealed with a test key that is not the sync key, without the merge and without any global or app key [`assert_eq!(sessions.len(), 2)`, the stub returns an empty vec].
+- [x] RED commit:
   - `read_session_tries_next_place_on_not_found` [`assert_eq!(sha, want)` with the first place deleted]
   - `read_session_writes_to_temp_and_renames_only_on_success` [`assert!(!target.exists())` and no hidden temp file left after an error, `open_range` streams into a hidden temp file, digest and size are checked, rename only on success, the temp is deleted on error]
   - `read_session_checks_sha256_after_open` [`assert!(matches!(err, ReadError::HashMismatch))` and `assert!(!target.exists())`, a range that opens under the right AAD but whose plaintext hash differs from the index is never written]
   - `tombstone_appends_deleted_at_gen_plus_one` [`assert_eq!((e.gen, e.deleted), (4, true))`]
   - `fork_created_by_push_is_reported_by_the_re_read` [`assert_eq!(report.forks, vec!["x"])`]
   - `open_fails_when_any_index_read_fails` [`assert!(matches!(Repo::open(..), Err(RepoError::PartialView(_))))` with `fail_read_index` on one of three packs, the stub skips the pack]
-- [ ] GREEN commit per RED commit above.
+- [x] GREEN commit per RED commit above.
 
 Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/repo/mod.rs`, `src/sync/pack/repo/push.rs`, `src/sync/pack/repo/tests.rs`
 Depends on: Stage 50
