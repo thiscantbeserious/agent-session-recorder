@@ -70,6 +70,10 @@ fn pace() {
 
 /// Runs git in `dir` like the backend does, HTTPS with gh as the credential helper. Stdout or stderr on failure.
 fn git_try(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    git_env(dir, args, &[])
+}
+
+fn git_env(dir: &Path, args: &[&str], envs: &[(&str, &str)]) -> Result<Vec<u8>, String> {
     pace();
     let out = Command::new("git")
         .args([
@@ -87,6 +91,7 @@ fn git_try(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
         .args(args)
         .current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
+        .envs(envs.iter().copied())
         .stdin(Stdio::null())
         .output()
         .unwrap();
@@ -374,4 +379,156 @@ fn file_cap() {
             meta["truncated"].as_bool()
         ),
     );
+}
+
+/// Label, git args before `--no-verify`, env.
+type Variant<'a> = (&'a str, &'a [&'a str], &'a [(&'a str, &'a str)]);
+
+/// Partial clone of `id` plus the oid of the existing `data.000`.
+fn fresh(id: &str, parent: &Path, name: &str, extra: &[&str]) -> (std::path::PathBuf, String) {
+    let mut args = vec!["--depth", "1", "--filter=blob:none"];
+    args.extend_from_slice(extra);
+    let dir = clone(id, parent, name, &args);
+    let oid = git_text(&dir, &["rev-parse", "HEAD:data.000"]);
+    (dir, oid)
+}
+
+/// PASS means data.000 is still not in the local object store.
+fn report(step: &str, dir: &Path, oid: &str) {
+    let missing = blob_missing(dir, oid);
+    let (kib, _) = odb_kib(dir);
+    probe(
+        &format!("fetch.{step}"),
+        missing,
+        &format!("missing={missing} odb_kib={kib}"),
+    );
+}
+
+/// Writes the next part and the index into the worktree, returns the part name.
+fn write_new(dir: &Path, n: u32) -> String {
+    let name = format!("data.{n:03}");
+    std::fs::write(dir.join(&name), binary_blob(64 * 1024, u64::from(n))).unwrap();
+    std::fs::write(dir.join("index"), format!("v{n}\n")).unwrap();
+    name
+}
+
+/// Commits the new part and index without index file writes of the worktree: hash-object, update-index, write-tree, commit-tree, update-ref.
+fn tree_commit(dir: &Path, name: &str) {
+    git(dir, &["read-tree", "HEAD"]);
+    for f in [name, "index"] {
+        let oid = git_text(dir, &["hash-object", "-w", f]);
+        git(
+            dir,
+            &[
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                &format!("100644,{oid},{f}"),
+            ],
+        );
+    }
+    let tree = git_text(dir, &["write-tree"]);
+    let c = git_text(dir, &["commit-tree", &tree, "-p", "HEAD", "-m", "append"]);
+    git(dir, &["update-ref", "HEAD", &c]);
+}
+
+#[test]
+#[ignore = "creates a real secret gist, run by hand"]
+fn append_fetch_trigger() {
+    let backend = new_gist();
+    let id = backend.create().unwrap();
+    let _cleanup = Cleanup(&backend, id.clone());
+    let version = Command::new("git").arg("--version").output().unwrap();
+    info(
+        "fetch.git_version",
+        String::from_utf8_lossy(&version.stdout).trim(),
+    );
+    push_files(
+        &id,
+        &[("data.000", &binary_blob(3 * MIB, 1)), ("index", b"v0\n")],
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let mut n = 0u32;
+    let mut next = || {
+        n += 1;
+        n
+    };
+
+    // staged in one clone: clone, read-tree, add, plain commit
+    let (dir, oid) = fresh(&id, tmp.path(), "c0", &["--no-checkout"]);
+    report("clone", &dir, &oid);
+    git(&dir, &["read-tree", "HEAD"]);
+    report("read_tree", &dir, &oid);
+    let name = write_new(&dir, next());
+    git(&dir, &["add", &name, "index"]);
+    report("add", &dir, &oid);
+    git(&dir, &["commit", "-m", "append"]);
+    report("commit_plain", &dir, &oid);
+
+    let (dir, oid) = fresh(&id, tmp.path(), "c1", &["--no-checkout"]);
+    git(&dir, &["read-tree", "HEAD"]);
+    let name = write_new(&dir, next());
+    git(&dir, &["add", &name, "index"]);
+    git(
+        &dir,
+        &["-c", "core.fsmonitor=false", "commit", "-m", "append"],
+    );
+    report("commit_fsmonitor_off", &dir, &oid);
+
+    let (dir, oid) = fresh(&id, tmp.path(), "c2", &["--no-checkout"]);
+    let name = write_new(&dir, next());
+    tree_commit(&dir, &name);
+    report("commit_tree", &dir, &oid);
+
+    // push variants, each from a fresh clone, commit via commit-tree so the push is the only step under test
+    // label, full push args, env
+    let variants: [Variant; 5] = [
+        ("plain", &["push"], &[]),
+        ("no_thin", &["push", "--no-thin"], &[]),
+        ("no_bitmaps", &["-c", "pack.useBitmaps=false", "push"], &[]),
+        (
+            "noop_negotiation",
+            &["-c", "fetch.negotiationAlgorithm=noop", "push"],
+            &[],
+        ),
+        ("no_lazy_fetch", &["push"], &[("GIT_NO_LAZY_FETCH", "1")]),
+    ];
+    for (i, (label, pre, envs)) in variants.iter().enumerate() {
+        let (dir, oid) = fresh(&id, tmp.path(), &format!("p{i}"), &["--no-checkout"]);
+        let name = write_new(&dir, next());
+        tree_commit(&dir, &name);
+        let mut args: Vec<&str> = pre.to_vec();
+        args.extend_from_slice(&["--no-verify", "origin", "HEAD"]);
+        let pushed = git_env(&dir, &args, envs);
+        info(
+            &format!("fetch.push_{label}.result"),
+            &match &pushed {
+                Ok(_) => "ok".to_string(),
+                Err(e) => format!("error {}", e.replace('\n', " | ")),
+            },
+        );
+        report(&format!("push_{label}"), &dir, &oid);
+    }
+
+    // sparse checkout instead of --no-checkout
+    let (dir, oid) = fresh(&id, tmp.path(), "s0", &["--sparse"]);
+    report("clone_sparse_cone", &dir, &oid);
+    let (dir, oid) = fresh(&id, tmp.path(), "s1", &["--no-checkout"]);
+    git(&dir, &["sparse-checkout", "set", "--no-cone", "/index"]);
+    git(&dir, &["checkout"]);
+    report("sparse_noncone_checkout", &dir, &oid);
+    let name = write_new(&dir, next());
+    git(&dir, &["add", &name, "index"]);
+    git(&dir, &["commit", "-m", "append"]);
+    report("sparse_noncone_commit", &dir, &oid);
+    let pushed = git_try(&dir, &["push", "--no-verify", "origin", "HEAD"]);
+    info(
+        "fetch.sparse_noncone_push.result",
+        &pushed
+            .as_ref()
+            .err()
+            .map_or("ok", String::as_str)
+            .replace('\n', " | "),
+    );
+    report("sparse_noncone_push", &dir, &oid);
 }
