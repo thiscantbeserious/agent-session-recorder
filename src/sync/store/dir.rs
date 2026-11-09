@@ -45,6 +45,14 @@ fn write_segment(file: &mut File, s: &Segment) -> Result<(), StoreError> {
     Ok(())
 }
 
+fn rename_retry(
+    from: &Path,
+    to: &Path,
+    rename: &dyn Fn(&Path, &Path) -> io::Result<()>,
+) -> io::Result<()> {
+    rename(from, to)
+}
+
 impl DirStore {
     pub fn new(root: &Path) -> Self {
         Self {
@@ -55,6 +63,9 @@ impl DirStore {
     }
 
     /// The next append writes its part file and then fails before the manifest is renamed.
+    #[cfg(test)]
+    fn crash_before_rename(&self) {}
+
     #[cfg(test)]
     fn crash_before_manifest(&self) {
         self.crash_before_manifest.store(true, Ordering::SeqCst);
@@ -230,6 +241,61 @@ mod tests {
         assert_eq!(store.list().unwrap().packs[0].len, old_len);
         let ok = store.append(&id, old_len, "i1", &[seg()], "i2");
         assert!(ok.is_ok(), "{ok:?}");
+    }
+
+    #[test]
+    fn dir_store_next_append_deletes_unlisted_parts() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = DirStore::new(dir.path());
+        let id = store.create("t", "i0").unwrap();
+        let w = |w: &mut dyn Write| w.write_all(b"abc");
+        let seg = Segment { len: 3, write: &w };
+        store.crash_before_manifest();
+        assert!(store.append(&id, 0, "i0", &[seg], "i1").is_err());
+        let orphan = dir.path().join(&id).join("part.000000");
+        assert!(orphan.exists());
+        store.append(&id, 0, "i0", &[], "i1").unwrap();
+        assert!(!orphan.exists());
+    }
+
+    #[test]
+    fn dir_store_crash_before_the_rename_keeps_the_old_manifest() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = DirStore::new(dir.path());
+        let id = store.create("t", "i0").unwrap();
+        let w = |w: &mut dyn Write| w.write_all(b"abc");
+        let seg = || Segment { len: 3, write: &w };
+        store.crash_before_rename();
+        assert!(store.append(&id, 0, "i0", &[seg()], "i1").is_err());
+        assert_eq!(store.list().unwrap().packs[0].len, 0);
+        assert_eq!(store.read_index(&id).unwrap(), "i0");
+        store.append(&id, 0, "i0", &[seg()], "i1").unwrap();
+        assert_eq!(store.list().unwrap().packs[0].len, 3);
+    }
+
+    #[test]
+    fn rename_retry_survives_two_permission_denied() {
+        let calls = std::cell::Cell::new(0);
+        let flaky = |_: &Path, _: &Path| {
+            calls.set(calls.get() + 1);
+            if calls.get() <= 2 {
+                return Err(io::Error::from(io::ErrorKind::PermissionDenied));
+            }
+            Ok(())
+        };
+        assert!(rename_retry(Path::new("a"), Path::new("b"), &flaky).is_ok());
+        assert_eq!(calls.get(), 3);
+    }
+
+    #[test]
+    fn rename_retry_gives_up_on_other_errors_at_once() {
+        let calls = std::cell::Cell::new(0);
+        let broken = |_: &Path, _: &Path| {
+            calls.set(calls.get() + 1);
+            Err(io::Error::from(io::ErrorKind::NotFound))
+        };
+        assert!(rename_retry(Path::new("a"), Path::new("b"), &broken).is_err());
+        assert_eq!(calls.get(), 1);
     }
 
     #[test]
