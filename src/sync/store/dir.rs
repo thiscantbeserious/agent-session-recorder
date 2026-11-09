@@ -211,4 +211,13 @@ mod tests {
         let ok = store.append(&id, old_len, "i1", &[seg()], "i2");
         assert!(ok.is_ok(), "{ok:?}");
     }
+
+    #[test]
+    fn dir_store_list_reports_a_corrupt_manifest() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let store = DirStore::new(dir.path());
+        let id = store.create("t", "i0").unwrap();
+        fs::write(dir.path().join(id).join("manifest"), "{not json").unwrap();
+        assert!(store.list().is_err());
+    }
 }
