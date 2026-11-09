@@ -207,10 +207,14 @@ fn supervise(
         }
         std::thread::sleep(POLL);
     };
+    let failed = Arc::clone(&stdout.failed);
     let (stdout, stderr_text) = (
         finish(stdout),
         finish_watched(stderr, &mut watcher, on_line),
     );
+    if let Some(e) = failed.lock().unwrap_or_else(PoisonError::into_inner).take() {
+        return Err(e);
+    }
     Ok(Output {
         code: status.code(),
         stdout,
@@ -246,6 +250,8 @@ fn finish_watched(drain: Drain, watcher: &mut Watcher, on_line: &mut dyn FnMut(&
 struct Drain {
     bytes: Arc<Mutex<Vec<u8>>>,
     eof: mpsc::Receiver<()>,
+    /// The write error of the sink, the drain stops at the first one.
+    failed: Arc<Mutex<Option<std::io::Error>>>,
 }
 
 /// Text read, waits `GRACE` for EOF, a grandchild that kept the pipe open is left behind.
@@ -263,6 +269,8 @@ fn drain<R: Read + Send + 'static>(
     let last = Arc::clone(last);
     let bytes = Arc::new(Mutex::new(Vec::new()));
     let (done, eof) = mpsc::channel();
+    let failed = Arc::new(Mutex::new(None));
+    let sink_failed = Arc::clone(&failed);
     let shared = Arc::clone(&bytes);
     thread::spawn(move || {
         let mut buf = [0u8; 8192];
@@ -276,7 +284,8 @@ fn drain<R: Read + Send + 'static>(
             };
             *last.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
             if let Some(file) = sink.as_mut() {
-                if file.write_all(&buf[..n]).is_err() {
+                if let Err(e) = file.write_all(&buf[..n]) {
+                    *sink_failed.lock().unwrap_or_else(PoisonError::into_inner) = Some(e);
                     break;
                 }
                 continue;
@@ -286,7 +295,7 @@ fn drain<R: Read + Send + 'static>(
         }
         let _ = done.send(());
     });
-    Drain { bytes, eof }
+    Drain { bytes, eof, failed }
 }
 
 #[cfg(test)]
