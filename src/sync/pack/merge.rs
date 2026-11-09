@@ -180,13 +180,18 @@ fn reject(err: &IndexError) -> Rejected {
 fn finish(view: &mut View) {
     for (path, m) in view.merged.iter_mut() {
         m.places.sort_by(|a, b| b.pack.cmp(&a.pack));
-        if let Some(d) = view.dead_bytes.get_mut(&m.keeper().pack) {
-            *d = d.saturating_sub(m.keeper().length);
-        }
-        if m.places
+        let fork = m
+            .places
             .iter()
-            .any(|p| p.identity() != m.places[0].identity())
-        {
+            .any(|p| p.identity() != m.places[0].identity());
+        // a fork keeps every top gen version live until it is resolved, else only the keeper
+        let live = if fork { &m.places[..] } else { &m.places[..1] };
+        for p in live {
+            if let Some(d) = view.dead_bytes.get_mut(&p.pack) {
+                *d = d.saturating_sub(p.length);
+            }
+        }
+        if fork {
             m.top = Top::Fork;
             view.forks.push(path.clone());
         } else if m.places[0].deleted {
