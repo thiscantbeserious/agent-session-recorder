@@ -22,8 +22,8 @@ We encrypt every session on the machine before it leaves, and the remote only ev
 
 - **crypto:** key, one-shot seal and the metadata token ([seal.rs](../../src/sync/crypto/seal.rs)), the recovery phrase ([phrase.rs](../../src/sync/crypto/phrase.rs)), the streamed blob v2 ([blob/mod.rs](../../src/sync/crypto/blob/mod.rs)) and our own STREAM layer ([blob/stream.rs](../../src/sync/crypto/blob/stream.rs)). It depends on nothing else in sync.
 - **backend:** the `SyncBackend` trait with `RemoteEntry`, `BackendError` and `BlobSource` ([backend/mod.rs](../../src/sync/backend/mod.rs#L48)), plus the gist, memory and file implementations. Backends only see opaque tokens and sealed bytes.
-- **engine:** scan, plan, push, pull, delete, the index and the lock ([engine/mod.rs](../../src/sync/engine/mod.rs)). It never prints and only knows the backend trait, never a concrete backend.
-- **app:** command facing glue, backend choice and key resolution ([setup.rs](../../src/sync/app/setup.rs)), the key file ([app/key.rs](../../src/sync/app/key.rs)), auto push ([app/auto/mod.rs](../../src/sync/app/auto/mod.rs)) and the output lines ([app/format/mod.rs](../../src/sync/app/format/mod.rs)).
+- **engine:** scan, plan, push, pull, delete, the index and the lock ([engine/mod.rs](../../src/sync/engine/mod.rs)). It never prints and only knows the backend trait, never a concrete backend. It reports `Started` and `Finished` events to an observer ([engine/observe.rs](../../src/sync/engine/observe.rs#L1)).
+- **app:** command facing glue, backend choice and key resolution ([setup.rs](../../src/sync/app/setup.rs)), the key file ([app/key.rs](../../src/sync/app/key.rs)), auto push ([app/auto/mod.rs](../../src/sync/app/auto/mod.rs)) and the output lines ([app/format/mod.rs](../../src/sync/app/format/mod.rs)), including the compact status ([format/status.rs](../../src/sync/app/format/status.rs)) and the live progress line ([format/live.rs](../../src/sync/app/format/live.rs)).
 - **facade:** `agr::sync` re-exports what commands and recording need, and a hidden `testing` module carries internals for the integration tests only ([sync/mod.rs](../../src/sync/mod.rs#L8)).
 
 ```mermaid
@@ -275,6 +275,33 @@ Legend: the hook runs in the recording process, the child runs detached and only
 
 **Busy lock reported:** when another sync holds the lock, the stored line says the session was skipped and asks for `agr sync push` ([app/auto/child.rs](../../src/sync/app/auto/child.rs#L11)). The stored error is shown once on the next recording and by `agr sync status`, then cleared ([app/auto/child.rs](../../src/sync/app/auto/child.rs#L29)).
 
+## Output and progress
+
+**Problem**: with hundreds of sessions one line per session buries the answer, and a 45 MiB upload looks frozen without feedback.
+
+**Status:** `agr sync status` prints the backend line, one line per category with count and size (`721 to push (128.4 MiB)`, one `skipped: <reason>` line per reason) and a hint to use `-v` ([format/status.rs](../../src/sync/app/format/status.rs#L12)). Conflicts, failures, other-key entries and duplicates are always listed per session, because they need action. `-v` keeps the full per-session list and the totals line.
+
+**Progress events:** the engine calls the observer with `Started { path, size, i, n }` before a push or pull and `Finished { item, i, n }` after it, `Started` always comes first and nothing is sent for in-sync items or dry runs ([engine/observe.rs](../../src/sync/engine/observe.rs#L7)). The engine never prints, the command decides what to show.
+
+**Live line:** only when stderr is a terminal, and never for `--auto`, `--dry-run` or a pipe. The command ([commands/sync/live.rs](../../src/commands/sync/live.rs#L12)) owns one line per running session, redrawn with `\r` and padded with spaces, no escape codes:
+
+- **While running:** `[12/721] claude/x.cast.gz 47.40 MiB, uploading 45%` (`downloading` on pull), redrawn only when the percent changes ([format/live.rs](../../src/sync/app/format/live.rs#L10)).
+- **When done:** the old line is overwritten by `[12/721] pushed claude/x.cast.gz (47.40 MiB)`.
+
+**Where the percent comes from:** the gist backend reads the `Writing objects: NN%` lines of `git push --progress` and the `Receiving objects: NN%` lines of `git clone --progress` while the process runs. The runner splits stderr on `\r` and `\n` and hands every line to the backend through `run_watched`, whose default ignores them so `Fake` keeps working ([runner.rs](../../src/sync/backend/gist/runner.rs#L28)). A pure parser turns a line into a percent ([progress.rs](../../src/sync/backend/gist/progress.rs#L4)). The backend only passes that number to a sink the app layer set in `open_backend` ([gist/mod.rs](../../src/sync/backend/gist/mod.rs#L47)), so a backend still never sees a plaintext path. The sink is only set on a terminal, and the pre-push clone stays silent.
+
+```mermaid
+flowchart LR
+    git[git push or clone stderr] --> runner[runner: split on CR and LF]
+    runner --> parse[parser: percent]
+    parse --> sink[sink set by open_backend]
+    sink --> live[command: live line]
+    engine[engine: Started, Finished] --> live
+```
+Legend: the engine knows which session runs, the backend only knows a percent, the command joins both into one line.
+
+**File backend:** the directory fake has no git and never reports a percent, the line then shows `0%` until the session is done.
+
 ## Local state
 
 **Problem**: the engine needs to remember what it synced last without trusting file times, and two runs on one machine must not interleave.
@@ -340,7 +367,7 @@ flowchart TD
 ```
 Legend: only RateLimited stops the run, the other cases end one session or abort before any change.
 
-- **Stall timeout:** a `gh` or `git` process that prints nothing on stdout and stderr for 120 s is killed, any output resets the timer ([runner.rs](../../src/sync/backend/gist/runner.rs#L41)). Clone and push run with `--progress` so a slow upload keeps talking ([gist/mod.rs](../../src/sync/backend/gist/mod.rs#L258)). Processes get no stdin with `GIT_TERMINAL_PROMPT=0` and `GH_PROMPT_DISABLED=1`, so a missing credential fails instead of hanging ([runner.rs](../../src/sync/backend/gist/runner.rs#L67)).
+- **Stall timeout:** a `gh` or `git` process that prints nothing on stdout and stderr for 120 s is killed, any output resets the timer ([runner.rs](../../src/sync/backend/gist/runner.rs#L41)). Clone and push run with `--progress` so a slow upload keeps talking and feeds the live line ([gist/mod.rs](../../src/sync/backend/gist/mod.rs#L258)). Processes get no stdin with `GIT_TERMINAL_PROMPT=0` and `GH_PROMPT_DISABLED=1`, so a missing credential fails instead of hanging ([runner.rs](../../src/sync/backend/gist/runner.rs#L67)).
 - **Rate limit stop:** mutating calls (create, `git push`, PATCH, delete) are paced at least 1 s apart ([pace.rs](../../src/sync/backend/gist/pace.rs#L10)). The first rate limit GitHub reports stops the run with "N left, please run again later" and keeps what is done ([engine/run.rs](../../src/sync/engine/run.rs#L28)).
 - **Not found means gone:** a gh 404, and a git "repository not found" after the credential check, map to `NotFound` ([parse.rs](../../src/sync/backend/gist/parse.rs#L103)). The engine reports "remote copy gone" and skips the session, only `push --overwrite` uploads it again ([engine/fail.rs](../../src/sync/engine/fail.rs#L31)).
 - **Missing gh or git:** `check` runs `git --version`, `gh --version` and `gh auth status` before anything else ([gist/mod.rs](../../src/sync/backend/gist/mod.rs#L307)), a missing binary is `NotInstalled` with an install hint ([setup.rs](../../src/sync/app/setup.rs#L78)). A token without the `gist` scope is `MissingScope` ([parse.rs](../../src/sync/backend/gist/parse.rs#L115)).
@@ -353,7 +380,7 @@ Legend: only RateLimited stops the run, the other cases end one session or abort
 |---|---|---|
 | `[sync] backend` | `"gist"` | `"off"` disables every sync command and auto push |
 | `[sync] auto_push` | `false` | `true` pushes after each recording once the privacy notice is confirmed |
-| `agr sync status` | | plan per session, read only |
+| `agr sync status [-v]` | | summary per category, conflicts, failures and other-key entries listed, `-v` lists every session, read only |
 | `agr sync push [sessions]` | all | upload, `--dry-run`, `--yes`, `--overwrite` |
 | `agr sync pull [sessions]` | all | download, `--dry-run`, `--yes`, `--overwrite` |
 | `agr sync delete <sessions>` | | removes the gist and the index entry, the local file stays |
