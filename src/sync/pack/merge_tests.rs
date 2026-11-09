@@ -198,3 +198,15 @@ fn fork_losers_are_live_not_dead() {
     assert_eq!(view.dead_bytes.get("a").copied().unwrap_or(0), 0);
     assert_eq!(view.dead_bytes.get("b").copied().unwrap_or(0), 0);
 }
+
+#[test]
+fn sealed_index_wins_a_tie_in_any_order() {
+    let open = || pack("a", "A", 10, vec![entry("x", 1, "h", 10, false)]);
+    let sealed = || {
+        let mut p = open();
+        p.index.as_mut().unwrap().sealed = true;
+        p
+    };
+    assert!(merge(&[open(), sealed()]).pack("a").unwrap().sealed);
+    assert!(merge(&[sealed(), open()]).pack("a").unwrap().sealed);
+}
