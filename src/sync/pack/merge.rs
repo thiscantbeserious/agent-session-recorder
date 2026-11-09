@@ -96,9 +96,28 @@ impl View {
     }
 }
 
+/// Per pack id only the newest index counts, a pack only grows, so the longest one is the newest.
+fn newest(packs: &[PackIn]) -> Vec<&PackIn> {
+    let mut by_id: BTreeMap<&str, &PackIn> = BTreeMap::new();
+    for p in packs {
+        let best = by_id.entry(&p.id).or_insert(p);
+        if rank(p) > rank(best) {
+            *best = p;
+        }
+    }
+    by_id.into_values().collect()
+}
+
+fn rank(p: &PackIn) -> (u64, usize) {
+    p.index
+        .as_ref()
+        .map_or((0, 0), |i| (i.len, i.entries.len()))
+}
+
 pub fn merge(packs: &[PackIn]) -> View {
     let mut view = View::default();
-    for p in packs {
+    let packs = newest(packs);
+    for p in packs.iter().copied() {
         if let Err(err) = &p.index {
             view.rejected.push((p.id.clone(), reject(err)));
         }
@@ -118,7 +137,7 @@ pub fn merge(packs: &[PackIn]) -> View {
             }
         }
     }
-    duplicates(packs, &mut view);
+    duplicates(&packs, &mut view);
     finish(&mut view);
     view
 }
@@ -133,7 +152,7 @@ fn meta(tag: &str, idx: &Index) -> PackMeta {
 }
 
 /// Packs with one tag are copies of each other, every pair is reported and both ids are frozen.
-fn duplicates(packs: &[PackIn], view: &mut View) {
+fn duplicates(packs: &[&PackIn], view: &mut View) {
     let mut by_tag: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
     for p in packs.iter().filter(|p| p.index.is_ok()) {
         by_tag.entry(&p.tag).or_default().insert(&p.id);
