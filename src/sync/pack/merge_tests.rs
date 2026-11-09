@@ -41,3 +41,11 @@ fn highest_gen_wins() {
     let view = merge(&[p]);
     assert_eq!(view.get("a").unwrap().gen, 4);
 }
+
+#[test]
+fn same_hash_twice_is_one_session_two_places() {
+    let a = pack("p1", "P1", 10, vec![entry("a", 1, "x", 10, false)]);
+    let b = pack("p2", "P2", 10, vec![entry("a", 1, "x", 10, false)]);
+    let view = merge(&[a, b]);
+    assert_eq!(view.get("a").unwrap().places.len(), 2);
+}
