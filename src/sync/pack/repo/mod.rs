@@ -7,6 +7,8 @@ mod tests;
 #[cfg(test)]
 mod tests_fits;
 #[cfg(test)]
+mod tests_legacy;
+#[cfg(test)]
 mod tests_read;
 #[cfg(test)]
 mod tests_retry;
@@ -29,6 +31,8 @@ pub enum RepoError {
     Store(#[from] StoreError),
     #[error("no such session: {0}")]
     Unknown(String),
+    #[error("run `agr sync migrate` first")]
+    NeedsMigrate,
     #[error("could not read every pack index: {0}")]
     PartialView(StoreError),
 }
@@ -76,8 +80,19 @@ fn load(store: &dyn PackStore, key: &Key) -> Result<(View, Packs), StoreError> {
 }
 
 impl<'a> Repo<'a> {
-    /// `hint` is the open pack id the app saved locally, `target` the pack size in bytes.
+    /// Like `open_for_migrate`, but refuses while an `agr:v1` gist of our key is listed.
     pub fn open(
+        store: &'a dyn PackStore,
+        key: &'a Key,
+        writer: &str,
+        target: u64,
+        hint: Option<&str>,
+    ) -> Result<Self, RepoError> {
+        Self::open_for_migrate(store, key, writer, target, hint)
+    }
+
+    /// `hint` is the open pack id the app saved locally, `target` the pack size in bytes.
+    pub fn open_for_migrate(
         store: &'a dyn PackStore,
         key: &'a Key,
         writer: &str,
