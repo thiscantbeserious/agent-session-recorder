@@ -12,7 +12,7 @@ pub(super) mod memory;
 pub use crate::sync::backend::BlobSource;
 
 /// Store failures, one clear case each so commands print one line.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum StoreError {
     NotInstalled(&'static str),
     NotLoggedIn,
@@ -38,6 +38,22 @@ impl fmt::Display for StoreError {
             Self::NotFound => f.write_str("remote pack not found"),
             Self::Moved(_) => f.write_str("changed on the remote, run again"),
             Self::Other(msg) => f.write_str(msg),
+        }
+    }
+}
+
+/// Hand written so `Moved` never prints the index text it carries.
+impl fmt::Debug for StoreError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotInstalled(t) => f.debug_tuple("NotInstalled").field(t).finish(),
+            Self::NotLoggedIn => f.write_str("NotLoggedIn"),
+            Self::MissingScope => f.write_str("MissingScope"),
+            Self::Unreachable(w) => f.debug_tuple("Unreachable").field(w).finish(),
+            Self::RateLimited => f.write_str("RateLimited"),
+            Self::NotFound => f.write_str("NotFound"),
+            Self::Moved(_) => f.write_str("Moved(..)"),
+            Self::Other(m) => f.debug_tuple("Other").field(m).finish(),
         }
     }
 }
