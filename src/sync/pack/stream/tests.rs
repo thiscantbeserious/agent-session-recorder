@@ -136,3 +136,22 @@ fn open_range_streams_frames() {
     open_range(&key, &store, &id, &entry, &mut w).unwrap();
     assert_eq!(w.writes, vec![FRAME, FRAME, FRAME, 5]);
 }
+
+#[test]
+fn truncated_multi_frame_range_leaves_only_whole_verified_frames() {
+    let (store, key) = (MemoryStore::new(), Key::generate());
+    let id = store.create("tag", "i").unwrap();
+    let entry = push(&store, &key, &id, &vec![9u8; 3 * FRAME + 5]);
+    for cut in [1, 10, 20] {
+        let short = Entry {
+            length: entry.length - cut,
+            ..entry.clone()
+        };
+        let mut w = Rec::default();
+        assert!(
+            open_range(&key, &store, &id, &short, &mut w).is_err(),
+            "cut {cut}"
+        );
+        assert_eq!(w.writes, vec![FRAME, FRAME, FRAME], "cut {cut}");
+    }
+}
