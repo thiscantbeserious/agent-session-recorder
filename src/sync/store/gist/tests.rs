@@ -176,3 +176,66 @@ fn fits_uses_the_file_count_of_the_listing() {
     assert!(store.fits(&info, &[1]));
     assert!(!store.fits(&info, &[9 * 1024 * 1024]));
 }
+
+fn cache_store<'a>(fake: &'a Fake, base: &Path) -> GistStore<&'a Fake> {
+    let file = base.join("cache").join("index-cache.json");
+    GistStore::with_runner(fake, base.to_path_buf(), Some(file))
+}
+
+fn api_calls_for(fake: &Fake, id: &str) -> usize {
+    let want = format!("gh api gists/{id}");
+    fake.calls().iter().filter(|c| **c == want).count()
+}
+
+fn index_body(updated: &str, text: &str) -> String {
+    let file =
+        serde_json::json!({ "size": 3, "raw_url": "u", "truncated": false, "content": text });
+    let body = serde_json::json!({ "id": "a", "updated_at": updated, "files": { "index": file } });
+    body.to_string()
+}
+
+fn listed(updated: &str) -> String {
+    pages(&[vec![gist("a", "agr:v2 TAG", updated, &[("index", 3)])]])
+}
+
+/// Lists and reads the index once through a store of its own, as one `agr` run would.
+fn run_once(dir: &Path, updated: &str, text: &str) -> (Fake, String) {
+    let fake = Fake::with(vec![ok(&listed(updated)), ok(&index_body(updated, text))]);
+    let store = cache_store(&fake, dir);
+    store.list().unwrap();
+    let index = store.read_index("a").unwrap();
+    (fake, index)
+}
+
+#[test]
+fn sealed_index_cache_hit_skips_the_api() {
+    let dir = tempfile::tempdir().unwrap();
+    run_once(dir.path(), "t1", "idx");
+    let (fake, index) = run_once(dir.path(), "t1", "idx");
+    assert_eq!(api_calls_for(&fake, "a"), 0);
+    assert_eq!(index, "idx");
+}
+
+#[test]
+fn changed_updated_at_refetches() {
+    let dir = tempfile::tempdir().unwrap();
+    run_once(dir.path(), "t1", "idx");
+    let (fake, index) = run_once(dir.path(), "t2", "idx2");
+    assert_eq!(api_calls_for(&fake, "a"), 1);
+    assert_eq!(index, "idx2");
+}
+
+#[test]
+fn cache_survives_corrupt_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("cache").join("index-cache.json");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, "{not json").unwrap();
+    let (_, text) = run_once(dir.path(), "t1", "idx");
+    assert_eq!(text, "idx");
+    let rewritten = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&rewritten).is_ok(),
+        "{rewritten}"
+    );
+}

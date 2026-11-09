@@ -39,7 +39,7 @@ struct Gist {
 }
 
 /// One file of a pack gist: name, size and where `raw_url` serves it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, Deserialize)]
 pub(super) struct FileRef {
     pub name: String,
     pub size: u64,

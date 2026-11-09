@@ -2,6 +2,7 @@
 //! Reads go through `gh api` (listing, index) and `curl` with `Range` on `raw_url` (parts).
 
 mod api;
+mod index_cache;
 mod layout;
 mod read;
 #[cfg(test)]
