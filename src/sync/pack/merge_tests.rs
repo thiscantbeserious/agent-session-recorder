@@ -1,5 +1,5 @@
 use crate::sync::pack::index::{Entry, Index};
-use crate::sync::pack::merge::{merge, PackIn};
+use crate::sync::pack::merge::{merge, PackIn, Top};
 
 pub(super) fn entry(path: &str, gen: u64, sha: &str, length: u64, deleted: bool) -> Entry {
     Entry {
@@ -69,4 +69,16 @@ fn fork_below_top_gen_is_ignored() {
     let b = pack("p2", "P2", 10, vec![entry("a", 3, "z", 10, false)]);
     let view = merge(&[a, b]);
     assert!(view.forks.is_empty());
+}
+
+#[test]
+fn tombstone_on_top_is_deleted_with_its_gen() {
+    let p = pack(
+        "p",
+        "P",
+        20,
+        vec![entry("a", 4, "x", 10, false), entry("a", 5, "x", 10, true)],
+    );
+    let view = merge(&[p]);
+    assert_eq!(view.get("a").unwrap().top, Top::Deleted { gen: 5 });
 }
