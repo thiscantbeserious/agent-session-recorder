@@ -76,3 +76,25 @@ fn a_grandchild_holding_the_pipe_does_not_block_the_result() {
     assert_eq!(out.unwrap().stdout, "done\n");
     assert!(took < Duration::from_secs(10), "{took:?}");
 }
+
+/// A sink that refuses every write, like a full disk.
+struct Full;
+
+impl std::io::Write for Full {
+    fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::other("disk full"))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn run_to_file_reports_a_failed_write() {
+    let args = ["-c".to_string(), "echo data".to_string()];
+    let child = super::spawn("sh", &args, None, &[]).unwrap();
+    let stall = Duration::from_secs(5);
+    let res = super::supervise(child, "sh", stall, &mut |_| {}, Some(Box::new(Full)));
+    assert!(res.is_err());
+}

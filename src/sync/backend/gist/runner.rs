@@ -95,6 +95,9 @@ impl Lines {
 // ponytail: fixed 120 s of silence, any output resets it, make it a config key if slow links need more
 const STALL_LIMIT: Duration = Duration::from_secs(120);
 
+/// Where `run_to_file` puts stdout, a file in real runs.
+type Sink = Box<dyn Write + Send>;
+
 /// Real processes, no stdin and no prompts so a missing credential fails instead of hanging.
 /// A process that prints nothing for `stall` is killed.
 pub struct ProcessRunner {
@@ -127,7 +130,13 @@ impl Runner for ProcessRunner {
     ) -> std::io::Result<Output> {
         let file = std::fs::File::create(dest)?;
         let child = spawn(program, args, None, env)?;
-        supervise(child, program, self.stall, &mut |_| {}, Some(file))
+        supervise(
+            child,
+            program,
+            self.stall,
+            &mut |_| {},
+            Some(Box::new(file)),
+        )
     }
 
     fn run_watched(
@@ -173,7 +182,7 @@ fn supervise(
     program: &str,
     stall: Duration,
     on_line: &mut dyn FnMut(&str),
-    sink: Option<std::fs::File>,
+    sink: Option<Sink>,
 ) -> std::io::Result<Output> {
     let last = Arc::new(Mutex::new(Instant::now()));
     let stdout = drain(child.stdout.take(), &last, sink);
@@ -249,7 +258,7 @@ fn finish(drain: Drain) -> String {
 fn drain<R: Read + Send + 'static>(
     pipe: Option<R>,
     last: &Arc<Mutex<Instant>>,
-    mut sink: Option<std::fs::File>,
+    mut sink: Option<Sink>,
 ) -> Drain {
     let last = Arc::clone(last);
     let bytes = Arc::new(Mutex::new(Vec::new()));
