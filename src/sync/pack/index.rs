@@ -52,16 +52,20 @@ fn aad(uuid: &str) -> Vec<u8> {
     format!("{AAD_PREFIX}{uuid}").into_bytes()
 }
 
-/// `<uuid>.<base64url(sealed json)>`. The uuid is also the public pack tag, the plain prefix only
+/// `<uuid>.<base64url(sealed json)>`, the uuid is base32 and the body base64url, so neither has a dot. The uuid is also the public pack tag, the plain prefix only
 /// tells "other pack" from "other key", the AAD still binds it.
 pub fn seal_index(key: &Key, idx: &Index) -> Result<String, IndexError> {
+    let ok = |c: char| c.is_ascii_uppercase() || ('2'..='7').contains(&c);
+    if idx.pack.is_empty() || !idx.pack.chars().all(ok) {
+        return Err(IndexError::BadUuid);
+    }
     let json = serde_json::to_vec(idx).expect("Index serializes to JSON");
     let sealed = seal(key, &aad(&idx.pack), &json);
     Ok(format!("{}.{}", idx.pack, BASE64URL_NOPAD.encode(&sealed)))
 }
 
 pub fn open_index(key: &Key, uuid: &str, text: &str) -> Result<Index, IndexError> {
-    let (pack, body) = text.split_once('.').ok_or(IndexError::Bad)?;
+    let (pack, body) = text.rsplit_once('.').ok_or(IndexError::Bad)?;
     if pack != uuid {
         return Err(IndexError::OtherPack);
     }
