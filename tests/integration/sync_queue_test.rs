@@ -166,3 +166,36 @@ fn the_queue_dir_is_ignored_by_listing_and_cleanup() {
         .files
         .is_empty());
 }
+
+/// Several recordings finish at once, each enqueues first and then runs the auto path, like
+/// the real hook and child. Whoever loses the lock race just returns.
+#[test]
+fn concurrent_recordings_all_reach_the_remote_and_the_queue_ends_empty() {
+    let started = std::time::Instant::now();
+    for round in 0..40 {
+        let w = world();
+        let names: Vec<String> = (0..4)
+            .map(|i| format!("claude/s{round}_{i}.cast.gz"))
+            .collect();
+        for n in &names {
+            write(w.dir(), n, &format!("text of {n}"));
+        }
+        std::thread::scope(|s| {
+            for n in &names {
+                s.spawn(|| {
+                    queue::enqueue(w.dir(), n).unwrap();
+                    let engine = Engine {
+                        backend: &w.backend,
+                        key: &w.key,
+                        storage: &w.storage,
+                    };
+                    let result = engine.drain_auto(n, &mut |_: &Event<'_>| {});
+                    assert!(matches!(result, Ok(_) | Err(SyncError::Busy)), "{result:?}");
+                });
+            }
+        });
+        assert_eq!(w.backend.len(), names.len(), "round {round}");
+        assert!(queue::list(w.dir()).is_empty(), "round {round}");
+    }
+    assert!(started.elapsed().as_secs() < 5, "{:?}", started.elapsed());
+}
