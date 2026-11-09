@@ -12,7 +12,7 @@ mod tests_read;
 mod tests_retry;
 
 pub use push::{PushItem, PushReport};
-pub use read::read_pack;
+pub use read::{read_pack, ReadError};
 
 use crate::sync::crypto::Key;
 use crate::sync::pack::index::{open_index, Index};
