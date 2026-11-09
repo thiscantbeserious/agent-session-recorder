@@ -203,3 +203,40 @@ fn tombstones_of_two_writers_on_one_id_both_land() {
     let dead = |p: &str| view.view().get(p).unwrap().is_deleted();
     assert!(dead("s") && dead("t"));
 }
+
+#[test]
+fn retry_replans_gens_from_the_moved_index() {
+    let (mem, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (mut a, mut b) = two_on_one_id(&mem, &key);
+    a.push_batch(&[item(dir.path(), "s", 2, b"s2")]).unwrap();
+    b.tombstone("s").unwrap();
+    let view = repo(&mem, &key, "w1");
+    let s = view.view().get("s").unwrap();
+    assert_eq!(s.gen, 3);
+    assert!(s.is_deleted());
+}
+
+#[test]
+fn retry_drops_a_session_the_moved_index_is_ahead_of() {
+    let (mem, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (mut a, mut b) = two_on_one_id(&mem, &key);
+    a.push_batch(&[item(dir.path(), "s", 3, b"s3")]).unwrap();
+    b.push_batch(&[item(dir.path(), "s", 2, b"s2")]).unwrap();
+    let id = packs_of(&mem)[0].id.clone();
+    let info = packs_of(&mem).remove(0);
+    let gens: Vec<u64> = super::tests::index_of(&mem, &key, &info)
+        .entries
+        .iter()
+        .filter(|e| e.path == "s")
+        .map(|e| e.gen)
+        .collect();
+    assert_eq!(gens, vec![1, 3], "{id}");
+}
