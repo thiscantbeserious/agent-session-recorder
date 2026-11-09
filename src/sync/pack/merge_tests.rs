@@ -55,7 +55,7 @@ fn different_hash_same_top_gen_is_fork() {
     let a = pack("p1", "P1", 10, vec![entry("a", 4, "x", 10, false)]);
     let b = pack("p2", "P2", 10, vec![entry("a", 4, "y", 10, false)]);
     let view = merge(&[a, b]);
-    assert_eq!(view.forks, vec!["a"]);
+    assert_eq!(view.forks(), ["a"]);
 }
 
 #[test]
@@ -68,7 +68,7 @@ fn fork_below_top_gen_is_ignored() {
     );
     let b = pack("p2", "P2", 10, vec![entry("a", 3, "z", 10, false)]);
     let view = merge(&[a, b]);
-    assert!(view.forks.is_empty());
+    assert!(view.forks().is_empty());
 }
 
 #[test]
@@ -96,20 +96,23 @@ fn other_key_pack_is_reported_never_merged() {
     let x = rejected_pack("bad", IndexError::OtherKey);
     let ok = pack("p", "P", 10, vec![entry("a", 1, "x", 10, false)]);
     let view = merge(&[x, ok]);
-    assert_eq!(view.rejected, vec![("bad".to_string(), Rejected::OtherKey)]);
+    assert_eq!(
+        view.rejected(),
+        vec![("bad".to_string(), Rejected::OtherKey)]
+    );
     assert!(view.get("x").is_none());
 }
 
 #[test]
 fn unknown_version_pack_is_reported() {
     let view = merge(&[rejected_pack("bad", IndexError::UnknownVersion(4))]);
-    assert_eq!(view.rejected[0].1, Rejected::UnknownVersion(4));
+    assert_eq!(view.rejected()[0].1, Rejected::UnknownVersion(4));
 }
 
 #[test]
 fn index_of_other_pack_is_reported() {
     let view = merge(&[rejected_pack("bad", IndexError::OtherPack)]);
-    assert_eq!(view.rejected[0].1, Rejected::OtherPack);
+    assert_eq!(view.rejected()[0].1, Rejected::OtherPack);
 }
 
 #[test]
@@ -121,13 +124,13 @@ fn dead_bytes_per_pack() {
         vec![entry("a", 2, "x", 40, false), entry("a", 4, "y", 50, false)],
     );
     let view = merge(&[p]);
-    assert_eq!(view.dead_bytes["p"], 40);
+    assert_eq!(view.dead_bytes()["p"], 40);
 }
 
 #[test]
 fn dead_bytes_count_a_top_gen_tombstone_as_live() {
     let p = pack("p", "P", 30, vec![entry("a", 5, "x", 30, true)]);
-    assert_eq!(merge(&[p]).dead_bytes["p"], 0);
+    assert_eq!(merge(&[p]).dead_bytes()["p"], 0);
 }
 
 #[test]
@@ -135,7 +138,7 @@ fn duplicated_pack_is_merged_and_reported() {
     let rows = || vec![entry("x", 1, "h", 10, false), entry("t", 2, "h", 5, true)];
     let (a, b) = (pack("a", "T", 15, rows()), pack("b", "T", 15, rows()));
     let view = merge(&[a, b]);
-    assert_eq!(view.duplicates, vec![("a".to_string(), "b".to_string())]);
+    assert_eq!(view.duplicates(), vec![("a".to_string(), "b".to_string())]);
     assert_eq!(view.get("x").unwrap().places.len(), 2);
     assert!(view.get("t").unwrap().is_deleted());
 }
@@ -156,8 +159,8 @@ fn keeper_is_the_place_in_the_highest_pack_id() {
     let b = pack("b", "B", 10, vec![entry("x", 1, "h", 10, false)]);
     let view = merge(&[a, b]);
     assert_eq!(view.get("x").unwrap().keeper().pack, "b");
-    assert_eq!(view.dead_bytes["a"], 10);
-    assert_eq!(view.dead_bytes["b"], 0);
+    assert_eq!(view.dead_bytes()["a"], 10);
+    assert_eq!(view.dead_bytes()["b"], 0);
 }
 
 #[test]
@@ -201,9 +204,9 @@ fn fork_losers_are_live_not_dead() {
     let a = pack("a", "A", 10, vec![entry("x", 4, "y", 10, false)]);
     let b = pack("b", "B", 10, vec![entry("x", 4, "z", 10, false)]);
     let view = merge(&[a, b]);
-    assert_eq!(view.forks, vec!["x"]);
-    assert_eq!(view.dead_bytes.get("a").copied().unwrap_or(0), 0);
-    assert_eq!(view.dead_bytes.get("b").copied().unwrap_or(0), 0);
+    assert_eq!(view.forks(), ["x"]);
+    assert_eq!(view.dead_bytes().get("a").copied().unwrap_or(0), 0);
+    assert_eq!(view.dead_bytes().get("b").copied().unwrap_or(0), 0);
 }
 
 #[test]

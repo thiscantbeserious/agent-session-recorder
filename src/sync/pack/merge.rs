@@ -75,10 +75,10 @@ pub struct PackMeta {
 pub struct View {
     merged: BTreeMap<String, Merged>,
     packs: BTreeMap<String, PackMeta>,
-    pub forks: Vec<String>,
-    pub rejected: Vec<(String, Rejected)>,
-    pub duplicates: Vec<(String, String)>,
-    pub dead_bytes: BTreeMap<String, u64>,
+    forks: Vec<String>,
+    rejected: Vec<(String, Rejected)>,
+    duplicates: Vec<(String, String)>,
+    dead_bytes: BTreeMap<String, u64>,
     frozen: BTreeSet<String>,
 }
 
@@ -89,6 +89,23 @@ impl View {
 
     pub fn pack(&self, id: &str) -> Option<&PackMeta> {
         self.packs.get(id)
+    }
+
+    pub fn forks(&self) -> &[String] {
+        &self.forks
+    }
+
+    pub fn rejected(&self) -> &[(String, Rejected)] {
+        &self.rejected
+    }
+
+    pub fn duplicates(&self) -> &[(String, String)] {
+        &self.duplicates
+    }
+
+    /// Bytes per pack id that no path needs any more, a fork keeps all its top gen versions out.
+    pub fn dead_bytes(&self) -> &BTreeMap<String, u64> {
+        &self.dead_bytes
     }
 
     pub fn is_frozen(&self, id: &str) -> bool {
