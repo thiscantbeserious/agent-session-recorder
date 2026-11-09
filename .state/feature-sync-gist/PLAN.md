@@ -1007,7 +1007,7 @@ Goal: `pack/index.rs` with the index JSON v3 sealed under AAD `agr:pack-index:` 
 Owner: implementer
 PR: B
 
-- [ ] RED commit: `index_round_trips_through_seal` [`assert_eq!(open_index(key, uuid, &seal_index(key, &idx))?, idx)`, the stub returns an empty index].
+- [x] RED commit: `index_round_trips_through_seal` [`assert_eq!(open_index(key, uuid, &seal_index(key, &idx))?, idx)`, the stub returns an empty index].
 - [ ] RED commit:
   - `index_with_other_key_is_other_key` [`assert!(matches!(err, IndexError::OtherKey))`]
   - `index_with_v_4_is_unknown_version` [`assert!(matches!(err, IndexError::UnknownVersion(4)))`]
