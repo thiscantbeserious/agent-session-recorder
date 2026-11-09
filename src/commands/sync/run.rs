@@ -24,6 +24,7 @@ pub struct Args {
     pub dry_run: bool,
     pub yes: bool,
     pub overwrite: bool,
+    pub verbose: bool,
 }
 
 /// Everything a command needs after the preconditions passed.
@@ -169,10 +170,12 @@ fn show_auto_error() {
 
 pub fn status(verbose: bool) -> Result<()> {
     let ctx = prepare(KeyNeed::MayCreate)?;
+    let live = Live::new("", "");
     let report = ctx
         .engine()
-        .status(&[])
+        .status_with(&[], &mut live.loader())
         .unwrap_or_else(|e| engine_failed(e));
+    live.end();
     let name = ctx.backend.name();
     say(&if verbose {
         format::status_lines(&report, name)
@@ -186,8 +189,12 @@ pub fn status(verbose: bool) -> Result<()> {
 /// Preview and problems, then the prompt. `false` when there is nothing to do, on
 /// `--dry-run` or when declined. `notice` is shown right before the prompt.
 fn confirm_planned(plan: &Report, verb: &str, args: &Args, notice: &[String]) -> Result<bool> {
-    say(&format::preview_lines(plan, verb));
-    say(&format::problem_lines(plan));
+    if args.verbose {
+        say(&format::preview_lines(plan, verb));
+        say(&format::problem_lines(plan));
+    } else {
+        say(&format::compact_preview_lines(plan, verb));
+    }
     let planned = plan.items.iter().any(|i| i.outcome == Outcome::Planned);
     if args.dry_run || !planned {
         return Ok(false);
@@ -222,8 +229,9 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
     let ctx = prepare_with(KeyNeed::MayCreate, live.sink())?;
     let plan = ctx
         .engine()
-        .push(&opts(&args, true))
+        .push_with(&opts(&args, true), 0, &mut live.loader())
         .unwrap_or_else(|e| engine_failed(e));
+    live.end();
     let mut state = State::load();
     let notice = privacy_notice(&plan, &state);
     if !confirm_planned(&plan, "push", &args, &notice)? {
@@ -242,7 +250,7 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
         .engine()
         .push_with(&opts(&args, false), planned(&plan), &mut observer);
     live.end();
-    finish(result)
+    finish(result, "push", args.verbose)
 }
 
 pub fn pull(args: Args) -> Result<()> {
@@ -250,8 +258,9 @@ pub fn pull(args: Args) -> Result<()> {
     let ctx = prepare_with(KeyNeed::Existing, live.sink())?;
     let plan = ctx
         .engine()
-        .pull(&opts(&args, true))
+        .pull_with(&opts(&args, true), 0, &mut live.loader())
         .unwrap_or_else(|e| engine_failed(e));
+    live.end();
     if !confirm_planned(&plan, "pull", &args, &[])? {
         return Ok(());
     }
@@ -260,16 +269,22 @@ pub fn pull(args: Args) -> Result<()> {
         .engine()
         .pull_with(&opts(&args, false), planned(&plan), &mut observer);
     live.end();
-    finish(result)
+    finish(result, "pull", args.verbose)
 }
 
 pub fn delete(args: Args) -> Result<()> {
     let ctx = prepare(KeyNeed::Existing)?;
+    let load = Live::new("", "deleted");
     let plan = ctx
         .engine()
-        .status(&args.sessions)
+        .status_with(&args.sessions, &mut load.loader())
         .unwrap_or_else(|e| engine_failed(e));
-    say(&format::delete_preview_lines(&plan));
+    load.end();
+    say(&if args.verbose {
+        format::delete_preview_lines(&plan)
+    } else {
+        format::compact_delete_preview_lines(&plan)
+    });
     if args.dry_run || !plan.items.iter().any(|i| i.on_remote) {
         return Ok(());
     }
@@ -285,11 +300,13 @@ pub fn delete(args: Args) -> Result<()> {
         .iter()
         .filter(|i| i.outcome != Outcome::Failed("no such session".into()))
         .count();
-    let mut observer = Live::new("", "deleted").observer_owned();
-    finish(
-        ctx.engine()
-            .delete_with(&args.sessions, total, &mut observer),
-    )
+    let live = Live::new("", "deleted");
+    let mut observer = live.observer();
+    let result = ctx
+        .engine()
+        .delete_with(&args.sessions, total, &mut observer);
+    live.end();
+    finish(result, "delete", args.verbose)
 }
 
 /// Sessions that get a progress line in a real run, planned, skipped and failed ones.
@@ -319,9 +336,13 @@ fn push_auto(args: &Args) -> Result<()> {
 }
 
 /// Print the summary, exit non-zero when any session failed.
-fn finish(result: Result<Report, SyncError>) -> Result<()> {
+fn finish(result: Result<Report, SyncError>, verb: &str, verbose: bool) -> Result<()> {
     let report = result.unwrap_or_else(|e| engine_failed(e));
-    say(&format::summary_lines(&report));
+    say(&if verbose {
+        format::summary_lines(&report)
+    } else {
+        format::compact_summary_lines(&report, verb)
+    });
     if report.failed > 0 {
         std::process::exit(1);
     }

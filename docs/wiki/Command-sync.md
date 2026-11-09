@@ -39,6 +39,7 @@ EXAMPLES:
     agr sync push                    Push everything that changed
     agr sync push claude/a.cast.gz   Push one session
     agr sync push --dry-run          Show what would be pushed
+    agr sync push -v                 Preview every session, not a summary
 
 ### sync pull
 
@@ -53,6 +54,7 @@ replaced file is kept as a hidden .bak).
 EXAMPLES:
     agr sync pull                    Pull everything that is new or changed
     agr sync pull --dry-run          Show what would be pulled
+    agr sync pull -v                 Preview every session, not a summary
 
 ### sync delete
 

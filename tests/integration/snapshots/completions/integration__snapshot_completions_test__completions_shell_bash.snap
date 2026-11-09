@@ -1935,7 +1935,7 @@ _agr() {
             return 0
             ;;
         agr__sync__delete)
-            opts="-y -h --dry-run --yes --help <SESSIONS>..."
+            opts="-y -v -h --dry-run --yes --verbose --help <SESSIONS>..."
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -2173,7 +2173,7 @@ _agr() {
             return 0
             ;;
         agr__sync__pull)
-            opts="-y -h --dry-run --yes --overwrite --help [SESSIONS]..."
+            opts="-y -v -h --dry-run --yes --overwrite --verbose --help [SESSIONS]..."
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -2187,7 +2187,7 @@ _agr() {
             return 0
             ;;
         agr__sync__push)
-            opts="-y -h --dry-run --yes --overwrite --auto --help [SESSIONS]..."
+            opts="-y -v -h --dry-run --yes --overwrite --verbose --auto --help [SESSIONS]..."
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

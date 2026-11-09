@@ -19,12 +19,14 @@ pub fn handle(cmd: SyncCommands) -> Result<()> {
             yes,
             overwrite,
             auto,
+            verbose,
         } => run::push(
             run::Args {
                 sessions,
                 dry_run,
                 yes,
                 overwrite,
+                verbose,
             },
             auto,
         ),
@@ -33,21 +35,25 @@ pub fn handle(cmd: SyncCommands) -> Result<()> {
             dry_run,
             yes,
             overwrite,
+            verbose,
         } => run::pull(run::Args {
             sessions,
             dry_run,
             yes,
             overwrite,
+            verbose,
         }),
         SyncCommands::Delete {
             sessions,
             dry_run,
             yes,
+            verbose,
         } => run::delete(run::Args {
             sessions,
             dry_run,
             yes,
             overwrite: false,
+            verbose,
         }),
         SyncCommands::Key(cmd) => key::handle(cmd),
     }

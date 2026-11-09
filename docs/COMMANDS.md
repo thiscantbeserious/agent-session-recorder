@@ -652,6 +652,7 @@ Upload new and changed sessions (encrypted)
 - `--dry-run`: Show what would happen, change nothing
 - `-y, --yes`: Skip the confirmation prompt
 - `--overwrite`: Resolve conflicts with the local session
+- `-v, --verbose`: List every session, not only the summary
 
 ```
 Upload new and changed sessions, encrypted with your sync key.
@@ -665,6 +666,7 @@ EXAMPLES:
     agr sync push                    Push everything that changed
     agr sync push claude/a.cast.gz   Push one session
     agr sync push --dry-run          Show what would be pushed
+    agr sync push -v                 Preview every session, not a summary
 ```
 
 #### agr sync pull
@@ -676,6 +678,7 @@ Download new and changed sessions
 - `--dry-run`: Show what would happen, change nothing
 - `-y, --yes`: Skip the confirmation prompt
 - `--overwrite`: Resolve conflicts with the remote session
+- `-v, --verbose`: List every session, not only the summary
 
 ```
 Download remote sessions, decrypt and verify them before writing.
@@ -687,6 +690,7 @@ replaced file is kept as a hidden .bak).
 EXAMPLES:
     agr sync pull                    Pull everything that is new or changed
     agr sync pull --dry-run          Show what would be pulled
+    agr sync pull -v                 Preview every session, not a summary
 ```
 
 #### agr sync delete
@@ -697,6 +701,7 @@ Remove sessions from the remote (the local file stays)
 
 - `--dry-run`: Show what would happen, change nothing
 - `-y, --yes`: Skip the confirmation prompt
+- `-v, --verbose`: List every session, not only the summary
 
 ```
 Remove the remote copy of a session and its index entry.

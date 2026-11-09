@@ -539,6 +539,8 @@ _arguments "${_arguments_options[@]}" : \
 '-y[Skip the confirmation prompt]' \
 '--yes[Skip the confirmation prompt]' \
 '--overwrite[Resolve conflicts with the local session]' \
+'-v[List every session, not only the summary]' \
+'--verbose[List every session, not only the summary]' \
 '--auto[Internal\: push after a recording, never prompts]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
@@ -551,6 +553,8 @@ _arguments "${_arguments_options[@]}" : \
 '-y[Skip the confirmation prompt]' \
 '--yes[Skip the confirmation prompt]' \
 '--overwrite[Resolve conflicts with the remote session]' \
+'-v[List every session, not only the summary]' \
+'--verbose[List every session, not only the summary]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 '*::sessions -- Sessions to pull (default\: all):_default' \
@@ -561,6 +565,8 @@ _arguments "${_arguments_options[@]}" : \
 '--dry-run[Show what would happen, change nothing]' \
 '-y[Skip the confirmation prompt]' \
 '--yes[Skip the confirmation prompt]' \
+'-v[List every session, not only the summary]' \
+'--verbose[List every session, not only the summary]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 '*::sessions -- Sessions to delete from the remote:_default' \

@@ -3,7 +3,7 @@
 use std::io::{IsTerminal, Write};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use agr::sync::format::{live_head, progress_line, LiveLine};
+use agr::sync::format::{live_head, progress_line, LiveLine, LoadLine};
 use agr::sync::{Event, ProgressSink};
 use agr::theme::current_theme;
 
@@ -13,6 +13,7 @@ pub struct Live {
     verb: &'static str,
     done: &'static str,
     line: Arc<Mutex<LiveLine>>,
+    load: Mutex<LoadLine>,
 }
 
 fn write(text: &str) {
@@ -29,6 +30,7 @@ impl Live {
             verb,
             done,
             line: Arc::default(),
+            load: Mutex::default(),
         }
     }
 
@@ -55,17 +57,18 @@ impl Live {
         }
     }
 
-    /// Same as `observer`, for callers without a backend sink (delete).
-    pub fn observer_owned(self) -> impl FnMut(&Event<'_>) {
+    /// Draws only the loading line, for the dry-run plan whose items are not acted on.
+    pub fn loader(&self) -> impl FnMut(&Event<'_>) + '_ {
         move |event| {
             if self.tty {
-                self.show(event);
+                self.show_load(event);
             }
         }
     }
 
     /// Wipes a half drawn line, for runs that end before the final line of a session.
     pub fn end(&self) {
+        self.end_load();
         let cleared = self
             .line
             .lock()
@@ -74,7 +77,31 @@ impl Live {
         cleared.iter().for_each(|text| write(text));
     }
 
+    /// Wipes the loading line, the normal output follows on a clean row.
+    fn end_load(&self) {
+        let cleared = self
+            .load
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+        cleared.iter().for_each(|text| write(text));
+    }
+
+    fn show_load(&self, event: &Event<'_>) -> bool {
+        let mut load = self.load.lock().unwrap_or_else(PoisonError::into_inner);
+        match event {
+            Event::Listing => write(&load.listing()),
+            Event::Scanning { done, total } => write(&load.scanning(*done, *total)),
+            _ => return false,
+        }
+        true
+    }
+
     fn show(&self, event: &Event<'_>) {
+        if self.show_load(event) {
+            return;
+        }
+        self.end_load();
         let mut line = self.line.lock().unwrap_or_else(PoisonError::into_inner);
         match event {
             Event::Started { path, size, i, n } => {
@@ -85,6 +112,7 @@ impl Live {
                 let painted = current_theme().secondary_text(&plain);
                 write(&line.finish(&plain).replacen(&plain, &painted, 1));
             }
+            Event::Listing | Event::Scanning { .. } => {}
         }
     }
 }

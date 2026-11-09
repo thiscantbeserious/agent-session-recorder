@@ -257,7 +257,8 @@ Conflicts are skipped unless --overwrite is given (local wins).
 EXAMPLES:
     agr sync push                    Push everything that changed
     agr sync push claude/a.cast.gz   Push one session
-    agr sync push --dry-run          Show what would be pushed"
+    agr sync push --dry-run          Show what would be pushed
+    agr sync push -v                 Preview every session, not a summary"
     )]
     Push {
         /// Sessions to push (default: all)
@@ -272,6 +273,9 @@ EXAMPLES:
         /// Resolve conflicts with the local session
         #[arg(long, help = "Resolve conflicts with the local session")]
         overwrite: bool,
+        /// List every session, not only the summary
+        #[arg(long, short = 'v', help = "List every session, not only the summary")]
+        verbose: bool,
         /// Internal: push after a recording, never prompts
         #[arg(long, hide = true)]
         auto: bool,
@@ -286,7 +290,8 @@ replaced file is kept as a hidden .bak).
 
 EXAMPLES:
     agr sync pull                    Pull everything that is new or changed
-    agr sync pull --dry-run          Show what would be pulled"
+    agr sync pull --dry-run          Show what would be pulled
+    agr sync pull -v                 Preview every session, not a summary"
     )]
     Pull {
         /// Sessions to pull (default: all)
@@ -301,6 +306,9 @@ EXAMPLES:
         /// Resolve conflicts with the remote session
         #[arg(long, help = "Resolve conflicts with the remote session")]
         overwrite: bool,
+        /// List every session, not only the summary
+        #[arg(long, short = 'v', help = "List every session, not only the summary")]
+        verbose: bool,
     },
     /// Remove sessions from the remote (the local file stays)
     #[command(long_about = "Remove the remote copy of a session and its index entry.
@@ -319,6 +327,9 @@ EXAMPLE:
         /// Skip the confirmation prompt
         #[arg(long, short = 'y', help = "Skip the confirmation prompt")]
         yes: bool,
+        /// List every session, not only the summary
+        #[arg(long, short = 'v', help = "List every session, not only the summary")]
+        verbose: bool,
     },
     /// Export or import the sync key
     #[command(

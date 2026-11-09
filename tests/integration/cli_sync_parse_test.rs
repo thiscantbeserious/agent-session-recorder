@@ -38,13 +38,14 @@ fn push_defaults_and_flags() {
         yes,
         overwrite,
         auto,
+        verbose,
     } = sync(&["push"])
     else {
         panic!("Expected Push");
     };
     assert_eq!(
-        (dry_run, yes, overwrite, auto),
-        (false, false, false, false)
+        (dry_run, yes, overwrite, auto, verbose),
+        (false, false, false, false, false)
     );
     assert!(sessions.is_empty());
     let SyncCommands::Push {
@@ -53,8 +54,10 @@ fn push_defaults_and_flags() {
         yes,
         overwrite,
         auto,
+        verbose,
     } = sync(&[
         "push",
+        "-v",
         "--dry-run",
         "-y",
         "--overwrite",
@@ -65,7 +68,10 @@ fn push_defaults_and_flags() {
     else {
         panic!("Expected Push");
     };
-    assert_eq!((dry_run, yes, overwrite, auto), (true, true, true, true));
+    assert_eq!(
+        (dry_run, yes, overwrite, auto, verbose),
+        (true, true, true, true, true)
+    );
     assert_eq!(sessions, ["a/x.cast.gz", "b/y"]);
 }
 
@@ -76,11 +82,15 @@ fn pull_flags_and_sessions() {
         dry_run,
         yes,
         overwrite,
-    } = sync(&["pull", "--yes", "--overwrite", "a/x"])
+        verbose,
+    } = sync(&["pull", "--yes", "--verbose", "--overwrite", "a/x"])
     else {
         panic!("Expected Pull");
     };
-    assert_eq!((dry_run, yes, overwrite), (false, true, true));
+    assert_eq!(
+        (dry_run, yes, overwrite, verbose),
+        (false, true, true, true)
+    );
     assert_eq!(sessions, ["a/x"]);
 }
 
@@ -91,11 +101,12 @@ fn delete_needs_a_session() {
         sessions,
         dry_run,
         yes,
-    } = sync(&["delete", "--dry-run", "a/x"])
+        verbose,
+    } = sync(&["delete", "--dry-run", "-v", "a/x"])
     else {
         panic!("Expected Delete");
     };
-    assert_eq!((dry_run, yes), (true, false));
+    assert_eq!((dry_run, yes, verbose), (true, false, true));
     assert_eq!(sessions, ["a/x"]);
 }
 

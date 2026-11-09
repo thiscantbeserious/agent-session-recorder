@@ -268,7 +268,13 @@ fn no_tty_without_yes_aborts_push_and_pull_but_dry_run_and_status_work() {
         "{}",
         dry.stdout
     );
-    assert!(dry.stdout.contains("claude/a.cast.gz"), "{}", dry.stdout);
+    assert!(!dry.stdout.contains("claude/a.cast.gz"), "{}", dry.stdout);
+    let full = m.run(&["push", "--dry-run", "-v"]);
+    assert!(
+        full.stdout.contains("  claude/a.cast.gz ("),
+        "{}",
+        full.stdout
+    );
     assert!(!m.key_path().exists());
     assert!(remote_files(remote.path(), ".blob").is_empty());
     let status = m.run(&["status"]);
@@ -721,4 +727,98 @@ fn push_prints_no_progress_lines_when_stderr_is_not_a_terminal() {
     assert!(out.stdout.contains("Pushed: 2"), "{}", out.stdout);
     assert!(!out.all().contains("[1/2]"), "{}", out.all());
     assert!(!out.all().contains("pushed claude/"), "{}", out.all());
+}
+
+#[test]
+fn compact_preview_by_default_and_the_full_list_with_dash_v_on_push_pull_and_delete() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "one");
+    m.session("claude", "b.cast.gz", "two");
+    m.session("claude", "plain.cast", "{}");
+    let push = m.run(&["push", "--dry-run"]);
+    assert!(
+        push.stdout.contains("Would push 2 session(s)"),
+        "{}",
+        push.stdout
+    );
+    assert!(
+        push.stdout.contains("1 skipped: plain .cast"),
+        "{}",
+        push.stdout
+    );
+    assert!(!push.stdout.contains("claude/b.cast.gz"), "{}", push.stdout);
+    assert!(m
+        .run(&["push", "--dry-run", "-v"])
+        .stdout
+        .contains("  claude/b.cast.gz ("));
+    m.run(&["push", "--yes"]);
+    let delete = m.run(&[
+        "delete",
+        "--dry-run",
+        "claude/a.cast.gz",
+        "claude/b.cast.gz",
+    ]);
+    assert!(
+        delete.stdout.contains("agr sync delete -v"),
+        "{}",
+        delete.stdout
+    );
+    assert!(
+        !delete.stdout.contains("  claude/a.cast.gz"),
+        "{}",
+        delete.stdout
+    );
+    let full = m.run(&[
+        "delete",
+        "--dry-run",
+        "-v",
+        "claude/a.cast.gz",
+        "claude/b.cast.gz",
+    ]);
+    assert!(
+        full.stdout.contains("  claude/a.cast.gz"),
+        "{}",
+        full.stdout
+    );
+    let other = Machine::gist(remote.path());
+    let export = m.run(&["key", "export"]).stdout;
+    let phrase = export
+        .lines()
+        .find(|l| l.trim().starts_with("agr1-"))
+        .unwrap();
+    other.run_stdin(&["key", "import"], &format!("{}\n", phrase.trim()));
+    let pull = other.run(&["pull", "--dry-run"]);
+    assert!(
+        pull.stdout.contains("Would pull 2 session(s)"),
+        "{}",
+        pull.stdout
+    );
+    assert!(!pull.stdout.contains("claude/b.cast.gz"), "{}", pull.stdout);
+    assert!(other
+        .run(&["pull", "-v", "--dry-run"])
+        .stdout
+        .contains("  claude/b.cast.gz ("));
+}
+
+#[test]
+fn no_loading_line_and_no_carriage_return_when_stderr_is_not_a_terminal() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "text");
+    for args in [
+        &["status"][..],
+        &["push", "--dry-run"],
+        &["push", "--yes"],
+        &["pull", "--dry-run"],
+        &["delete", "--dry-run", "claude/a.cast.gz"],
+    ] {
+        let out = m.run(args);
+        assert!(
+            !out.all().contains("Listing") && !out.all().contains("Scanning"),
+            "{args:?} {}",
+            out.all()
+        );
+        assert!(!out.all().contains('\r'), "{args:?} {:?}", out.all());
+    }
 }

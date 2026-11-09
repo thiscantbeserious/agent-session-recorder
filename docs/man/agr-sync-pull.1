@@ -4,7 +4,7 @@
 .SH NAME
 pull \- Download new and changed sessions
 .SH SYNOPSIS
-\fBpull\fR [\fB\-\-dry\-run\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-overwrite\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fISESSIONS\fR] 
+\fBpull\fR [\fB\-\-dry\-run\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-\-overwrite\fR] [\fB\-v\fR|\fB\-\-verbose\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fISESSIONS\fR] 
 .SH DESCRIPTION
 Download remote sessions, decrypt and verify them before writing.
 .PP
@@ -15,6 +15,7 @@ replaced file is kept as a hidden .bak).
 EXAMPLES:
     agr sync pull                    Pull everything that is new or changed
     agr sync pull \-\-dry\-run          Show what would be pulled
+    agr sync pull \-v                 Preview every session, not a summary
 .SH OPTIONS
 .TP
 \fB\-\-dry\-run\fR
@@ -25,6 +26,9 @@ Skip the confirmation prompt
 .TP
 \fB\-\-overwrite\fR
 Resolve conflicts with the remote session
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+List every session, not only the summary
 .TP
 \fB\-h\fR, \fB\-\-help\fR
 Print help (see a summary with \*(Aq\-h\*(Aq)
