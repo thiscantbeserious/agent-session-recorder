@@ -90,6 +90,9 @@ impl Fake {
             let stub = std::fs::read_to_string(&args[2]).unwrap();
             *self.stub_seen.borrow_mut() = Some(stub);
         }
+        if program == "curl" {
+            self.curl_body(args);
+        }
         if program == "git" && args.iter().any(|a| a == "clone") {
             let dir = PathBuf::from(args.last().unwrap());
             std::fs::create_dir_all(&dir).unwrap();
@@ -103,6 +106,24 @@ impl Fake {
             *self.pushed.borrow_mut() = Some(data_files(cwd.unwrap()));
             let manifest = std::fs::read_to_string(cwd.unwrap().join(MANIFEST_FILE)).ok();
             *self.pushed_manifest.borrow_mut() = manifest;
+        }
+    }
+}
+
+impl Fake {
+    /// A `curl -H "Range: bytes=a-b" -o <file> <url>`: writes that range of the `remote` file
+    /// named like the last url segment.
+    fn curl_body(&self, args: &[String]) {
+        let after = |flag: &str| args.iter().skip_while(|a| *a != flag).nth(1);
+        let range = args.iter().find_map(|a| a.strip_prefix("Range: bytes="));
+        let name = args.last().and_then(|u| u.rsplit('/').next());
+        let (Some(out), Some(range), Some(name)) = (after("-o"), range, name) else {
+            return;
+        };
+        let (from, to) = range.split_once('-').expect("a-b range");
+        let (from, to): (usize, usize) = (from.parse().unwrap(), to.parse().unwrap());
+        if let Some((_, body)) = self.remote.iter().find(|(n, _)| n == name) {
+            std::fs::write(out, &body[from..=to]).unwrap();
         }
     }
 }
