@@ -48,6 +48,7 @@ pub fn label(item: &Item) -> &'static str {
 /// Backend line, one line per session and totals per state.
 pub fn status_lines(report: &Report, backend: &str) -> Vec<String> {
     let mut lines = vec![backend_line(report, backend)];
+    lines.extend(queued_line(report));
     if report.items.is_empty() {
         lines.push("No sessions.".into());
         return lines;
@@ -55,6 +56,11 @@ pub fn status_lines(report: &Report, backend: &str) -> Vec<String> {
     lines.extend(report.items.iter().flat_map(status_block));
     lines.push(totals(report));
     lines
+}
+
+/// `N queued for auto push`, only when the queue is not empty.
+pub(super) fn queued_line(report: &Report) -> Option<String> {
+    (report.queued > 0).then(|| format!("{} queued for auto push", report.queued))
 }
 
 pub(super) fn backend_line(report: &Report, backend: &str) -> String {

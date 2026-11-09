@@ -329,7 +329,7 @@ fn push_auto(args: &Args) -> Result<()> {
     let result = try_prepare(KeyNeed::Existing, false, None)
         .map_err(|Failure(message, _)| SyncError::Failed(message))
         .and_then(|ctx| auto::run(&ctx.engine(), session));
-    if let Some(line) = auto::error_line(&result, session) {
+    if let Some(line) = auto::error_line(&result) {
         State::store_auto_error_default(line)?;
     }
     Ok(())

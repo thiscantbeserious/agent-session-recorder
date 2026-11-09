@@ -13,6 +13,7 @@ const HINT: &str = "Run agr sync status -v for the per-session list.";
 /// then the hint. `status_lines` is the full per-session list behind `-v`.
 pub fn compact_status_lines(report: &Report, backend: &str) -> Vec<String> {
     let mut lines = vec![backend_line(report, backend)];
+    lines.extend(super::queued_line(report));
     if report.items.is_empty() {
         lines.push("No sessions.".into());
         return lines;

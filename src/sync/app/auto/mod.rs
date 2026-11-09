@@ -7,6 +7,7 @@ use std::process::{Command, Stdio};
 use crate::config::state::State;
 use crate::config::{Config, SyncBackendKind};
 use crate::files::{codec, lock};
+use crate::sync::engine::queue;
 
 mod child;
 
@@ -112,9 +113,18 @@ pub fn after_recording(config: &Config, path: &Path) -> (Vec<String>, Option<Vec
     let (hint, spawn) = match decide(config, &state, env, path) {
         Auto::Silent => (None, None),
         Auto::Skip(hint) => (Some(hint), None),
-        Auto::Spawn(args) => (None, Some(args)),
+        Auto::Spawn(args) => (None, Some(queue_first(config, args))),
     };
     (stored.or(hint).into_iter().collect(), spawn)
+}
+
+/// Queue the session before the child starts, so a child that loses the lock race leaves a
+/// trace for the lock holder. A failed write only costs the safety net, the child still pushes.
+fn queue_first(config: &Config, args: Vec<String>) -> Vec<String> {
+    if let Some(session) = args.last() {
+        let _ = queue::enqueue(&config.storage_directory(), session);
+    }
+    args
 }
 
 fn key_exists() -> bool {

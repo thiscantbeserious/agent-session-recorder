@@ -10,6 +10,7 @@ use super::observe::{counted, no_progress, scan_tick, Observer, Step};
 use super::plan::{decide, resolve, Command, Decision, Local, Remote};
 use super::pull::pull_one;
 use super::push::{heal, push_one};
+use super::queue;
 use super::record::{record, save_index, Synced};
 use super::scan::{scan_with, select, Duplicate, Row};
 use crate::sync::backend::{BackendError, SyncBackend};
@@ -119,7 +120,9 @@ impl Engine<'_> {
             sessions: sessions.to_vec(),
             ..Options::default()
         };
-        self.sync(Command::Push, &opts, &mut counted(0, observer))
+        let mut report = self.sync(Command::Push, &opts, &mut counted(0, observer))?;
+        report.queued = queue::list(&self.storage.storage_dir()).len();
+        Ok(report)
     }
 
     pub fn push(&self, opts: &Options) -> Result<Report, SyncError> {
@@ -193,6 +196,16 @@ impl Engine<'_> {
         } else {
             Some(SyncLock::acquire(&self.storage.storage_dir())?)
         };
+        self.sync_held(command, opts, observer)
+    }
+
+    /// `sync` for a caller that already holds the lock (or runs dry).
+    pub(super) fn sync_held(
+        &self,
+        command: Command,
+        opts: &Options,
+        observer: &mut dyn FnMut(Step<'_>),
+    ) -> Result<Report, SyncError> {
         let mut loaded = self.load(&opts.sessions, observer)?;
         let mut rows = std::mem::take(&mut loaded.rows).into_iter();
         while let Some(row) = rows.next() {
@@ -203,6 +216,14 @@ impl Engine<'_> {
                 })?;
             observer(Step::Finished(&item));
             loaded.report.add(command, item);
+        }
+        if command == Command::Push && !opts.dry_run {
+            let dir = self.storage.storage_dir();
+            loaded
+                .report
+                .items
+                .iter()
+                .for_each(|i| queue::settle(&dir, i));
         }
         Ok(loaded.report)
     }

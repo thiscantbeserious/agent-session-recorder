@@ -118,7 +118,7 @@ fn a_busy_auto_run_leaves_the_entry_and_stores_no_error() {
     let result = w.drain("claude/a.cast.gz");
     assert_eq!(result.as_ref().err(), Some(&SyncError::Busy));
     assert_eq!(queue::list(w.dir()), ["claude/a.cast.gz"]);
-    assert_eq!(auto::error_line(&result, "claude/a.cast.gz"), None);
+    assert_eq!(auto::error_line(&result), None);
 }
 
 #[test]

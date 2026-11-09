@@ -5,8 +5,13 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::observe::Observer;
-use super::run::{Engine, Report, SyncError};
+use std::collections::BTreeSet;
+
+use super::index;
+use super::lock::SyncLock;
+use super::observe::{counted, Observer, Step};
+use super::plan::{Command, Decision, SkipReason};
+use super::run::{Engine, Item, Options, Outcome, Report, SyncError};
 use super::scan::valid_path;
 
 pub const QUEUE_DIR: &str = ".agr-sync-queue";
@@ -59,14 +64,79 @@ pub fn remove(storage_dir: &Path, sessions: &[String]) {
     }
 }
 
+/// Done with `item`. A failed one stays for the next run, so does a locked or unreadable one
+/// (still recording, maybe a transient error). Everything else leaves the queue, pushed and
+/// in sync because they are done, conflicts and the like because only the user can resolve
+/// them (the stored error line still tells).
+pub(super) fn settle(storage_dir: &Path, item: &Item) {
+    let retry = matches!(item.outcome, Outcome::Failed(_))
+        && item.decision != Decision::Skip(SkipReason::NotFound)
+        || matches!(
+            item.decision,
+            Decision::Skip(SkipReason::Locked | SkipReason::Unreadable)
+        );
+    if !retry {
+        remove(storage_dir, std::slice::from_ref(&item.path));
+    }
+}
+
 impl Engine<'_> {
-    /// The `--auto` run, see the module docs.
+    /// The `--auto` run, pushes the queue plus the changed synced sessions, never pulls or
+    /// deletes. `Busy` when another sync holds the lock, the entry stays queued for the holder.
+    // No lost wakeup: a recording enqueues BEFORE it spawns its child. A child that finds the
+    // lock held exits quietly, so its entry is already on disk. The holder looks at the queue
+    // after every round while holding the lock (catches entries added mid-drain) and once more
+    // AFTER releasing it. A child that saw the lock held did so before the release, so its entry
+    // is on disk before that last look and gets seen. One that came later takes the lock itself.
+    // Entries that failed stay queued, `tried` keeps this run from looping on them.
     pub fn drain_auto(
         &self,
-        _session: &str,
-        _observer: &mut Observer<'_>,
+        session: &str,
+        observer: &mut Observer<'_>,
     ) -> Result<Report, SyncError> {
-        Ok(Report::default())
+        let dir = self.storage.storage_dir();
+        let mut observer = counted(0, observer);
+        let mut tried = BTreeSet::new();
+        let mut total = Report::default();
+        let mut next = vec![session.to_string()];
+        next.extend(index::maybe_changed(&dir, &index::load(&dir).0));
+        loop {
+            let lock = match SyncLock::acquire(&dir) {
+                Err(SyncError::Busy) if !tried.is_empty() => return Ok(total),
+                held => held?,
+            };
+            self.drain_held(&mut next, &mut tried, &mut total, &mut observer)?;
+            drop(lock);
+            next = list(&dir);
+            next.retain(|s| !tried.contains(s));
+            if next.is_empty() {
+                return Ok(total);
+            }
+        }
+    }
+
+    /// Push `next`, then whatever was queued meanwhile, until nothing untried is left.
+    fn drain_held(
+        &self,
+        next: &mut Vec<String>,
+        tried: &mut BTreeSet<String>,
+        total: &mut Report,
+        observer: &mut dyn FnMut(Step<'_>),
+    ) -> Result<(), SyncError> {
+        let dir = self.storage.storage_dir();
+        loop {
+            next.extend(list(&dir));
+            next.retain(|s| tried.insert(s.clone()));
+            if next.is_empty() {
+                return Ok(());
+            }
+            let sessions = std::mem::take(next);
+            let opts = Options {
+                sessions,
+                ..Options::default()
+            };
+            total.absorb(self.sync_held(Command::Push, &opts, observer)?);
+        }
     }
 }
 

@@ -1,18 +1,13 @@
 //! The `--auto` child run and the error line it leaves in the state file.
 
 use crate::config::state::State;
-use crate::sync::engine::index;
-use crate::sync::engine::run::{Engine, Options, Outcome, Report, SyncError};
+use crate::sync::engine::run::{Engine, Outcome, Report, SyncError};
 
 /// One line for the state file after an `--auto` run for `session`, `None` when it
-/// went fine. A busy lock means the session was not pushed, so that is reported too.
-pub fn error_line(result: &Result<Report, SyncError>, session: &str) -> Option<String> {
+/// went fine. A busy lock is not an error, the session is queued and the holder takes it.
+pub fn error_line(result: &Result<Report, SyncError>) -> Option<String> {
     let report = match result {
-        Err(SyncError::Busy) => {
-            return Some(format!(
-                "auto push of {session} skipped, another sync was running, run agr sync push"
-            ))
-        }
+        Err(SyncError::Busy) => return None,
         Err(e) => return Some(format!("auto push failed: {e}")),
         Ok(report) => report,
     };
@@ -33,24 +28,15 @@ pub fn take_error_line(state: &mut State) -> Option<String> {
     ))
 }
 
-/// The `--auto` run, pushes the new session and the synced ones that changed since (markers,
-/// optimize), never pulls or deletes, a conflict is skipped (no overwrite) and reported.
+/// The `--auto` run, drains the queue (this session included) and the synced sessions that
+/// changed since (markers, optimize), never pulls or deletes, a conflict is skipped (no
+/// overwrite) and reported.
 // ponytail: only the same path with other content counts as changed. A renamed file is a new
 // path with no index entry and its old path is gone, so a rename is left to a manual
 // `agr sync push` (pushing it here would upload a second copy). Selection is size and mtime from
 // the index, so only those files get hashed, a touched but identical file is hashed each time.
 pub fn run(engine: &Engine<'_>, session: &str) -> Result<Report, SyncError> {
-    let (index, _) = index::load(&engine.storage.storage_dir());
-    let mut sessions = vec![session.to_string()];
-    for path in index::maybe_changed(&engine.storage.storage_dir(), &index) {
-        if path != session {
-            sessions.push(path);
-        }
-    }
-    engine.push(&Options {
-        sessions,
-        ..Options::default()
-    })
+    engine.drain_auto(session, &mut |_: &crate::sync::Event<'_>| {})
 }
 
 #[cfg(test)]
@@ -146,7 +132,7 @@ mod tests {
         );
         let report = run(&engine, "claude/s.cast.gz").unwrap();
         assert_eq!((report.pushed, report.conflicts), (0, 1));
-        assert!(error_line(&Ok(report), "s").unwrap().contains("conflict"));
+        assert!(error_line(&Ok(report)).unwrap().contains("conflict"));
         assert_eq!(fs::read(&path).unwrap(), b"changed locally");
     }
 
@@ -273,7 +259,7 @@ mod tests {
 
     #[test]
     fn error_line_keeps_the_rate_limit_text_with_sessions_left() {
-        let line = error_line(&Err(SyncError::RateLimited { left: 4 }), "s").unwrap();
+        let line = error_line(&Err(SyncError::RateLimited { left: 4 })).unwrap();
         assert_eq!(
             line,
             "auto push failed: GitHub rate limit reached, sync stopped, 4 left, please run again later"
@@ -283,12 +269,12 @@ mod tests {
     #[test]
     fn error_line_is_none_for_success() {
         let ok = report(item(Outcome::Done(1), Decision::Push), 0, 0, 0);
-        assert_eq!(error_line(&Ok(ok), "s"), None);
+        assert_eq!(error_line(&Ok(ok)), None);
     }
 
     #[test]
     fn error_line_is_none_when_busy_because_the_entry_is_queued() {
-        assert_eq!(error_line(&Err(SyncError::Busy), "s"), None);
+        assert_eq!(error_line(&Err(SyncError::Busy)), None);
     }
 
     #[test]
@@ -299,7 +285,7 @@ mod tests {
             0,
             0,
         );
-        let line = error_line(&Ok(failed), "s").unwrap();
+        let line = error_line(&Ok(failed)).unwrap();
         assert!(
             line.contains("claude/s.cast.gz") && line.contains("offline"),
             "{line}"
@@ -314,7 +300,7 @@ mod tests {
             0,
             1,
         );
-        assert!(error_line(&Ok(conflict), "s").unwrap().contains("conflict"));
+        assert!(error_line(&Ok(conflict)).unwrap().contains("conflict"));
         let capped = report(
             item(
                 Outcome::Skipped("over the 1 GiB limit".into()),
@@ -324,8 +310,8 @@ mod tests {
             1,
             0,
         );
-        assert!(error_line(&Ok(capped), "s").unwrap().contains("1 GiB"));
-        let err = error_line(&Err(SyncError::Failed("boom".into())), "s").unwrap();
+        assert!(error_line(&Ok(capped)).unwrap().contains("1 GiB"));
+        let err = error_line(&Err(SyncError::Failed("boom".into()))).unwrap();
         assert!(err.contains("boom"), "{err}");
     }
 }

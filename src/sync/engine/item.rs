@@ -4,6 +4,17 @@ use super::plan::{Command, Decision, Local, Remote, SkipReason};
 use super::run::{Item, Outcome, Report};
 
 impl Report {
+    /// Add the counts and items of a later round of the same run.
+    pub(super) fn absorb(&mut self, other: Report) {
+        self.pushed += other.pushed;
+        self.skipped += other.skipped;
+        self.conflicts += other.conflicts;
+        self.failed += other.failed;
+        self.bytes += other.bytes;
+        self.warning = self.warning.take().or(other.warning);
+        self.items.extend(other.items);
+    }
+
     pub(super) fn add(&mut self, command: Command, item: Item) {
         match (&item.outcome, item.decision) {
             (Outcome::Done(bytes), _) => {
