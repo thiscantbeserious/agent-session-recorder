@@ -239,3 +239,21 @@ impl AgentsConfig {
         map
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Config, SyncConfig};
+
+    #[test]
+    fn sync_backend_defaults_to_gist() {
+        assert!(format!("{:?}", SyncConfig::default().backend).contains("Gist"));
+        let parsed: Config = toml::from_str("[sync]\nauto_push = true\n").unwrap();
+        assert!(format!("{:?}", parsed.sync.backend).contains("Gist"));
+    }
+
+    #[test]
+    fn backend_off_disables_sync() {
+        let parsed: Config = toml::from_str("[sync]\nbackend = \"off\"\n").unwrap();
+        assert!(format!("{:?}", parsed.sync.backend).contains("Off"));
+    }
+}

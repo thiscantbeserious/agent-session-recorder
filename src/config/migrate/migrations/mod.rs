@@ -15,6 +15,7 @@ mod v3;
 mod v4;
 mod v5;
 mod v6;
+mod v7;
 
 use crate::config::MigrateResult;
 use toml_edit::Table;
@@ -31,6 +32,7 @@ const MIGRATIONS: &[(u32, MigrationFn)] = &[
     (v4::VERSION, v4::migrate),
     (v5::VERSION, v5::migrate),
     (v6::VERSION, v6::migrate),
+    (v7::VERSION, v7::migrate),
 ];
 
 /// Run all applicable migrations from `from_version` to latest.

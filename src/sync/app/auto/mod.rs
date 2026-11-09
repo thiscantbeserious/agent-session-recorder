@@ -207,6 +207,13 @@ mod tests {
     }
 
     #[test]
+    fn default_config_without_ack_does_not_push() {
+        let dir = tempfile::tempdir().unwrap();
+        let got = decide_in(dir.path(), &Config::default(), &State::default(), READY);
+        assert!(matches!(got, Auto::Skip(_)), "{got:?}");
+    }
+
+    #[test]
     fn other_local_blockers_skip_with_a_hint() {
         let dir = tempfile::tempdir().unwrap();
         let on = config(true, true);

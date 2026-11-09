@@ -14,7 +14,7 @@ use super::Config;
 
 /// The latest config schema version.
 /// Bump this and add a migration file when the schema changes.
-pub const CURRENT_VERSION: u32 = 6;
+pub const CURRENT_VERSION: u32 = 7;
 
 /// Result of a config migration operation
 #[derive(Debug, Clone, Default)]
