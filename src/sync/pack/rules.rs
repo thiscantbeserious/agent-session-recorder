@@ -76,5 +76,8 @@ mod tests {
         assert!(pack_size(8).is_err());
         assert!(pack_size(1024).is_err());
         assert!(pack_size(16).is_ok());
+        assert!(pack_size(15).is_err());
+        assert!(pack_size(512).is_ok());
+        assert!(pack_size(513).is_err());
     }
 }
