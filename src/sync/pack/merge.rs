@@ -117,6 +117,7 @@ pub fn merge(packs: &[PackIn]) -> View {
             }
         }
     }
+    duplicates(packs, &mut view);
     finish(&mut view);
     view
 }
@@ -127,6 +128,23 @@ fn meta(tag: &str, idx: &Index) -> PackMeta {
         writer: idx.writer.clone(),
         sealed: idx.sealed,
         len: idx.len,
+    }
+}
+
+/// Packs with one tag are copies of each other, every pair is reported and both ids are frozen.
+fn duplicates(packs: &[PackIn], view: &mut View) {
+    let mut by_tag: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for p in packs.iter().filter(|p| p.index.is_ok()) {
+        by_tag.entry(&p.tag).or_default().insert(&p.id);
+    }
+    for ids in by_tag.values().filter(|ids| ids.len() > 1) {
+        let ids: Vec<&str> = ids.iter().copied().collect();
+        for (i, a) in ids.iter().enumerate() {
+            for b in &ids[i + 1..] {
+                view.duplicates.push((a.to_string(), b.to_string()));
+            }
+            view.frozen.insert(a.to_string());
+        }
     }
 }
 
