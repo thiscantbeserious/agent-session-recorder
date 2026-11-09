@@ -130,17 +130,17 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
     },
     SectionDoc {
         name: "sync",
-        description: "Session sync settings (off until a backend is set)",
+        description: "Session sync settings (gist by default, `backend = \"off\"` disables sync)",
         fields: &[
             FieldDoc {
                 name: "backend",
-                description: "Sync backend: \"gist\" (secret GitHub Gists via gh, link holders can read them but sessions are encrypted locally, losing the key makes them unrecoverable). Unset = sync off. One gist per session, sessions over 1 GiB are skipped, large ones are split into parts inside their gist",
-                default_display: "unset",
-                example: Some("\"gist\""),
+                description: "Sync backend: \"gist\" (secret GitHub Gists via gh, link holders can read them but sessions are encrypted locally, losing the key makes them unrecoverable). \"off\" disables sync. One gist per session, sessions over 1 GiB are skipped, large ones are split into parts inside their gist",
+                default_display: "\"gist\"",
+                example: None,
             },
             FieldDoc {
                 name: "auto_push",
-                description: "Push new sessions automatically after recording, on by default once a backend is set (needs one manual push first to confirm the privacy notice)",
+                description: "Push new sessions automatically after recording, on by default unless the backend is \"off\" (needs one manual push first to confirm the privacy notice)",
                 default_display: "true",
                 example: None,
             },

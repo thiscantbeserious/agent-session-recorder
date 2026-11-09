@@ -17,6 +17,8 @@ mod v5;
 mod v6;
 mod v7;
 
+pub use v7::strip_v6_template;
+
 use crate::config::MigrateResult;
 use toml_edit::Table;
 

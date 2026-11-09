@@ -45,12 +45,12 @@ impl Default for Config {
     }
 }
 
-/// Session sync configuration. Sync is off while `backend` is unset.
+/// Session sync configuration. Sync uses `gist` unless `backend = "off"`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SyncConfig {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub backend: Option<SyncBackendKind>,
-    /// Push new sessions automatically after recording (only when a backend is set).
+    #[serde(default = "default_backend")]
+    pub backend: SyncBackendKind,
+    /// Push new sessions automatically after recording (unless the backend is `off`).
     #[serde(default = "default_auto_push")]
     pub auto_push: bool,
 }
@@ -60,6 +60,11 @@ pub struct SyncConfig {
 #[serde(rename_all = "lowercase")]
 pub enum SyncBackendKind {
     Gist,
+    Off,
+}
+
+pub fn default_backend() -> SyncBackendKind {
+    SyncBackendKind::Gist
 }
 
 pub fn default_auto_push() -> bool {
@@ -69,7 +74,7 @@ pub fn default_auto_push() -> bool {
 impl Default for SyncConfig {
     fn default() -> Self {
         Self {
-            backend: None,
+            backend: default_backend(),
             auto_push: default_auto_push(),
         }
     }
@@ -242,18 +247,18 @@ impl AgentsConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::{Config, SyncConfig};
+    use super::{Config, SyncBackendKind, SyncConfig};
 
     #[test]
     fn sync_backend_defaults_to_gist() {
-        assert!(format!("{:?}", SyncConfig::default().backend).contains("Gist"));
+        assert_eq!(SyncConfig::default().backend, SyncBackendKind::Gist);
         let parsed: Config = toml::from_str("[sync]\nauto_push = true\n").unwrap();
-        assert!(format!("{:?}", parsed.sync.backend).contains("Gist"));
+        assert_eq!(parsed.sync.backend, SyncBackendKind::Gist);
     }
 
     #[test]
     fn backend_off_disables_sync() {
         let parsed: Config = toml::from_str("[sync]\nbackend = \"off\"\n").unwrap();
-        assert!(format!("{:?}", parsed.sync.backend).contains("Off"));
+        assert_eq!(parsed.sync.backend, SyncBackendKind::Off);
     }
 }

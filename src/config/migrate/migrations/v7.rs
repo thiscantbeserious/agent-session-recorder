@@ -13,6 +13,20 @@ pub const VERSION: u32 = 7;
 
 pub fn migrate(_root: &mut Table, _result: &mut MigrateResult) {}
 
+/// Drop the `# backend = "gist"` line v6 wrote. Comments are not reachable through the
+/// table, so this works on text, and only runs for configs older than v7.
+pub fn strip_v6_template(content: &str) -> String {
+    let mut out: String = content
+        .lines()
+        .filter(|line| line.trim() != "# backend = \"gist\"")
+        .collect::<Vec<_>>()
+        .join("\n");
+    if content.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use crate::config::migrate::migrate_config;
@@ -34,7 +48,7 @@ mod tests {
         let result = migrate_config(input).unwrap();
         assert!(result.content.contains("backend = \"off\""));
         assert!(!result.content.contains("\"gist\""), "{}", result.content);
-        assert!(result.added_fields.is_empty());
+        assert!(!result.added_fields.contains(&"sync.backend".to_string()));
     }
 
     #[test]

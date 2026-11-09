@@ -1284,3 +1284,5 @@ own decision).
 - **Wire format**: unchanged, existing v2 blobs keep opening, no migration.
 - **Out of scope**: dropping the SIMD backends (`chacha20` soft backend), `sha2` 0.11, an audit
   of `ctutils`. Re-open only if #167 asks for it.
+
+**2026-11-09:** user decision, backend defaults to gist, `off` disables. Supersedes the autonomous decision to keep it unset.

@@ -98,13 +98,15 @@ pub fn explain(error: &BackendError) -> (String, Option<String>) {
     }
 }
 
-/// The configured backend, `None` while sync is off. `test_dir` (the binary reads it from
+/// The configured backend, `None` when `backend = "off"`. `test_dir` (the binary reads it from
 /// `AGR_SYNC_TEST_BACKEND_DIR`) swaps the gist backend for a directory fake, tests only.
 pub fn open_backend(
-    kind: Option<SyncBackendKind>,
+    kind: SyncBackendKind,
     test_dir: Option<PathBuf>,
 ) -> Option<Box<dyn SyncBackend>> {
-    kind?;
+    if kind == SyncBackendKind::Off {
+        return None;
+    }
     Some(match test_dir {
         Some(dir) => Box::new(FileBackend::new(dir)),
         None => Box::new(GistBackend::new()),
@@ -155,11 +157,11 @@ mod tests {
 
     #[test]
     fn backend_factory_follows_config_and_test_switch() {
-        assert!(open_backend(None, None).is_none());
-        assert!(open_backend(None, Some("/x".into())).is_none());
-        let gist = open_backend(Some(SyncBackendKind::Gist), None).unwrap();
+        assert!(open_backend(SyncBackendKind::Off, None).is_none());
+        assert!(open_backend(SyncBackendKind::Off, Some("/x".into())).is_none());
+        let gist = open_backend(SyncBackendKind::Gist, None).unwrap();
         assert_eq!(gist.name(), "gist");
-        let fake = open_backend(Some(SyncBackendKind::Gist), Some("/x".into())).unwrap();
+        let fake = open_backend(SyncBackendKind::Gist, Some("/x".into())).unwrap();
         assert_eq!(fake.name(), "file");
     }
 

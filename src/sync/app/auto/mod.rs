@@ -5,7 +5,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::config::state::State;
-use crate::config::Config;
+use crate::config::{Config, SyncBackendKind};
 use crate::files::{codec, lock};
 
 mod child;
@@ -32,7 +32,7 @@ pub(super) struct Env {
 
 /// Decide in-process, no network.
 pub(super) fn decide(config: &Config, state: &State, env: Env, path: &Path) -> Auto {
-    if config.sync.backend.is_none() || !config.sync.auto_push {
+    if config.sync.backend == SyncBackendKind::Off || !config.sync.auto_push {
         return Auto::Silent;
     }
     if let Some(hint) = blocker(state, env, path) {
@@ -155,7 +155,11 @@ mod tests {
 
     fn config(backend: bool, auto_push: bool) -> Config {
         let mut config = Config::default();
-        config.sync.backend = backend.then_some(SyncBackendKind::Gist);
+        config.sync.backend = if backend {
+            SyncBackendKind::Gist
+        } else {
+            SyncBackendKind::Off
+        };
         config.sync.auto_push = auto_push;
         config
     }

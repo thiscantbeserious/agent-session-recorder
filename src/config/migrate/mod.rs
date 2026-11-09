@@ -72,6 +72,12 @@ pub fn migrate_config(existing_content: &str) -> Result<MigrateResult> {
 
     result.old_version = stored_version;
 
+    if stored_version < 7 {
+        doc = migrations::strip_v6_template(&doc.to_string())
+            .parse()
+            .context("Failed to parse existing config as TOML")?;
+    }
+
     // Run versioned migrations from separate files
     migrations::run(stored_version, doc.as_table_mut(), &mut result);
 

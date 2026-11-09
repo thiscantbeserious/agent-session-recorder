@@ -317,3 +317,5 @@ Sessions only live on one machine. We want to sync them between machines, with G
 
 ---
 **Sign-off:** Auto-approved (user delegated, review in PR)
+
+**2026-11-09:** user decision, backend defaults to gist, `off` disables. Supersedes the autonomous decision to keep it unset.

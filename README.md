@@ -249,12 +249,12 @@ Sync copies your compressed sessions to a second place so another machine can pu
 
 ### Setup
 
-Sync is off until you set a backend in `~/.config/agr/config.toml`:
+The backend defaults to `gist`, nothing is uploaded until you confirm the privacy notice with a first `agr sync push` and import or create a key. To switch sync off set `backend = "off"` in `~/.config/agr/config.toml`:
 
 ```toml
 [sync]
-backend = "gist"
-auto_push = true   # default, only has an effect once a backend is set
+backend = "gist"   # default, "off" disables sync
+auto_push = true   # default, no effect while backend = "off"
 ```
 
 ```bash

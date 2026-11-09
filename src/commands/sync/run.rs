@@ -105,7 +105,7 @@ fn try_prepare(need: KeyNeed, announce: bool) -> Result<Ctx, Failure> {
     let Some(backend) = open_backend(config.sync.backend, test_dir) else {
         return Err(Failure(
             "Sync is off.".into(),
-            Some("Enable it with `[sync] backend = \"gist\"` in ~/.config/agr/config.toml.".into()),
+            Some("Set `[sync] backend = \"gist\"` (or remove `backend = \"off\"`) in ~/.config/agr/config.toml.".into()),
         ));
     };
     backend.check()?;
