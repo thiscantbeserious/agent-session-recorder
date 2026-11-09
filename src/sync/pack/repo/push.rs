@@ -69,11 +69,11 @@ impl Repo<'_> {
     /// Fills the open pack up to the target, seals it and goes on in a new one.
     fn push_small(&mut self, mut rest: &[Staged]) -> Result<(), StoreError> {
         while !rest.is_empty() {
-            let pack = match self.open.clone() {
-                Some(p) => p,
-                None => self.new_pack()?,
+            let len = self.open.as_ref().map_or(0, |o| o.index.len);
+            let (chunk, tail) = rest.split_at(fill_count(rest, self.target, len));
+            let Some(pack) = self.pack_with_room(chunk)? else {
+                continue;
             };
-            let (chunk, tail) = rest.split_at(fill_count(rest, self.target, pack.index.len));
             let sum: u64 = chunk.iter().map(|s| s.len).sum();
             let seal = should_seal(self.target, pack.index.len + sum);
             let next = self.try_append(&pack, chunk, seal)?;
@@ -81,6 +81,29 @@ impl Repo<'_> {
             rest = tail;
         }
         Ok(())
+    }
+
+    /// The open pack (or a new one) when `chunk` fits it. A full open pack is sealed with a
+    /// zero byte append and `None` comes back, the caller plans the chunk again for a new pack.
+    fn pack_with_room(&mut self, chunk: &[Staged]) -> Result<Option<OpenPack>, StoreError> {
+        let Some(open) = self.open.clone() else {
+            return self.new_pack().map(Some);
+        };
+        let lens: Vec<u64> = chunk.iter().map(|s| s.len).collect();
+        if self.has_room(&open, &lens)? {
+            return Ok(Some(open));
+        }
+        self.try_append(&open, &[], true)?;
+        self.open = None;
+        Ok(None)
+    }
+
+    fn has_room(&self, open: &OpenPack, lens: &[u64]) -> Result<bool, StoreError> {
+        let packs = self.store.list()?.packs;
+        Ok(packs
+            .iter()
+            .find(|p| p.id == open.id)
+            .is_none_or(|p| self.store.fits(p, lens)))
     }
 
     fn new_pack(&self) -> Result<OpenPack, StoreError> {
