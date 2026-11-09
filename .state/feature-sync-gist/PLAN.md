@@ -978,7 +978,7 @@ Goal: `PackStore` as in ADR "Store trait" with `MemoryStore` and `DirStore`, onl
 Owner: implementer
 PR: B
 
-- [ ] RED commit: `violations_flags_pack_naming_engine` [`assert_eq!(v.len(), 1)`, gives 0] and `violations_flags_store_naming_crypto` [`assert_eq!(v.len(), 1)`, gives 0] in `src/sync/mod.rs`.
+- [x] RED commit: `violations_flags_pack_naming_engine` [`assert_eq!(v.len(), 1)`, gives 0] and `violations_flags_store_naming_crypto` [`assert_eq!(v.len(), 1)`, gives 0] in `src/sync/mod.rs`.
 - [ ] GREEN commit: this stage extends `layer_rules_hold` for `pack/` and `store/`. New `RULES` rows: `pack/` must not name `crate::sync::app`, `crate::sync::engine`, `crate::sync::store::memory`, `crate::sync::store::dir`, `crate::sync::store::gist`, and `store/` must not name `crate::sync::crypto`, `crate::sync::engine`, `crate::sync::pack`, `crate::sync::app`, `chacha20poly1305`, `sha2::`, `aead::`. `layer_rules_hold` green on the tree.
 - [ ] RED commit: `store_error_messages_name_the_next_step` in `store/mod.rs` [`assert_eq!(StoreError::Moved.to_string(), "changed on the remote, run again")`, the stub `Display` writes an empty string], plus `RateLimited` [`assert!(msg.contains("run again later"))`] and `NotFound` [`assert!(msg.contains("not found"))`].
 - [ ] GREEN commit: `StoreError` (`NotInstalled`, `NotLoggedIn`, `MissingScope`, `Unreachable`, `RateLimited`, `NotFound`, `Moved(String)`, `Other`) with `Display`, `PackInfo { id, tag, len, updated_at }`, `Listing { packs, legacy }`, `Segment`. `Moved` carries the index text at the current remote head, its `Display` never prints it. `BlobSource` is re-exported from `backend/mod.rs` until Stage 59 moves it.

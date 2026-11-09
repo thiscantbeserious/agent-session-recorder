@@ -208,4 +208,16 @@ mod layer_check {
         let src = "use crate::sync::{engine::index, backend::BlobSource};";
         assert!(violations("engine/x.rs", src).is_empty());
     }
+
+    #[test]
+    fn violations_flags_pack_naming_engine() {
+        let v = violations("pack/x.rs", "use crate::sync::engine::index;");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
+    fn violations_flags_store_naming_crypto() {
+        let v = violations("store/x.rs", "use crate::sync::crypto::Key;");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
 }
