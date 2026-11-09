@@ -31,6 +31,9 @@ pub mod testing {
     pub use crate::sync::pack::index::{
         new_pack_uuid, open_index, seal_index, Entry, Index, IndexError,
     };
+    pub use crate::sync::pack::rules::{
+        pack_size, place, should_seal, should_seal_index, PackSizeError, Place,
+    };
     pub use crate::sync::store::dir::DirStore;
     pub use crate::sync::store::memory::MemoryStore;
     pub use crate::sync::store::{Listing, PackInfo, PackStore, Segment, StoreError};

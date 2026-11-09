@@ -1016,7 +1016,7 @@ PR: B
   - `two_seals_of_one_index_differ` [`assert_ne!(seal_index(k, &i), seal_index(k, &i))`, fresh nonce, the `expected_index` guard relies on it]
   - `pack_uuid_is_26_base32_chars` [`assert_eq!(new_pack_uuid().len(), 26)`]
 - [x] GREEN commit: `Index { v, pack, writer, sealed, len, entries }`, `Entry { path, gen, sha256, size, offset, length, deleted, at }`, `seal_index`, `open_index`, `new_pack_uuid` on the existing one-shot `seal`.
-- [ ] RED commit, table tests in `rules.rs`:
+- [x] RED commit, table tests in `rules.rs`:
   - `seal_at_target` [`assert!(should_seal(target, target))`, the stub returns `false`, plus `assert!(!should_seal(target, target - 1))`]
   - `big_session_gets_own_pack` [`assert_eq!(place(target, target + 1), Place::OwnPack)`]
   - `index_over_768_kib_seals_early` [`assert!(should_seal_index(768 * 1024 + 1))`]
