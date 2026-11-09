@@ -102,7 +102,8 @@ pub fn merge(packs: &[PackIn]) -> View {
             view.rejected.push((p.id.clone(), reject(err)));
         }
         if let Ok(idx) = &p.index {
-            view.dead_bytes.insert(p.id.clone(), 0);
+            let all: u64 = idx.entries.iter().map(|e| e.length).sum();
+            view.dead_bytes.insert(p.id.clone(), all);
             view.packs.insert(p.id.clone(), meta(&p.tag, idx));
             for e in &idx.entries {
                 match view.merged.get_mut(&e.path) {
@@ -140,6 +141,11 @@ fn reject(err: &IndexError) -> Rejected {
 
 fn finish(view: &mut View) {
     for (path, m) in view.merged.iter_mut() {
+        for pl in &m.places {
+            if let Some(d) = view.dead_bytes.get_mut(&pl.pack) {
+                *d -= pl.length;
+            }
+        }
         if m.places
             .iter()
             .any(|p| p.identity() != m.places[0].identity())
