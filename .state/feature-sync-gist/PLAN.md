@@ -1086,7 +1086,7 @@ PR: B
   - `index_of_other_writer_or_sealed_is_moved` [`assert!(matches!(err, StoreError::Moved(_)))`]
   - `own_open_pack_duplicated_starts_a_new_pack` [`assert_ne!(repo.open_pack(), Some(a))` and `assert_eq!(store.list()?.packs.len(), 3)` after a push when the own open pack `a` has a copy `b`, the stub appends to `a`]
   - `push_of_440_mib_is_six_sealed_and_one_open_pack` (P1, scaled by 1/1024: 721 sessions summing to 440 KiB against a 64 KiB target, the target is an argument) [`assert_eq!((sealed, open), (6, 1))`] and `pack_tag_is_the_index_uuid` [`assert_eq!(info.tag, index.pack)`]
-- [ ] RED commit (P3, `fits`):
+- [x] RED commit (P3, `fits`):
   - `seal_when_fits_is_false` [`assert!(old.sealed)` and `assert_eq!(store.list()?.packs.len(), 2)` on `MemoryStore::with_slots(3)`, the stub ignores `fits`]
   - `no_file_slot_left_seals_with_zero_byte_append` [`assert_eq!(old_info.len, len_before)` and `assert!(old_index.sealed)`]
 - [ ] RED commit: `two_writers_on_one_id_retry_once` (ADR Open risk 3, mandatory), two cases:

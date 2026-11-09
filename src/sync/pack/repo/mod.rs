@@ -3,6 +3,8 @@
 mod push;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_fits;
 
 pub use push::{PushItem, PushReport};
 
