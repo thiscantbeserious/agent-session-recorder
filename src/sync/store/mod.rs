@@ -3,6 +3,11 @@
 use std::fmt;
 use std::io::Read;
 
+#[cfg(test)]
+#[macro_use]
+mod contract;
+pub(super) mod memory;
+
 pub use crate::sync::backend::BlobSource;
 
 /// Store failures, one clear case each so commands print one line.

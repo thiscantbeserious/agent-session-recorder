@@ -27,6 +27,7 @@ pub mod testing {
     pub use crate::sync::engine::plan::{decide, resolve, Command, Remote};
     pub use crate::sync::engine::queue;
     pub use crate::sync::engine::scan::{scan, Row};
+    pub use crate::sync::store::memory::MemoryStore;
     pub use crate::sync::store::{Listing, PackInfo, PackStore, Segment, StoreError};
 }
 
