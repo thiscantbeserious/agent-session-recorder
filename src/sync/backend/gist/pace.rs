@@ -23,7 +23,7 @@ impl From<ClockError> for BackendError {
 }
 
 /// Mutating calls stay at least this far apart, which is at most 60 per minute.
-pub(crate) const MIN_GAP: Duration = Duration::from_secs(1);
+const MIN_GAP: Duration = Duration::from_secs(1);
 
 /// Time source and sleeper, `&self` so tests can keep their state behind a mutex.
 pub trait Clock: Send + Sync {
