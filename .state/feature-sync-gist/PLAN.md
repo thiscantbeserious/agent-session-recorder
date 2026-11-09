@@ -1089,7 +1089,7 @@ PR: B
 - [x] RED commit (P3, `fits`):
   - `seal_when_fits_is_false` [`assert!(old.sealed)` and `assert_eq!(store.list()?.packs.len(), 2)` on `MemoryStore::with_slots(3)`, the stub ignores `fits`]
   - `no_file_slot_left_seals_with_zero_byte_append` [`assert_eq!(old_info.len, len_before)` and `assert!(old_index.sealed)`]
-- [ ] RED commit: `two_writers_on_one_id_retry_once` (ADR Open risk 3, mandatory), two cases:
+- [x] RED commit: `two_writers_on_one_id_retry_once` (ADR Open risk 3, mandatory), two cases:
   - data case [`assert!(matches!(first, Err(StoreError::Moved(_))))` for the second writer, then after the retry `assert_eq!(view.len(), 2)`, a second `Moved` gives `assert_eq!(err.to_string(), "changed on the remote, run again")`]
   - `retry_uses_the_index_from_moved` [`assert_eq!(store.read_index_calls(id), 0)` during the retry and the retry's `expected_index` equals the `Moved` text, the stub re-reads through `read_index`]
   - tombstone case: A tombstones s, B tombstones t on an index read before A's push [`assert!(view.get("s").unwrap().is_deleted() && view.get("t").unwrap().is_deleted())`, the stub guards on length only and s comes back]

@@ -1,6 +1,6 @@
 //! Writes of one machine: append to the own open pack, seal, retry.
 
-use super::{OpenPack, Repo};
+use super::{OpenPack, Repo, RepoError};
 use crate::sync::crypto::blob::sealed_len;
 use crate::sync::crypto::sha256_reader;
 use crate::sync::pack::index::{new_pack_uuid, seal_index, Entry, Index};
@@ -21,6 +21,23 @@ pub struct PushItem {
 #[derive(Debug, Default)]
 pub struct PushReport {
     pub forks: Vec<String>,
+}
+
+/// What one append writes: sessions, tombstones as (path, gen) and the seal flag.
+struct Batch<'b> {
+    staged: &'b [Staged],
+    tombs: Vec<(String, u64)>,
+    seal: bool,
+}
+
+impl<'b> Batch<'b> {
+    fn of(staged: &'b [Staged], seal: bool) -> Self {
+        Self {
+            staged,
+            tombs: Vec::new(),
+            seal,
+        }
+    }
 }
 
 /// A session with its hash read up front, the sealed write must reproduce it.
@@ -59,7 +76,7 @@ impl Repo<'_> {
             .partition(|s| place(self.target, s.size) == Place::OwnPack);
         for s in &big {
             let pack = self.new_pack()?;
-            self.try_append(&pack, std::slice::from_ref(s), true)?;
+            self.try_append(&pack, &Batch::of(std::slice::from_ref(s), true))?;
         }
         self.push_small(&small)?;
         self.reload()?;
@@ -76,7 +93,7 @@ impl Repo<'_> {
             };
             let sum: u64 = chunk.iter().map(|s| s.len).sum();
             let seal = should_seal(self.target, pack.index.len + sum);
-            let next = self.try_append(&pack, chunk, seal)?;
+            let next = self.try_append(&pack, &Batch::of(chunk, seal))?;
             self.open = (!seal).then_some(next);
             rest = tail;
         }
@@ -93,7 +110,7 @@ impl Repo<'_> {
         if self.has_room(&open, &lens)? {
             return Ok(Some(open));
         }
-        self.try_append(&open, &[], true)?;
+        self.try_append(&open, &Batch::of(&[], true))?;
         self.open = None;
         Ok(None)
     }
@@ -104,6 +121,27 @@ impl Repo<'_> {
             .iter()
             .find(|p| p.id == open.id)
             .is_none_or(|p| self.store.fits(p, lens)))
+    }
+
+    /// Appends a tombstone at gen + 1 of the merged entry of `path` to the open pack.
+    pub fn tombstone(&mut self, path: &str) -> Result<(), RepoError> {
+        let gen = self
+            .view
+            .get(path)
+            .ok_or_else(|| RepoError::Unknown(path.into()))?
+            .gen;
+        let pack = match self.open.clone() {
+            Some(p) => p,
+            None => self.new_pack()?,
+        };
+        let batch = Batch {
+            staged: &[],
+            tombs: vec![(path.to_string(), gen + 1)],
+            seal: false,
+        };
+        self.open = Some(self.try_append(&pack, &batch)?);
+        self.reload()?;
+        Ok(())
     }
 
     fn new_pack(&self) -> Result<OpenPack, StoreError> {
@@ -127,18 +165,14 @@ impl Repo<'_> {
     }
 
     /// One append of `staged` behind the end of `pack`, `Moved` is the caller's to handle.
-    fn try_append(
-        &self,
-        pack: &OpenPack,
-        staged: &[Staged],
-        seal: bool,
-    ) -> Result<OpenPack, StoreError> {
+    fn try_append(&self, pack: &OpenPack, batch: &Batch) -> Result<OpenPack, StoreError> {
+        let staged = batch.staged;
         let segs = staged
             .iter()
             .map(|s| segment(self.key, &pack.tag, &s.path, s.gen, &s.file))
             .collect::<io::Result<Vec<_>>>()
             .map_err(io_err)?;
-        let next = grown(&pack.index, staged, seal);
+        let next = grown(&pack.index, batch);
         let text = seal_index(self.key, &next).map_err(|e| StoreError::Other(e.to_string()))?;
         let writes: Vec<_> = segs.iter().zip(staged).map(|(g, s)| writer(g, s)).collect();
         let segments: Vec<Segment> = writes
@@ -158,10 +192,22 @@ impl Repo<'_> {
 }
 
 /// The old index plus one entry per session, ranges laid out behind the old end.
-fn grown(old: &Index, staged: &[Staged], seal: bool) -> Index {
+fn grown(old: &Index, batch: &Batch) -> Index {
     let mut next = old.clone();
-    next.sealed = seal;
-    for s in staged {
+    next.sealed = batch.seal;
+    for (path, gen) in &batch.tombs {
+        next.entries.push(Entry {
+            path: path.clone(),
+            gen: *gen,
+            sha256: String::new(),
+            size: 0,
+            offset: next.len,
+            length: 0,
+            deleted: true,
+            at: chrono::Utc::now().to_rfc3339(),
+        });
+    }
+    for s in batch.staged {
         next.entries.push(Entry {
             path: s.path.clone(),
             gen: s.gen,

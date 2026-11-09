@@ -5,6 +5,8 @@ mod push;
 mod tests;
 #[cfg(test)]
 mod tests_fits;
+#[cfg(test)]
+mod tests_retry;
 
 pub use push::{PushItem, PushReport};
 
@@ -17,6 +19,10 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum RepoError {
+    #[error(transparent)]
+    Store(#[from] StoreError),
+    #[error("no such session: {0}")]
+    Unknown(String),
     #[error("could not read every pack index: {0}")]
     PartialView(StoreError),
 }
