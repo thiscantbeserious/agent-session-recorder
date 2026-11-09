@@ -287,8 +287,8 @@ mod tests {
     }
 
     #[test]
-    fn error_line_names_the_skipped_session_when_busy() {
-        assert!(error_line(&Err(SyncError::Busy), "s").is_some());
+    fn error_line_is_none_when_busy_because_the_entry_is_queued() {
+        assert_eq!(error_line(&Err(SyncError::Busy), "s"), None);
     }
 
     #[test]

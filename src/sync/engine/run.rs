@@ -85,6 +85,8 @@ pub struct Report {
     pub bytes: u64,
     /// Index was unparseable and rebuilt.
     pub warning: Option<String>,
+    /// Sessions waiting in the auto push queue, only set by status.
+    pub queued: usize,
 }
 
 /// Engine over any backend, the key and the storage dir.

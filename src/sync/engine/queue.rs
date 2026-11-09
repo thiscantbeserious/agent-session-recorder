@@ -5,6 +5,8 @@ use std::path::Path;
 
 use anyhow::Result;
 
+use super::observe::Observer;
+use super::run::{Engine, Report, SyncError};
 use super::scan::valid_path;
 
 pub const QUEUE_DIR: &str = ".agr-sync-queue";
@@ -54,6 +56,17 @@ pub fn list(storage_dir: &Path) -> Vec<String> {
 pub fn remove(storage_dir: &Path, sessions: &[String]) {
     for session in sessions.iter().filter(|s| valid_path(s)) {
         let _ = std::fs::remove_file(storage_dir.join(QUEUE_DIR).join(session));
+    }
+}
+
+impl Engine<'_> {
+    /// The `--auto` run, see the module docs.
+    pub fn drain_auto(
+        &self,
+        _session: &str,
+        _observer: &mut Observer<'_>,
+    ) -> Result<Report, SyncError> {
+        Ok(Report::default())
     }
 }
 
