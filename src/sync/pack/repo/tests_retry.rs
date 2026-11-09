@@ -240,3 +240,20 @@ fn retry_drops_a_session_the_moved_index_is_ahead_of() {
         .collect();
     assert_eq!(gens, vec![1, 3], "{id}");
 }
+
+#[test]
+fn no_empty_pack_after_moved_on_a_sealed_pack() {
+    let (mem, key, dir) = (
+        MemoryStore::with_slots(1),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    repo(&mem, &key, "w1")
+        .push_batch(&[item(dir.path(), "a", 1, b"x")])
+        .unwrap();
+    let mut b = repo(&mem, &key, "w1");
+    super::tests::tamper(&mem, &key, &packs_of(&mem)[0], |i| i.sealed = true);
+    let before = packs_of(&mem).len();
+    b.push_batch(&[item(dir.path(), "b", 1, b"y")]).unwrap();
+    assert_eq!(packs_of(&mem).len(), before + 1);
+}
