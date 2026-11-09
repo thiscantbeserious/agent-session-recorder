@@ -70,9 +70,13 @@ pub fn open_index(key: &Key, uuid: &str, text: &str) -> Result<Index, IndexError
         CryptoError::Authentication => IndexError::OtherKey,
         _ => IndexError::Bad,
     })?;
-    let idx: Index = serde_json::from_slice(&json).map_err(|_| IndexError::Bad)?;
-    match idx.v {
-        VERSION => Ok(idx),
+    #[derive(Deserialize)]
+    struct Head {
+        v: u8,
+    }
+    let head: Head = serde_json::from_slice(&json).map_err(|_| IndexError::Bad)?;
+    match head.v {
+        VERSION => serde_json::from_slice(&json).map_err(|_| IndexError::Bad),
         v => Err(IndexError::UnknownVersion(v)),
     }
 }
