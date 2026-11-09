@@ -129,7 +129,7 @@ impl Runner for ProcessRunner {
     ) -> std::io::Result<Output> {
         let file = std::fs::File::create(dest)?;
         let child = spawn(program, args, None, env)?;
-        supervise(
+        watch_child(
             child,
             program,
             self.stall,
@@ -147,7 +147,7 @@ impl Runner for ProcessRunner {
         on_line: &mut dyn FnMut(&str),
     ) -> std::io::Result<Output> {
         let child = spawn(program, args, cwd, env)?;
-        supervise(child, program, self.stall, on_line, None)
+        watch_child(child, program, self.stall, on_line, None)
     }
 }
 
@@ -176,7 +176,7 @@ fn spawn(
 /// Drain both pipes in threads that stamp every read, kill the child once nothing was read
 /// for `stall`. New stderr bytes go to `on_line` on every poll and once more after the exit.
 /// With a `sink` stdout is written into it as it arrives and the output text stays empty.
-fn supervise(
+fn watch_child(
     mut child: Child,
     program: &str,
     stall: Duration,

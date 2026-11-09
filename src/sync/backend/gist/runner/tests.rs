@@ -1,4 +1,4 @@
-use super::{ProcessRunner, Runner};
+use super::{spawn, watch_child, ProcessRunner, Runner};
 use std::io::ErrorKind;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -94,9 +94,9 @@ impl std::io::Write for Full {
 #[test]
 fn run_to_file_reports_a_failed_write() {
     let args = ["-c".to_string(), "echo data".to_string()];
-    let child = super::spawn("sh", &args, None, &[]).unwrap();
+    let child = spawn("sh", &args, None, &[]).unwrap();
     let stall = Duration::from_secs(5);
-    let res = super::supervise(child, "sh", stall, &mut |_| {}, Some(Box::new(Full)));
+    let res = watch_child(child, "sh", stall, &mut |_| {}, Some(Box::new(Full)));
     assert!(res.is_err());
 }
 
