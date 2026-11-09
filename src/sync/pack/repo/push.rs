@@ -5,7 +5,7 @@ use crate::sync::crypto::blob::sealed_len;
 use crate::sync::crypto::sha256_reader;
 use crate::sync::pack::index::{new_pack_uuid, open_index, seal_index, Entry, Index};
 use crate::sync::pack::rules::{place, should_seal, Place};
-use crate::sync::pack::stream::{segment, FileSegment};
+use crate::sync::pack::stream::{digest_is, segment, FileSegment};
 use crate::sync::store::{Segment, StoreError};
 use std::fs::File;
 use std::io::{self, Write};
@@ -266,8 +266,7 @@ fn writer<'a>(
     s: &'a Staged,
 ) -> impl Fn(&mut dyn Write) -> io::Result<()> + 'a {
     move |w| {
-        let (hash, size) = seg.write(w)?;
-        if hash != s.sha256 || size != s.size {
+        if !digest_is(&seg.write(w)?, &s.sha256, s.size) {
             return Err(io::Error::other("session changed while pushing"));
         }
         Ok(())

@@ -6,7 +6,7 @@ use crate::sync::crypto::blob::BlobError;
 use crate::sync::crypto::Key;
 use crate::sync::pack::index::{open_index, Entry};
 use crate::sync::pack::merge::Place;
-use crate::sync::pack::stream::{open_range, RangeError};
+use crate::sync::pack::stream::{digest_is, open_range, RangeError};
 use crate::sync::store::{PackStore, StoreError};
 use std::io::{ErrorKind, Write};
 use std::path::Path;
@@ -46,8 +46,8 @@ pub fn read_pack(
     let mut out = Vec::new();
     for e in index.entries.into_iter().filter(|e| !e.deleted) {
         let mut plain = Vec::new();
-        let (hash, size) = open_range(key, store, id, &tag, &e, &mut plain)?;
-        if hash != e.sha256 || size != e.size {
+        let got = open_range(key, store, id, &tag, &e, &mut plain)?;
+        if !digest_is(&got, &e.sha256, e.size) {
             return Err(ReadError::HashMismatch);
         }
         out.push((e, plain));
@@ -56,7 +56,8 @@ pub fn read_pack(
 }
 
 impl ReadError {
-    /// The place is gone, the next one may still hold the session.
+    /// The place is gone, the next one may still hold the session. A hash mismatch is tried on
+    /// the next place too, see `read_session`.
     fn is_not_found(&self) -> bool {
         let gone = |e: &StoreError| matches!(e, StoreError::NotFound);
         match self {
@@ -75,18 +76,21 @@ impl Repo<'_> {
             Some(m) if !m.is_deleted() => m,
             _ => return Err(ReadError::Unknown(path.into())),
         };
-        let mut last = ReadError::Unknown(path.into());
+        let mut last: Option<ReadError> = None;
         for place in &merged.places {
             let Some(entry) = self.entry_of(path, merged.gen, place) else {
                 continue;
             };
             match self.read_place(&place.pack, &entry, target) {
                 Ok(()) => return Ok(()),
-                Err(e) if e.is_not_found() => last = ReadError::Store(StoreError::NotFound),
+                Err(e) if e.is_not_found() => {
+                    last.get_or_insert(ReadError::Store(StoreError::NotFound))
+                }
+                Err(e @ ReadError::HashMismatch) => last.insert(e),
                 Err(e) => return Err(e),
-            }
+            };
         }
-        Err(last)
+        Err(last.unwrap_or_else(|| ReadError::Unknown(path.into())))
     }
 
     /// One place into its own temp file, a failed place leaves nothing for the next one.
@@ -112,8 +116,8 @@ impl Repo<'_> {
             .pack(id)
             .map(|m| m.tag.clone())
             .unwrap_or_default();
-        let (hash, size) = open_range(self.key, self.store, id, &tag, entry, out)?;
-        if hash != entry.sha256 || size != entry.size {
+        let got = open_range(self.key, self.store, id, &tag, entry, out)?;
+        if !digest_is(&got, &entry.sha256, entry.size) {
             return Err(ReadError::HashMismatch);
         }
         Ok(())

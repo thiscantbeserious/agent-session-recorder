@@ -57,6 +57,11 @@ impl FileSegment<'_> {
     }
 }
 
+/// Whether what was sealed or opened is what the index says: plaintext hash and size.
+pub fn digest_is(got: &Digest, sha256: &str, size: u64) -> bool {
+    got.0 == sha256 && got.1 == size
+}
+
 /// Failures of a range read, the store and the blob layer stay apart.
 #[derive(Debug, Error)]
 pub enum RangeError {
