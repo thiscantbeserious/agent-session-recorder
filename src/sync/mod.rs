@@ -4,6 +4,7 @@ mod app;
 mod backend;
 mod crypto;
 mod engine;
+mod pack;
 mod store;
 
 pub use app::{auto, format, key, setup};
@@ -27,6 +28,12 @@ pub mod testing {
     pub use crate::sync::engine::plan::{decide, resolve, Command, Remote};
     pub use crate::sync::engine::queue;
     pub use crate::sync::engine::scan::{scan, Row};
+    pub use crate::sync::pack::index::{
+        new_pack_uuid, open_index, seal_index, Entry, Index, IndexError,
+    };
+    pub use crate::sync::pack::rules::{
+        pack_size, place, should_seal, should_seal_index, PackSizeError, Place,
+    };
     pub use crate::sync::store::dir::DirStore;
     pub use crate::sync::store::memory::MemoryStore;
     pub use crate::sync::store::{Listing, PackInfo, PackStore, Segment, StoreError};
@@ -59,6 +66,9 @@ mod layer_check {
         ("pack/", "crate::sync::store::memory"),
         ("pack/", "crate::sync::store::dir"),
         ("pack/", "crate::sync::store::gist"),
+        ("pack/", "chacha20poly1305"),
+        ("pack/", "aead::"),
+        ("pack/", "sha2::"),
         ("store/", "crate::sync::crypto"),
         ("store/", "crate::sync::engine"),
         ("store/", "crate::sync::pack"),
@@ -228,6 +238,12 @@ mod layer_check {
     #[test]
     fn violations_flags_pack_naming_engine() {
         let v = violations("pack/x.rs", "use crate::sync::engine::index;");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
+    fn violations_flags_pack_naming_chacha20poly1305() {
+        let v = violations("pack/x.rs", "use chacha20poly1305::XNonce;");
         assert_eq!(v.len(), 1, "{v:?}");
     }
 

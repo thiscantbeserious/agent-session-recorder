@@ -1007,21 +1007,21 @@ Goal: `pack/index.rs` with the index JSON v3 sealed under AAD `agr:pack-index:` 
 Owner: implementer
 PR: B
 
-- [ ] RED commit: `index_round_trips_through_seal` [`assert_eq!(open_index(key, uuid, &seal_index(key, &idx))?, idx)`, the stub returns an empty index].
-- [ ] RED commit:
+- [x] RED commit: `index_round_trips_through_seal` [`assert_eq!(open_index(key, uuid, &seal_index(key, &idx))?, idx)`, the stub returns an empty index].
+- [x] RED commit:
   - `index_with_other_key_is_other_key` [`assert!(matches!(err, IndexError::OtherKey))`]
   - `index_with_v_4_is_unknown_version` [`assert!(matches!(err, IndexError::UnknownVersion(4)))`]
   - `index_text_is_base64url` [`assert!(!text.contains(['=', '+', '/']))`]
   - `index_from_another_pack_is_rejected` [`assert!(matches!(open_index(key, other_uuid, &text), Err(IndexError::OtherPack)))`, the AAD binds the pack uuid and the stub ignores it]
   - `two_seals_of_one_index_differ` [`assert_ne!(seal_index(k, &i), seal_index(k, &i))`, fresh nonce, the `expected_index` guard relies on it]
   - `pack_uuid_is_26_base32_chars` [`assert_eq!(new_pack_uuid().len(), 26)`]
-- [ ] GREEN commit: `Index { v, pack, writer, sealed, len, entries }`, `Entry { path, gen, sha256, size, offset, length, deleted, at }`, `seal_index`, `open_index`, `new_pack_uuid` on the existing one-shot `seal`.
-- [ ] RED commit, table tests in `rules.rs`:
+- [x] GREEN commit: `Index { v, pack, writer, sealed, len, entries }`, `Entry { path, gen, sha256, size, offset, length, deleted, at }`, `seal_index`, `open_index`, `new_pack_uuid` on the existing one-shot `seal`.
+- [x] RED commit, table tests in `rules.rs`:
   - `seal_at_target` [`assert!(should_seal(target, target))`, the stub returns `false`, plus `assert!(!should_seal(target, target - 1))`]
   - `big_session_gets_own_pack` [`assert_eq!(place(target, target + 1), Place::OwnPack)`]
   - `index_over_768_kib_seals_early` [`assert!(should_seal_index(768 * 1024 + 1))`]
   - `pack_size_mib_range_16_to_512` [`assert!(pack_size(8).is_err())` and `assert!(pack_size(1024).is_err())`, `assert!(pack_size(16).is_ok())`]
-- [ ] GREEN commit: `rules.rs` pure functions, no store and no IO.
+- [x] GREEN commit: `rules.rs` pure functions, no store and no IO.
 
 Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/index.rs`, `src/sync/pack/rules.rs`
 Depends on: Stage 47
@@ -1064,6 +1064,7 @@ PR: B
   - `dead_bytes_per_pack` [`assert_eq!(view.dead_bytes[&id], old_gen_length)`, live vs dead length per pack, a top-gen tombstone counts as live, used by status and prune]
   - `duplicated_pack_is_merged_and_reported` (ADR merge rule 6) [`assert_eq!(view.duplicates, vec![("a", "b")])` for packs `a` and `b` with one tag and the same index, `assert_eq!(view.get("x").unwrap().places.len(), 2)` and a tombstone only in that tag stays `is_deleted()`, the stub drops both packs]
   - `keeper_is_the_place_in_the_highest_pack_id` [`assert_eq!(view.get("a").unwrap().keeper().pack, "b")` for places in packs `a` and `b`, the other place counts as dead bytes]
+  - `older_index_of_same_pack_is_not_accepted` [`assert_eq!(view.pack("a").unwrap().len, 200)` and `assert_eq!(view.get("x").unwrap().gen, 4)` for an index of pack `a` at gen 4, len 200 and an older one at gen 3, len 100, the merged view keeps the higher gen and len, the stub keeps the last index seen]
 - [ ] GREEN commit: `merge(packs)` returning a `View` with `places`, `keeper`, `forks`, `rejected`, `duplicates` and `dead_bytes`. `View::is_frozen(id)` is true for both ids of a duplicate, push, prune and `--seal-orphans` never write or delete a frozen pack.
 
 Files: `src/sync/pack/mod.rs`, `src/sync/pack/merge.rs`, `src/sync/pack/merge_tests.rs`
