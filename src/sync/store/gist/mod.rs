@@ -22,6 +22,7 @@ pub struct GistStore<R: Runner = ProcessRunner> {
     runner: R,
     temp_base: PathBuf,
     /// Where the index cache lives, `None` means no cache.
+    #[allow(dead_code)] // the index cache of the next commit reads it
     cache_file: Option<PathBuf>,
     pacer: Mutex<Pacer>,
     /// Files and `updated_at` of every pack this store listed or fetched.

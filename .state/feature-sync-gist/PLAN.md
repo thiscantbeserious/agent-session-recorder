@@ -1121,7 +1121,7 @@ PR: B
   - `fits_refuses_over_250_files` [`assert!(!store.fits(&info_249_files, &[9 * MIB]))`]
   - `fits_false_when_no_file_slot_left` [`assert!(!store.fits(&info_250_files, &[1]))`]
 - [x] GREEN commit: `layout.rs`.
-- [ ] RED commit (Fake runner):
+- [x] RED commit (Fake runner):
   - `list_keeps_only_agr_v2_over_pages` [`assert_eq!(ids, vec!["a", "c"])` over two pages]
   - `list_passes_agr_v1_descriptions_as_legacy` [`assert_eq!(listing.legacy, vec!["agr:v1 tok"])`, `agr:pending` and foreign gists are in neither list, the stub drops them]
   - `truncated_index_is_other_not_half_an_index` [`assert!(matches!(err, StoreError::Other(_)))`]
@@ -1129,7 +1129,7 @@ PR: B
   - `pack_description_is_agr_v2_and_uuid_only` [`assert_eq!(desc, format!("agr:v2 {tag}"))`]
   - `read_range_requests_only_covering_parts` [`assert_eq!(range_calls, vec!["data.001 bytes=..."])`, no clone in the calls]
   - `failed_raw_url_read_is_a_store_error_no_clone` [`assert!(matches!(err, StoreError::Unreachable))` and `assert!(!calls.iter().any(|c| c.contains("clone")))`]
-- [ ] GREEN commit: `api.rs` and `read.rs`.
+- [x] GREEN commit: `api.rs` and `read.rs`.
 - [x] Probe dependency: the key comes from `updated_at_moves_on_git_push` (Stage 46). Both lines PASSED on 2026-11-09: the tests below as written, the fallback is not needed. Either line FAILS: the fallback of ADR "Index cache (pending probe)", the two `updated_at` tests become `sealed_entry_is_cached_forever_by_id` [`assert_eq!(api_calls_for(id), 0)` with a changed `updated_at`] and `open_pack_is_read_every_time_and_keyed_on_history_version` [`assert_eq!(api_calls_for(id), 2)` over two opens, the entry key is `history[0].version`], plus `gone_id_drops_its_entry` [`assert!(cache.get(id).is_none())`].
 - [ ] RED commit, index cache (`<user cache dir>/agr/index-cache.json`, keyed by gist id plus `updated_at`):
   - `sealed_index_cache_hit_skips_the_api` [`assert_eq!(api_calls_for(id), 0)` on the second `read_index` with the same `updated_at`, the stub always calls the API]

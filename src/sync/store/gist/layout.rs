@@ -47,6 +47,7 @@ pub(crate) fn check_parts(existing: &[&str]) -> Result<(), String> {
 }
 
 /// Names for the parts of the next append, numbered on after the existing ones.
+#[allow(dead_code)] // append of Stage 53 uses it
 pub(crate) fn next_names(existing: &[&str], count: usize) -> Result<Vec<String>, String> {
     check_parts(existing)?;
     Ok((existing.len()..existing.len() + count)
