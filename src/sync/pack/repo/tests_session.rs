@@ -123,3 +123,28 @@ fn open_fails_when_any_index_read_fails() {
     let res = Repo::open(&store, &key, "w1", TARGET, None).err();
     assert!(matches!(res, Some(RepoError::PartialView(_))), "{res:?}");
 }
+
+/// `name` pushed by two writers, so its session has two places, `w3` reads it.
+fn two_places<'a>(store: &'a MemoryStore, key: &'a Key, dir: &Path) -> (Repo<'a>, Vec<u8>) {
+    let original = vec![9u8; 70_000];
+    for w in ["w1", "w2"] {
+        let file = item(dir, "a", 1, &original);
+        repo(store, key, w).push_batch(&[file]).unwrap();
+    }
+    (repo(store, key, "w3"), original)
+}
+
+#[test]
+fn read_session_after_a_place_fails_mid_stream_has_no_leftover_bytes() {
+    let (store, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (reader, original) = two_places(&store, &key, dir.path());
+    let first = reader.view().get("a").unwrap().keeper().pack.clone();
+    store.fail_read_after(&first, 66_000);
+    let target = dir.path().join("out.cast");
+    let _ = reader.read_session("a", &target);
+    assert_eq!(std::fs::read(&target).unwrap_or_default(), original);
+}

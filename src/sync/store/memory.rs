@@ -1,6 +1,6 @@
 //! In-memory pack store for tests.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::{Cursor, Read};
 use std::sync::Mutex;
 
@@ -19,6 +19,8 @@ struct Inner {
     packs: BTreeMap<String, Pack>,
     next: u64,
     failing: HashSet<String>,
+    /// Reads of these packs fail after that many bytes.
+    cut: HashMap<String, usize>,
 }
 
 /// Packs in a `Mutex`, ids are `mem-<n>`. One lock around check and write models the git ref.
@@ -38,6 +40,11 @@ impl MemoryStore {
         self.lock().failing.insert(id.to_string());
     }
 
+    /// Every later `read` of `id` yields `bytes` bytes, then fails, a place that dies mid-stream.
+    pub fn fail_read_after(&self, id: &str, bytes: usize) {
+        self.lock().cut.insert(id.to_string(), bytes);
+    }
+
     /// Store whose packs hold at most `n` file slots, one per segment, for `fits`.
     pub fn with_slots(n: usize) -> Self {
         Self {
@@ -50,6 +57,18 @@ impl MemoryStore {
         self.inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+}
+
+/// The rest of a read that was cut off.
+struct Dies;
+
+impl Read for Dies {
+    fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "read cut off on purpose",
+        ))
     }
 }
 
@@ -150,7 +169,11 @@ impl PackStore for MemoryStore {
         let range = data
             .get(offset as usize..end as usize)
             .ok_or(StoreError::NotFound)?;
-        Ok(Box::new(Cursor::new(range.to_vec())))
+        let Some(&cut) = inner.cut.get(id) else {
+            return Ok(Box::new(Cursor::new(range.to_vec())));
+        };
+        let head = Cursor::new(range[..cut.min(range.len())].to_vec());
+        Ok(Box::new(head.chain(Dies)))
     }
 
     fn delete(&self, id: &str) -> Result<(), StoreError> {

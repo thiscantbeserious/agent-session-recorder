@@ -2,12 +2,13 @@
 
 use super::Repo;
 use crate::files::codec::atomic_write_raw_with;
+use crate::sync::crypto::blob::BlobError;
 use crate::sync::crypto::Key;
 use crate::sync::pack::index::{open_index, Entry};
 use crate::sync::pack::merge::Place;
 use crate::sync::pack::stream::{open_range, RangeError};
 use crate::sync::store::{PackStore, StoreError};
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::Path;
 use thiserror::Error;
 
@@ -60,6 +61,7 @@ impl ReadError {
         let gone = |e: &StoreError| matches!(e, StoreError::NotFound);
         match self {
             Self::Store(e) | Self::Range(RangeError::Store(e)) => gone(e),
+            Self::Range(RangeError::Blob(BlobError::Io(e))) => e.kind() == ErrorKind::NotFound,
             _ => false,
         }
     }
