@@ -20,24 +20,31 @@ pub enum Place {
 pub struct PackSizeError(pub u64);
 
 /// A pack is sealed by the append that brings it to at least the target.
-pub fn should_seal(_target: u64, _len: u64) -> bool {
-    false
+pub fn should_seal(target: u64, len: u64) -> bool {
+    len >= target
 }
 
 /// A session larger than the target gets its own pack.
-pub fn place(_target: u64, _size: u64) -> Place {
-    Place::OpenPack
+pub fn place(target: u64, size: u64) -> Place {
+    if size > target {
+        Place::OwnPack
+    } else {
+        Place::OpenPack
+    }
 }
 
 /// `encoded_len` is the length of the sealed index text, not of the JSON.
-pub fn should_seal_index(_encoded_len: usize) -> bool {
-    let _ = INDEX_CAP;
-    false
+pub fn should_seal_index(encoded_len: usize) -> bool {
+    encoded_len > INDEX_CAP
 }
 
 /// Target pack size in bytes from `[sync] pack_size_mib`.
 pub fn pack_size(mib: u64) -> Result<u64, PackSizeError> {
-    Ok(mib * MIB)
+    if (MIN_MIB..=MAX_MIB).contains(&mib) {
+        Ok(mib * MIB)
+    } else {
+        Err(PackSizeError(mib))
+    }
 }
 
 #[cfg(test)]

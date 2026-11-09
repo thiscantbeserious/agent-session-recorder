@@ -1021,7 +1021,7 @@ PR: B
   - `big_session_gets_own_pack` [`assert_eq!(place(target, target + 1), Place::OwnPack)`]
   - `index_over_768_kib_seals_early` [`assert!(should_seal_index(768 * 1024 + 1))`]
   - `pack_size_mib_range_16_to_512` [`assert!(pack_size(8).is_err())` and `assert!(pack_size(1024).is_err())`, `assert!(pack_size(16).is_ok())`]
-- [ ] GREEN commit: `rules.rs` pure functions, no store and no IO.
+- [x] GREEN commit: `rules.rs` pure functions, no store and no IO.
 
 Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/index.rs`, `src/sync/pack/rules.rs`
 Depends on: Stage 47
