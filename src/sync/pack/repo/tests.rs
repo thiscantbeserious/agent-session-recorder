@@ -181,3 +181,39 @@ fn pack_tag_is_the_index_uuid() {
     let info = packs_of(&store).remove(0);
     assert_eq!(info.tag, index_of(&store, &key, &info).pack);
 }
+
+#[test]
+fn push_lists_the_store_once() {
+    let (store, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let mut repo = repo(&store, &key, "w1");
+    repo.push_batch(&[item(dir.path(), "first", 1, b"x")])
+        .unwrap();
+    let items: Vec<_> = (0..4)
+        .map(|i| item(dir.path(), &format!("s{i}"), 1, &vec![3; 30_000]))
+        .collect();
+    let before = store.list_calls();
+    repo.push_batch(&items).unwrap();
+    assert_eq!(store.list_calls() - before, 1);
+    assert!(packs_of(&store).len() > 1, "needs more than one chunk");
+}
+
+#[test]
+fn open_lists_the_store_once() {
+    let store = MemoryStore::new();
+    let key = Key::generate();
+    let _ = repo(&store, &key, "w1");
+    assert_eq!(store.list_calls(), 1);
+}
+
+#[test]
+fn a_failed_listing_is_no_partial_view() {
+    let store = MemoryStore::new();
+    let key = Key::generate();
+    store.fail_list();
+    let err = Repo::open(&store, &key, "w1", TARGET, None).err().unwrap();
+    assert!(!err.to_string().contains("every pack index"), "{err}");
+}

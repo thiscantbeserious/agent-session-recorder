@@ -106,68 +106,18 @@ fn second_moved_gives_the_run_again_message() {
         Key::generate(),
         tempfile::tempdir().unwrap(),
     );
-    let (mut a, mut b) = two_on_one_id(&mem, &key);
+    let (mut a, _) = two_on_one_id(&mem, &key);
     a.push_batch(&[item(dir.path(), "x", 1, b"x")]).unwrap();
-    let id = packs_of(&mem)[0].id.clone();
-    let hostile = Hostile {
-        inner: &mem,
-        id,
-        key: &key,
-    };
-    let mut b2 = Repo::open(&hostile, &key, "w1", TARGET, None).unwrap();
+    let hostile = Key::from_bytes(*key.as_bytes());
+    mem.before_append(move |m, id| {
+        let info = packs_of(m).into_iter().find(|p| p.id == id).unwrap();
+        super::tests::tamper(m, &hostile, &info, |_| {});
+    });
+    let mut b2 = Repo::open(&mem, &key, "w1", TARGET, None).unwrap();
     let err = b2
         .push_batch(&[item(dir.path(), "y", 1, b"y")])
         .unwrap_err();
     assert_eq!(err.to_string(), "changed on the remote, run again");
-    let _ = &mut b;
-}
-
-/// Every append finds the pack changed again, as if a third writer won each time.
-struct Hostile<'a> {
-    inner: &'a MemoryStore,
-    id: String,
-    key: &'a Key,
-}
-
-impl PackStore for Hostile<'_> {
-    fn name(&self) -> &'static str {
-        "hostile"
-    }
-    fn check(&self) -> Result<(), StoreError> {
-        self.inner.check()
-    }
-    fn list(&self) -> Result<Listing, StoreError> {
-        self.inner.list()
-    }
-    fn read_index(&self, id: &str) -> Result<String, StoreError> {
-        self.inner.read_index(id)
-    }
-    fn create(&self, tag: &str, index: &str) -> Result<String, StoreError> {
-        self.inner.create(tag, index)
-    }
-    fn append(
-        &self,
-        id: &str,
-        len: u64,
-        expected: &str,
-        segs: &[Segment],
-        index: &str,
-    ) -> Result<(), StoreError> {
-        if id == self.id {
-            let info = packs_of(self.inner)
-                .into_iter()
-                .find(|p| p.id == id)
-                .unwrap();
-            super::tests::tamper(self.inner, self.key, &info, |_| {});
-        }
-        self.inner.append(id, len, expected, segs, index)
-    }
-    fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError> {
-        self.inner.read(id, offset, len)
-    }
-    fn delete(&self, id: &str) -> Result<(), StoreError> {
-        self.inner.delete(id)
-    }
 }
 
 #[test]
