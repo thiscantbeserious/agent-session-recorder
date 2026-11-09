@@ -62,10 +62,9 @@ pub(super) fn counted<'o>(
 
 /// Report at the start, at the end and about every 1% in between, never more than 25 apart.
 // is_multiple_of needs a newer toolchain than the MSRV 1.88
-#[allow(clippy::manual_is_multiple_of)]
 pub(super) fn scan_tick(done: usize, total: usize) -> bool {
     let step = (total / 100).clamp(1, 25);
-    done == total || done % step == 0
+    done == total || done.is_multiple_of(step)
 }
 
 fn acted(item: &Item) -> bool {
