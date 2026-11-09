@@ -50,6 +50,18 @@ mod layer_check {
         ("app/", "aead::"),
         ("engine/", "aead::"),
         ("backend/", "aead::"),
+        ("pack/", "crate::sync::app"),
+        ("pack/", "crate::sync::engine"),
+        ("pack/", "crate::sync::store::memory"),
+        ("pack/", "crate::sync::store::dir"),
+        ("pack/", "crate::sync::store::gist"),
+        ("store/", "crate::sync::crypto"),
+        ("store/", "crate::sync::engine"),
+        ("store/", "crate::sync::pack"),
+        ("store/", "crate::sync::app"),
+        ("store/", "chacha20poly1305"),
+        ("store/", "sha2::"),
+        ("store/", "aead::"),
         ("", "super::super"),
     ];
     const SPAWNERS: &[&str] = &["backend/gist/runner.rs", "app/auto/mod.rs"];
