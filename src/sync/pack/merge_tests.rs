@@ -129,3 +129,13 @@ fn dead_bytes_count_a_top_gen_tombstone_as_live() {
     let p = pack("p", "P", 30, vec![entry("a", 5, "x", 30, true)]);
     assert_eq!(merge(&[p]).dead_bytes["p"], 0);
 }
+
+#[test]
+fn duplicated_pack_is_merged_and_reported() {
+    let rows = || vec![entry("x", 1, "h", 10, false), entry("t", 2, "h", 5, true)];
+    let (a, b) = (pack("a", "T", 15, rows()), pack("b", "T", 15, rows()));
+    let view = merge(&[a, b]);
+    assert_eq!(view.duplicates, vec![("a".to_string(), "b".to_string())]);
+    assert_eq!(view.get("x").unwrap().places.len(), 2);
+    assert!(view.get("t").unwrap().is_deleted());
+}
