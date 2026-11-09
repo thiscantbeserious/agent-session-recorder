@@ -4,6 +4,7 @@ use super::{OpenPack, Repo};
 use crate::sync::crypto::blob::sealed_len;
 use crate::sync::crypto::sha256_reader;
 use crate::sync::pack::index::{new_pack_uuid, seal_index, Entry, Index};
+use crate::sync::pack::rules::{place, should_seal, Place};
 use crate::sync::pack::stream::{segment, FileSegment};
 use crate::sync::store::{Segment, StoreError};
 use std::fs::File;
@@ -53,12 +54,33 @@ fn stage(item: &PushItem) -> Result<Staged, StoreError> {
 impl Repo<'_> {
     pub fn push_batch(&mut self, items: &[PushItem]) -> Result<PushReport, StoreError> {
         let staged = items.iter().map(stage).collect::<Result<Vec<_>, _>>()?;
-        let pack = match self.open.clone() {
-            Some(p) => p,
-            None => self.new_pack()?,
-        };
-        self.open = Some(self.try_append(&pack, &staged)?);
+        let (big, small): (Vec<_>, Vec<_>) = staged
+            .into_iter()
+            .partition(|s| place(self.target, s.size) == Place::OwnPack);
+        for s in &big {
+            let pack = self.new_pack()?;
+            self.try_append(&pack, std::slice::from_ref(s), true)?;
+        }
+        self.push_small(&small)?;
+        self.reload()?;
         Ok(PushReport::default())
+    }
+
+    /// Fills the open pack up to the target, seals it and goes on in a new one.
+    fn push_small(&mut self, mut rest: &[Staged]) -> Result<(), StoreError> {
+        while !rest.is_empty() {
+            let pack = match self.open.clone() {
+                Some(p) => p,
+                None => self.new_pack()?,
+            };
+            let (chunk, tail) = rest.split_at(fill_count(rest, self.target, pack.index.len));
+            let sum: u64 = chunk.iter().map(|s| s.len).sum();
+            let seal = should_seal(self.target, pack.index.len + sum);
+            let next = self.try_append(&pack, chunk, seal)?;
+            self.open = (!seal).then_some(next);
+            rest = tail;
+        }
+        Ok(())
     }
 
     fn new_pack(&self) -> Result<OpenPack, StoreError> {
@@ -82,13 +104,18 @@ impl Repo<'_> {
     }
 
     /// One append of `staged` behind the end of `pack`, `Moved` is the caller's to handle.
-    fn try_append(&self, pack: &OpenPack, staged: &[Staged]) -> Result<OpenPack, StoreError> {
+    fn try_append(
+        &self,
+        pack: &OpenPack,
+        staged: &[Staged],
+        seal: bool,
+    ) -> Result<OpenPack, StoreError> {
         let segs = staged
             .iter()
             .map(|s| segment(self.key, &pack.tag, &s.path, s.gen, &s.file))
             .collect::<io::Result<Vec<_>>>()
             .map_err(io_err)?;
-        let next = grown(&pack.index, staged);
+        let next = grown(&pack.index, staged, seal);
         let text = seal_index(self.key, &next).map_err(|e| StoreError::Other(e.to_string()))?;
         let writes: Vec<_> = segs.iter().zip(staged).map(|(g, s)| writer(g, s)).collect();
         let segments: Vec<Segment> = writes
@@ -108,8 +135,9 @@ impl Repo<'_> {
 }
 
 /// The old index plus one entry per session, ranges laid out behind the old end.
-fn grown(old: &Index, staged: &[Staged]) -> Index {
+fn grown(old: &Index, staged: &[Staged], seal: bool) -> Index {
     let mut next = old.clone();
+    next.sealed = seal;
     for s in staged {
         next.entries.push(Entry {
             path: s.path.clone(),
@@ -138,4 +166,16 @@ fn writer<'a>(
         }
         Ok(())
     }
+}
+
+/// How many sessions bring a pack of length `len` to the target, the last one included.
+fn fill_count(rest: &[Staged], target: u64, len: u64) -> usize {
+    let mut sum = len;
+    for (i, s) in rest.iter().enumerate() {
+        sum += s.len;
+        if sum >= target {
+            return i + 1;
+        }
+    }
+    rest.len()
 }
