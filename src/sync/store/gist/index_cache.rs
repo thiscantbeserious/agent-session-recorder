@@ -2,7 +2,9 @@
 //! Sealed text only, written with temp plus rename, a corrupt file is ignored and rebuilt.
 
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +12,24 @@ use serde::{Deserialize, Serialize};
 pub(super) struct Entry {
     pub updated_at: String,
     pub index: String,
+}
+
+/// The cache holds secret gist `raw_url`s, so the dir is 0700 and the file 0600.
+// Windows: the user profile dir is private by its ACL, no mode to set.
+fn make_private_dir(dir: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(dir)
+}
+
+fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)?.write_all(text.as_bytes())
 }
 
 pub(super) struct IndexCache {
@@ -28,8 +48,12 @@ impl IndexCache {
         serde_json::from_str(&text).unwrap_or_default()
     }
 
+    /// A temp name of its own per call (pid plus counter) in the same dir, so writers never share an inode.
     fn temp_path(&self) -> PathBuf {
-        self.path.with_extension("tmp")
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+        self.path
+            .with_extension(format!("{}.{n}.tmp", std::process::id()))
     }
 
     fn save(&self, all: &BTreeMap<String, Entry>) {
@@ -37,11 +61,13 @@ impl IndexCache {
             return;
         };
         let tmp = self.temp_path();
-        let dir = self.path.parent().map(std::fs::create_dir_all);
-        if dir.is_some_and(|r| r.is_err()) || std::fs::write(&tmp, text).is_err() {
+        let dir = self.path.parent().map(make_private_dir);
+        if dir.is_some_and(|r| r.is_err()) || write_private(&tmp, &text).is_err() {
             return;
         }
-        let _ = std::fs::rename(&tmp, &self.path);
+        if std::fs::rename(&tmp, &self.path).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+        }
     }
 
     /// The entry of `id`, only when it was stored for exactly this `updated_at`.
