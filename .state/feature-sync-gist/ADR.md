@@ -1299,41 +1299,41 @@ The architecture lookup `docs/architecture/sync.md` describes the code as built.
 ## Pack layer (2026-11-09)
 
 ### Status
-Proposed, waiting for user approval. Nothing is built before that.
+Proposed, waiting for user approval. Nothing is built before that. Reworked on 2026-11-09 with the user decisions "one gist is one pack", "64 MiB default", "one open pack per machine, append only", "index per pack" and "prune only for dead data", they replace the earlier volume design.
 
 ### Context
 **Problem**: one secret gist per session does not scale for a real user. The first real push created hundreds of gists with only a `.keep` stub (`agr:pending`) and buried the gist page of the user, and every changed session rewrites a whole gist while git history keeps the old bytes anyway.
 
 The user decided on 2026-11-09 to move to buckets, quoted: "the bucket approach I really really like" and "maybe more something like 64/128MB similar to how restic does it? this should be not just bound to gist tought but handled one level above".
 
-As such we need a layer between the engine and the backend that bundles many sessions into a few big encrypted files, keeps its own encrypted index and treats the backend as a dumb object store. Gist stays the only backend for now, but a private repo, a directory or S3 should later only implement the store.
+As such we need a layer between the engine and the backend that bundles many sessions into a few big encrypted packs, keeps an encrypted index per pack and treats the backend as a dumb pack store. Gist stays the only backend for now, but a private repo, a directory or S3 should later only implement the store.
 
 **Scope**:
-- **in**: pack format, index files, merge rules, the store trait, the gist mapping, prune, migrate, auto push on packs, cost of status and pull.
+- **in**: pack format, pack index, merge rules, the store trait, the gist mapping, append and seal, prune, migrate, auto push on packs, cost of status and pull.
 - **sketch only**: `agr share <session>`.
-- **out**: dedup or content defined chunking, range reads, a local index cache, other backends.
+- **out**: dedup or content defined chunking, a local index cache, other backends.
 
 ### Options
 
-#### A: restic-style packs, append-only index files, gist volumes as buckets
-- **Packs**: immutable files, named after the SHA-256 of their ciphertext, many sessions per pack, a big session is cut into extents over several packs.
-- **Index files**: every push run writes one new sealed index file that lists only what this run wrote. Nothing shared is ever rewritten. A reader merges all index files, the highest gen per path wins.
-- **Buckets**: on gists a bucket is a "volume" gist that belongs to exactly one machine (the writer) and only grows until it is full, then it is closed. Space is freed by draining whole volumes in `prune`.
-- **Concurrency**: two machines never write the same file or the same gist, so no lost update on the storage side. A logical conflict (both push gen 4 of one session) shows up as a fork in the merge and is reported, nothing is lost.
+#### A: restic-style packs, one open pack per machine, index per pack
+- **Packs**: a pack is a logical byte stream of sealed sessions, many sessions per pack. Each machine owns exactly one open pack and only appends to it until it reaches the target size, then seals it, and a sealed pack is never written again.
+- **Index**: every pack carries its own small sealed index. A reader merges the indexes of all packs, the highest gen per path wins.
+- **Buckets**: on gists one pack is one gist, the store cuts the pack into part files under the per-file limit.
+- **Concurrency**: two machines never write the same pack, so no lost update on the storage side. A logical conflict (both push gen 4 of one session) shows up as a fork in the merge and is reported, nothing is lost.
 
-#### B: simple buckets with one manifest per bucket and compare-and-swap
-- **Buckets**: N shared gists, a session goes into bucket `hash(path) mod N` as its own file or parts, and every bucket has a `manifest` file mapping path to file, hash and gen.
+#### B: shared buckets with one manifest per bucket and compare-and-swap
+- **Buckets**: N gists shared by every machine, a session goes into bucket `hash(path) mod N` as its own file or parts, and every bucket has a `manifest` file mapping path to file, hash and gen.
 - **Concurrency**: today's compare-and-swap moves from the session to the bucket. Clone, compare the manifest, commit, plain push, `Changed` on a mismatch.
 - **Changes**: a changed session overwrites its file in the bucket, git history keeps the old bytes, the only way to free them is recreating the bucket gist.
 
 #### Weighed
-1. **Concurrency**: B makes every machine fight over the same few manifests, an auto push on machine X fails because machine Y pushed an unrelated session into the same bucket, and that needs retry loops we never had. A has no shared mutable file at all.
-2. **Backend neutral**: B needs a conditional write (compare-and-swap) from every backend, which is easy on git but not on a plain directory or S3 without extra features. A only needs put, fetch, list and delete, the immutable content names make a conditional write unnecessary.
-3. **Space**: in B every change grows the bucket history, which is invisible bloat on gists. In A a volume never rewrites a file, as such its history equals its content and draining a volume frees exactly that.
-4. **Size**: B keeps the per-session file model and with it the 45 MiB parts and the 300 file listing limit per bucket. A has the pack size as its one knob, which is what the user asked for with "64/128MB similar to how restic does it".
+1. **Concurrency**: B makes every machine fight over the same few manifests, an auto push on machine X fails because machine Y pushed an unrelated session into the same bucket, and that needs retry loops we never had. In A every machine writes only its own open pack, there is no shared mutable file.
+2. **Backend neutral**: B needs a real compare-and-swap from every backend on every write. A only needs "append to a pack nobody else writes", the one guard it keeps (expected pack length) is a cheap check that only matters when a writer id was copied by accident.
+3. **Space**: in B every change rewrites a bucket file and grows its history, invisible bloat on gists. In A existing bytes are never rewritten, a sealed pack is frozen, as such its history is its content (plus small index versions) and deleting the pack gist frees exactly that.
+4. **Size**: B keeps the per-session file model and with it the 300 file listing limit per bucket. A has the pack size as its one knob, which is what the user asked for with "64/128MB similar to how restic does it".
 5. **Cost of A**: an index merge, a prune and a fork case. That is real code, but restic proves the model and every piece is a small pure function we can test without a network.
 
-**Recommendation**: A. The gist volume is the "bucket" the user likes, packs are handled one level above it as asked.
+**Recommendation**: A. The pack is the "bucket" the user likes, packing and indexing live one level above the store as asked.
 
 ### Decision
 
@@ -1341,113 +1341,126 @@ As such we need a layer between the engine and the backend that bundles many ses
 ```mermaid
 flowchart TD
     app[app: commands, auto push, setup, format] --> engine[engine: scan, plan, run, local index, lock, queue]
-    engine --> pack[pack: pack writer and reader, index files, merge, prune, migrate]
+    engine --> pack[pack: append, seal, pack index, merge, prune, migrate]
     pack --> crypto[crypto: key, phrase, blob v2, seal]
-    pack --> store[store trait: put, fetch, list, delete_group, flush]
-    gist[gist volumes] --> store
-    dir[directory] --> store
-    mem[memory] --> store
+    pack --> store[store trait: list, read_index, create, append, read, delete]
+    gist[gist store: one gist per pack, data parts] --> store
+    dir[directory store] --> store
+    mem[memory store] --> store
     app --> gist
 ```
-Legend: an edge means "may import", the store and its implementations never see a session name, a gen or plaintext.
+Legend: an edge means "may import", the store never sees a session name, a gen or plaintext, part files are a store detail.
 
-- **engine** keeps scan, the three-way plan, the run loop, the local index, the lock, the queue and the observer events. It stops calling the backend and talks to a `Repo` from the pack layer instead (merged remote view, `push_batch`, `fetch_session`, `tombstone`).
-- **pack** is new. It owns everything that knows the remote format: the pack writer and reader, the index file format, the merge, the prune planner and migrate. It is the only layer above the store that calls crypto for remote data.
+- **engine** keeps scan, the three-way plan, the run loop, the local index, the lock, the queue and the observer events. It stops calling the backend and talks to a `Repo` from the pack layer instead (merged remote view, `push_batch`, `read_session`, `tombstone`).
+- **pack** is new. It owns everything that knows the remote format: sealing sessions into the pack stream, the pack index, append and seal rules, the merge, the prune planner and migrate. It is the only layer above the store that calls crypto for remote data.
 - **store** replaces `SyncBackend`. `layer_rules_hold` gets one new rule: `pack/` must not name `app`, `engine` or a concrete store, and `store/` must not name `crypto`, `engine`, `pack` or `app`.
 
 #### Store trait
 ```rust
-pub struct ObjectInfo {
-    pub name: String,   // "p<hex>" or "i<hex>", opaque to the store
-    pub size: u64,
-    pub group: String,  // unit of space reclaim: the volume gist id, or the name itself on a flat store
-    pub closed: bool,   // nobody writes into this group any more
+pub struct PackInfo {
+    pub id: String,      // gist id, directory name, S3 prefix, opaque to the pack layer
+    pub len: u64,        // logical pack length, sum of all parts
+    pub updated_at: String,
 }
 
-pub trait ObjectStore {
+/// One sealed session in an append, written as one contiguous range of the pack stream.
+pub struct Segment<'a> { pub len: u64, pub write: BlobSource<'a> }
+
+pub trait PackStore {
     fn name(&self) -> &'static str;
     fn check(&self) -> Result<(), StoreError>;
-    /// Largest object this store takes, gist 45 MiB.
-    fn max_object(&self) -> u64;
-    fn list(&self) -> Result<Vec<ObjectInfo>, StoreError>;
-    /// Streams the named objects to `sink`, one call per object, the store batches by group.
-    fn fetch(&self, names: &[String], sink: &mut dyn FnMut(&str, &mut dyn Read) -> io::Result<()>)
+    fn list(&self) -> Result<Vec<PackInfo>, StoreError>;
+    /// The sealed index text of the pack, as stored by the last create or append.
+    fn read_index(&self, id: &str) -> Result<String, StoreError>;
+    /// New pack with no data and `index`, returns its id.
+    fn create(&self, index: &str) -> Result<String, StoreError>;
+    /// Appends `segments` behind the current end and replaces the index, all or nothing.
+    /// Refused with `Moved` when the pack length is not `expected_len`, nothing is written.
+    fn append(&self, id: &str, expected_len: u64, segments: &[Segment], index: &str)
         -> Result<(), StoreError>;
-    /// Stages an object from a local file, putting a name that exists is a no-op.
-    fn put(&self, name: &str, file: &Path) -> Result<(), StoreError>;
-    /// Commit point, everything put before is durable and listed after this returns.
-    fn flush(&self) -> Result<(), StoreError>;
-    /// Removes a closed group and everything in it.
-    fn delete_group(&self, group: &str) -> Result<(), StoreError>;
+    /// Streams the logical range `offset..offset + len` of the pack.
+    fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError>;
+    fn delete(&self, id: &str) -> Result<(), StoreError>;
 }
 ```
-**Nothing GitHub specific**: the trait only knows names, sizes, groups and a closed flag. A gist volume, a GitLab snippet or repo, a directory or an S3 prefix each map their own unit onto `group`, and `max_object` carries the per-file limit of the host.
+- **Nothing GitHub specific**: the trait only knows a pack id, a logical byte stream, an index string and a length. A gist, a GitLab snippet or repo, a directory or an S3 prefix each map that onto their own files, the per-file limit and the part files stay inside the store.
+- **No compare-and-swap on content**: the only guard is `expected_len` on append, which a git store gets for free from a rejected non-fast-forward push. `StoreError` keeps `NotInstalled`, `NotLoggedIn`, `MissingScope`, `Unreachable`, `RateLimited`, `NotFound` and `Other`, `Changed(Option<String>)` becomes `Moved` without a token.
+- **Ordering contract**: an append writes the new data and the new index as one unit. On gists that is one commit, on a directory store new part files first and the index renamed into place last, a crash in between leaves unreferenced bytes behind the indexed end that the next append overwrites.
 
-**No conditional write**: names are the hash of the content and a name is never written twice with other bytes, as such the store needs no compare-and-swap. `StoreError` keeps `NotInstalled`, `NotLoggedIn`, `MissingScope`, `Unreachable`, `RateLimited`, `NotFound` and `Other`, `Changed` is dropped.
-
-**Ordering contract**: the pack layer puts packs before the index file that names them and calls `flush` after the index file, the same order restic uses ("First, pack files ... must be written. Then the indexes"). On gists one flush is one commit, so packs and index land together. On a flat store a crash between pack and index leaves an orphan pack that prune removes.
-
-#### Pack format
+#### Pack format and pack index
 ```mermaid
 flowchart LR
-    magic[AGRP 0x01] --> b1[blob v2, session 1]
-    b1 --> b2[blob v2, session 2]
-    b2 --> bdots[...]
-    bdots --> bn[extent of a big session]
-    bn --> hdr[sealed header]
-    hdr --> len[header length u32 LE]
+    gist[pack gist, desc agr:v2] --> idx[index: sealed, under 768 KiB]
+    gist --> d0[data.000]
+    gist --> d1[data.001]
+    gist --> dn[data.NNN]
+    d0 --> stream[logical pack stream: blob v2, blob v2, ...]
+    d1 --> stream
+    dn --> stream
+    idx --> entries[entries: path, gen, sha256, size, offset, length, deleted]
+    idx --> meta[writer, sealed flag, length]
 ```
-Legend: every session is its own blob v2 sealed with `path:gen` in the AAD, the header lists path, gen, sha256, size, offset and length of each blob and is sealed with the one-shot `seal` and the AAD `agr:pack`.
+Legend: the data parts joined in order are the pack stream, the index maps every session to one range of it, both are written in the same commit.
 
-- **Blobs**: unchanged blob v2 (STREAM, 64 KiB frames, AAD `AGR1 || 0x02 || "agr:blob:" || path || ":" || gen`). A blob moved into another place or replayed under another gen still fails to open.
-- **Header at the end**: as restic does, so a pack is written as one stream and can be re-indexed from the pack alone if index files get lost ("first the last four bytes must be read in order to find the length of the header"). We write the header now because it costs a few lines, a `rebuild-index` command is not built now.
-- **Name**: `p` plus the hex SHA-256 of the whole pack file. The pack is built in a temp file outside the storage dir (at most one pack on disk, memory stays flat), hashed, then `put`.
-- **Target size**: configurable `[sync] pack_size_mib`, clamped to `max_object` of the store. See [Pack size](#pack-size) below.
-- **Big sessions**: a session larger than the room left in the current pack starts a fresh pack, and a session larger than the target is cut into extents of at most the target, each extent in its own pack with no other session. The extents joined in order are the blob v2, so the reader needs no new crypto.
+- **Pack stream**: the concatenation of unchanged blob v2 (STREAM, 64 KiB frames, AAD `AGR1 || 0x02 || "agr:blob:" || path || ":" || gen`). A blob moved to another range or replayed under another gen still fails to open. No pack header, the index carries the layout.
+- **Index**: one-shot `seal` (AAD `agr:pack-index`) over JSON `{ v: 3, writer, sealed, len, entries: [{ path, gen, sha256, size, offset, length, deleted, at }] }`, stored as base64url text so the gist API returns it as text. The index is the one file an append replaces, its old versions stay in the git history and stay small.
+- **Index cap 768 KiB**: the REST API returns at most 1 MB of content per file, as such the index stays well below that and status reads it without a clone. A pack whose next index would cross 768 KiB is sealed early.
+- **Delete is a tombstone**: `agr sync delete` appends an entry with `deleted: true` at gen + 1 to the open pack of the deleting machine. Tombstones are kept forever (a few hundred bytes each), so a machine with an old local index never pushes a deleted session back as "remote absent".
+- **Description**: `agr:v2`, nothing else, the writer and the sealed flag live in the encrypted index only.
 
-#### Index files
-```mermaid
-flowchart LR
-    v1[volume gist A1] --> pA[p hex packs]
-    v1 --> iA[i hex index files, one per push run]
-    v2[volume gist B1] --> pB[p hex packs]
-    v2 --> iB[i hex index files]
-    iA --> merge[merge on read]
-    iB --> merge
-    merge --> view[remote view per path: gen, sha256, extents, or fork, or deleted]
-```
-Legend: each volume belongs to one machine, index files are never edited, the reader merges all of them.
+#### Pack size
+Restic defaults to 16 MiB and allows 4 to 128 MiB. **Decision**: `[sync] pack_size_mib`, default **64**, accepted range 16 to 512 so one append stays far below the 2 GiB push limit. The gist file limit never caps it, the store cuts parts.
 
-- **Content**: one-shot `seal` (AAD `agr:index`) over JSON `{ v: 3, writer, supersedes: [names], entries: [...] }`, stored as base64url text so the gist API never mangles it. An entry is `{ path, gen, sha256, size, extents: [{ pack, offset, length }], deleted, at }`.
-- **One file per push run**, or one per flush when a run flushes in batches. Name `i` plus the hex SHA-256 of the file. Capped at 512 KiB, a bigger run writes several.
-- **Delete is a tombstone**: `agr sync delete` writes an entry with `deleted: true` at gen + 1, nothing is removed until prune. Tombstones are kept forever (a few hundred bytes each), so a machine with an old local index never pushes a deleted session back as "remote absent" without seeing the delete.
-- **Supersedes**: only prune writes it, the merge ignores every index file named in a `supersedes` list.
+- **Seal threshold**: a pack is sealed by the append that brings it to at least the target, so a pack holds at most the target plus one session.
+- **Big sessions**: a session larger than the target gets its own pack, created, appended and sealed in one go, and the open pack of the machine stays open. With the 1 GiB session cap that is at most 1 GiB in one push.
+- **Parts on gists**: every append starts a new part, existing parts are never touched. Parts are cut at session boundaries, a part is closed when the next session would make it cross **8 MiB**, a session over 8 MiB is cut into its own parts of 8 MiB. 8 MiB keeps every part under the 10 MB `raw_url` limit and makes pulling one small session cost at most one part. The `data.NNN` naming and the gap and order check of today's `parts.rs` move into the gist store.
+- **File cap**: a pack gist is sealed early when the next append would take it over 250 files, which stays under the 300 file limit of the API listing. A 64 MiB pack needs at least 8 parts plus the index, as such only many tiny auto push appends hit the cap.
 
-**Merge rules** (pure, `pack::merge`):
-1. Open every listed index file, a file that does not authenticate makes its whole volume `OtherKey`, an unknown `v` makes it `UnknownVersion`, both are reported and never touched (same as today).
-2. Drop superseded files, then group entries by path and keep the highest gen.
-3. Several entries at the highest gen with the same sha256 are one entry with several places (after a prune or migrate crash), the reader tries the next place on `NotFound`.
-4. Several entries at the highest gen with different sha256 are a **fork**, it replaces today's `Duplicate` and is reported per session, push and pull skip it. `push --overwrite` resolves it by writing gen + 1 from the local file.
+#### Append and seal (one machine, its open pack)
+1. **Find the open pack**: the gist id sits in the local sync index as `open_pack`. When it is missing, the merged view is searched for an unsealed pack with our writer id, and when there is none `create` makes a new gist with an empty index (the index is non-blank text, as such `gh gist create` takes it, no `.keep` any more). The id is saved locally right after the create.
+2. **Clone**: `git clone --depth 1 --filter=blob:none --no-checkout` into a temp dir outside the storage dir, which downloads the commit and the tree only. The index blob is read from that clone, so index and parts belong to the same commit.
+3. **Check**: the index opens with our key, its writer is ours, it is not sealed and its `len` equals the sum of the part sizes in the tree and the `expected_len` the engine planned against. Anything else is `Moved`.
+4. **Write**: the sessions are sealed straight from their files into new part files behind the last one, never into an existing part.
+5. **Index**: the new index is the old entries plus the new ones, the new `len`, and `sealed: true` when a seal threshold is reached.
+6. **Commit and push**: one commit with the new parts and the new index, one plain `git push`, never forced.
+7. **Local index**: saved after the push returned, with sha256, gen and stamp per session and the new `open_pack` length. After a seal `open_pack` is cleared and the next append creates a new pack.
+
+**Why a crash leaves a consistent pack**: a git push moves the branch from the old commit to the new one in one step, as such a reader sees either the old index with the old parts or the new index with all new parts, never parts without their index or an index without its parts. A crash before the push changes nothing remote. A crash after the push but before the local save leaves remote entries whose hash equals the local file, the next run plans them `InSync` and refreshes the local index, which the plan already does today. Old bytes are never rewritten, as such no crash can damage data that was already pushed.
+
+**Rejected push**: only possible when two machines share a writer id (config dir copied). The append drops its local commit, clones again, re-checks the index (sealed or longer than planned means we start a fresh pack) and redoes the append once on top, then it fails with "changed on the remote, run again". Part numbers are recomputed on the retry, so the two writers never overwrite each other.
+
+#### Merge and what replaces compare-and-swap
+**Merge rules** (pure, `pack::merge`), over the indexes of all `agr:v2` packs:
+1. An index that does not authenticate makes its pack `OtherKey`, an unknown `v` makes it `UnknownVersion`, both are reported and never touched (same as today).
+2. Group all entries by path and keep the highest gen.
+3. Several entries at the highest gen with the same sha256 are one session with several places (after a prune or migrate copy), the reader tries the next place on `NotFound`.
+4. Several entries at the highest gen with different sha256 are a **fork**, it replaces today's `Duplicate` and is reported per session, push and pull skip it. `push --overwrite` resolves it by appending gen + 1 from the local file.
 5. A tombstone at the highest gen means absent, and the next push of that path uses gen + 1 above it.
 
-#### What replaces compare-and-swap and rollback refusal
-- **Lost update**: impossible on the storage side, as no file and no gist is shared between writers. Today the compare-and-swap refuses the second writer before it writes, with packs both writes land and the merge reports the fork. Nothing is overwritten, as such nothing is lost, the user picks with `--overwrite`.
-- **Plan**: unchanged three-way compare of local hash, remote hash and last hash from the local index, the remote hash now comes from the merged view instead of a gist description.
-- **Rollback refusal**: the local index keeps `gen` per path as today. A merged gen below it (an index file or volume vanished outside agr) is refused as today, "remote older than last sync", the local file stays untouched. The blob AAD still binds path and gen, so an old blob cannot pass as a newer gen.
-- **Fork right after a push**: the run lists the index files once more after its last flush and reports a fork it created, so the user does not wait for the next status.
+- **Lost update**: impossible on the storage side, every machine writes only its own open pack and sealed packs are frozen. Where the compare-and-swap refused the second writer before it wrote, now both writes land and the merge reports the fork. Nothing is overwritten, as such nothing is lost, the user picks with `--overwrite`.
+- **Plan**: unchanged three-way compare of local hash, remote hash and last hash from the local index, the remote hash now comes from the merged view.
+- **Rollback refusal**: the local index keeps `gen` per path as today. A merged gen below it (a pack gist deleted outside agr) is refused as today, "remote older than last sync", the local file stays untouched. The blob AAD still binds path and gen.
+- **Fork right after a push**: the run reads the indexes once more after its last append and reports a fork it created, so the user does not wait for the next status.
 
-#### Mapping onto gists
-- **Volume**: one secret gist per writer, at most **1 GiB of packs and 250 files**, packs and index files side by side (gists have no folders). 250 stays under the 300 file limit of the API listing, 1 GiB keeps a clone, a drain and a single push far below the 2 GiB push limit. With a 32 MiB target that is up to 32 full packs per volume, the rest of the file budget goes to index files and small auto push packs.
-- **Writer id**: 8 random hex characters in `state.toml`, created on the first push of a machine. Only the writer of a volume ever pushes into it.
-- **New volume**: when the next flush would cross 1 GiB or 250 files, the writer closes the current volume with a last commit that adds an empty `closed` file and starts the next one. A closed volume never gets another commit.
-- **Description**: `agr:v2 <writer> <n>`, no sealed token, nothing to repair. The listing picks up `agr:v2 ` only, `agr:v1 ` and `agr:pending` are left to migrate.
-- **Commits**: one commit per flush, at most 256 MiB per flush so an interrupted run loses little. The identity (`agr`, `agr@localhost`, UTC dates), the hook scrub, `GIT_TERMINAL_PROMPT=0` and the stall timeout stay as today.
-- **Clones**: `git clone --depth 1 --filter=blob:none --no-checkout` into a temp dir outside the storage dir, new files are added on top of `HEAD` without downloading the old packs (verify in Stage 1, see risks).
-- **Push rejected**: a non-fast-forward rejection (two machines with a copied writer id) is safe to retry once: fetch, re-commit the same files on top, push. Names are unique, so a rebase never conflicts, and a fetch that shows `closed` rolls over to a new volume instead.
-- **Pacing**: GitHub recommends at most 6 pushes per minute per repository, as such flushes into the same volume are paced 10 s apart, other mutating calls stay at 1 s.
+```mermaid
+sequenceDiagram
+    participant A as machine A
+    participant PA as open pack of A
+    participant PB as open pack of B
+    participant B as machine B
+    A->>A: merged view: x.cast.gz gen 3
+    B->>B: merged view: x.cast.gz gen 3
+    A->>PA: append x gen 4 hash a, new parts plus index
+    B->>PB: append x gen 4 hash b, new parts plus index
+    Note over PA,PB: different gists, both pushes succeed
+    A->>A: re-read indexes: x gen 4 has hash a and b, fork reported
+    B->>B: re-read indexes: fork reported
+    A->>PA: push --overwrite, x gen 5 hash a
+    Note over A,B: next merge on any machine: gen 5 wins, gen 4 bytes are dead until prune
+```
+Legend: each machine only ever writes its own open pack, the fork is reported to both and resolved by one explicit overwrite.
 
-**What a third party with the URL can see**: the `agr:v2` prefix, the writer id and volume number (so how many machines push and how many volumes exist), the file names (`p` or `i` plus a hash, no meaning), every file size (so pack sizes, and for a pack with one session roughly the size of that session), commit times in UTC and the number of commits (so how often a machine pushes). **Not visible**: session names, agents, how many sessions sit in a pack, hashes, gens and content.
-
+#### Push sequence
 ```mermaid
 sequenceDiagram
     participant E as engine
@@ -1456,83 +1469,67 @@ sequenceDiagram
     participant G as GitHub
     E->>P: open repo
     P->>S: list
-    S->>G: gh api gists (descriptions, file names, sizes)
-    P->>S: fetch all i files
-    S->>G: clone --depth 1 --filter=blob:limit=1m per volume
-    P->>P: open and merge index files
-    E->>E: scan, plan against merged view
-    loop sessions to push, up to 256 MiB per flush
-        P->>P: seal blob v2 into temp pack, cut at target size
-        P->>S: put p hex
+    S->>G: gh api gists (descriptions only)
+    loop every agr:v2 pack
+        P->>S: read_index
+        S->>G: gh api gists/id (index content, under 1 MB)
     end
-    P->>S: put i hex (index for this flush)
-    P->>S: flush
-    S->>G: commit, push (paced 10 s per volume)
-    E->>E: local index: sha256, gen, stamp
-    P->>S: list i files once more, report a fork
+    P->>P: open and merge indexes
+    E->>E: scan, plan against merged view
+    P->>S: append(open pack, expected_len, segments, index)
+    S->>G: clone --depth 1 --filter=blob:none
+    S->>S: check len, write new data parts, new index
+    S->>G: commit, plain push (paced 10 s per gist)
+    E->>E: local index: sha256, gen, stamp, open_pack len
+    P->>P: seal threshold reached, next append creates a new pack
+    P->>S: read_index of all packs once more, report a fork
 ```
-Legend: packs go first, the index file last, both land in one commit, the local index is saved only after the flush returned.
+Legend: data parts and index land in one commit, the local index is saved only after the push returned, a manual push of many sessions repeats the append per pack.
 
-```mermaid
-sequenceDiagram
-    participant A as machine A
-    participant VA as volume A1
-    participant VB as volume B1
-    participant B as machine B
-    A->>A: merged view: x.cast.gz gen 3
-    B->>B: merged view: x.cast.gz gen 3
-    A->>VA: pack plus index, x gen 4 hash a
-    B->>VB: pack plus index, x gen 4 hash b
-    Note over VA,VB: no shared file, both pushes succeed
-    A->>A: re-list: x gen 4 has hash a and b, fork reported
-    B->>B: re-list: fork reported
-    A->>VA: push --overwrite, x gen 5 hash a
-    Note over A,B: next merge on any machine: gen 5 wins
-```
-Legend: both versions stay in the remote until prune, the fork is reported to both machines and resolved by one explicit overwrite.
-
-#### Pack size
-Restic defaults to 16 MiB and allows 4 to 128 MiB, the user suggested 64 or 128 MiB. On gists one pack is one file, GitHub blocks a file over 100 MiB and git warns over 50 MiB, as such 64 and 128 MiB are not possible as one gist file and parts inside a pack would bring back what we drop.
-
-**Recommendation**: `pack_size_mib` default **32** for the gist store, clamped to `max_object` (45 MiB for gists, our existing part limit). A later directory or S3 store sets its own `max_object` (128 MiB, restic's maximum) and may default to 64. 32 MiB keeps the cost of pulling one small session at one pack and still means only about 32 files per GiB, which is the reason restic users raise the size in the first place.
-
-#### Pull and status cost
-- **Status**: one paginated `gh api gists` listing (as today, it already returns file names and sizes without content), then per volume one `git clone --depth 1 --filter=blob:limit=1m --no-checkout`, which downloads only the commit, the tree and blobs under 1 MiB, so the index files and small auto push packs, never the big packs. With 700 sessions in 2 volumes that is one API call and two small clones. No local index cache in this round, add one when users have more than about 20 volumes.
-- **Pull of one session**: a `--filter=blob:none` clone of its volume plus `git cat-file` of its pack, which fetches that single blob (verified on a gist, see facts). Cost: one whole pack, at most 32 MiB by default, even for a 100 KiB session, because git cannot read a part of a blob. A big session costs exactly its extent packs.
-- **Pull of everything**: every pack once, every session in it is used, so the total is the remote size.
-- **Range reads**: `raw_url` answers a `Range` header with 206 on a public gist, but the docs require a clone above 10 MB and it is not verified for secret gists, as such no range reads now. The store trait gets a range argument when S3 comes.
+#### Status and pull cost
+- **Status**: one paginated `gh api gists` listing, then one `gh api gists/<id>` per pack, which returns the index content in full because it stays under 1 MB. No git clone at all. With the 721 sessions of 440 MiB from the first push that is about 7 sealed packs plus one open pack per machine, so about 10 API calls against the limit of 5000 per hour. A local cache of sealed indexes is a quick win later, sealed packs never change.
+- **Pull of one session**: a `--filter=blob:none --depth 1` clone of its pack gist (commit and tree only), the index read from that clone, then `git cat-file` on only the parts that cover its range. Cost: a small session at most one part of 8 MiB, a big session its own parts. We take partial clone for every pull because it is verified on gists and needs no size rule. `raw_url` would work for single parts too (every part is under 10 MB, the docs require a clone only above that), but serving binary parts of a secret gist through `raw_url` is not verified, as such it is an option for Stage 1, not the plan.
+- **Pull of everything**: every live part once, plus the dead bytes that share a part with a live session.
+- **Range reads**: not used. `read(id, offset, len)` already takes a range, a store that can do HTTP range requests (S3) uses it later without a trait change.
 
 #### Changes, deletes and `agr sync prune`
-A changed session (markers, optimize) is a new blob at gen + 1 in a new pack, the old blob is dead bytes. A delete is a tombstone, its blobs are dead bytes too. On gists dead bytes only go away with the whole volume, so prune drains volumes.
+A changed session (markers, optimize) is a new blob at gen + 1 in the open pack, the old blob is dead bytes. A delete is a tombstone, its blobs are dead bytes too. Small packs do not need cleanup any more, packs only end small when a big session got its own pack. Prune exists only for dead data.
 
 ```mermaid
 flowchart TD
-    start[agr sync prune] --> lock[local lock, merged view]
-    lock --> pick{closed volume with dead share over 20 percent, or mostly packs under 4 MiB?}
-    pick -- no --> keep[keep volume]
-    pick -- yes --> drain[fetch live blobs of picked volumes]
-    drain --> write[write them into new full packs in own open volume]
-    write --> idx[one index file, supersedes all index files of picked volumes]
-    idx --> flush[flush]
-    flush --> del[delete_group each picked volume]
-    del --> orphans[flat stores: delete unreferenced packs older than 24 h]
+    start[agr sync prune] --> view[local lock, merged view]
+    view --> each{sealed pack}
+    each -- no dead bytes --> keep[keep]
+    each -- all dead --> gone[delete after next step]
+    each -- dead share at least 20 percent --> copy[read live sessions and tombstones]
+    copy --> append[append them with the same gen to own open pack, sealing as usual]
+    append --> check[re-read indexes, copies visible]
+    check --> del[delete old pack gists]
+    gone --> check
 ```
-Legend: only closed volumes are drained, the new data is durable before any old volume is deleted, tombstones are copied into the new index.
+Legend: only sealed packs are repacked, the copies are pushed and visible before any old pack gist is deleted.
 
-- **When**: manual `agr sync prune [--dry-run]`. `status` prints a hint line when dead bytes are over 20 percent or there are more than 50 packs under 4 MiB. No automatic prune in this round.
-- **Own open volume**: prune first closes it (its writer is this machine and the local lock is held), then it can drain it like any other.
-- **Other machines' open volumes**: never touched, they get drained after their writer closes them. As such no writer ever pushes into a volume that prune deletes.
-- **Readers during prune**: a pull that gets `NotFound` on a pack reloads the merged view once and retries.
-- **Two prunes at once**: both write the same live data into their own volume, the merge sees the same path, gen and sha256 twice and treats it as one entry with two places, the next prune drops the extra copy. Harmless, only bandwidth.
-- **Cost**: prune downloads the live bytes of every drained volume and uploads them again, restic warns the same ("This can be very time-consuming for remote repositories"). `--dry-run` prints the bytes it would move first.
+- **When**: manual `agr sync prune [--dry-run]`, restic-like. `status` prints a hint line when dead bytes are over 20 percent of the remote. No automatic prune.
+- **Same gen**: copies keep path, gen and sha256, so the merge treats original and copy as one session with two places, and the rollback floors of other machines stay valid.
+- **Tombstones** of a repacked pack are copied too, they are never dropped.
+- **Open packs are never touched**: another machine may be appending to its own. This is also why we need no remote lock: restic needs an exclusive lock because a writer could reference a pack that prune deletes, here nobody writes into a sealed pack and nobody references bytes in another pack.
+- **Readers during prune**: a pull that gets `NotFound` on a pack re-reads the indexes once and retries with the copy.
+- **Two prunes at once**: both copy the same live data into their own open pack, the merge sees two places for one session and the next prune drops one. Harmless, only bandwidth.
+- **Cost**: prune downloads the live bytes of every repacked pack and uploads them again, restic warns the same ("This can be very time-consuming for remote repositories"). `--dry-run` prints how many bytes it would move and free first.
 
 #### Auto push on packs
 The queue and the drain that are being built now stay as they are, only what one round uploads changes.
 
-- **One drain round, one pack**: the child that holds the lock seals all queued sessions plus the changed synced ones into one pack, writes one index file and flushes once. Ten recordings that finish while a drain runs land in the next round together, never as ten pushes.
+- **One drain round, one append**: the child that holds the lock seals all queued sessions plus the changed synced ones into one append to the open pack, one commit, one push. Ten recordings that finish while a drain runs land in the next round together.
 - **No local buffering**: we do not hold recordings back to fill a pack, a recording that sits only on one machine defeats auto push.
-- **Small packs**: a single recording gives a pack of a few MiB or less, two files per round. A volume takes about 120 such rounds before it closes on its file budget, and prune merges the small packs of closed volumes into full ones.
-- **Pacing**: rounds into one volume are 10 s apart, a burst of recordings simply waits in the queue.
+- **Pacing**: GitHub recommends at most 6 pushes per minute per repository, as such pushes into the same gist are paced 10 s apart, a burst of recordings waits in the queue. Other mutating calls stay at 1 s.
+- **Many tiny rounds**: every round adds at least one part, the 250 file cap seals the pack after about 240 rounds, which is a pack below 64 MiB but not a problem, it is never touched again and prune ignores it unless it holds dead bytes.
+
+#### What a third party with the URL can see
+- **Visible**: the `agr:v2` description, how many pack gists we have, the file names (`index`, `data.NNN`), every part size, commit times in UTC and the number of commits. Parts are cut at session boundaries, as such an auto push part shows roughly the size of one recording and its commit time shows when it was pushed, the same leak as today's one gist per session.
+- **Not visible**: session names, agents, which machine wrote a pack, how many sessions sit in a part, hashes, gens, the sealed flag and the content.
+
+The commit identity (`agr`, `agr@localhost`, UTC dates), the hook scrub, `GIT_TERMINAL_PROMPT=0` and the stall timeout stay as today.
 
 #### Migration from per-session gists
 `agr sync migrate`, dry-run unless `--yes`, run after the first `agr sync push` in the new format.
@@ -1542,63 +1539,66 @@ The queue and the drain that are being built now stay as they are, only what one
    - **ours, v1**: description `agr:v1 <token>` and the token opens with our key with a valid path.
    - **stub**: description exactly `agr:pending`, exactly one file `.keep` with the body `agr\n`, created more than 1 hour ago (so an old agr still running somewhere is left alone).
    - anything else (other key, unknown version, foreign files) is listed and never touched.
-3. **Move**: an ours-v1 session whose path, sha256 and a gen at least as high is already in the merged view is done. Otherwise its blob is read with the old pull path (clone, join `data.NNN`, open blob v2 with the manifest gen), checked against the manifest sha256 and written into the pack store with the same gen, so the rollback floors of other machines stay valid.
-4. **Delete** a gist only after the flush that holds its session returned and a fresh merged view shows it. Stubs are deleted directly.
+3. **Move**: an ours-v1 session whose path, sha256 and a gen at least as high are already in the merged view is done. Otherwise its blob is read with the old pull path (clone, join `data.NNN`, open blob v2 with the manifest gen), checked against the manifest sha256 and appended to our open pack with the same gen, packs seal as usual.
+4. **Delete** an old gist only after the append that holds its session returned and a fresh read of the indexes shows it. Stubs are deleted directly.
 5. **Pacing**: deletes 1 s apart, a rate limit stops the run with "N left, run again later", re-running is safe because every step checks the merged view first.
 
 The dry-run prints `N sessions to move (size), M already moved, K empty stubs to delete, L not ours (kept)`. The old gist reader lives in `pack/migrate` only and is deleted one release later.
 
 #### `agr share <session>` (sketch only)
-- A fresh random key per share, the session sealed as a standalone blob v2 with the AAD path `share`, in a new secret gist with one file and the description `agr:share`.
+- A fresh random key per share, the session written as a one-session pack (same index and part layout, sealed at once) into a new secret gist with the description `agr:share`, sealed with the share key instead of the sync key.
 - The URL is `https://gist.github.com/<user>/<id>#k=<base32 key>`, the fragment is never sent to GitHub.
-- The share has nothing to do with packs or the sync key, revoking is deleting that gist, and reading it needs agr or a later web player.
+- The reader is the normal pack reader with another key, the share is never part of the merge (other prefix), revoking is deleting that gist.
 
 #### Kept and dropped
 **Kept**:
-- crypto as is: key, key file, recovery phrase, blob v2 with our STREAM layer, the AAD with path and gen, the one-shot `seal` (now for index files and pack headers), the KAT vectors.
-- the gist runner: `gh` and `git` spawning, the 120 s stall timeout, env scrub, forced identity, UTC dates, the progress parser and sink (the percent now belongs to a flush).
-- the engine: scan, the three-way plan, `--overwrite`, the local lock, the queue and drain, the observer events, the live line, `state.toml`, the layering test, the `Fake` runner, the 1 GiB session cap, the 3000 gist listing abort for sync.
+- crypto as is: key, key file, recovery phrase, blob v2 with our STREAM layer, the AAD with path and gen, the one-shot `seal` (now for the pack index), the KAT vectors.
+- the gist runner: `gh` and `git` spawning, the 120 s stall timeout, env scrub, forced identity, UTC dates, the progress parser and sink (the percent now belongs to an append).
+- the part logic of `parts.rs` (naming, gap and order check), moved into the gist store with 8 MiB parts cut at session boundaries.
+- the engine: scan, the three-way plan, `--overwrite`, the rollback refusal, the local lock, the queue and drain, the observer events, the live line, `state.toml`, the layering test, the `Fake` runner, the 1 GiB session cap, the 3000 gist listing abort for sync.
 
 **Dropped**:
-- the `SyncBackend` trait with `create`, compare-and-swap `push`, `describe`, `pull`, `RemoteEntry`, `BlobSource` and `BackendError::Changed`.
-- the per-session gist layout: `.keep`, `manifest`, `data.NNN` parts (`parts.rs`), `agr:pending`, the sealed description token, description repair and heal, adopt own commit, pending resume, the index id fallback, duplicate resolution by `created_at`.
-- local index fields `remote_id`, `token`, `pending`, the index goes to `version` 2 (nothing released, an old index reads as empty plus one warning, like today).
+- the `SyncBackend` trait with `create` per session, compare-and-swap `push`, `describe`, `RemoteEntry`, `BackendError::Changed` (becomes `Moved`).
+- the per-session gist layout: `.keep`, `manifest`, `agr:pending`, the sealed description token, description repair and heal, adopt own commit, pending resume, the index id fallback, duplicate resolution by `created_at`.
+- local index fields `remote_id`, `token`, `pending`, the index goes to `version` 2 with `open_pack` (nothing released, an old index reads as empty plus one warning, like today).
 - the `Meta` token as a remote listing format (`seal` itself stays).
 
 ### Consequences
-- One push run is a few commits into one gist instead of one gist per session, the gist page shows one entry per GiB per machine.
+- A push of 440 MiB is about 7 pack gists instead of 721, the gist page shows one entry per 64 MiB.
 - Concurrent pushes never block each other, conflicts turn into forks that are reported after the write instead of refused before it.
-- Pulling one small session costs a whole pack, which is the price of few files.
-- We get a prune command and with it a second place where data is deleted, guarded by "closed volumes only" and "new data durable first".
-- A directory or S3 store is about 100 lines later, the format above it does not change.
+- Status needs no clone, only API calls, and pulling one small session costs at most one 8 MiB part.
+- We get a prune command and with it a second place where data is deleted, guarded by "sealed packs only" and "copies visible first".
+- A directory or S3 store implements six methods later, the format above it does not change.
 
 ### Open risks
-1. **Push from a partial clone**: adding files on top of a `--depth 1 --filter=blob:none` clone and pushing without the old blobs locally is not verified against gists. Fallback: smaller volumes (256 MiB) with a plain `--depth 1` clone. Verify first, in Stage 1.
+1. **Append from a partial clone**: committing new parts on top of a `--depth 1 --filter=blob:none` clone and pushing without the old blobs locally is not verified against gists. Without it every auto push downloads up to 64 MiB. Fallback: keep a clone of the own open pack in the cache dir, only this machine writes it so it stays current. Verify first, in Stage 1.
 2. **Forks after the write**: two machines can both report success and then a fork, which is new for users used to "changed on the remote, run again". Wording in status has to make the next step obvious.
-3. **Writer id copied** with the config dir: two machines then push into one volume. The rejected push plus fetch and retry keeps it safe, but it is the one place where two writers meet, a test with two writers on one id is mandatory.
-4. **Prune bandwidth**: draining a volume downloads and uploads its live bytes, a user with many changed sessions may move GiBs. Dry-run first, no automatic prune.
-5. **Size leak of small packs**: an auto push pack with one recording shows roughly its size, the same leak as today's one gist per session, not worse.
-6. **Rate limits**: auto push rounds and migrate deletes count against the GitHub limits, pacing exists but bursts of hundreds of stubs to delete will hit the secondary rate limit, migrate has to be resumable (it is by design).
-7. **Unverified**: the community "about 5 GB per gist" figure has no official source, we stay at 1 GiB per volume so it does not matter. Range reads on secret gists and `raw_url` for binary files are not verified and not used.
+3. **Writer id copied** with the config dir: two machines then append to one open pack. The `expected_len` check plus the rejected push, re-clone and one retry keep it safe, but it is the one place where two writers meet, a test with two writers on one id is mandatory.
+4. **Lost writer id or local state**: a machine that loses `state.toml` gets a new writer id and its old open pack stays open forever. Harmless (readable, merged, never written), prune leaves it alone, a `prune --seal-orphans` can come later if it matters.
+5. **Index history**: every append rewrites `index` and git keeps the old versions. With about 200 bytes per entry and the 250 file cap this stays in the low MiB per pack, the 768 KiB cap bounds the worst case.
+6. **Prune bandwidth**: repacking downloads and uploads live bytes, a user with many changed sessions may move GiBs. Dry-run first, no automatic prune.
+7. **Rate limits**: status costs one API call per pack, auto push rounds and migrate deletes count too, pacing exists but bursts of hundreds of stubs to delete will hit the secondary rate limit, migrate has to be resumable (it is by design).
+8. **Unverified**: `raw_url` for binary parts of a secret gist, range requests on secret gists, and the community "about 5 GB per gist" figure (no official source, our packs stay far below it).
 
 ### Verified facts
 **restic** (all from https://github.com/restic/restic/blob/master/doc/design.rst unless noted, fetched 2026-11-09):
-- Immutable files: "All files in a repository are only written once and never modified afterwards. Writing should occur atomically to prevent concurrent operations from reading incomplete files. This allows accessing and even writing to the repository with multiple clients in parallel. Only the ``prune`` operation removes data from the repository."
-- Content names: the storage ID "is the SHA-256 hash of the content of a file".
-- Pack format: "EncryptedBlob1 || ... || EncryptedBlobN || EncryptedHeader || Header_Length", and "Placing the header at the end of a file allows writing the blobs in a continuous stream", and "All the blobs ... are authenticated and encrypted independently. This enables repository reorganisation without having to touch the encrypted Blobs."
-- Re-index from a pack: "first the last four bytes must be read in order to find the length of the header".
+- Immutable files: "All files in a repository are only written once and never modified afterwards. Writing should occur atomically to prevent concurrent operations from reading incomplete files. This allows accessing and even writing to the repository with multiple clients in parallel. Only the ``prune`` operation removes data from the repository." We follow that for the data parts and sealed packs, the per-pack index is the one file an append replaces, inside the same atomic commit.
+- Content names: the storage ID "is the SHA-256 hash of the content of a file". We do not name packs by content, a pack grows while open, the gist id names it.
+- Pack format: "EncryptedBlob1 || ... || EncryptedBlobN || EncryptedHeader || Header_Length", and "All the blobs ... are authenticated and encrypted independently. This enables repository reorganisation without having to touch the encrypted Blobs." We keep the independent blobs and move the header into the per-pack index.
 - Index files: "There may be an arbitrary number of index files, containing information on non-disjoint sets of Packs. The number of packs described in a single file is chosen so that the file size is kept below 8 MiB." and "The field ``supersedes`` lists the storage IDs of index files that have been replaced with the current index file."
 - Pack size, https://github.com/restic/restic/blob/master/doc/047_tuning_parameters.rst: "Restic currently defaults to a 16 MiB pack size." Limits in https://github.com/restic/restic/blob/master/internal/repository/repository.go: `MinPackSize = 4 * 1024 * 1024`, `DefaultPackSize = 16 * 1024 * 1024`, `MaxPackSize = 128 * 1024 * 1024`.
 - Locks: "Locks come in two types: Exclusive and non-exclusive locks. At most one process can have an exclusive lock on the repository", stale "for locks with timestamps older than 30 minutes", and "restic creates a new lock, waits, and checks if other locks appeared in the repository".
 - Write order: "First, pack files, which contain data and tree blobs, must be written. Then the indexes which reference blobs in these already written pack files. And finally the corresponding snapshots."
 - Removing data: "A client removing data *must* acquire an exclusive lock first", "A pack *must* be removed from the referencing index before it is deleted.", "Rewriting a pack *must* write the new pack, update the index (add an updated index and delete the old one) and only then delete the old pack."
-- Snapshots: "For each backup that is made, a new snapshot is created. A snapshot is a JSON document that is stored in a file below the directory ``snapshots``". We have no snapshots, our index entry with its gen plays that role per session.
+- Snapshots: "For each backup that is made, a new snapshot is created. A snapshot is a JSON document that is stored in a file below the directory ``snapshots``". We have no snapshots, the index entry with its gen plays that role per session.
 - Prune, https://github.com/restic/restic/blob/master/doc/060_forget.rst: "Completely unused files are marked for deletion. Fully used files are kept. A partially used file is either kept or marked for repacking", "for repacking, restic must download the file from the repository storage and re-upload the needed data", "After deciding what to do, ``prune`` will actually perform the repack, modify the index according to the changes and delete the obsolete files." and for `--max-unused` "The default value is 5%."
 
-**Why we skip restic's remote locks**: on gists every writer has its own volume and prune only drains closed volumes, so the cases restic locks against (deleting a pack another client is about to reference) cannot happen. The local `.agr-sync.lock` stays for two processes on one machine.
+**Why we skip restic's remote locks**: every writer has its own open pack, sealed packs are frozen and no pack references bytes of another, as such the case restic locks against (deleting a pack another client is about to reference) cannot happen. The local `.agr-sync.lock` stays for two processes on one machine.
 
 **GitHub** (fetched 2026-11-09):
-- https://docs.github.com/en/rest/gists/gists: "The API provides up to one megabyte of content for each file in the gist.", "for files larger than ten megabytes, you'll need to clone the gist via the URL provided by `git_pull_url`", "the entire files list may be truncated if the total number exceeds 300 files", "With pagination, you can fetch up to 3000 gists."
+- https://docs.github.com/en/rest/gists/gists, section "Truncation": "The API provides up to one megabyte of content for each file in the gist. Each file returned for a gist through the API has a key called `truncated`." This is why the pack index stays under 768 KiB and status reads it through the API.
+- Same page: "If you need the full contents of the file, you can make a `GET` request to the URL specified by `raw_url`. Be aware that for files larger than ten megabytes, you'll need to clone the gist via the URL provided by `git_pull_url`." This is why parts are 8 MiB, every part stays readable through `raw_url` should we take that route.
+- Same page: "the entire files list may be truncated if the total number exceeds 300 files" and "With pagination, you can fetch up to 3000 gists."
 - https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits: "Push size: This limit is enforced at 2GB.", single object "The recommended maximum limit is 1MB. This is enforced at 100 MB.", "Push rate: The recommended maximum limit is 6 pushes per minute per repository.", on-disk size recommendation 10 GB, and "shallow clones will impose less cost and burden on the server than full clones".
 - https://docs.github.com/en/get-started/using-git/troubleshooting-the-2-gb-push-limit: "GitHub has a maximum 2 GiB limit for a single push."
 - https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github: "larger than 50 MiB, you will receive a warning from Git" and "GitHub blocks files larger than 100 MiB."
@@ -1608,21 +1608,21 @@ The dry-run prints `N sessions to move (size), M already moved, K empty stubs to
 - `git ls-remote` with protocol v2 against `gist.github.com` advertises `fetch=shallow wait-for-done filter`, so gists support partial clone.
 - `git clone --filter=blob:none --depth 1 --no-checkout` downloaded 2 objects (commit and tree), `ls-tree` added nothing, one `git cat-file blob` fetched exactly one more object.
 - `git clone --filter=blob:limit=2000 --depth 1` fetched the 1155 byte file and left the 25 KB and 55 KB files missing.
-- `GET /gists/public` lists every file with `filename`, `type`, `language`, `raw_url` and `size`, no content.
-- A `Range: bytes=0-9` request on a `raw_url` answered 206. Not checked for secret gists or files over 10 MB.
+- `GET /gists/public` lists every file with `filename`, `type`, `language`, `raw_url` and `size`, no content. `GET /gists/<id>` returns the content plus `history[0].version`, which equals the `HEAD` of a fresh clone.
+- `gh api` fetches a `raw_url` (`gist.githubusercontent.com/<user>/<id>/raw/<blob sha>/<file>`) and returns the file, and a `Range: bytes=0-9` request on a `raw_url` answered 206. Not checked for secret gists, binary files or files over 10 MB.
 
 ### Stages (rough, no PLAN yet)
-1. **Probe**: ignored live test against a real secret gist, push from a `--depth 1 --filter=blob:none` clone, binary pack round trip, `blob:limit` clone, `closed` roll over. Decides risk 1.
-2. **Store trait**: `ObjectStore` with memory and directory stores, layer rules for `pack/` and `store/`.
-3. **Pack format**: writer and reader on top of blob v2 and `seal`, extents for big sessions, header, tests for every boundary.
-4. **Index files and merge**: format, supersedes, forks, tombstones, multiple places, pure tests.
-5. **Engine on the repo**: plan against the merged view, push in flushes, pull via fetch, delete as tombstone, local index v2, fork after push.
-6. **Gist store**: volumes, writer id, description, file and byte caps, `closed`, partial clones, 10 s pacing, retry on rejection, progress per flush.
-7. **Auto push**: one pack per drain round on top of the queue.
-8. **Status and output**: forks, `OtherKey` per volume, prune hint, live line per flush.
-9. **Prune**: planner (pure), drain, supersede, delete closed volumes, orphans on flat stores.
+1. **Probe**: ignored live test against a real secret gist, append from a `--depth 1 --filter=blob:none` clone, binary part round trip through clone and through `raw_url`, index read through the API with `truncated: false`, file cap. Decides risk 1 and the `raw_url` option.
+2. **Store trait**: `PackStore` with memory and directory stores, layer rules for `pack/` and `store/`.
+3. **Pack index and stream**: index format, seal thresholds, sealing sessions into segments, reading a range back into blob v2, pure tests for every boundary.
+4. **Merge**: forks, tombstones, multiple places, `OtherKey` and `UnknownVersion` per pack, pure tests.
+5. **Engine on the repo**: plan against the merged view, push as appends, pull via range read, delete as tombstone, local index v2 with `open_pack`, fork after push.
+6. **Gist store**: one gist per pack, parts moved from `parts.rs` with 8 MiB cut at session boundaries, index via API, append via partial clone, `Moved` and one retry, 10 s pacing per gist, progress per append.
+7. **Auto push**: one append per drain round on top of the queue.
+8. **Status and output**: forks, `OtherKey` per pack, prune hint, live line per append.
+9. **Prune**: planner (pure), copy live sessions and tombstones, visibility check, delete sealed pack gists.
 10. **Migrate**: recognise, dry-run, move with the old reader, delete, resume. Then drop the old gist code.
 11. **Docs**: `docs/architecture/sync.md`, wiki command pages.
-12. **Later**: `agr share`, range reads, index cache, S3.
+12. **Later**: `agr share`, `raw_url` reads if Stage 1 allows, a local cache of sealed indexes, S3.
     - the backend name should state host and kind, for example `github-gist`.
     - a self-hosted GitLab backend comes later.
