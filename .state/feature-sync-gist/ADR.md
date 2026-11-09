@@ -1299,7 +1299,7 @@ The architecture lookup `docs/architecture/sync.md` describes the code as built.
 ## Pack layer (2026-11-09)
 
 ### Status
-Proposed, waiting for user approval. Nothing is built before that. Reworked on 2026-11-09 with the user decisions "one gist is one pack", "64 MiB default", "one open pack per machine, append only", "index per pack" and "prune only for dead data", they replace the earlier volume design.
+Accepted by the user on 2026-11-09 ("do it"). Reworked on 2026-11-09 with the user decisions "one gist is one pack", "64 MiB default", "one open pack per machine, append only", "index per pack" and "prune only for dead data", they replace the earlier volume design.
 
 ### Context
 **Problem**: one secret gist per session does not scale for a real user. The first real push created hundreds of gists with only a `.keep` stub (`agr:pending`) and buried the gist page of the user, and every changed session rewrites a whole gist while git history keeps the old bytes anyway.
