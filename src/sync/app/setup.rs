@@ -7,7 +7,7 @@ use thiserror::Error;
 use super::key::{self, Imported, KeyError};
 use crate::config::SyncBackendKind;
 use crate::sync::backend::file::FileBackend;
-use crate::sync::backend::gist::GistBackend;
+use crate::sync::backend::gist::{GistBackend, ProgressSink};
 use crate::sync::backend::{BackendError, SyncBackend};
 use crate::sync::crypto::{export_phrase, import_phrase, Key, PhraseError};
 use crate::Config;
@@ -105,16 +105,21 @@ pub fn explain(error: &BackendError) -> (String, Option<String>) {
 
 /// The configured backend, `None` when `backend = "off"`. `test_dir` (the binary reads it from
 /// `AGR_SYNC_TEST_BACKEND_DIR`) swaps the gist backend for a directory fake, tests only.
+/// `progress` gets the percent of a running git transfer, the fake never reports one.
 pub fn open_backend(
     kind: SyncBackendKind,
     test_dir: Option<PathBuf>,
+    progress: Option<ProgressSink>,
 ) -> Option<Box<dyn SyncBackend>> {
     if kind == SyncBackendKind::Off {
         return None;
     }
     Some(match test_dir {
         Some(dir) => Box::new(FileBackend::new(dir)),
-        None => Box::new(GistBackend::new()),
+        None => Box::new(match progress {
+            Some(sink) => GistBackend::new().with_progress(sink),
+            None => GistBackend::new(),
+        }),
     })
 }
 
@@ -162,11 +167,16 @@ mod tests {
 
     #[test]
     fn backend_factory_follows_config_and_test_switch() {
-        assert!(open_backend(SyncBackendKind::Off, None).is_none());
-        assert!(open_backend(SyncBackendKind::Off, Some("/x".into())).is_none());
-        let gist = open_backend(SyncBackendKind::Gist, None).unwrap();
+        assert!(open_backend(SyncBackendKind::Off, None, None).is_none());
+        assert!(open_backend(SyncBackendKind::Off, Some("/x".into()), None).is_none());
+        let gist = open_backend(
+            SyncBackendKind::Gist,
+            None,
+            Some(std::sync::Arc::new(|_| {})),
+        )
+        .unwrap();
         assert_eq!(gist.name(), "gist");
-        let fake = open_backend(SyncBackendKind::Gist, Some("/x".into())).unwrap();
+        let fake = open_backend(SyncBackendKind::Gist, Some("/x".into()), None).unwrap();
         assert_eq!(fake.name(), "file");
     }
 

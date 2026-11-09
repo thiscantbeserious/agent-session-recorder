@@ -5,6 +5,7 @@ use anyhow::Result;
 use agr::cli::SyncCommands;
 
 mod key;
+mod live;
 mod run;
 
 /// Route one `agr sync ...` command.

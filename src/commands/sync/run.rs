@@ -1,7 +1,5 @@
 //! status, push, pull and delete, thin layer over `agr::sync::Engine`.
 
-use std::io::IsTerminal;
-
 use anyhow::Result;
 
 use agr::config::state::State;
@@ -12,10 +10,13 @@ use agr::sync::setup::{
     default_key_path, explain, needs_privacy_ack, open_backend, resolve_key, KeyNeed, KeyState,
     SetupError, IMPORT_HINT,
 };
-use agr::sync::{BackendError, Engine, Event, Options, Outcome, Report, SyncBackend, SyncError};
+use agr::sync::{
+    BackendError, Engine, Item, Options, Outcome, ProgressSink, Report, SyncBackend, SyncError,
+};
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
 
+use super::live::Live;
 use crate::commands::prompt::should_proceed;
 
 pub struct Args {
@@ -97,14 +98,18 @@ impl From<anyhow::Error> for Failure {
 }
 
 /// Config, backend, tool and login checks, then the key. Changes nothing.
-fn try_prepare(need: KeyNeed, announce: bool) -> Result<Ctx, Failure> {
+fn try_prepare(
+    need: KeyNeed,
+    announce: bool,
+    progress: Option<ProgressSink>,
+) -> Result<Ctx, Failure> {
     let config = Config::load()?;
     let test_dir: Option<std::path::PathBuf> =
         std::env::var_os("AGR_SYNC_TEST_BACKEND_DIR").map(Into::into);
     if let (Some(dir), true) = (&test_dir, announce) {
         eprintln!("Using test sync backend at {}", dir.display());
     }
-    let Some(backend) = open_backend(config.sync.backend, test_dir) else {
+    let Some(backend) = open_backend(config.sync.backend, test_dir, progress) else {
         return Err(Failure(
             "Sync is off.".into(),
             Some("Set `[sync] backend = \"gist\"` (or remove `backend = \"off\"`) in ~/.config/agr/config.toml.".into()),
@@ -122,7 +127,11 @@ fn try_prepare(need: KeyNeed, announce: bool) -> Result<Ctx, Failure> {
 }
 
 fn prepare(need: KeyNeed) -> Result<Ctx> {
-    Ok(try_prepare(need, true)
+    prepare_with(need, None)
+}
+
+fn prepare_with(need: KeyNeed, progress: Option<ProgressSink>) -> Result<Ctx> {
+    Ok(try_prepare(need, true, progress)
         .unwrap_or_else(|Failure(message, hint)| abort(&message, hint.as_deref())))
 }
 
@@ -209,7 +218,8 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
     if auto {
         return push_auto(&args);
     }
-    let ctx = prepare(KeyNeed::MayCreate)?;
+    let live = Live::new("uploading", "pushed");
+    let ctx = prepare_with(KeyNeed::MayCreate, live.sink())?;
     let plan = ctx
         .engine()
         .push(&opts(&args, true))
@@ -227,15 +237,17 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
         state.sync_privacy_ack = true;
         state.save()?;
     }
-    let mut observer = progress("pushed");
-    finish(
-        ctx.engine()
-            .push_with(&opts(&args, false), planned(&plan), &mut observer),
-    )
+    let mut observer = live.observer();
+    let result = ctx
+        .engine()
+        .push_with(&opts(&args, false), planned(&plan), &mut observer);
+    live.end();
+    finish(result)
 }
 
 pub fn pull(args: Args) -> Result<()> {
-    let ctx = prepare(KeyNeed::Existing)?;
+    let live = Live::new("downloading", "pulled");
+    let ctx = prepare_with(KeyNeed::Existing, live.sink())?;
     let plan = ctx
         .engine()
         .pull(&opts(&args, true))
@@ -243,11 +255,12 @@ pub fn pull(args: Args) -> Result<()> {
     if !confirm_planned(&plan, "pull", &args, &[])? {
         return Ok(());
     }
-    let mut observer = progress("pulled");
-    finish(
-        ctx.engine()
-            .pull_with(&opts(&args, false), planned(&plan), &mut observer),
-    )
+    let mut observer = live.observer();
+    let result = ctx
+        .engine()
+        .pull_with(&opts(&args, false), planned(&plan), &mut observer);
+    live.end();
+    finish(result)
 }
 
 pub fn delete(args: Args) -> Result<()> {
@@ -272,29 +285,22 @@ pub fn delete(args: Args) -> Result<()> {
         .iter()
         .filter(|i| i.outcome != Outcome::Failed("no such session".into()))
         .count();
-    let mut observer = progress("deleted");
+    let mut observer = Live::new("", "deleted").observer_owned();
     finish(
         ctx.engine()
             .delete_with(&args.sessions, total, &mut observer),
     )
 }
 
-/// Prints one line per acted-on session on stderr, only on a terminal.
-fn progress<'a>(done: &'a str) -> impl FnMut(&Event<'_>) + 'a {
-    let tty = std::io::stderr().is_terminal();
-    move |event| {
-        if let (true, Event::Finished { item, i, n }) = (tty, event) {
-            let line = format::progress_line(done, item, *i, *n);
-            eprintln!("{}", current_theme().secondary_text(&line));
-        }
-    }
-}
-
+/// Sessions that get a progress line in a real run, planned, skipped and failed ones.
 fn planned(plan: &Report) -> usize {
-    plan.items
-        .iter()
-        .filter(|i| i.outcome == Outcome::Planned)
-        .count()
+    let lined = |i: &&Item| {
+        matches!(
+            i.outcome,
+            Outcome::Planned | Outcome::Skipped(_) | Outcome::Failed(_)
+        )
+    };
+    plan.items.iter().filter(lined).count()
 }
 
 /// Detached child of a recording, no prompt, no output, a failure is stored for later.
@@ -303,7 +309,7 @@ fn push_auto(args: &Args) -> Result<()> {
         return Ok(());
     }
     let session = args.sessions.first().map_or("", String::as_str);
-    let result = try_prepare(KeyNeed::Existing, false)
+    let result = try_prepare(KeyNeed::Existing, false, None)
         .map_err(|Failure(message, _)| SyncError::Failed(message))
         .and_then(|ctx| auto::run(&ctx.engine(), session));
     if let Some(line) = auto::error_line(&result, session) {
