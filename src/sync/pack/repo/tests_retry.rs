@@ -257,3 +257,19 @@ fn no_empty_pack_after_moved_on_a_sealed_pack() {
     b.push_batch(&[item(dir.path(), "b", 1, b"y")]).unwrap();
     assert_eq!(packs_of(&mem).len(), before + 1);
 }
+
+#[test]
+fn retry_decides_the_seal_from_the_moved_index() {
+    let (mem, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (mut a, mut b) = two_on_one_id(&mem, &key);
+    let big = vec![5u8; TARGET as usize - 1000];
+    a.push_batch(&[item(dir.path(), "x", 1, &big)]).unwrap();
+    b.push_batch(&[item(dir.path(), "y", 1, &vec![6u8; 2000])])
+        .unwrap();
+    let info = packs_of(&mem).remove(0);
+    assert!(super::tests::index_of(&mem, &key, &info).sealed);
+}
