@@ -3,6 +3,7 @@
 pub(super) mod pace;
 pub(super) mod parse;
 pub(super) mod parts;
+mod progress;
 pub(super) mod runner;
 mod scratch;
 
@@ -11,11 +12,9 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use self::pace::{Clock, Pacer, SystemClock};
-use self::parse::{
-    check_auth, id_from_create_output, map_failure, parse_list, receiving_percent, writing_percent,
-    DESC_PREFIX,
-};
+use self::parse::{check_auth, id_from_create_output, map_failure, parse_list, DESC_PREFIX};
 use self::parts::{check_sequence, part_names, PartReader, PartWriter, PART_SIZE};
+use self::progress::{receiving_percent, writing_percent};
 use self::runner::{Output, ProcessRunner, Runner};
 use self::scratch::Scratch;
 use crate::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};

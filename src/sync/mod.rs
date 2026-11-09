@@ -6,6 +6,7 @@ mod crypto;
 mod engine;
 
 pub use app::{auto, format, key, setup};
+pub use backend::gist::ProgressSink;
 pub use backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 pub use crypto::{Key, PhraseError};
 pub use engine::observe::{Event, Observer};
