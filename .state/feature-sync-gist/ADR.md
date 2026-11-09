@@ -1571,14 +1571,14 @@ The dry-run prints `N sessions to move (size), M already moved, K empty stubs to
 - A directory or S3 store implements six methods later, the format above it does not change.
 
 ### Open risks
-1. **Append from a partial clone**: committing new parts on top of a `--depth 1 --filter=blob:none` clone and pushing without the old blobs locally is not verified against gists. Without it every auto push downloads up to 64 MiB. Fallback: keep a clone of the own open pack in the cache dir, only this machine writes it so it stays current. Verify first, in Stage 1.
+1. **Append from a partial clone**: partly verified on 2026-11-09. Commit and push from a `--depth 1 --filter=blob:none --no-checkout` clone work and the full clone is byte-identical, but git lazily fetched the existing `data.000` during the append, so with a 64 MiB pack every append would download it. The second probe `append_fetch_trigger` (which step fetches, which recipe avoids it) is pending. Fallback if no recipe exists: keep a clone of the own open pack in the cache dir, only this machine writes it so it stays current.
 2. **Forks after the write**: two machines can both report success and then a fork, which is new for users used to "changed on the remote, run again". Wording in status has to make the next step obvious.
 3. **Writer id copied** with the config dir: two machines then append to one open pack. The `expected_len` check plus the rejected push, re-clone and one retry keep it safe, but it is the one place where two writers meet, a test with two writers on one id is mandatory.
 4. **Lost writer id or local state**: a machine that loses `state.toml` gets a new writer id and its old open pack stays open forever. Harmless (readable, merged, never written), prune leaves it alone, a `prune --seal-orphans` can come later if it matters.
 5. **Index history**: every append rewrites `index` and git keeps the old versions. With about 200 bytes per entry and the 250 file cap this stays in the low MiB per pack, the 768 KiB cap bounds the worst case.
 6. **Prune bandwidth**: repacking downloads and uploads live bytes, a user with many changed sessions may move GiBs. Dry-run first, no automatic prune.
 7. **Rate limits**: status costs one API call per pack, auto push rounds and migrate deletes count too, pacing exists but bursts of hundreds of stubs to delete will hit the secondary rate limit, migrate has to be resumable (it is by design).
-8. **Unverified**: `raw_url` for binary parts of a secret gist, range requests on secret gists, and the community "about 5 GB per gist" figure (no official source, our packs stay far below it).
+8. **Verified, one left**: `raw_url` and `Range` work on secret gists for binary parts up to 8 MiB (2026-11-09, user live run). Still unverified is the community "about 5 GB per gist" figure (no official source, our packs stay far below it).
 
 ### Verified facts
 **restic** (all from https://github.com/restic/restic/blob/master/doc/design.rst unless noted, fetched 2026-11-09):
@@ -1610,6 +1610,12 @@ The dry-run prints `N sessions to move (size), M already moved, K empty stubs to
 - `git clone --filter=blob:limit=2000 --depth 1` fetched the 1155 byte file and left the 25 KB and 55 KB files missing.
 - `GET /gists/public` lists every file with `filename`, `type`, `language`, `raw_url` and `size`, no content. `GET /gists/<id>` returns the content plus `history[0].version`, which equals the `HEAD` of a fresh clone.
 - `gh api` fetches a `raw_url` (`gist.githubusercontent.com/<user>/<id>/raw/<blob sha>/<file>`) and returns the file, and a `Range: bytes=0-9` request on a `raw_url` answered 206. Not checked for secret gists, binary files or files over 10 MB.
+
+**Stage 46 live probe, run by the user on 2026-11-09** (`tests/pack_probe_live.rs`, real secret gists):
+- Pushing new files from a `--depth 1 --filter=blob:none --no-checkout` clone works and the full clone is byte-identical.
+- `raw_url` returns binary 8 MiB parts of a secret gist, and a `Range` request returns 206 with the correct bytes.
+- A 700 KiB index comes back `truncated:false` through `gh api`, 1.2 MiB comes back truncated at about 900 KiB.
+- **Failed**: `append.data000_never_fetched`. After commit and push `data.000` (3 MiB) was in the local object store and the odb grew 6163 KiB, which is `data.000` plus `data.001`. Git lazily fetched the existing blob during the append, so every append of a 64 MiB pack would download it. The second probe `append_fetch_trigger` finds the step that does it.
 
 ### Stages (rough, no PLAN yet)
 1. **Probe**: ignored live test against a real secret gist, append from a `--depth 1 --filter=blob:none` clone, binary part round trip through clone and through `raw_url`, index read through the API with `truncated: false`, file cap. Decides risk 1 and the `raw_url` option.

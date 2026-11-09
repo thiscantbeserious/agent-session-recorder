@@ -929,19 +929,19 @@ Depends on: Stage 44
 
 References: ADR "Pack layer (2026-11-09)", rough stages 1 to 11. ADR stage 12 ("Later") is not planned here.
 
-**PR split**: #166 has 117 changed files vs main, which is over the CodeRabbit limit of 100, as such nothing of the pack layer goes into it.
-- **PR A** (#166 as is): per-session gists, already live tested, plus the probe file of Stage 46 (one ignored test file). Merged first.
-- **PR B** (new branch on `main` after PR A): Stages 47 to 53, the store and pack layers and the gist store, reachable only through `sync::testing`, no user visible change.
-- **PR C** (new branch on `main` after PR B): Stages 54 to 59, engine and app switch to packs, `agr sync migrate`, removal of the per-session code, docs.
-- **PR D** (new branch on `main` after PR C): Stages 60 and 61, `agr sync prune`.
+**PR split**: #166 stays open and goes to main only after the whole pack layer is done ("i dont want to merge a half finished #166 with a design that changes"). The working branch is `feature/sync-packs`, created on top of `feature/sync-gist`. #166 has 117 changed files vs main, over the CodeRabbit limit of 100, as such nothing of the pack layer is added to its own diff.
+- **PR B** (`feature/sync-packs` into `feature/sync-gist`): Stage 46 (probe file) and Stages 47 to 53, the store and pack layers and the gist store, reachable only through `sync::testing`, no user visible change.
+- **PR C** (new branch on `feature/sync-gist` after PR B): Stages 54 to 59, engine and app switch to packs, `agr sync migrate`, removal of the per-session code, docs.
+- **PR D** (new branch on `feature/sync-gist` after PR C): Stages 60 and 61, `agr sync prune`.
+- **#166** (`feature/sync-gist` into main): merged only after B, C and D are in it.
 
 Reasons:
-1. PR A is reviewed and live tested, holding it back for the pack layer only grows it further.
-2. PR B only adds new files next to the old ones, so it is reviewable on its own and main keeps working.
-3. Migrate sits in the same PR as the switch: once the engine reads packs, the ~60 per-session gists the user already pushed are invisible to sync, as such the release that switches has to bring `agr sync migrate`. Until PR C is released those gists keep working with PR A.
+1. A half finished #166 with a design that changes is not wanted on main, as such the pack PRs land on the feature branch first.
+2. PR B only adds new files next to the old ones, so it is reviewable on its own.
+3. Migrate sits in the same PR as the switch: once the engine reads packs, the ~60 per-session gists the user already pushed are invisible to sync, as such the release that switches has to bring `agr sync migrate`.
 4. Prune is only needed once dead data piles up, it follows without blocking anyone.
 
-Rough size: PR B about 25 files, PR C about 60 files (the deleted `backend/` files count too), PR D about 12. The last stage of each PR checks `git diff --stat origin/main...HEAD` and splits before 100.
+Rough size: PR B about 26 files, PR C about 60 files (the deleted `backend/` files count too), PR D about 12. The 100 file CodeRabbit limit applies to the diff of each pack PR against `feature/sync-gist`, the last stage of each PR checks `git diff --stat origin/feature/sync-gist...HEAD` and splits before 100.
 
 **TDD for these stages** (the last round skipped separate RED commits, as such this is spelled out):
 - Every `RED commit:` item is its own commit `test(<scope>): ... (RED)` that compiles and fails on the named assertion. Stubs return a wrong value (empty vec, `Ok(())`, `false`), never `todo!()` or `unimplemented!()`, and a compile error is not a RED.
@@ -949,26 +949,28 @@ Rough size: PR B about 25 files, PR C about 60 files (the deleted `backend/` fil
 - The reviewer checks `git log --oneline` for the RED and GREEN pair of every item, a missing RED commit is a blocking finding.
 - Sizes: functions about 20 lines, files under 400 lines, tests move into a sibling `tests.rs` once a module passes about 250 lines. Every stage names where a split is expected.
 
-**Probe branches**: Stage 46 decides ADR Open risk 1.
-- **Branch P** (partial clone append works): append and pull clone with `--depth 1 --filter=blob:none --no-checkout` into a temp dir outside the storage dir, nothing is cached.
-- **Branch C** (cached clone fallback): the own open pack is kept as a clone under `<cache dir>/agr/packs/<id>`, fast-forwarded before every append and removed after its seal or on `Moved`. Pulls of other packs keep the partial clone when Stage 46 shows it reads on secret gists, else a plain `--depth 1` clone per pack.
-- `raw_url` reads stay out of every stage whatever the probe says (ADR stage 12).
+**Probe branches**: Stage 46 decides ADR Open risk 1. Result of 2026-11-09: partial clone append works and secret gists read, but git lazily fetched the existing 3 MiB blob during the append, so the second probe `append_fetch_trigger` decides the recipe.
+- **Branch P** (partial clone plus the recipe from the second probe): append and pull clone with `--depth 1 --filter=blob:none --no-checkout` into a temp dir outside the storage dir, nothing is cached, plus the commit and push recipe from `append_fetch_trigger` that fetches no old part. Taken only if the probe finds a recipe with zero download.
+- **Branch C** (cached clone of the own open pack): kept under `<cache dir>/agr/packs/<id>`, fast-forwarded before every append and removed after its seal or on `Moved`. Taken if no recipe exists.
+- **Reads**: the `raw_url` plus `Range` read is the planned primary read for single sessions (verified on secret gists for 8 MiB binary parts), partial clone plus `git cat-file` is the fallback.
 
 ### Stage 46: Pack probe against real secret gists (live, by hand)
 
 Goal: answer ADR Open risk 1 and the `raw_url` question with real secret gists before any pack code.
 Owner: implementer (written in parallel by another agent), run by the user
-PR: A
+PR: B
 
 - [ ] `tests/pack_probe_live.rs` written, every test `#[ignore]`, gists deleted on drop, every fact printed as a `PROBE:` line (in progress).
 - [ ] Default `cargo test` stays offline, the probe only runs with `--ignored`.
 - [ ] The user runs `cargo test --test pack_probe_live -- --ignored --nocapture --test-threads=1` by hand and hands over the `PROBE:` lines.
-- [ ] ADR "Verified facts" gets the results with the date, Open risk 1 is closed as branch P or branch C, the `raw_url` result is recorded for ADR stage 12 only.
+- [x] First live run (2026-11-09) recorded in the ADR: partial clone push and `raw_url` plus Range pass, the existing blob was fetched during the append.
+- [ ] Second probe `append_fetch_trigger` written (compile only) and run by the user: `cargo test --test pack_probe_live append_fetch_trigger -- --ignored --nocapture --test-threads=1`. Every `PROBE: fetch.<step>` line says which step fetches `data.000`.
+- [ ] ADR Open risk 1 is closed as branch P (with the recipe written down) or branch C (no recipe exists).
 
 Files: `tests/pack_probe_live.rs`, `.state/feature-sync-gist/ADR.md`
 Depends on: Stage 45
 
-Considerations: no RED and GREEN here, it is a measurement. Stage 53 picks its branch from the result, Stages 47 to 52 do not wait for it.
+Considerations: no RED and GREEN here, it is a measurement. Stage 53 picks its branch from the second probe, Stages 47 to 52 do not wait for it.
 
 ### Stage 47: Store trait, memory and directory stores, layer rules
 
@@ -1057,16 +1059,17 @@ Considerations: split expected from the start, `repo/mod.rs` (open, view, read) 
 
 ### Stage 52: Gist store, layout and read side
 
-Goal: `store/gist` lists `agr:v2` gists, reads the index through `gh api`, creates a pack gist, reads a range via clone and `git cat-file`, and cuts 8 MiB parts at session boundaries. It reuses the runner, pace and progress of `backend/gist/` until Stage 58 moves them.
+Goal: `store/gist` lists `agr:v2` gists, reads the index through `gh api`, creates a pack gist, reads a range via `raw_url` plus `Range` (fallback clone and `git cat-file`), and cuts 8 MiB parts at session boundaries. It reuses the runner, pace and progress of `backend/gist/` until Stage 58 moves them.
 Owner: implementer
 PR: B
 
 - [ ] RED commit: `parts_cut_at_session_boundaries`, lens 3, 4 and 2 MiB give parts of 7 and 2 MiB, fails on `assert_eq!` with a stub of one part per session.
 - [ ] RED commit: `session_over_8_mib_gets_own_parts`, `append_numbers_continue_after_last_part`, `gap_or_order_in_parts_is_an_error` (port of the `parts.rs` tests), `fits_refuses_over_250_files`.
 - [ ] GREEN commit: `layout.rs`.
-- [ ] RED commit (Fake runner): `list_keeps_only_agr_v2_over_pages`, `truncated_index_is_other_not_half_an_index`, `create_sends_only_the_index` (no `.keep`), `read_range_fetches_only_covering_parts` (the recorded `cat-file` calls are exactly the covering parts).
+- [ ] RED commit (Fake runner): `list_keeps_only_agr_v2_over_pages`, `truncated_index_is_other_not_half_an_index`, `create_sends_only_the_index` (no `.keep`), `read_range_requests_only_covering_parts` (the recorded `Range` requests on the `raw_url` of the parts are exactly the covering parts, no clone).
+- [ ] RED commit: `read_falls_back_to_cat_file_when_raw_url_fails` (partial clone plus `git cat-file`, the recorded calls are exactly the covering parts).
 - [ ] GREEN commit: `api.rs` and `read.rs`.
-- [ ] Probe dependency of the read side: branch P and branch C both read with the partial clone. If Stage 46 shows partial clone fails on secret gists, `read.rs` clones with plain `--depth 1` and the RED test becomes `read_range_opens_the_covering_parts`.
+- [ ] Probe dependency of the read side: Stage 46 verified `raw_url` with `Range` (206, correct bytes) and partial clone `cat-file` on secret gists, so primary and fallback are both known to work and no branch is needed here.
 
 Files: `src/sync/store/mod.rs`, `src/sync/store/gist/mod.rs`, `src/sync/store/gist/layout.rs`, `src/sync/store/gist/api.rs`, `src/sync/store/gist/read.rs`, `src/sync/store/gist/tests.rs`
 Depends on: Stage 47
@@ -1075,16 +1078,16 @@ Considerations: `layout.rs` pure (about 150 lines), `mod.rs` only the `PackStore
 
 ### Stage 53: Gist store append, PR B gates
 
-Goal: `append` per ADR "Append and seal" steps 2, 4 and 6 (steps 3 and 5 are the pack layer), in the branch Stage 46 picked.
+Goal: `append` per ADR "Append and seal" steps 2, 4 and 6 (steps 3 and 5 are the pack layer), in the branch Stage 46 picked (second probe `append_fetch_trigger`).
 Owner: implementer
 PR: B
 
 - [ ] RED commit: `tree_len_not_expected_is_moved`, the sum of the part sizes in the tree differs from `expected_len`, fails on `assert!(matches!(err, StoreError::Moved))` with a stub that pushes anyway.
 - [ ] RED commit: `rejected_push_is_moved` (non-fast-forward stderr, no `--force` in the args), `append_is_one_commit_with_parts_and_index`, `pushes_to_one_gist_are_paced_10s` (second append on the same id waits 10 s on the fake clock, other mutating calls keep 1 s), `progress_percent_belongs_to_the_append`.
-- [ ] Branch P: GREEN commit clones `--depth 1 --filter=blob:none --no-checkout` into a temp dir and pushes from there.
-- [ ] Branch C: extra RED commit `cached_clone_is_reused_then_dropped_on_seal` and `cached_clone_dropped_on_moved`, then GREEN with the clone under `<cache dir>/agr/packs/<id>`, fast-forward only.
+- [ ] Branch P (partial clone plus the recipe from the second probe): GREEN commit clones `--depth 1 --filter=blob:none --no-checkout` into a temp dir and commits and pushes with the recipe that fetched no old part. A RED test `append_commands_match_the_recipe` pins the recorded git calls.
+- [ ] Branch C (cached clone of the own open pack, only if no recipe exists): extra RED commit `cached_clone_is_reused_then_dropped_on_seal` and `cached_clone_dropped_on_moved`, then GREEN with the clone under `<cache dir>/agr/packs/<id>`, fast-forward only.
 - [ ] `tests/pack_gist_live.rs` (ignored): create, two appends, read both ranges, delete. The user runs it once.
-- [ ] PR B gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo +1.88 check --all-targets --locked`, `cargo check --target x86_64-pc-windows-msvc`, `git diff --stat origin/main...HEAD` under 100 files, `wc -l` of every new file under 400.
+- [ ] PR B gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo +1.88 check --all-targets --locked`, `cargo check --target x86_64-pc-windows-msvc`, `git diff --stat origin/feature/sync-gist...HEAD` under 100 files, `wc -l` of every new file under 400.
 
 Files: `src/sync/store/gist/mod.rs`, `src/sync/store/gist/append.rs`, `src/sync/store/gist/tests.rs`, `src/sync/backend/gist/pace.rs`, `tests/pack_gist_live.rs`
 Depends on: Stage 46, Stage 51, Stage 52
@@ -1182,7 +1185,7 @@ Owner: implementer, live part run by the user
 PR: C
 
 - [ ] `docs/architecture/sync.md` with the layer and pack format diagrams from the ADR, `docs/wiki/Command-sync.md` (push, pull, status, delete, migrate, fork and `--overwrite`), `docs/wiki/Configuration.md` (`pack_size_mib`), `README.md`, `docs/COMMANDS.md`.
-- [ ] Gates as in Stage 53 plus `cargo build --release && ./tests/e2e_test.sh`, `git diff --stat origin/main...HEAD` under 100 files.
+- [ ] Gates as in Stage 53 plus `cargo build --release && ./tests/e2e_test.sh`, `git diff --stat origin/feature/sync-gist...HEAD` under 100 files.
 - [ ] Live by the user: `tests/pack_gist_live.rs` once more, then `agr sync migrate` on the real account (dry-run line shows about 60 sessions plus the stubs), then `agr sync migrate --yes`, then `agr sync status` shows a few packs, the gist page shows only `agr:v2` entries.
 - [ ] ADR section status Accepted (built), Open risks 1 and 3 closed with evidence.
 
@@ -1214,7 +1217,7 @@ PR: D
 
 - [ ] RED commit: `parses_prune_dry_run` in `cli_sync_parse_test.rs` and `prune_while_locked_is_busy` in `cli_sync_test.rs`, the second fails on `assert!(out.contains("busy"))`.
 - [ ] GREEN commit: command, summary output.
-- [ ] `docs/wiki/Command-sync.md` and `docs/architecture/sync.md` get prune, gates as in Stage 59, `git diff --stat origin/main...HEAD` under 100 files.
+- [ ] `docs/wiki/Command-sync.md` and `docs/architecture/sync.md` get prune, gates as in Stage 59, `git diff --stat origin/feature/sync-gist...HEAD` under 100 files.
 
 Files: `src/sync/mod.rs`, `src/cli/subcommands.rs`, `src/commands/sync/mod.rs`, `src/commands/sync/prune.rs`, `src/dispatch.rs`, `src/sync/app/format/summary.rs`, `tests/integration/cli_sync_parse_test.rs`, `tests/integration/cli_sync_test.rs`, `docs/wiki/Command-sync.md`, `docs/architecture/sync.md`, `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
 Depends on: Stage 60
@@ -1320,7 +1323,7 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 43 | todo | |
 | 44 | todo | chacha20poly1305 0.11 |
 | 45 | todo | |
-| 46 | todo | PR A, probe, run by the user |
+| 46 | todo | PR B, probe, run by the user |
 | 47 | todo | PR B |
 | 48 | todo | PR B |
 | 49 | todo | PR B |
