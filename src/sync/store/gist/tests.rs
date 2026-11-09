@@ -64,6 +64,15 @@ fn list_passes_agr_v1_descriptions_as_legacy() {
 }
 
 #[test]
+fn empty_tag_is_not_a_pack() {
+    let items = vec![gist("a", "agr:v2 ", "t1", &[("index", 1)])];
+    let fake = Fake::with(vec![ok(&pages(&[items]))]);
+    let dir = tempfile::tempdir().unwrap();
+    let listing = store(&fake, dir.path()).list().unwrap();
+    assert!(listing.packs.is_empty());
+}
+
+#[test]
 fn truncated_index_is_other_not_half_an_index() {
     let body = serde_json::json!({ "id": "a", "updated_at": "t1", "files": {
         "index": { "size": 9, "raw_url": "u", "truncated": true, "content": "half" } } });
