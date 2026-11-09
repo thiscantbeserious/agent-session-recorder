@@ -24,6 +24,7 @@ pub mod testing {
     pub use crate::sync::crypto::{open_meta, seal, seal_meta, sha256_hex, Meta};
     pub use crate::sync::engine::index;
     pub use crate::sync::engine::plan::{decide, resolve, Command, Remote};
+    pub use crate::sync::engine::queue;
     pub use crate::sync::engine::scan::{scan, Row};
 }
 

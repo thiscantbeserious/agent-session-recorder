@@ -8,6 +8,7 @@ pub(super) mod observe;
 pub(super) mod plan;
 mod pull;
 mod push;
+pub mod queue;
 mod record;
 pub(super) mod run;
 pub(super) mod scan;
