@@ -2,3 +2,4 @@
 
 pub(in crate::sync) mod index;
 pub(in crate::sync) mod rules;
+pub(in crate::sync) mod stream;
