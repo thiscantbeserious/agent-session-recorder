@@ -39,6 +39,8 @@ pub enum IndexError {
     OtherPack,
     #[error("unknown pack index version {0}")]
     UnknownVersion(u8),
+    #[error("pack uuid must be non-empty base32 without a dot")]
+    BadUuid,
     #[error("pack index is not valid")]
     Bad,
 }
@@ -52,10 +54,10 @@ fn aad(uuid: &str) -> Vec<u8> {
 
 /// `<uuid>.<base64url(sealed json)>`. The uuid is also the public pack tag, the plain prefix only
 /// tells "other pack" from "other key", the AAD still binds it.
-pub fn seal_index(key: &Key, idx: &Index) -> String {
+pub fn seal_index(key: &Key, idx: &Index) -> Result<String, IndexError> {
     let json = serde_json::to_vec(idx).expect("Index serializes to JSON");
     let sealed = seal(key, &aad(&idx.pack), &json);
-    format!("{}.{}", idx.pack, BASE64URL_NOPAD.encode(&sealed))
+    Ok(format!("{}.{}", idx.pack, BASE64URL_NOPAD.encode(&sealed)))
 }
 
 pub fn open_index(key: &Key, uuid: &str, text: &str) -> Result<Index, IndexError> {
@@ -116,13 +118,13 @@ mod tests {
     fn index_round_trips_through_seal() {
         let key = Key::generate();
         let idx = sample("PACK");
-        let opened = open_index(&key, "PACK", &seal_index(&key, &idx)).unwrap();
+        let opened = open_index(&key, "PACK", &seal_index(&key, &idx).unwrap()).unwrap();
         assert_eq!(opened, idx);
     }
 
     #[test]
     fn index_with_other_key_is_other_key() {
-        let text = seal_index(&Key::generate(), &sample("PACK"));
+        let text = seal_index(&Key::generate(), &sample("PACK")).unwrap();
         let err = open_index(&Key::generate(), "PACK", &text).err();
         assert!(matches!(err, Some(IndexError::OtherKey)));
     }
@@ -134,7 +136,7 @@ mod tests {
             v: 4,
             ..sample("PACK")
         };
-        let err = open_index(&key, "PACK", &seal_index(&key, &idx)).err();
+        let err = open_index(&key, "PACK", &seal_index(&key, &idx).unwrap()).err();
         assert!(matches!(err, Some(IndexError::UnknownVersion(4))));
     }
 
@@ -149,15 +151,21 @@ mod tests {
     }
 
     #[test]
+    fn seal_index_rejects_a_uuid_with_a_dot() {
+        let key = Key::generate();
+        assert!(seal_index(&key, &sample("AB.CD")).is_err());
+    }
+
+    #[test]
     fn index_text_is_base64url() {
-        let text = seal_index(&Key::generate(), &sample("PACK"));
+        let text = seal_index(&Key::generate(), &sample("PACK")).unwrap();
         assert!(!text.contains(['=', '+', '/']));
     }
 
     #[test]
     fn index_from_another_pack_is_rejected() {
         let key = Key::generate();
-        let text = seal_index(&key, &sample("PACK"));
+        let text = seal_index(&key, &sample("PACK")).unwrap();
         assert!(matches!(
             open_index(&key, "OTHER", &text),
             Err(IndexError::OtherPack)
@@ -167,7 +175,7 @@ mod tests {
     #[test]
     fn two_seals_of_one_index_differ() {
         let (k, i) = (Key::generate(), sample("PACK"));
-        assert_ne!(seal_index(&k, &i), seal_index(&k, &i));
+        assert_ne!(seal_index(&k, &i).unwrap(), seal_index(&k, &i).unwrap());
     }
 
     #[test]
