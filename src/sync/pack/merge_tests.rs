@@ -57,3 +57,16 @@ fn different_hash_same_top_gen_is_fork() {
     let view = merge(&[a, b]);
     assert_eq!(view.forks, vec!["a"]);
 }
+
+#[test]
+fn fork_below_top_gen_is_ignored() {
+    let a = pack(
+        "p1",
+        "P1",
+        20,
+        vec![entry("a", 3, "x", 10, false), entry("a", 4, "y", 10, false)],
+    );
+    let b = pack("p2", "P2", 10, vec![entry("a", 3, "z", 10, false)]);
+    let view = merge(&[a, b]);
+    assert!(view.forks.is_empty());
+}
