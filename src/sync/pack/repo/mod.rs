@@ -46,8 +46,8 @@ pub(super) struct OpenPack {
 type Packs = BTreeMap<String, (String, Index)>;
 
 pub struct Repo<'a> {
-    store: &'a dyn PackStore,
-    key: &'a Key,
+    pub(super) store: &'a dyn PackStore,
+    pub(super) key: &'a Key,
     writer: String,
     target: u64,
     view: View,
@@ -56,13 +56,12 @@ pub struct Repo<'a> {
     open: Option<OpenPack>,
 }
 
-/// One pass over every pack: list, read each index, open, merge.
+/// One pass over every pack: list, read each index, open, merge. One failed read fails the pass,
+/// a view of part of the packs would plan against data that is not there.
 fn load(store: &dyn PackStore, key: &Key) -> Result<(View, Packs), StoreError> {
     let (mut ins, mut packs) = (Vec::new(), BTreeMap::new());
     for p in store.list()?.packs {
-        let Ok(text) = store.read_index(&p.id) else {
-            continue;
-        };
+        let text = store.read_index(&p.id)?;
         let index = open_index(key, &p.tag, &text);
         if let Ok(i) = &index {
             packs.insert(p.id.clone(), (text, i.clone()));
@@ -103,6 +102,10 @@ impl<'a> Repo<'a> {
     pub(super) fn reload(&mut self) -> Result<(), StoreError> {
         (self.view, self.packs) = load(self.store, self.key)?;
         Ok(())
+    }
+
+    pub(super) fn packs(&self) -> &Packs {
+        &self.packs
     }
 
     fn usable(&self, id: &str) -> bool {

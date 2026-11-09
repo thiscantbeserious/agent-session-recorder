@@ -1101,7 +1101,7 @@ PR: B
   - `tombstone_appends_deleted_at_gen_plus_one` [`assert_eq!((e.gen, e.deleted), (4, true))`]
   - `fork_created_by_push_is_reported_by_the_re_read` [`assert_eq!(report.forks, vec!["x"])`]
   - `open_fails_when_any_index_read_fails` [`assert!(matches!(Repo::open(..), Err(RepoError::PartialView(_))))` with `fail_read_index` on one of three packs, the stub skips the pack]
-- [ ] GREEN commit per RED commit above.
+- [x] GREEN commit per RED commit above.
 
 Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/repo/mod.rs`, `src/sync/pack/repo/push.rs`, `src/sync/pack/repo/tests.rs`
 Depends on: Stage 50

@@ -59,7 +59,6 @@ impl FileSegment<'_> {
 
 /// Failures of a range read, the store and the blob layer stay apart.
 #[derive(Debug, Error)]
-#[allow(dead_code)] // used by Stage 51 Repo
 pub enum RangeError {
     #[error(transparent)]
     Store(#[from] StoreError),
@@ -68,7 +67,6 @@ pub enum RangeError {
 }
 
 /// Opens the range of `entry` from pack `id` (uuid `pack`) into `dst`, returns plaintext hash and size.
-#[allow(dead_code)] // used by Stage 51 Repo
 pub fn open_range(
     key: &Key,
     store: &dyn PackStore,

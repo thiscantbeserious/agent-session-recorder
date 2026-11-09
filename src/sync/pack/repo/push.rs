@@ -80,7 +80,15 @@ impl Repo<'_> {
         }
         self.push_small(&small)?;
         self.reload()?;
-        Ok(PushReport::default())
+        let ours = |p: &String| items.iter().any(|i| &i.path == p);
+        let forks = self
+            .view
+            .forks()
+            .iter()
+            .filter(|p| ours(p))
+            .cloned()
+            .collect();
+        Ok(PushReport { forks })
     }
 
     /// Fills the open pack up to the target, seals it and goes on in a new one.
