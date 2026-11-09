@@ -1,5 +1,7 @@
 //! status, push, pull and delete, thin layer over `agr::sync::Engine`.
 
+use std::io::IsTerminal;
+
 use anyhow::Result;
 
 use agr::config::state::State;
@@ -10,7 +12,7 @@ use agr::sync::setup::{
     default_key_path, explain, needs_privacy_ack, open_backend, resolve_key, KeyNeed, KeyState,
     SetupError, IMPORT_HINT,
 };
-use agr::sync::{BackendError, Engine, Options, Outcome, Report, SyncBackend, SyncError};
+use agr::sync::{BackendError, Engine, Item, Options, Outcome, Report, SyncBackend, SyncError};
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
 
@@ -220,7 +222,11 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
         state.sync_privacy_ack = true;
         state.save()?;
     }
-    finish(ctx.engine().push(&opts(&args, false)))
+    let mut observer = progress("pushed");
+    finish(
+        ctx.engine()
+            .push_with(&opts(&args, false), planned(&plan), &mut observer),
+    )
 }
 
 pub fn pull(args: Args) -> Result<()> {
@@ -232,7 +238,11 @@ pub fn pull(args: Args) -> Result<()> {
     if !confirm_planned(&plan, "pull", &args, &[])? {
         return Ok(());
     }
-    finish(ctx.engine().pull(&opts(&args, false)))
+    let mut observer = progress("pulled");
+    finish(
+        ctx.engine()
+            .pull_with(&opts(&args, false), planned(&plan), &mut observer),
+    )
 }
 
 pub fn delete(args: Args) -> Result<()> {
@@ -252,7 +262,35 @@ pub fn delete(args: Args) -> Result<()> {
         say(&["No changes made.".to_string()]);
         return Ok(());
     }
-    finish(ctx.engine().delete(&args.sessions))
+    let total = plan
+        .items
+        .iter()
+        .filter(|i| i.outcome != Outcome::Failed("no such session".into()))
+        .count();
+    let mut observer = progress("deleted");
+    finish(
+        ctx.engine()
+            .delete_with(&args.sessions, total, &mut observer),
+    )
+}
+
+/// Prints one line per acted-on session on stderr, only on a terminal.
+fn progress<'a>(done: &'a str) -> impl FnMut(&Item, usize, usize) + 'a {
+    let tty = std::io::stderr().is_terminal();
+    move |item, i, n| {
+        if tty {
+            let line = format::progress_line(done, item, i, n);
+            let theme = current_theme();
+            eprintln!("{}", theme.secondary_text(&line));
+        }
+    }
+}
+
+fn planned(plan: &Report) -> usize {
+    plan.items
+        .iter()
+        .filter(|i| i.outcome == Outcome::Planned)
+        .count()
 }
 
 /// Detached child of a recording, no prompt, no output, a failure is stored for later.

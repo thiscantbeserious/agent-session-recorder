@@ -108,6 +108,22 @@ impl Report {
 /// Called after each acted-on item with the item, its 1-based index and the total.
 pub type Observer<'a> = dyn FnMut(&Item, usize, usize) + 'a;
 
+fn no_progress(_: &Item, _: usize, _: usize) {}
+
+/// Calls `observer` for done, skipped and failed items only, counting from 1.
+fn counted<'o>(total: usize, observer: &'o mut Observer<'o>) -> impl FnMut(&Item) + 'o {
+    let mut seen = 0;
+    move |item: &Item| {
+        if matches!(
+            item.outcome,
+            Outcome::Done(_) | Outcome::Skipped(_) | Outcome::Failed(_)
+        ) {
+            seen += 1;
+            observer(item, seen, total);
+        }
+    }
+}
+
 /// Engine over any backend, the key and the storage dir.
 pub struct Engine<'a> {
     pub backend: &'a dyn SyncBackend,
@@ -129,47 +145,48 @@ impl Engine<'_> {
             sessions: sessions.to_vec(),
             ..Options::default()
         };
-        self.sync(Command::Push, &opts)
+        self.sync(Command::Push, &opts, &mut counted(0, &mut no_progress))
     }
 
     pub fn push(&self, opts: &Options) -> Result<Report, SyncError> {
-        self.sync(Command::Push, opts)
+        self.sync(Command::Push, opts, &mut counted(0, &mut no_progress))
     }
 
     pub fn pull(&self, opts: &Options) -> Result<Report, SyncError> {
-        self.sync(Command::Pull, opts)
+        self.sync(Command::Pull, opts, &mut counted(0, &mut no_progress))
     }
 
-    /// Stub, the observer is not called yet.
+    /// Like `push`, `observer(item, i, total)` runs after each acted-on item, `i` counts from 1.
     pub fn push_with(
         &self,
         opts: &Options,
-        _total: usize,
-        _o: &mut Observer<'_>,
+        total: usize,
+        observer: &mut Observer<'_>,
     ) -> Result<Report, SyncError> {
-        self.push(opts)
+        self.sync(Command::Push, opts, &mut counted(total, observer))
     }
 
     pub fn pull_with(
         &self,
         opts: &Options,
-        _total: usize,
-        _o: &mut Observer<'_>,
+        total: usize,
+        observer: &mut Observer<'_>,
     ) -> Result<Report, SyncError> {
-        self.pull(opts)
+        self.sync(Command::Pull, opts, &mut counted(total, observer))
+    }
+
+    /// Remove the remote entry and the index entry, the local file stays.
+    pub fn delete(&self, sessions: &[String]) -> Result<Report, SyncError> {
+        self.delete_with(sessions, 0, &mut no_progress)
     }
 
     pub fn delete_with(
         &self,
         sessions: &[String],
-        _total: usize,
-        _o: &mut Observer<'_>,
+        total: usize,
+        observer: &mut Observer<'_>,
     ) -> Result<Report, SyncError> {
-        self.delete(sessions)
-    }
-
-    /// Remove the remote entry and the index entry, the local file stays.
-    pub fn delete(&self, sessions: &[String]) -> Result<Report, SyncError> {
+        let mut observer = counted(total, observer);
         if sessions.is_empty() {
             return Ok(Report::default());
         }
@@ -184,13 +201,19 @@ impl Engine<'_> {
             })?;
             let done = matches!(outcome, Outcome::Done(_));
             let item = self.item(&row, decide(&row.input), outcome);
+            observer(&item);
             loaded.report.deleted += usize::from(done);
             loaded.report.add(Command::Push, strip_done(item));
         }
         Ok(loaded.report)
     }
 
-    fn sync(&self, command: Command, opts: &Options) -> Result<Report, SyncError> {
+    fn sync(
+        &self,
+        command: Command,
+        opts: &Options,
+        observer: &mut dyn FnMut(&Item),
+    ) -> Result<Report, SyncError> {
         let _lock = if opts.dry_run {
             None
         } else {
@@ -204,6 +227,7 @@ impl Engine<'_> {
                 .map_err(|Stop| SyncError::RateLimited {
                     left: rows.len() + 1,
                 })?;
+            observer(&item);
             loaded.report.add(command, item);
         }
         Ok(loaded.report)

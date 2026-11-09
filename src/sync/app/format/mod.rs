@@ -8,16 +8,9 @@ use crate::sync::engine::scan::Duplicate;
 
 mod summary;
 
-/// One progress line per acted-on session, `[i/n] pushed path (size)`.
-/// `done` is the past tense verb of the command, `pushed`, `pulled` or `deleted`.
-pub fn progress_line(done: &str, _item: &Item, _i: usize, _n: usize) -> String {
-    let _ = done;
-    String::new()
-}
-
 pub use summary::{
-    delete_preview_lines, preview_lines, privacy_lines, problem_lines, rate_limit_lines,
-    summary_lines,
+    delete_preview_lines, preview_lines, privacy_lines, problem_lines, progress_line,
+    rate_limit_lines, summary_lines,
 };
 
 const ORDER: [&str; 8] = [

@@ -1,6 +1,6 @@
 //! Lines for previews, notices, problems and run summaries.
 
-use super::{short, size};
+use super::{label, short, size};
 use crate::sync::engine::plan::Decision;
 use crate::sync::engine::run::{Item, Outcome, Report};
 
@@ -60,6 +60,18 @@ pub fn delete_preview_lines(report: &Report) -> Vec<String> {
     lines.extend(remote.iter().map(|i| format!("  {}", i.path)));
     lines.push("A later `agr sync push` uploads the session again.".into());
     lines
+}
+
+/// One line per acted-on session, `[i/n] pushed path (size)`, `done` is the past tense verb.
+pub fn progress_line(done: &str, item: &Item, i: usize, n: usize) -> String {
+    let head = format!("[{i}/{n}]");
+    match &item.outcome {
+        Outcome::Done(0) => format!("{head} {done} {}", item.path),
+        Outcome::Done(bytes) => format!("{head} {done} {} ({})", item.path, size(*bytes)),
+        Outcome::Skipped(why) => format!("{head} skipped {}: {why}", item.path),
+        Outcome::Failed(why) => format!("{head} failed {}: {why}", item.path),
+        _ => format!("{head} {} {}", item.path, label(item)),
+    }
 }
 
 /// Two lines when GitHub stopped the run, `left` sessions were not done.
