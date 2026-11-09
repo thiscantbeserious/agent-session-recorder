@@ -26,6 +26,7 @@ impl Write for Rec {
     }
 }
 
+const PACK: &str = "PACKA";
 const FRAME: usize = 64 * 1024;
 
 #[test]
@@ -35,7 +36,7 @@ fn segment_len_equals_written_bytes() {
     for size in [0usize, 1, 64 * 1024, 64 * 1024 + 1] {
         let file = dir.path().join("s.cast");
         std::fs::write(&file, vec![7u8; size]).unwrap();
-        let seg = segment(&key, "a/s.cast", 1, &file).unwrap();
+        let seg = segment(&key, PACK, "a/s.cast", 1, &file).unwrap();
         let mut out = Vec::new();
         seg.write(&mut out).unwrap();
         assert_eq!(seg.len, out.len() as u64, "plain size {size}");
@@ -48,7 +49,7 @@ fn push(store: &MemoryStore, key: &Key, id: &str, plain: &[u8]) -> Entry {
     let file = dir.path().join("s.cast");
     std::fs::write(&file, plain).unwrap();
     let mut sealed = Vec::new();
-    segment(key, "a/s.cast", 1, &file)
+    segment(key, PACK, "a/s.cast", 1, &file)
         .unwrap()
         .write(&mut sealed)
         .unwrap();
@@ -86,7 +87,7 @@ fn two_sessions() -> (MemoryStore, Key, String, Entry) {
 fn range_read_opens_the_second_session() {
     let (store, key, id, entry) = two_sessions();
     let mut out = Vec::new();
-    open_range(&key, &store, &id, &entry, &mut out).unwrap();
+    open_range(&key, &store, &id, PACK, &entry, &mut out).unwrap();
     assert_eq!(
         sha256_hex(&out),
         sha256_hex(b"second session, a bit longer")
@@ -102,7 +103,7 @@ fn blob_under_other_path_or_gen_fails() {
     };
     let other_gen = Entry { gen: 2, ..entry };
     for e in [other_path, other_gen] {
-        let err = open_range(&key, &store, &id, &e, &mut Vec::new()).err();
+        let err = open_range(&key, &store, &id, PACK, &e, &mut Vec::new()).err();
         assert!(
             matches!(
                 err,
@@ -123,7 +124,7 @@ fn truncated_range_fails() {
         ..entry
     };
     let mut out = Vec::new();
-    assert!(open_range(&key, &store, &id, &short, &mut out).is_err());
+    assert!(open_range(&key, &store, &id, PACK, &short, &mut out).is_err());
     assert!(out.is_empty());
 }
 
@@ -133,7 +134,7 @@ fn open_range_streams_frames() {
     let id = store.create("tag", "i").unwrap();
     let entry = push(&store, &key, &id, &vec![9u8; 3 * FRAME + 5]);
     let mut w = Rec::default();
-    open_range(&key, &store, &id, &entry, &mut w).unwrap();
+    open_range(&key, &store, &id, PACK, &entry, &mut w).unwrap();
     assert_eq!(w.writes, vec![FRAME, FRAME, FRAME, 5]);
 }
 
@@ -149,7 +150,7 @@ fn truncated_multi_frame_range_leaves_only_whole_verified_frames() {
         };
         let mut w = Rec::default();
         assert!(
-            open_range(&key, &store, &id, &short, &mut w).is_err(),
+            open_range(&key, &store, &id, PACK, &short, &mut w).is_err(),
             "cut {cut}"
         );
         assert_eq!(w.writes, vec![FRAME, FRAME, FRAME], "cut {cut}");
@@ -162,7 +163,7 @@ fn segment_write_returns_the_sealed_digest() {
     let file = dir.path().join("s.cast");
     std::fs::write(&file, b"sealed bytes").unwrap();
     let key = Key::generate();
-    let seg = segment(&key, "a/s.cast", 1, &file).unwrap();
+    let seg = segment(&key, PACK, "a/s.cast", 1, &file).unwrap();
     let digest = seg.write(&mut Vec::new()).unwrap();
     assert_eq!(digest.0, sha256_hex(&std::fs::read(&file).unwrap()));
     assert_eq!(digest.1, 12);
@@ -175,8 +176,15 @@ fn same_size_rewrite_is_caught_by_the_digest() {
     std::fs::write(&file, b"before").unwrap();
     let planned = sha256_hex(&std::fs::read(&file).unwrap());
     let key = Key::generate();
-    let seg = segment(&key, "a/s.cast", 1, &file).unwrap();
+    let seg = segment(&key, PACK, "a/s.cast", 1, &file).unwrap();
     std::fs::write(&file, b"after!").unwrap();
     let (digest, _) = seg.write(&mut Vec::new()).unwrap();
     assert_ne!(digest, planned);
+}
+
+#[test]
+fn segment_copied_to_another_pack_fails() {
+    let (store, key, id, entry) = two_sessions();
+    let err = open_range(&key, &store, &id, "PACKB", &entry, &mut Vec::new()).unwrap_err();
+    assert!(matches!(err, RangeError::Blob(_)), "{err:?}");
 }

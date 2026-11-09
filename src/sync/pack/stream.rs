@@ -15,6 +15,7 @@ use thiserror::Error;
 pub struct FileSegment<'a> {
     pub len: u64,
     key: &'a Key,
+    pack: &'a str,
     path: &'a str,
     gen: u64,
     file: &'a Path,
@@ -28,6 +29,7 @@ pub struct FileSegment<'a> {
 /// (`SkipReason::Locked`, `engine/scan.rs`) before it plans anything.
 pub fn segment<'a>(
     key: &'a Key,
+    pack: &'a str,
     path: &'a str,
     gen: u64,
     file: &'a Path,
@@ -35,6 +37,7 @@ pub fn segment<'a>(
     Ok(FileSegment {
         len: sealed_len(std::fs::metadata(file)?.len()),
         key,
+        pack,
         path,
         gen,
         file,
@@ -68,9 +71,11 @@ pub fn open_range(
     key: &Key,
     store: &dyn PackStore,
     id: &str,
+    pack: &str,
     entry: &Entry,
     dst: &mut dyn Write,
 ) -> Result<Digest, RangeError> {
+    let _ = pack; // stub
     let src = store.read(id, entry.offset, entry.length)?;
     Ok(open_stream(key, &entry.path, entry.gen, src, dst)?)
 }
