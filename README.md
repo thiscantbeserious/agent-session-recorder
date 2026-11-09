@@ -245,6 +245,8 @@ Set `NO_COLOR=1` to disable colored output.
 
 Sync copies your compressed sessions to a second place so another machine can pull them. Right now the only backend is secret GitHub gists through the `gh` CLI, as such `gh` and `git` need to be on your PATH and `gh auth login` done (the token needs the `gist` scope, `gh auth refresh -s gist` adds it). agr never reads or stores your GitHub token.
 
+How sync works inside (layers, remote layout, encryption, push and pull flow) is described in [docs/architecture/sync.md](docs/architecture/sync.md).
+
 > **Not verified against real GitHub yet.** The gist transport (`gh gist create`, the `git` push of the binary file, the list call and the error mapping) is only tested with a fake process runner and a fake backend in this PR. No real gist was created, edited or deleted. Treat the first real run as a test.
 
 ### Setup
