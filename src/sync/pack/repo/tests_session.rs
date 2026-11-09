@@ -148,3 +148,43 @@ fn read_session_after_a_place_fails_mid_stream_has_no_leftover_bytes() {
     let _ = reader.read_session("a", &target);
     assert_eq!(std::fs::read(&target).unwrap_or_default(), original);
 }
+
+#[test]
+fn mismatch_at_first_place_reads_the_second() {
+    let (store, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (reader, original) = two_places(&store, &key, dir.path());
+    let first = reader.view().get("a").unwrap().keeper().pack.clone();
+    let info = packs_of(&store)
+        .into_iter()
+        .find(|p| p.id == first)
+        .unwrap();
+    tamper(&store, &key, &info, |i| {
+        i.entries[0].sha256 = "00".repeat(32)
+    });
+    let target = dir.path().join("out.cast");
+    let _ = repo(&store, &key, "w3").read_session("a", &target);
+    assert_eq!(std::fs::read(&target).unwrap_or_default(), original);
+}
+
+#[test]
+fn mismatch_at_every_place_is_a_hash_mismatch() {
+    let (store, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (_, _) = two_places(&store, &key, dir.path());
+    for info in packs_of(&store) {
+        tamper(&store, &key, &info, |i| {
+            i.entries[0].sha256 = "00".repeat(32)
+        });
+    }
+    let target = dir.path().join("out.cast");
+    let err = repo(&store, &key, "w3").read_session("a", &target).err();
+    assert!(matches!(err, Some(ReadError::HashMismatch)), "{err:?}");
+    assert!(!target.exists());
+}
