@@ -1,5 +1,6 @@
 use super::{ProcessRunner, Runner};
 use std::io::ErrorKind;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 fn sh(stall_ms: u64, script: &str) -> (std::io::Result<super::Output>, Duration) {
@@ -97,4 +98,30 @@ fn run_to_file_reports_a_failed_write() {
     let stall = Duration::from_secs(5);
     let res = super::supervise(child, "sh", stall, &mut |_| {}, Some(Box::new(Full)));
     assert!(res.is_err());
+}
+
+/// Implements only `run`, so `run_to_file` is the trait default.
+struct TextOnly;
+
+impl Runner for TextOnly {
+    fn run(
+        &self,
+        _: &str,
+        _: &[String],
+        _: Option<&Path>,
+        _: &[(&str, String)],
+    ) -> std::io::Result<super::Output> {
+        Ok(super::Output {
+            code: Some(0),
+            stdout: "lossy".into(),
+            stderr: String::new(),
+        })
+    }
+}
+
+#[test]
+fn default_run_to_file_is_unsupported() {
+    let dest = tempfile::tempdir().unwrap().keep().join("out");
+    let err = TextOnly.run_to_file("x", &[], &[], &dest).unwrap_err();
+    assert_eq!(err.kind(), ErrorKind::Unsupported);
 }
