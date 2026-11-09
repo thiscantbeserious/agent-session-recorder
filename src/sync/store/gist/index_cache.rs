@@ -28,11 +28,15 @@ impl IndexCache {
         serde_json::from_str(&text).unwrap_or_default()
     }
 
+    fn temp_path(&self) -> PathBuf {
+        self.path.with_extension("tmp")
+    }
+
     fn save(&self, all: &BTreeMap<String, Entry>) {
         let Ok(text) = serde_json::to_string(all) else {
             return;
         };
-        let tmp = self.path.with_extension("tmp");
+        let tmp = self.temp_path();
         let dir = self.path.parent().map(std::fs::create_dir_all);
         if dir.is_some_and(|r| r.is_err()) || std::fs::write(&tmp, text).is_err() {
             return;
@@ -66,6 +70,28 @@ impl IndexCache {
 #[cfg(test)]
 mod tests {
     use super::{Entry, IndexCache};
+
+    #[test]
+    fn cache_temp_names_are_unique() {
+        let cache = IndexCache::new(&std::env::temp_dir().join("index-cache.json"));
+        assert_ne!(cache.temp_path(), cache.temp_path());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn index_cache_file_is_0600_in_a_0700_dir() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = tempfile::tempdir().unwrap();
+        let file = base.path().join("agr").join("index-cache.json");
+        let entry = Entry {
+            updated_at: "t1".into(),
+            index: "idx".into(),
+        };
+        IndexCache::new(&file).put("a", entry);
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode();
+        assert_eq!(mode(&file) & 0o777, 0o600);
+        assert_eq!(mode(file.parent().unwrap()) & 0o777, 0o700);
+    }
 
     #[test]
     fn cache_entry_dropped_on_moved() {
