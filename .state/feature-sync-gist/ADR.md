@@ -1288,3 +1288,10 @@ own decision).
 **2026-11-09:** user decision, backend defaults to gist, `off` disables. Supersedes the autonomous decision to keep it unset.
 
 **2026-11-09:** user decision, auto_push off by default, nobody is forced to upload.
+
+## Superseded by the code (2026-11-09)
+
+The architecture lookup `docs/architecture/sync.md` describes the code as built. Where this ADR differs, the code wins:
+- **Not found**: git "Repository not found" maps to `NotFound` (gone) after the credential check, since git authenticates through `gh`. This replaces the "never NotFound" rule in D6 and item 9.
+- **Defaults**: backend defaults to `gist`, `off` disables sync, `auto_push` defaults to `false` (user decisions 2026-11-09). This replaces "unset means off" and `auto_push = true`.
+- **Known answers**: the vectors live in `crypto/blob/kat_tests.rs`, with a third one for three frames.

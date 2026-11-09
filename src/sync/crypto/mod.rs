@@ -1,6 +1,7 @@
 //! Sealing, metadata tokens, recovery phrase and hashing for session sync.
 //!
-//! Blob format: `b"AGR1" || version u8 || nonce [24] || ciphertext+tag`, XChaCha20-Poly1305.
+//! One-shot seal v1 (`seal`, metadata tokens): `b"AGR1" || 0x01 || nonce [24] || ciphertext+tag`.
+//! Session blobs v2 are streamed in 64 KiB frames, see `blob` and `blob/stream.rs`.
 
 pub(in crate::sync) mod blob;
 mod phrase;
