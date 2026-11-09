@@ -188,3 +188,13 @@ fn pack_order_does_not_change_the_view() {
         assert_eq!(format!("{:?}", merge(&all)), want);
     }
 }
+
+#[test]
+fn fork_losers_are_live_not_dead() {
+    let a = pack("a", "A", 10, vec![entry("x", 4, "y", 10, false)]);
+    let b = pack("b", "B", 10, vec![entry("x", 4, "z", 10, false)]);
+    let view = merge(&[a, b]);
+    assert_eq!(view.forks, vec!["x"]);
+    assert_eq!(view.dead_bytes.get("a").copied().unwrap_or(0), 0);
+    assert_eq!(view.dead_bytes.get("b").copied().unwrap_or(0), 0);
+}
