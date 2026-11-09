@@ -1,5 +1,5 @@
 //! Gist pack store: one secret gist per pack, `index` plus `data.NNN` parts of at most 8 MiB.
-//! Reads go through `gh api` (listing, index) and `curl` with `Range` on `raw_url` (parts).
+//! Reads go through `gh api` (listing, index) with `Range` on `raw_url` (parts).
 
 mod api;
 mod index_cache;
@@ -18,7 +18,7 @@ use super::{Listing, PackInfo, PackStore, Segment, StoreError};
 use crate::sync::backend::gist::pace::{Pacer, SystemClock};
 use crate::sync::backend::gist::runner::{ProcessRunner, Runner};
 
-/// Secret gists as packs, the runner is the only way out to `gh` and `curl`.
+/// Secret gists as packs, the runner is the only way out to `gh` and `git`.
 pub struct GistStore<R: Runner = ProcessRunner> {
     runner: R,
     temp_base: PathBuf,

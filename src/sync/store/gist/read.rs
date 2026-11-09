@@ -1,11 +1,13 @@
-//! Range reads of a pack: only the parts that cover the range, through `raw_url` plus `Range`.
+//! Range reads of a pack: only the parts that cover the range, through `gh api` on `raw_url` plus `Range`.
 //! The one read path, there is no clone fallback.
 
 use std::io::Read;
+use std::path::Path;
 
 use super::api::{be, FileRef};
 use super::layout::check_parts;
 use super::{GistStore, StoreError};
+use crate::sync::backend::gist::parse::map_failure;
 use crate::sync::backend::gist::parts::PartReader;
 use crate::sync::backend::gist::runner::Runner;
 use crate::sync::backend::gist::scratch::Scratch;
@@ -27,27 +29,20 @@ fn covering(parts: &[FileRef], offset: u64, len: u64) -> Result<Vec<(&FileRef, u
     Ok(out)
 }
 
-fn curl_failure(stderr: &str) -> StoreError {
-    let text = stderr.to_lowercase();
-    if text.contains("404") {
-        StoreError::NotFound
-    } else if text.contains("429") || text.contains("403") {
-        StoreError::RateLimited
-    } else {
-        StoreError::Unreachable("could not read a part from github".into())
-    }
-}
-
 impl<R: Runner> GistStore<R> {
-    /// Downloads one range of one part into `file`.
-    fn fetch_range(&self, url: &str, (from, to): (u64, u64), file: &str) -> Result<(), StoreError> {
+    /// Downloads one range of one part into `file`, `gh api` streams the raw bytes there.
+    fn fetch_range(
+        &self,
+        url: &str,
+        (from, to): (u64, u64),
+        file: &Path,
+    ) -> Result<(), StoreError> {
         let range = format!("Range: bytes={from}-{to}");
-        let args = ["-sS", "-f", "-L", "-H", &range, "-o", file, url];
-        let out = self.runner.run("curl", &strings(&args), None, &[]);
-        let out = io_result("curl", out).map_err(be)?;
+        let args = strings(&["api", "-H", &range, url]);
+        let out = io_result("gh", self.runner.run_to_file("gh", &args, &[], file)).map_err(be)?;
         match out.success() {
             true => Ok(()),
-            false => Err(curl_failure(&out.stderr)),
+            false => Err(be(map_failure("gh", &out.stderr, out.code))),
         }
     }
 
@@ -69,7 +64,7 @@ impl<R: Runner> GistStore<R> {
         let mut paths = Vec::new();
         for (n, (part, from, to)) in wanted.into_iter().enumerate() {
             let path = scratch.join(&format!("range.{n}"));
-            self.fetch_range(&part.raw_url, (from, to), &path.to_string_lossy())?;
+            self.fetch_range(&part.raw_url, (from, to), &path)?;
             paths.push(path);
         }
         Ok(Box::new(PartReader::new(paths, Box::new(scratch))))

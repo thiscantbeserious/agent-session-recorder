@@ -134,6 +134,20 @@ impl Runner for &Fake {
         out
     }
 
+    fn run_to_file(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &[(&str, String)],
+        dest: &Path,
+    ) -> std::io::Result<Output> {
+        let out = self.run(program, args, None, env)?;
+        if let (true, Some(body)) = (out.success(), self.raw_body(program, args)) {
+            std::fs::write(dest, body)?;
+        }
+        Ok(out)
+    }
+
     fn run(
         &self,
         program: &str,
@@ -153,11 +167,7 @@ impl Runner for &Fake {
         self.calls.borrow_mut().push(call);
         self.side_effects(program, args, cwd);
         let reply = self.replies.borrow_mut().pop_front();
-        let mut out = reply.unwrap_or_else(|| ok(""))?;
-        if let (true, Some(body)) = (out.success(), self.raw_body(program, args)) {
-            out.stdout = String::from_utf8_lossy(&body).into_owned();
-        }
-        Ok(out)
+        reply.unwrap_or_else(|| ok(""))
     }
 }
 

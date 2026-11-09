@@ -106,7 +106,7 @@ impl<R: Runner> GistStore<R> {
     }
 
     pub(super) fn check_tools(&self) -> Result<(), StoreError> {
-        for tool in ["git", "gh", "curl"] {
+        for tool in ["git", "gh"] {
             self.run_ok(tool, &["--version"])?;
         }
         let out = io_result(
