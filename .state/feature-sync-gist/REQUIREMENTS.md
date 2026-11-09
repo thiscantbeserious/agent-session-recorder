@@ -362,7 +362,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
 - `agr sync prune` for dead data, `agr sync migrate` for the old gists.
 - `agr sync delete` with patterns, `--all`, preview and confirmation.
 - `pack_size_mib` config key and the machine writer id.
-- A local cache of pack indexes keyed by gist id and `updated_at`, so status and auto push do not cost one API call per pack.
+- A local cache of pack indexes keyed by gist id and `updated_at` (pending probe, fallback in the ADR), so status and auto push do not cost one API call per pack.
 - `agr sync prune --seal-orphans` for open packs left behind by a lost local state.
 - Docs: `docs/architecture/sync.md`, wiki command pages, README.
 
@@ -400,13 +400,14 @@ Sessions only live on one machine. We want to sync them between machines, with G
 **P5. One open pack per machine, append-only**
 - [ ] A machine has at most one open pack and only appends to it, a sealed pack is never written again (a contract test shows a second append to a sealed pack is refused).
 - [ ] An append writes new parts and the new index as one unit, a crash before the index leaves the old index valid, a directory store recovers from parts written before its manifest.
-- [ ] A wrong expected length or an index other than the one planned against gives `Moved` and writes nothing, also for a zero-byte append that only adds tombstones, one retry on top, then "changed on the remote, run again".
+- [ ] A wrong expected length or an index other than the one planned against gives `Moved` and writes nothing, also for a zero-byte append that only adds tombstones, one retry on top, then "changed on the remote, run again". `Moved` carries the index text at the current remote head, the retry plans against it without another read.
 - [ ] Two writers on one writer id never overwrite each other (mandatory test).
 - [ ] A lost local state does not lose remote data, the machine gets a new writer id, the old open pack stays readable and merged, `agr sync prune --seal-orphans` seals it after 30 idle days.
+- [ ] `--seal-orphans` is the one append to another writer's pack. Its dry-run prints the packs with their size and the total download (a seal downloads the orphan pack once), a run stops at 1 GiB of download. A `Moved` during the seal is never retried, the seal of that pack is dropped and reported.
 
 **P6. Index per pack, readable without a clone**
 - [ ] Each pack carries one sealed index with path, gen, sha256, size, offset, length, deleted and time per entry.
-- [ ] `agr sync status` makes no `git clone`, only the listing plus one API call per pack that is not in the local index cache (same `updated_at`), a corrupt cache file is rebuilt.
+- [ ] `agr sync status` makes no `git clone`, only the listing plus one API call per pack that is not in the local index cache (same `updated_at`), a corrupt cache file is rebuilt. The `updated_at` key is pending the probe `updated_at_moves_on_git_push`, if it does not move sealed indexes are cached forever by id and open packs are read on every open (ADR "Index cache (pending probe)").
 - [ ] An index copied into another pack does not open (the index AAD binds the pack uuid).
 - [ ] Push, pull, delete, migrate and prune abort before planning when any pack index read fails, never act on a partial view.
 - [ ] An index that would pass 768 KiB seals the pack early, a truncated index is reported as unreadable, never half read.
@@ -417,6 +418,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
 - [ ] Two entries at the top gen with different hashes are a fork, reported per session, push and pull skip it, `push --overwrite` resolves it with gen + 1.
 - [ ] Two entries at the top gen with the same hash are one session with two places, the reader tries the next on `NotFound`.
 - [ ] A merged gen below the local last-sync gen is refused as before, the local file stays untouched.
+- [ ] Two packs with the same tag (a duplicated gist) are both merged as places, reported per pack as a copy, and never appended to, sealed, repacked or deleted by agr.
 - [ ] A fork a push has just created is reported in the same run, and status names the next step.
 
 **P8. Prune only for dead data**
@@ -470,6 +472,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
 - [ ] A rate limit stops with "N left, run again later", a re-run finishes, a listing past 3000 gists does not abort.
 - [ ] The release that switches to packs ships `agr sync migrate`.
 - [ ] Migrate runs before the first pack push, it converts the local index v1 to v2 with path, sha256 and gen kept, a local edit made before migrate survives. Every other sync command refuses on a v1 index with "run `agr sync migrate` first".
+- [ ] A machine with no local index or a deleted one refuses the same way while the remote listing shows any `agr:v1` gist of our key, the auto push child does nothing and keeps its queue entry.
 
 **P16. Docs**
 - [ ] `docs/architecture/sync.md`, the wiki command pages, `pack_size_mib` in the configuration page and the README describe packs, forks, prune, migrate and delete patterns, and state what a third party with the URL can see, including that the index size per revision roughly shows how many sessions each append added.

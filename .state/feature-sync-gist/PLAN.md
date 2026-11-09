@@ -965,6 +965,7 @@ PR: B
 - [x] First live run (2026-11-09) recorded in the ADR: partial clone push and `raw_url` plus Range pass, the existing blob was fetched during the append.
 - [x] Second probe `append_fetch_trigger` written (compile only) and run by the user (2026-11-09, every commit and push fetched `data.000`): `cargo test --test pack_probe_live append_fetch_trigger -- --ignored --nocapture --test-threads=1`. Every `PROBE: fetch.<step>` line says which step fetches `data.000`.
 - [x] ADR Open risk 1 is closed as branch C (no recipe exists).
+- [ ] Third probe `updated_at_moves_on_git_push` written (compile only), run by the user: `cargo test --test pack_probe_live updated_at_moves_on_git_push -- --ignored --nocapture --test-threads=1`. `PROBE: updated_at.api` and `PROBE: updated_at.listing` decide the index cache key of Stage 52 (ADR "Index cache (pending probe)").
 
 Files: `tests/pack_probe_live.rs`, `.state/feature-sync-gist/ADR.md`
 Depends on: Stage 45
@@ -980,18 +981,19 @@ PR: B
 - [ ] RED commit: `violations_flags_pack_naming_engine` [`assert_eq!(v.len(), 1)`, gives 0] and `violations_flags_store_naming_crypto` [`assert_eq!(v.len(), 1)`, gives 0] in `src/sync/mod.rs`.
 - [ ] GREEN commit: this stage extends `layer_rules_hold` for `pack/` and `store/`. New `RULES` rows: `pack/` must not name `crate::sync::app`, `crate::sync::engine`, `crate::sync::store::memory`, `crate::sync::store::dir`, `crate::sync::store::gist`, and `store/` must not name `crate::sync::crypto`, `crate::sync::engine`, `crate::sync::pack`, `crate::sync::app`, `chacha20poly1305`, `sha2::`, `aead::`. `layer_rules_hold` green on the tree.
 - [ ] RED commit: `store_error_messages_name_the_next_step` in `store/mod.rs` [`assert_eq!(StoreError::Moved.to_string(), "changed on the remote, run again")`, the stub `Display` writes an empty string], plus `RateLimited` [`assert!(msg.contains("run again later"))`] and `NotFound` [`assert!(msg.contains("not found"))`].
-- [ ] GREEN commit: `StoreError` (`NotInstalled`, `NotLoggedIn`, `MissingScope`, `Unreachable`, `RateLimited`, `NotFound`, `Moved`, `Other`) with `Display`, `PackInfo { id, tag, len, updated_at }`, `Segment`. `BlobSource` is re-exported from `backend/mod.rs` until Stage 59 moves it.
+- [ ] GREEN commit: `StoreError` (`NotInstalled`, `NotLoggedIn`, `MissingScope`, `Unreachable`, `RateLimited`, `NotFound`, `Moved(String)`, `Other`) with `Display`, `PackInfo { id, tag, len, updated_at }`, `Listing { packs, legacy }`, `Segment`. `Moved` carries the index text at the current remote head, its `Display` never prints it. `BlobSource` is re-exported from `backend/mod.rs` until Stage 59 moves it.
 - [ ] RED commit, shared `contract(store: &dyn PackStore)` (`store/contract.rs`, cfg test), run for `MemoryStore`:
-  - `append_refuses_wrong_expected_len` [`assert!(matches!(err, StoreError::Moved))` for `expected_len` 10 on a new pack, the stub returns `Ok(())`]
-  - `append_refuses_other_expected_index` [`assert!(matches!(err, StoreError::Moved))` when `expected_index` is not the current index text, length equal]
+  - `append_refuses_wrong_expected_len` [`assert!(matches!(err, StoreError::Moved(_)))` for `expected_len` 10 on a new pack, the stub returns `Ok(())`]
+  - `append_refuses_other_expected_index` [`assert!(matches!(err, StoreError::Moved(_)))` when `expected_index` is not the current index text, length equal]
+  - `moved_carries_the_current_index` [`assert_eq!(err, StoreError::Moved(current))` where `current` is the index another append just wrote, the stub returns `Moved(String::new())`]
   - `zero_segment_append_replaces_only_the_index` [`assert_eq!(store.read_index(&id)?, new_index)` and `assert_eq!(info.len, old_len)`]
   - `append_is_all_or_nothing` [`assert_eq!(info.len, old_len)` and `assert_eq!(store.read_index(&id)?, old_index)` after a failing segment writer]
   - `read_returns_the_exact_range` [`assert_eq!(bytes, joined[a..b])` for a range across two appends]
-  - `create_then_list_shows_len_zero_and_tag` [`assert_eq!((info.len, info.tag.as_str()), (0, tag))`]
+  - `create_then_list_shows_len_zero_and_tag` [`assert_eq!((info.len, info.tag.as_str()), (0, tag))`, `assert!(listing.legacy.is_empty())`]
   - `delete_then_read_index_is_not_found` [`assert!(matches!(err, StoreError::NotFound))`]
 - [ ] GREEN commit: `MemoryStore` passes the contract. Test hooks: `fail_read_index(id)` (used by the abort tests of Stages 51 and 61) and `with_slots(n)` (file slots for `fits`).
 - [ ] Trait method `fn fits(&self, info: &PackInfo, lens: &[u64]) -> bool`, default `true`, the gist store overrides it in Stage 52 for the 250 file cap (user approval relayed by the main session, no open question). RED commit: `memory_fits_false_when_slots_run_out` [`assert!(!store.fits(&info, &[1]))` after two appends on `with_slots(2)`, the stub returns `true`]. GREEN commit: `MemoryStore::fits` counts slots.
-- [ ] RED commit: the contract runs for `DirStore` too, plus `dir_store_crash_after_parts_before_manifest_recovers` (test-only fault hook between part files and the manifest rename) [`assert_eq!(store.list()?[0].len, old_len)` after the crash, then `assert!(store.append(&id, old_len, &old_index, &segs, &idx).is_ok())`, the stub sums part files and gives `Moved` forever].
+- [ ] RED commit: the contract runs for `DirStore` too, plus `dir_store_crash_after_parts_before_manifest_recovers` (test-only fault hook between part files and the manifest rename) [`assert_eq!(store.list()?.packs[0].len, old_len)` after the crash, then `assert!(store.append(&id, old_len, &old_index, &segs, &idx).is_ok())`, the stub sums part files and gives `Moved` forever].
 - [ ] GREEN commit: `DirStore` writes new part files first, then one `manifest` (tag, `len`, part list, index) via `manifest.tmp` renamed once. `len` comes from the manifest only, unlisted part files are deleted by the next append.
 
 Files: `src/sync/mod.rs`, `src/sync/store/mod.rs`, `src/sync/store/memory.rs`, `src/sync/store/dir.rs`, `src/sync/store/contract.rs`
@@ -1060,8 +1062,9 @@ PR: B
   - `unknown_version_pack_is_reported` [`assert_eq!(view.rejected[0].1, Rejected::UnknownVersion(4))`]
   - `index_of_other_pack_is_reported` [`assert_eq!(view.rejected[0].1, Rejected::OtherPack)`]
   - `dead_bytes_per_pack` [`assert_eq!(view.dead_bytes[&id], old_gen_length)`, live vs dead length per pack, a top-gen tombstone counts as live, used by status and prune]
+  - `duplicated_pack_is_merged_and_reported` (ADR merge rule 6) [`assert_eq!(view.duplicates, vec![("a", "b")])` for packs `a` and `b` with one tag and the same index, `assert_eq!(view.get("x").unwrap().places.len(), 2)` and a tombstone only in that tag stays `is_deleted()`, the stub drops both packs]
   - `keeper_is_the_place_in_the_highest_pack_id` [`assert_eq!(view.get("a").unwrap().keeper().pack, "b")` for places in packs `a` and `b`, the other place counts as dead bytes]
-- [ ] GREEN commit: `merge(packs)` returning a `View` with `places`, `keeper`, `forks`, `rejected` and `dead_bytes`.
+- [ ] GREEN commit: `merge(packs)` returning a `View` with `places`, `keeper`, `forks`, `rejected`, `duplicates` and `dead_bytes`. `View::is_frozen(id)` is true for both ids of a duplicate, push, prune and `--seal-orphans` never write or delete a frozen pack.
 
 Files: `src/sync/pack/mod.rs`, `src/sync/pack/merge.rs`, `src/sync/pack/merge_tests.rs`
 Depends on: Stage 49
@@ -1074,18 +1077,20 @@ Goal: `pack::Repo` with `open`, `view`, `push_batch`, `read_session`, `tombstone
 Owner: implementer
 PR: B
 
-- [ ] RED commit: `push_batch_appends_to_own_open_pack` [`assert_eq!(store.list()?.len(), 1)` after two pushes on one writer, the stub creates a pack per push].
+- [ ] RED commit: `push_batch_appends_to_own_open_pack` [`assert_eq!(store.list()?.packs.len(), 1)` after two pushes on one writer, the stub creates a pack per push].
 - [ ] RED commit:
-  - `seal_then_next_push_creates_a_pack` [`assert_eq!(store.list()?.len(), 2)`]
+  - `seal_then_next_push_creates_a_pack` [`assert_eq!(store.list()?.packs.len(), 2)`]
   - `big_session_gets_own_sealed_pack_and_open_pack_stays_open` [`assert!(own.sealed)` and `assert_eq!(repo.open_pack(), Some(old_id))`]
   - `open_pack_found_by_writer_when_local_id_missing` [`assert_eq!(repo.open_pack(), Some(id))`]
-  - `index_of_other_writer_or_sealed_is_moved` [`assert!(matches!(err, StoreError::Moved))`]
+  - `index_of_other_writer_or_sealed_is_moved` [`assert!(matches!(err, StoreError::Moved(_)))`]
+  - `own_open_pack_duplicated_starts_a_new_pack` [`assert_ne!(repo.open_pack(), Some(a))` and `assert_eq!(store.list()?.packs.len(), 3)` after a push when the own open pack `a` has a copy `b`, the stub appends to `a`]
   - `push_of_440_mib_is_six_sealed_and_one_open_pack` (P1, scaled by 1/1024: 721 sessions summing to 440 KiB against a 64 KiB target, the target is an argument) [`assert_eq!((sealed, open), (6, 1))`] and `pack_tag_is_the_index_uuid` [`assert_eq!(info.tag, index.pack)`]
 - [ ] RED commit (P3, `fits`):
-  - `seal_when_fits_is_false` [`assert!(old.sealed)` and `assert_eq!(store.list()?.len(), 2)` on `MemoryStore::with_slots(3)`, the stub ignores `fits`]
+  - `seal_when_fits_is_false` [`assert!(old.sealed)` and `assert_eq!(store.list()?.packs.len(), 2)` on `MemoryStore::with_slots(3)`, the stub ignores `fits`]
   - `no_file_slot_left_seals_with_zero_byte_append` [`assert_eq!(old_info.len, len_before)` and `assert!(old_index.sealed)`]
 - [ ] RED commit: `two_writers_on_one_id_retry_once` (ADR Open risk 3, mandatory), two cases:
-  - data case [`assert!(matches!(first, Err(StoreError::Moved)))` for the second writer, then after the retry `assert_eq!(view.len(), 2)`, a second `Moved` gives `assert_eq!(err.to_string(), "changed on the remote, run again")`]
+  - data case [`assert!(matches!(first, Err(StoreError::Moved(_))))` for the second writer, then after the retry `assert_eq!(view.len(), 2)`, a second `Moved` gives `assert_eq!(err.to_string(), "changed on the remote, run again")`]
+  - `retry_uses_the_index_from_moved` [`assert_eq!(store.read_index_calls(id), 0)` during the retry and the retry's `expected_index` equals the `Moved` text, the stub re-reads through `read_index`]
   - tombstone case: A tombstones s, B tombstones t on an index read before A's push [`assert!(view.get("s").unwrap().is_deleted() && view.get("t").unwrap().is_deleted())`, the stub guards on length only and s comes back]
 - [ ] RED commit: `read_pack_takes_the_key_as_argument` (P9, room for `agr share`): `pack::read_pack(store, id, &key)` opens one pack sealed with a test key that is not the sync key, without the merge and without any global or app key [`assert_eq!(sessions.len(), 2)`, the stub returns an empty vec].
 - [ ] RED commit:
@@ -1118,12 +1123,14 @@ PR: B
 - [ ] GREEN commit: `layout.rs`.
 - [ ] RED commit (Fake runner):
   - `list_keeps_only_agr_v2_over_pages` [`assert_eq!(ids, vec!["a", "c"])` over two pages]
+  - `list_passes_agr_v1_descriptions_as_legacy` [`assert_eq!(listing.legacy, vec!["agr:v1 tok"])`, `agr:pending` and foreign gists are in neither list, the stub drops them]
   - `truncated_index_is_other_not_half_an_index` [`assert!(matches!(err, StoreError::Other(_)))`]
   - `create_sends_only_the_index` [`assert_eq!(files, vec!["index"])`, no `.keep`]
   - `pack_description_is_agr_v2_and_uuid_only` [`assert_eq!(desc, format!("agr:v2 {tag}"))`]
   - `read_range_requests_only_covering_parts` [`assert_eq!(range_calls, vec!["data.001 bytes=..."])`, no clone in the calls]
   - `failed_raw_url_read_is_a_store_error_no_clone` [`assert!(matches!(err, StoreError::Unreachable))` and `assert!(!calls.iter().any(|c| c.contains("clone")))`]
 - [ ] GREEN commit: `api.rs` and `read.rs`.
+- [ ] Probe dependency: the key comes from `updated_at_moves_on_git_push` (Stage 46). Both lines PASS: the tests below as written. Either line FAILS: the fallback of ADR "Index cache (pending probe)", the two `updated_at` tests become `sealed_entry_is_cached_forever_by_id` [`assert_eq!(api_calls_for(id), 0)` with a changed `updated_at`] and `open_pack_is_read_every_time_and_keyed_on_history_version` [`assert_eq!(api_calls_for(id), 2)` over two opens, the entry key is `history[0].version`], plus `gone_id_drops_its_entry` [`assert!(cache.get(id).is_none())`].
 - [ ] RED commit, index cache (`<user cache dir>/agr/index-cache.json`, keyed by gist id plus `updated_at`):
   - `sealed_index_cache_hit_skips_the_api` [`assert_eq!(api_calls_for(id), 0)` on the second `read_index` with the same `updated_at`, the stub always calls the API]
   - `changed_updated_at_refetches` [`assert_eq!(api_calls_for(id), 1)`]
@@ -1143,10 +1150,10 @@ Goal: `append` per ADR "Append and seal" steps 2, 3 (store side), 4 and 6 (steps
 Owner: implementer
 PR: B
 
-- [ ] RED commit: `tree_len_not_expected_is_moved` [`assert!(matches!(err, StoreError::Moved))` when the sum of the part sizes in the tree differs from `expected_len`, the stub pushes anyway].
-- [ ] RED commit: `zero_byte_append_on_stale_index_is_moved` [`assert!(matches!(err, StoreError::Moved))` and `assert!(!calls.iter().any(|c| c.contains("push")))`: the `index` blob at `HEAD` of the cached clone after the fast-forward differs from `expected_index`, the length is equal and there are no segments, the stub checks the length only]. The index for the check is read from the clone, never from the API or the index cache.
+- [ ] RED commit: `tree_len_not_expected_is_moved` [`assert_eq!(err, StoreError::Moved(head_index))` with `head_index` the `index` blob at `HEAD` of the fast-forwarded clone, when the sum of the part sizes in the tree differs from `expected_len`, the stub pushes anyway].
+- [ ] RED commit: `zero_byte_append_on_stale_index_is_moved` [`assert_eq!(err, StoreError::Moved(head_index))` and `assert!(!calls.iter().any(|c| c.contains("push")))`: the `index` blob at `HEAD` of the cached clone after the fast-forward differs from `expected_index`, the length is equal and there are no segments, the stub checks the length only]. The index for the check is read from the clone, never from the API or the index cache.
 - [ ] RED commit:
-  - `rejected_push_is_moved` [`assert!(matches!(err, StoreError::Moved))` on non-fast-forward stderr, `assert!(!args.contains("--force"))`]
+  - `rejected_push_is_moved_with_the_fetched_index` [`assert_eq!(err, StoreError::Moved(remote_index))` on non-fast-forward stderr, read from `FETCH_HEAD:index` after one `git fetch`, `assert!(!args.contains("--force"))`, a failing fetch gives its own error and no `Moved`]
   - `append_is_one_commit_with_parts_and_index` [`assert_eq!(commits, 1)` and `assert_eq!(changed, vec!["data.002", "index"])`]
   - `pushes_to_one_gist_are_paced_10s` [`assert_eq!(clock.slept(), vec![Duration::from_secs(10)])` for a second append on the same id, other mutating calls keep 1 s]
   - `pacing_holds_across_processes` [`assert_eq!(clock.slept(), vec![Duration::from_secs(7)])`: two `GistStore` values with fresh in-process pacers share one `pace.toml`, the second appends 3 s after the first and waits the rest, the stub keeps the time in memory only]
@@ -1155,7 +1162,7 @@ PR: B
   - `cached_clone_is_reused_across_appends` [`assert_eq!(count(&calls, "clone"), 1)`, second append runs `git fetch` plus `merge --ff-only`]
   - `cached_clone_removed_on_seal` [`assert!(!cache_dir.join(id).exists())`]
   - `missing_cached_clone_is_cloned_once` [`assert_eq!(count(&calls, "clone"), 1)` and a second failure `assert!(matches!(err, StoreError::Other(_)))`, no loop]
-  - `cached_clone_with_other_index_is_rejected_and_recloned` [`assert!(matches!(err, StoreError::Moved))` and `assert!(!cache_dir.join(id).exists())`]
+  - `cached_clone_with_other_index_is_rejected_and_recloned` [`assert!(matches!(err, StoreError::Moved(_)))` and `assert!(!cache_dir.join(id).exists())`]
   - `cached_clone_with_stale_len_is_rejected_and_recloned` [as above]
   - `cached_clone_dropped_on_moved` [`assert!(!cache_dir.join(id).exists())`]
   - `cache_path_is_inside_user_cache_dir` [`assert_eq!(path, cache_dir.join("agr/packs").join(id))`]
@@ -1176,7 +1183,7 @@ Goal: the engine plans against the merged view and writes through `Repo`, the ap
 Owner: implementer
 PR: C
 
-- [ ] RED commit: `push_of_three_sessions_is_one_pack` in `sync_engine_test.rs` on `MemoryStore` [`assert_eq!(store.list()?.len(), 1)`]. The commit carries the new `Engine` constructor with a stub body returning an empty report, so it compiles.
+- [ ] RED commit: `push_of_three_sessions_is_one_pack` in `sync_engine_test.rs` on `MemoryStore` [`assert_eq!(store.list()?.packs.len(), 1)`]. The commit carries the new `Engine` constructor with a stub body returning an empty report, so it compiles.
 - [ ] RED commit:
   - `push_on_v1_index_requires_migrate_first` [`assert!(err.to_string().contains("run `agr sync migrate` first"))` and `assert_eq!(appends, 0)`, for push, pull and delete, the stub reads v1 as empty]
   - `open_pack_saved_after_push_and_cleared_after_seal` [`assert_eq!(index.open_pack, Some(id))`, then `assert_eq!(index.open_pack, None)`]
@@ -1188,12 +1195,13 @@ PR: C
   - `local_edit_after_remote_delete_is_a_fork` [`assert_eq!(decide(local != last, Deleted { gen: 5 }), Decision::Fork)`]
   - `overwrite_restores_a_deleted_session` (engine run on `MemoryStore`) [`assert_eq!(view.get(p).unwrap().gen, 6)` and `assert!(!view.get(p).unwrap().is_deleted())`]
   - `local_absent_remote_deleted_is_in_sync` [`assert!(matches!(d, Decision::InSync { .. }))` and the index entry is dropped]
+- [ ] RED commit: `fresh_machine_with_v1_gists_on_remote_requires_migrate` in `sync_multi_machine_test.rs` (ADR "Fresh machine refuses too"): machine B has no local index, the store lists one `agr:v1` gist sealed with our key [`assert!(err.to_string().contains("run `agr sync migrate` first"))` and `assert_eq!(appends, 0)` for push, pull and delete, the stub reads the missing index as empty v2 and pushes gen 1]. Same test, two more cases: a deleted local index on machine A refuses the same way, and an `agr:v1` gist of another key does not block [`assert!(push.is_ok())`]. `Repo::open_for_migrate` skips the guard [`assert!(open_for_migrate(..).is_ok())`].
 - [ ] RED commit: `fork_is_reported_right_after_push` in `sync_multi_machine_test.rs` (two machines, two writer ids) [`assert_eq!(report.forks, vec!["claude/x.cast.gz"])`].
 - [ ] RED commit:
   - `pack_size_mib_defaults_to_64` in `config/types.rs` [`assert_eq!(cfg.sync.pack_size_mib, 64)`]
   - `pack_size_mib_out_of_range_is_a_clear_error` (P4) [`assert!(err.to_string().contains("pack_size_mib must be between 16 and 512"))` for 8 and 1024]
   - `writer_id_created_once_in_state_toml` in `config/state.rs` [`assert_eq!(first, second)` over two loads]
-  - `new_writer_id_after_state_loss` (P5) in `sync_multi_machine_test.rs` [`assert_ne!(old_writer, new_writer)`, and after a push with the new id `assert!(view.get(old_path).is_some())` and `assert_eq!(store.list()?.len(), 2)`, the old open pack stays readable and merged]
+  - `new_writer_id_after_state_loss` (P5) in `sync_multi_machine_test.rs` [`assert_ne!(old_writer, new_writer)`, and after a push with the new id `assert!(view.get(old_path).is_some())` and `assert_eq!(store.list()?.packs.len(), 2)`, the old open pack stays readable and merged]
 - [ ] Guard test commit `test(config): ...` (P14, existing behaviour, passes on arrival, the reviewer checks it fails when the default is flipped by hand): `sync_defaults_are_gist_and_auto_push_off` in `config/types.rs` [`assert_eq!((kind, auto), (Gist, false))`], re-checked once `pack_size_mib` is added.
 - [ ] RED commit: `missing_gh_or_git_breaks_nothing_outside_sync` in `cli_sync_test.rs` (P14): with `PATH` stripped of `gh` and `git`, `agr list` and `agr status` exit 0 with their normal output, `agr sync push` exits non-zero with the one line "gh not found, the gist backend needs gh and git" and the storage dir is unchanged [`assert!(!push.status.success())` and `assert_eq!(before, after)`]. Guard test commit as above (existing behaviour on the per-session code, kept true while `setup.rs` builds the `Repo`), it turns RED if the store is opened outside sync commands.
 - [ ] RED commit: `violations_flags_engine_naming_gist_store` [`assert_eq!(v.len(), 1)`, gives 0], GREEN adds `RULES` rows so `engine/` must not name `crate::sync::store::gist`, `crate::sync::store::memory`, `crate::sync::store::dir`.
@@ -1215,6 +1223,7 @@ PR: C
   - `burst_during_drain_lands_in_the_next_round_together` [`assert_eq!(appends, 2)`]
   - `single_recording_is_pushed_without_waiting` [`assert_eq!(appends, 1)` right after one recording, no local buffering]
   - `auto_push_on_v1_index_does_nothing_and_hints_migrate` [`assert_eq!(appends, 0)` and the queue entry stays]
+  - `auto_push_on_fresh_machine_with_v1_gists_does_nothing` [`assert_eq!(appends, 0)` and `assert_eq!(queue.len(), 1)` with no local index and one `agr:v1` gist of our key on the store, the stub drains and pushes gen 1]
 - [ ] RED commit: `n_parallel_recordings_pushed_exactly_once` (P13): 8 threads finish a recording each while a drain runs on a `MemoryStore`, afterwards the merged view has all 8 paths, every path has exactly one entry at gen 1 and the queue is empty [`assert_eq!(view.len(), 8)`, the stub drain takes the queue once and drops what arrives during the round].
 - [ ] GREEN commit.
 - [ ] Pacing across processes: the drain already runs under `SyncLock` (`engine/queue.rs`), so only one auto push process appends at a time, and the persisted last push time of Stage 53 (`last_push.rs`) makes the next process wait the rest of the 10 s. No new code here, `pacing_holds_across_processes` (Stage 53) covers it.
@@ -1298,6 +1307,7 @@ PR: C
   - `rate_limit_stops_with_n_left_and_rerun_finishes` [`assert!(out.contains("3 left, run again later"))`, then `assert_eq!(left, 0)` after the re-run]
   - `listing_past_3000_does_not_abort` [`assert!(report.is_ok())`]
   - `migrate_aborts_on_partial_index_view` [`assert_eq!((appends, deletes), (0, 0))`]
+  - `migrate_opens_without_the_v1_guard_and_unblocks` [`assert!(Repo::open(..).is_ok())` once migrate deleted the last `agr:v1` gist of our key, and a gist kept for a hash mismatch is named with `gh gist delete <id>` in the report]
 - [ ] GREEN commit per RED commit above.
 - [ ] RED commit: `parses_migrate_yes` in `cli_sync_parse_test.rs` [`assert!(parse(["migrate", "--yes"]).is_ok())`], GREEN adds `agr sync migrate [--yes]`.
 - [ ] RED commit: `migrate_prints_compact_summary_and_full_list_with_v` [`assert!(lines(default) < 10)`] and `migrate_loading_and_live_line_only_on_a_tty` [`assert!(!plain_out.contains(LOADING))`] (P12, as in Stage 56).
@@ -1370,10 +1380,13 @@ PR: D
 - [ ] GREEN commit: `prune/mod.rs`.
 - [ ] RED commit (`--seal-orphans`, ADR Open risk 4):
   - `seal_orphans_seals_idle_open_packs_of_other_writers` [`assert!(index.sealed)` and `assert_eq!(info.len, len_before)` for an open pack of another writer idle 31 days, a pack idle 29 days and the own open pack stay open, the stub seals nothing]
-  - `sealed_orphan_owner_starts_a_fresh_pack` [`assert_eq!(store.list()?.len(), 2)` after the original writer pushes again, its `Moved` retry sees a sealed pack]
-- [ ] GREEN commit: `prune/orphans.rs`.
+  - `sealed_orphan_owner_starts_a_fresh_pack` [`assert_eq!(store.list()?.packs.len(), 2)` after the original writer pushes again, its `Moved` retry sees a sealed pack]
+  - `seal_orphans_loses_the_race_to_the_owner_and_drops_the_seal` [the owner appends between the orphan read and the seal, `assert_eq!(appends_by_prune, 1)` (no retry), `assert!(!index.sealed)`, the owner's entry is in the view and the report says "changed during the seal, skipped", the stub retries on the `Moved` text and seals over the owner]
+  - `seal_orphans_dry_run_prints_download_size` [`assert!(out.contains("2 packs to seal, 96 MiB to download"))` and `assert_eq!(appends, 0)`, a real run stops at 1 GiB of download with "N left, run again"]
+  - `seal_orphans_never_touches_a_duplicated_pack` [`assert!(!plan.seal.contains(&a))` for a pack with a copy]
+- [ ] GREEN commit: `prune/orphans.rs`. The one append to another writer's pack: checks our key, not sealed and idle over 30 days instead of our writer id. Gist store side in `store/gist/append.rs`: an append to an id that is not the cached `open_pack` clones into a temp dir and deletes it when the append returns, covered by `orphan_seal_clone_is_not_kept` [`assert!(!cache_dir.join(id).exists())` after success and after an error].
 
-Files: `src/sync/pack/mod.rs`, `src/sync/pack/prune/mod.rs`, `src/sync/pack/prune/plan.rs`, `src/sync/pack/prune/orphans.rs`, `src/sync/pack/prune/tests.rs`, `tests/integration/sync_engine_test.rs`
+Files: `src/sync/pack/mod.rs`, `src/sync/pack/prune/mod.rs`, `src/sync/pack/prune/plan.rs`, `src/sync/pack/prune/orphans.rs`, `src/sync/pack/prune/tests.rs`, `src/sync/store/gist/append.rs`, `src/sync/store/gist/tests.rs`, `tests/integration/sync_engine_test.rs`
 Depends on: Stage 60
 
 Considerations: `plan.rs` pure under 150 lines, execution under 250, `orphans.rs` under 100, dead bytes and the keeper come from `merge` (Stage 50).

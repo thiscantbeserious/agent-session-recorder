@@ -1365,20 +1365,25 @@ pub struct PackInfo {
     pub updated_at: String,
 }
 
+/// One listing pass: the packs plus the descriptions of old per-session entries (`agr:v1 <token>`
+/// on gists), which the store passes on unopened, empty on stores that never had the old format.
+pub struct Listing { pub packs: Vec<PackInfo>, pub legacy: Vec<String> }
+
 /// One sealed session in an append, written as one contiguous range of the pack stream.
 pub struct Segment<'a> { pub len: u64, pub write: BlobSource<'a> }
 
 pub trait PackStore {
     fn name(&self) -> &'static str;
     fn check(&self) -> Result<(), StoreError>;
-    fn list(&self) -> Result<Vec<PackInfo>, StoreError>;
+    fn list(&self) -> Result<Listing, StoreError>;
     /// The sealed index text of the pack, as stored by the last create or append.
     fn read_index(&self, id: &str) -> Result<String, StoreError>;
     /// New pack with no data, `tag` and `index`, returns its id.
     fn create(&self, tag: &str, index: &str) -> Result<String, StoreError>;
     /// Appends `segments` behind the current end and replaces the index, all or nothing.
-    /// Refused with `Moved` when the pack length is not `expected_len` or the current index
-    /// text is not `expected_index` byte for byte, nothing is written. Zero segments is valid.
+    /// Refused with `Moved(current)` when the pack length is not `expected_len` or the current index
+    /// text is not `expected_index` byte for byte, nothing is written. `current` is the index text at
+    /// the remote head the store just checked against. Zero segments is valid.
     fn append(&self, id: &str, expected_len: u64, expected_index: &str, segments: &[Segment],
         index: &str) -> Result<(), StoreError>;
     /// Whether one more append with these segment lengths fits the pack (file slots on gists).
@@ -1389,7 +1394,8 @@ pub trait PackStore {
 }
 ```
 - **Nothing GitHub specific**: the trait only knows a pack id, a logical byte stream, an index string and a length. A gist, a GitLab snippet or repo, a directory or an S3 prefix each map that onto their own files, the per-file limit and the part files stay inside the store.
-- **Guard on the old index, not only its length**: an append carries `expected_len` and `expected_index`, the sealed index text the pack layer opened and planned against. Every index is sealed with a fresh nonce, as such any other append in between (also a zero-byte one that only adds a tombstone) changes the text and the append is `Moved`. The store reads the current index for this check from where it writes (the cached clone on gists, the manifest in a directory), never from a separate API read, and a git store gets the race between that read and the write for free from a rejected non-fast-forward push. A stale API read can only cost a second `Moved`, never a lost write. `StoreError` keeps `NotInstalled`, `NotLoggedIn`, `MissingScope`, `Unreachable`, `RateLimited`, `NotFound` and `Other`, `Changed(Option<String>)` becomes `Moved` without a token.
+- **Guard on the old index, not only its length**: an append carries `expected_len` and `expected_index`, the sealed index text the pack layer opened and planned against. Every index is sealed with a fresh nonce, as such any other append in between (also a zero-byte one that only adds a tombstone) changes the text and the append is `Moved`. The store reads the current index for this check from where it writes (the cached clone on gists, the manifest in a directory), never from a separate API read, and a git store gets the race between that read and the write for free from a rejected non-fast-forward push. A stale API read can only cost a second `Moved`, never a lost write. `StoreError` keeps `NotInstalled`, `NotLoggedIn`, `MissingScope`, `Unreachable`, `RateLimited`, `NotFound` and `Other`, `Changed(Option<String>)` becomes `Moved(String)`, which carries the index text at the current remote head (see "Rejected push or `Moved`"), never a token.
+- **Legacy listing**: `legacy` exists only so `Repo::open` can refuse while old per-session gists are not migrated (see "Migration"). It costs nothing, the descriptions come with the one listing pass, and the store never opens them (`store/` must not name `crypto`).
 - **Ordering contract**: an append writes the new data and the new index as one unit. On gists that is one commit. A directory store writes new part files first and then one `manifest` file (tag, `len`, the part list and the index) renamed into place once. Its `len` comes from the manifest, never from summing part files, as such a crash in between leaves part files the manifest does not list, the next append deletes and rewrites them and nothing turns into a permanent `Moved`.
 
 #### Pack format and pack index
@@ -1412,6 +1418,7 @@ Legend: the data parts joined in order are the pack stream, the index maps every
 - **Index cap 768 KiB**: the REST API returns at most 1 MB of content per file, as such the index stays well below that and status reads it without a clone. A pack whose next index would cross 768 KiB is sealed early.
 - **Delete is a tombstone**: `agr sync delete` appends an entry with `deleted: true` at gen + 1 to the open pack of the deleting machine. Tombstones are kept forever (a few hundred bytes each), so a machine with an old local index never pushes a deleted session back as "remote absent".
 - **Pack uuid**: the gist id is not known before `create`, as such the pack layer picks a random 128 bit uuid (base32, 26 characters), stores it as the `tag` (the gist description) and inside the index, and binds it in the index AAD. An index copied into another pack does not open there (tag and AAD differ) and is reported like `OtherKey`.
+- **Uuid stays in the tag**: kept in `PackInfo.tag` and `create(tag, ..)`, it costs nothing and lets the merge spot a copied index or a duplicated pack from the listing alone.
 - **Description**: `agr:v2 <pack uuid>`, nothing else. The uuid is random and carries no meaning, the writer and the sealed flag live in the encrypted index only.
 
 #### Pack size
@@ -1434,7 +1441,7 @@ Restic defaults to 16 MiB and allows 4 to 128 MiB. **Decision**: `[sync] pack_si
 
 **Why a crash leaves a consistent pack**: a git push moves the branch from the old commit to the new one in one step, as such a reader sees either the old index with the old parts or the new index with all new parts, never parts without their index or an index without its parts. A crash before the push changes nothing remote. A crash after the push but before the local save leaves remote entries whose hash equals the local file, the next run plans them `InSync` and refreshes the local index, which the plan already does today. Old bytes are never rewritten, as such no crash can damage data that was already pushed.
 
-**Rejected push or `Moved`**: only possible when two machines share a writer id (config dir copied) or when `prune --seal-orphans` sealed the pack. The append deletes its cached clone, clones again, the pack layer opens the index of the fresh clone (sealed means we start a fresh pack) and redoes the append once on top, then it fails with "changed on the remote, run again". Part numbers are recomputed on the retry, so the two writers never overwrite each other. Example of why `expected_len` alone is not enough: A tombstones s, B tombstones t on an index read before A's push. Both appends add no bytes, the length is unchanged, but A's index text is not the one B planned against, as such B gets `Moved`, re-reads and writes both tombstones.
+**Rejected push or `Moved`**: only possible when two machines share a writer id (config dir copied) or when `prune --seal-orphans` sealed the pack. `Moved(current)` carries the index text at the remote head the store just saw: on an index or length mismatch that is the `index` blob at `HEAD` of the fast-forwarded clone, on a rejected push the store runs `git fetch` and reads `FETCH_HEAD:index`. When that read fails the store returns the fetch error, never a `Moved` without text. The store then deletes its cached clone as before. The pack layer opens `current` (sealed means we start a fresh pack, the `len` in the index is the new `expected_len`), and redoes the append once with `current` as `expected_index`, the store clones again on that append. A second `Moved` fails with "changed on the remote, run again". No extra `read_index` call is needed, as such the retry never depends on the API or the index cache. Part numbers are recomputed on the retry, so the two writers never overwrite each other. Example of why `expected_len` alone is not enough: A tombstones s, B tombstones t on an index read before A's push. Both appends add no bytes, the length is unchanged, but A's index text is not the one B planned against, as such B gets `Moved`, re-reads and writes both tombstones.
 
 #### Merge and what replaces compare-and-swap
 **Merge rules** (pure, `pack::merge`), over the indexes of all `agr:v2` packs:
@@ -1443,6 +1450,7 @@ Restic defaults to 16 MiB and allows 4 to 128 MiB. **Decision**: `[sync] pack_si
 3. Several entries at the highest gen with the same sha256 are one session with several places (after a prune or migrate copy), the reader tries the next place on `NotFound`.
 4. Several entries at the highest gen with different sha256 are a **fork**, it replaces today's `Duplicate` and is reported per session, push and pull skip it. `push --overwrite` resolves it by appending gen + 1 from the local file.
 5. A tombstone at the highest gen is `Remote::Deleted { gen }`, not absent, and a push that restores the path uses gen + 1 above it.
+6. **Duplicated pack** (two ids with the same tag, for example a gist copied by hand): both are merged, their identical entries are one session with two places (same AAD, same bytes, nothing to lose), and both ids are reported per pack as "copy of pack <id>, delete one by hand". Neither is ever appended to, sealed by `--seal-orphans`, repacked or deleted by prune. When the own open pack is one of them, the next push clears `open_pack` and creates a new pack. Rejecting both like `OtherKey` was weighed and dropped, a tombstone that only lives in the duplicated pack would vanish from the view and the deleted session would be pushed back.
 
 - **Lost update**: impossible on the storage side, every machine writes only its own open pack and sealed packs are frozen. Where the compare-and-swap refused the second writer before it wrote, now both writes land and the merge reports the fork. Nothing is overwritten, as such nothing is lost, the user picks with `--overwrite`.
 - **Plan**: unchanged three-way compare of local hash, remote hash and last hash from the local index, the remote hash now comes from the merged view. `Remote::Deleted { gen }` is new, today `(Local::Hash(_), Remote::Absent)` is `Push`, as such a tombstone read as absent would push a deleted session straight back. New rows:
@@ -1516,6 +1524,7 @@ sequenceDiagram
 Legend: data parts and index land in one commit, the local index is saved only after the push returned, a manual push of many sessions repeats the append per pack, the cache holds only the own open pack.
 
 #### Status and pull cost
+- **Index cache (pending probe)**: the cache relies on the listing `updated_at` moving on every git push to a gist. Pending the probe `updated_at_moves_on_git_push` (Stage 46). **Fallback** if it does not move: an entry whose index is sealed is cached forever by id (a sealed pack is never written again, an id gone from the listing drops its entry), every open pack is read again on every open with `gh api gists/<id>` and keyed on `history[0].version` (equals `HEAD`, first probe). That is one call per open pack, about 3, as such status stays at the listing pages plus the open packs, the same cost as below.
 - **Index cache**: the gist store keeps every index it read in `<user cache dir>/agr/index-cache.json`, keyed by gist id plus the `updated_at` of the listing, together with the part names, sizes and `raw_url`s of the same response. A listing entry with the same `updated_at` is a hit and costs no call. Sealed packs never change, as such only open packs that moved and new ids are fetched. The file holds sealed index text only (no plaintext), is written with temp plus rename, a corrupt or unreadable file is ignored and rebuilt, and the entry of a pack is dropped on `Moved`. Ceiling: `updated_at` has second resolution, two appends in the same second to one gist can leave a stale entry, which only happens with a copied writer id (pushes are paced 10 s apart) and costs a `Moved`, never data.
 - **Status**: one paginated `gh api gists` listing (100 gists per page), then one `gh api gists/<id>` per pack that missed the cache. No git clone at all. With the 721 sessions of 440 MiB from the first push that is 6 sealed packs plus one open pack per machine.
 - **Cost at 10 GiB**: 160 sealed packs plus, say, 3 open ones. Without the cache every status and every auto push round costs 2 listing pages plus 163 index reads, 165 calls, about 30 rounds an hour use up the limit of 5000. With the cache it is 2 listing pages plus the open packs that changed plus new ids, about 5 calls.
@@ -1547,7 +1556,10 @@ Legend: only sealed packs are repacked, the copies are pushed and visible before
 - **Two places, one keeper**: when one session has several places at its top gen (prune or migrate copies), the place in the pack with the highest pack id is the keeper and every other place counts as dead, "lowest pack id loses". Every machine computes the same keeper from the same view, as such two prunes never keep different places and delete the rest.
 - **Last place rule**: a pack is deleted only when, in a fresh view read after the copies, every live entry in it has another place in a pack that this run does not delete. Copies sit in open packs, which no prune deletes, as such two concurrent prunes can never delete the last place of a session.
 - **Unreadable packs**: a pack that is `OtherKey`, `UnknownVersion` or not readable is never planned, never repacked and never deleted. A failed index read aborts the whole prune (see "Partial views abort").
-- **Orphaned open packs** (`--seal-orphans`): a machine that lost `state.toml` leaves its open pack open forever, and open packs are never pruned. `agr sync prune --seal-orphans` seals every open pack of another writer id whose `updated_at` is older than 30 days with a zero-byte append (`sealed: true`, no data). This is safe even when the owner is only offline: its next append sees another index, gets `Moved`, re-reads a sealed pack and starts a fresh one. After that the normal prune rules apply. The dry-run lists the packs it would seal.
+- **Orphaned open packs** (`--seal-orphans`): a machine that lost `state.toml` leaves its open pack open forever, and open packs are never pruned. `agr sync prune --seal-orphans` seals every open pack of another writer id whose `updated_at` is older than 30 days with a zero-byte append (`sealed: true`, no data). This is safe even when the owner is only offline: its next append sees another index, gets `Moved`, re-reads a sealed pack and starts a fresh one. After that the normal prune rules apply.
+  - **Exception to "our writer"**: this is the one append to a pack of another writer. The pack layer checks our key, not sealed and idle over 30 days instead of our writer id, and passes the orphan's index as `expected_index`, the store guard is unchanged.
+  - **Download**: the gist store appends through a full clone, as such sealing one orphan downloads that whole pack once (up to the pack size). That clone is deleted right after the append returns, success or error, it is never kept as a cached clone and never becomes `open_pack`. The dry-run prints every pack it would seal with its size and the total download, a run seals packs in id order up to 1 GiB of download and reports the rest as "N left, run again".
+  - **Race with the owner**: a `Moved` during the seal means the owner is alive. It is never retried, the seal of that pack is dropped and reported as "changed during the seal, skipped", the owner's append stands.
 - **Pattern delete** (P10, user answers 2 to 4 of 2026-11-09): `agr sync delete` matches `*` and `?` (or `--all`) against `<agent>/<name>` of the merged remote view only, collects first and prints the preview, asks yes/no, and above 10 matches also asks to type the count. `--yes` skips only the yes/no, above 10 without a TTY needs `--force`. All matches become tombstones in one append, prune frees the bytes later. Built in PR C with the engine switch.
 - **Backend name** (P17): the string `gist` appears only in `store/gist/`, `store/legacy/` and the config value match in `app/setup.rs`, checked by `layer_rules_hold`.
 - **Open packs are never touched** (the one exception is the index-only seal of `--seal-orphans` above): another machine may be appending to its own. This is also why we need no remote lock: restic needs an exclusive lock because a writer could reference a pack that prune deletes, here nobody writes into a sealed pack and nobody references bytes in another pack.
@@ -1573,7 +1585,8 @@ The commit identity (`agr`, `agr@localhost`, UTC dates), the hook scrub, `GIT_TE
 `agr sync migrate`, dry-run unless `--yes`, runs BEFORE the first pack push. It is the first writer of packs on a machine and converts the local index.
 
 - **Local index v1 to v2**: v2 carries path, sha256 and gen of every v1 entry (dropping `remote_id`, `token`, `pending`), as such the gens never restart and the three-way plan keeps its last synced hash. A local edit made before migrate still differs from the carried sha256 and is planned as a push, never overwritten by the older migrated content. Migrate never writes local session files.
-- **Push on a v1 index refuses**: `agr sync push`, `pull`, `delete` and the auto push child exit with "run `agr sync migrate` first" while the local index is v1, status prints the same hint. We do not run migrate automatically, because migrate deletes remote gists and the user asked for a dry-run first (user decision 14), an auto push child in the background must never do that without the preview.
+- **Push on a v1 index refuses**: `agr sync push`, `pull`, `delete` and the auto push child exit with "run `agr sync migrate` first" while the local index is v1, status prints the same hint.
+- **Fresh machine refuses too**: a machine without a local index (new, or the index deleted) reads as an empty v2. Without a guard it would push its sessions at gen 1 while `agr:v1` gists still exist, the other machine's migrate then carries gen 3, which wins, and a pull overwrites the newer local edit. As such `Repo::open` refuses with "run `agr sync migrate` first" while the listing shows any `agr:v1` gist whose token opens with our key, regardless of the local index version. Gists of another key are ignored, migrate keeps them forever and they would block for good. A moved but not yet deleted gist (an interrupted migrate) blocks too, re-running migrate deletes it. A v1 gist migrate kept for a hash mismatch blocks until the user deletes it by hand, migrate names its id and `gh gist delete <id>`. Only migrate opens the repo without the guard (`Repo::open_for_migrate`). The auto push child does nothing and keeps its queue entry, status prints the hint. The check is local crypto over the listing, no extra call. We do not run migrate automatically, because migrate deletes remote gists and the user asked for a dry-run first (user decision 14), an auto push child in the background must never do that without the preview.
 
 1. **List** every gist of the user, all pages. Migrate does not abort at 3000 gists like sync, it only acts on what it saw and verified and is re-run until nothing is left.
 2. **Recognise** only:
@@ -1602,7 +1615,7 @@ The dry-run prints `N sessions to move (size), M already moved, K empty stubs to
 - the `SyncBackend` trait with `create` per session, compare-and-swap `push`, `describe`, `RemoteEntry`, `BackendError::Changed` (becomes `Moved`).
 - the per-session gist layout: `.keep`, `manifest`, `agr:pending`, the sealed description token, description repair and heal, adopt own commit, pending resume, the index id fallback, duplicate resolution by `created_at`.
 - local index fields `remote_id`, `token`, `pending`, the index goes to `version` 2 with `open_pack`. A v1 index is converted by `agr sync migrate` with its gens kept, every other sync command refuses on it with "run `agr sync migrate` first".
-- the `Meta` token as a remote listing format (`seal` itself stays).
+- the `Meta` token as a remote listing format (`seal` itself stays). `open_meta` stays as long as the legacy reader does, the fresh machine guard and migrate need it.
 
 ### Consequences
 - A push of 440 MiB is 7 pack gists (6 sealed, 1 open) instead of 721, the gist page shows one entry per 64 MiB.
@@ -1619,7 +1632,8 @@ The dry-run prints `N sessions to move (size), M already moved, K empty stubs to
 5. **Index history**: every append rewrites `index` and git keeps the old versions. With about 200 bytes per entry and the 250 file cap this stays in the low MiB per pack, the 768 KiB cap bounds the worst case.
 6. **Prune bandwidth**: repacking downloads and uploads live bytes, a user with many changed sessions may move GiBs. Dry-run first, no automatic prune.
 7. **Rate limits**: status and auto push cost one API call per pack that missed the index cache (about 5 calls at 10 GiB), migrate deletes count too, pacing exists but bursts of hundreds of stubs to delete will hit the secondary rate limit, migrate has to be resumable (it is by design).
-8. **Verified, one left**: `raw_url` and `Range` work on secret gists for binary parts up to 8 MiB (2026-11-09, user live run). Still unverified is the community "about 5 GB per gist" figure (no official source, our packs stay far below it).
+8. **Index cache key**: the listing `updated_at` is pending the probe `updated_at_moves_on_git_push`, the fallback is in "Status and pull cost".
+9. **Verified, one left**: `raw_url` and `Range` work on secret gists for binary parts up to 8 MiB (2026-11-09, user live run). Still unverified is the community "about 5 GB per gist" figure (no official source, our packs stay far below it).
 
 ### Verified facts
 **restic** (all from https://github.com/restic/restic/blob/master/doc/design.rst unless noted, fetched 2026-11-09):
