@@ -1,6 +1,6 @@
 //! In-memory pack store for tests.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io::{Cursor, Read};
 use std::sync::Mutex;
 
@@ -16,6 +16,7 @@ struct Pack {
 struct Inner {
     packs: BTreeMap<String, Pack>,
     next: u64,
+    failing: HashSet<String>,
 }
 
 /// Packs in a `Mutex`, ids are `mem-<n>`. One lock around check and write models the git ref.
@@ -27,6 +28,11 @@ pub struct MemoryStore {
 impl MemoryStore {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Every later `read_index` for `id` fails, for the abort tests of the pack layer.
+    pub fn fail_read_index(&self, id: &str) {
+        self.lock().failing.insert(id.to_string());
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -52,7 +58,7 @@ impl PackStore for MemoryStore {
             .iter()
             .map(|(id, p)| PackInfo {
                 id: id.clone(),
-                tag: p.tag.to_uppercase(),
+                tag: p.tag.clone(),
                 len: p.data.len() as u64,
                 updated_at: String::new(),
             })
@@ -65,6 +71,11 @@ impl PackStore for MemoryStore {
 
     fn read_index(&self, id: &str) -> Result<String, StoreError> {
         let inner = self.lock();
+        if inner.failing.contains(id) {
+            return Err(StoreError::Unreachable(
+                "read_index failed on purpose".into(),
+            ));
+        }
         inner
             .packs
             .get(id)
@@ -89,34 +100,38 @@ impl PackStore for MemoryStore {
         &self,
         id: &str,
         expected_len: u64,
-        _expected_index: &str,
+        expected_index: &str,
         segments: &[Segment],
         index: &str,
     ) -> Result<(), StoreError> {
         let mut inner = self.lock();
         let pack = inner.packs.get_mut(id).ok_or(StoreError::NotFound)?;
-        if expected_len < pack.data.len() as u64 {
-            return Err(StoreError::Moved(String::new()));
+        if pack.data.len() as u64 != expected_len || pack.index != expected_index {
+            return Err(StoreError::Moved(pack.index.clone()));
         }
-        if segments.is_empty() {
-            return Ok(());
-        }
-        let mut failed = None;
+        let mut grown = pack.data.clone();
         for s in segments {
-            if let Err(e) = (s.write)(&mut pack.data) {
-                failed = Some(StoreError::Other(e.to_string()));
-            }
+            (s.write)(&mut grown).map_err(|e| StoreError::Other(e.to_string()))?;
         }
+        pack.data = grown;
         pack.index = index.to_string();
-        failed.map_or(Ok(()), Err)
-    }
-
-    fn read(&self, _id: &str, _offset: u64, _len: u64) -> Result<Box<dyn Read>, StoreError> {
-        Ok(Box::new(Cursor::new(Vec::new())))
-    }
-
-    fn delete(&self, _id: &str) -> Result<(), StoreError> {
         Ok(())
+    }
+
+    fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError> {
+        let inner = self.lock();
+        let data = &inner.packs.get(id).ok_or(StoreError::NotFound)?.data;
+        let (from, to) = (offset as usize, (offset + len) as usize);
+        let range = data.get(from..to).ok_or(StoreError::NotFound)?;
+        Ok(Box::new(Cursor::new(range.to_vec())))
+    }
+
+    fn delete(&self, id: &str) -> Result<(), StoreError> {
+        self.lock()
+            .packs
+            .remove(id)
+            .map(drop)
+            .ok_or(StoreError::NotFound)
     }
 }
 
