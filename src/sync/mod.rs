@@ -8,8 +8,9 @@ mod engine;
 pub use app::{auto, format, key, setup};
 pub use backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 pub use crypto::{Key, PhraseError};
+pub use engine::observe::Observer;
 pub use engine::plan::{Decision, SkipReason};
-pub use engine::run::{Engine, Item, Observer, Options, Outcome, Report, SyncError};
+pub use engine::run::{Engine, Item, Options, Outcome, Report, SyncError};
 pub use engine::scan::Duplicate;
 
 /// Internals for the integration tests, not a stable API.

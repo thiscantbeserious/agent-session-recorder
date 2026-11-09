@@ -6,6 +6,7 @@ use super::fail::{Fail, Stop};
 use super::index::{self, Index};
 use super::item::{hash_of, not_found, passive, remote_hash_of, strip_done};
 use super::lock::SyncLock;
+use super::observe::{counted, no_progress, Observer};
 use super::plan::{decide, resolve, Command, Decision, Local, Remote};
 use super::pull::pull_one;
 use super::push::{heal, push_one};
@@ -102,25 +103,6 @@ impl Report {
             _ => {}
         }
         self.items.push(item);
-    }
-}
-
-/// Called after each acted-on item with the item, its 1-based index and the total.
-pub type Observer<'a> = dyn FnMut(&Item, usize, usize) + 'a;
-
-fn no_progress(_: &Item, _: usize, _: usize) {}
-
-/// Calls `observer` for done, skipped and failed items only, counting from 1.
-fn counted<'o>(total: usize, observer: &'o mut Observer<'o>) -> impl FnMut(&Item) + 'o {
-    let mut seen = 0;
-    move |item: &Item| {
-        if matches!(
-            item.outcome,
-            Outcome::Done(_) | Outcome::Skipped(_) | Outcome::Failed(_)
-        ) {
-            seen += 1;
-            observer(item, seen, total);
-        }
     }
 }
 
