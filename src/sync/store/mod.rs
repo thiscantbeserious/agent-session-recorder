@@ -6,6 +6,7 @@ use std::io::Read;
 #[cfg(test)]
 #[macro_use]
 mod contract;
+pub(super) mod dir;
 pub(super) mod memory;
 
 pub use crate::sync::backend::BlobSource;
