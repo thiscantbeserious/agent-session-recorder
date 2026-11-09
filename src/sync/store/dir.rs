@@ -97,7 +97,12 @@ impl PackStore for DirStore {
         let mut packs = Vec::new();
         for e in fs::read_dir(&self.root).map_err(io_err)?.flatten() {
             let id = e.file_name().to_string_lossy().into_owned();
-            let Ok(m) = self.manifest(&id) else { continue };
+            let m = match self.manifest(&id) {
+                Ok(m) => m,
+                // not a pack directory, nothing to list
+                Err(StoreError::NotFound) => continue,
+                Err(e) => return Err(e),
+            };
             packs.push(PackInfo {
                 id,
                 tag: m.tag,
