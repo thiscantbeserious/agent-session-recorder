@@ -6,13 +6,10 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use super::api::FileRef;
-
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Entry {
     pub updated_at: String,
     pub index: String,
-    pub files: Vec<FileRef>,
 }
 
 pub(super) struct IndexCache {
@@ -77,7 +74,6 @@ mod tests {
         let entry = Entry {
             updated_at: "t1".into(),
             index: "idx".into(),
-            files: vec![],
         };
         cache.put("a", entry);
         cache.drop_entry("a");

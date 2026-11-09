@@ -188,11 +188,9 @@ impl<R: Runner> GistStore<R> {
             None => return Err(StoreError::Other("the pack has no index".into())),
         };
         if let Some(cache) = &cache {
-            let seen = seen_of(&gist);
             let entry = Entry {
-                updated_at: seen.updated_at,
+                updated_at: gist.updated_at.clone(),
                 index: index.clone(),
-                files: seen.files,
             };
             cache.put(id, entry);
         }
