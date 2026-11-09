@@ -37,6 +37,8 @@ pub(crate) struct Fake {
     pub(crate) remote: Files,
     /// Stderr lines `run_watched` hands to the watcher of a `git push` or `git clone`.
     pub(crate) watch: Vec<String>,
+    /// A server that ignores `Range` and answers 200 with the whole part.
+    pub(crate) ignore_range: bool,
 }
 
 /// Every `data.*` file of a clone, sorted by name.
@@ -116,7 +118,12 @@ impl Fake {
         let (from, to) = range.split_once('-')?;
         let (from, to): (usize, usize) = (from.parse().ok()?, to.parse().ok()?);
         let (_, body) = self.remote.iter().find(|(n, _)| n == name)?;
-        (program == "gh").then(|| body[from..=to].to_vec())
+        let wanted = if self.ignore_range {
+            body.clone()
+        } else {
+            body[from..=to].to_vec()
+        };
+        (program == "gh").then_some(wanted)
     }
 }
 

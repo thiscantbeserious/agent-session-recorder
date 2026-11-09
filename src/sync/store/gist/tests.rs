@@ -182,6 +182,18 @@ fn read_range_is_binary_safe() {
 }
 
 #[test]
+fn short_or_full_body_for_a_range_is_an_error() {
+    let mut fake = Fake::with(vec![ok(&pages(&[vec![three_parts()]])), ok("200")]);
+    fake.remote = vec![("data.001".into(), (0..100).collect())];
+    fake.ignore_range = true;
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(&fake, dir.path());
+    store.list().unwrap();
+    let res = store.read("a", 105, 10);
+    assert!(res.is_err());
+}
+
+#[test]
 fn failed_raw_url_read_is_a_store_error_no_clone() {
     let fake = Fake::with(vec![
         ok(&pages(&[vec![three_parts()]])),
