@@ -232,6 +232,12 @@ mod layer_check {
     }
 
     #[test]
+    fn violations_flags_brace_form_crypto_in_store() {
+        let v = violations("store/x.rs", "use crate::sync::{crypto::Key};");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
     fn violations_flags_store_naming_crypto() {
         let v = violations("store/x.rs", "use crate::sync::crypto::Key;");
         assert_eq!(v.len(), 1, "{v:?}");
