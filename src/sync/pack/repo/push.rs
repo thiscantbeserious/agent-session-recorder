@@ -3,7 +3,7 @@
 use super::{OpenPack, Repo, RepoError};
 use crate::sync::crypto::blob::sealed_len;
 use crate::sync::crypto::sha256_reader;
-use crate::sync::pack::index::{new_pack_uuid, seal_index, Entry, Index};
+use crate::sync::pack::index::{new_pack_uuid, open_index, seal_index, Entry, Index};
 use crate::sync::pack::rules::{place, should_seal, Place};
 use crate::sync::pack::stream::{segment, FileSegment};
 use crate::sync::store::{Segment, StoreError};
@@ -24,14 +24,14 @@ pub struct PushReport {
 }
 
 /// What one append writes: sessions, tombstones as (path, gen) and the seal flag.
-struct Batch<'b> {
+pub(super) struct Batch<'b> {
     staged: &'b [Staged],
     tombs: Vec<(String, u64)>,
     seal: bool,
 }
 
 impl<'b> Batch<'b> {
-    fn of(staged: &'b [Staged], seal: bool) -> Self {
+    pub(super) fn of(staged: &'b [Staged], seal: bool) -> Self {
         Self {
             staged,
             tombs: Vec::new(),
@@ -41,7 +41,7 @@ impl<'b> Batch<'b> {
 }
 
 /// A session with its hash read up front, the sealed write must reproduce it.
-struct Staged {
+pub(super) struct Staged {
     path: String,
     gen: u64,
     file: PathBuf,
@@ -164,8 +164,37 @@ impl Repo<'_> {
         })
     }
 
-    /// One append of `staged` behind the end of `pack`, `Moved` is the caller's to handle.
+    /// Appends once, on `Moved(current)` plans again against `current` and appends once more.
+    /// A sealed pack means a new pack, a pack of another writer is never appended to.
     fn try_append(&self, pack: &OpenPack, batch: &Batch) -> Result<OpenPack, StoreError> {
+        let StoreError::Moved(current) = (match self.append_once(pack, batch) {
+            Err(e @ StoreError::Moved(_)) => e,
+            other => return other,
+        }) else {
+            unreachable!("matched Moved above")
+        };
+        let moved = open_index(self.key, &pack.tag, &current)
+            .map_err(|e| StoreError::Other(e.to_string()))?;
+        if moved.writer != self.writer {
+            return Err(StoreError::Moved(current));
+        }
+        if moved.sealed {
+            return self.append_once(&self.new_pack()?, batch);
+        }
+        let again = OpenPack {
+            text: current,
+            index: moved,
+            ..pack.clone()
+        };
+        self.append_once(&again, batch)
+    }
+
+    /// One append behind the end of `pack`, `Moved` is the caller's to handle.
+    pub(super) fn append_once(
+        &self,
+        pack: &OpenPack,
+        batch: &Batch,
+    ) -> Result<OpenPack, StoreError> {
         let staged = batch.staged;
         let segs = staged
             .iter()
