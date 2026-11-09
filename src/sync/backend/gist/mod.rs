@@ -42,8 +42,13 @@ const IDENTITY_ENV: [(&str, &str); 4] = [
     ("GIT_COMMITTER_EMAIL", "agr@localhost"),
 ];
 
+/// Receives the percent of the running upload or download, never a path or a name.
+pub type ProgressSink = Arc<dyn Fn(u8) + Send + Sync>;
+
 /// Secret gists through `gh` and `git`, one gist per session.
 pub struct GistBackend<R: Runner = ProcessRunner> {
+    /// Set by the app layer, `None` means nobody listens.
+    progress: Option<ProgressSink>,
     runner: R,
     temp_base: PathBuf,
     part_size: usize,
@@ -82,12 +87,19 @@ impl<R: Runner> GistBackend<R> {
     pub fn with_runner(runner: R, temp_base: PathBuf) -> Self {
         let clock: Arc<dyn Clock> = Arc::new(SystemClock::new());
         Self {
+            progress: None,
             runner,
             temp_base,
             part_size: PART_SIZE,
             pacer: Mutex::new(Pacer::new(clock.clone())),
             clock,
         }
+    }
+
+    /// Report the percent of `git push` and `git clone` progress to `sink`.
+    pub fn with_progress(mut self, sink: ProgressSink) -> Self {
+        self.progress = Some(sink);
+        self
     }
 
     /// Replace the clock, pacing and commit dates both follow it.

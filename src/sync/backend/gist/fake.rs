@@ -35,6 +35,8 @@ pub(super) struct Fake {
     pub(super) stamps: RefCell<Vec<(String, Duration)>>,
     pub(super) clock: Option<Arc<FakeClock>>,
     pub(super) remote: Files,
+    /// Stderr lines `run_watched` hands to the watcher of a `git push` or `git clone`.
+    pub(super) watch: Vec<String>,
 }
 
 /// Every `data.*` file of a clone, sorted by name.
@@ -106,6 +108,19 @@ impl Fake {
 }
 
 impl Runner for &Fake {
+    fn run_watched(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: Option<&Path>,
+        env: &[(&str, String)],
+        on_line: &mut dyn FnMut(&str),
+    ) -> std::io::Result<Output> {
+        let out = self.run(program, args, cwd, env);
+        self.watch.iter().for_each(|line| on_line(line));
+        out
+    }
+
     fn run(
         &self,
         program: &str,

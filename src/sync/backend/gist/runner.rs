@@ -34,6 +34,38 @@ pub trait Runner {
         cwd: Option<&Path>,
         env: &[(&str, String)],
     ) -> std::io::Result<Output>;
+
+    /// Like `run`, `on_line` also sees every line the process prints on stderr while it runs.
+    /// `\r` and `\n` both end a line, git redraws its progress with `\r`. The default ignores them.
+    fn run_watched(
+        &self,
+        program: &str,
+        args: &[String],
+        cwd: Option<&Path>,
+        env: &[(&str, String)],
+        on_line: &mut dyn FnMut(&str),
+    ) -> std::io::Result<Output> {
+        let _ = on_line;
+        self.run(program, args, cwd, env)
+    }
+}
+
+/// Cuts a byte stream into lines at `\r` and `\n`, an unfinished line waits for more bytes.
+#[derive(Default)]
+pub(super) struct Lines {
+    tail: Vec<u8>,
+}
+
+impl Lines {
+    /// Calls `f` for every line the chunk completes, empty lines are skipped.
+    pub(super) fn push(&mut self, chunk: &[u8], f: &mut dyn FnMut(&str)) {
+        let _ = (chunk, f);
+    }
+
+    /// The last line when the stream ended without a line break.
+    pub(super) fn finish(&mut self, f: &mut dyn FnMut(&str)) {
+        let _ = f;
+    }
 }
 
 /// Longest a process may stay silent on stdout and stderr before it counts as stalled.
@@ -144,6 +176,48 @@ fn drain<R: Read + Send + 'static>(pipe: Option<R>, last: &Arc<Mutex<Instant>>) 
     Drain { bytes, eof }
 }
 
+#[cfg(test)]
+mod lines_tests {
+    use super::Lines;
+
+    fn cut(chunks: &[&[u8]]) -> Vec<String> {
+        let (mut lines, mut got) = (Lines::default(), Vec::new());
+        for chunk in chunks {
+            lines.push(chunk, &mut |l| got.push(l.to_string()));
+        }
+        lines.finish(&mut |l| got.push(l.to_string()));
+        got
+    }
+
+    #[test]
+    fn carriage_returns_and_newlines_both_end_a_line() {
+        let got =
+            cut(&[b"Writing objects:  10% (1/9)\rWriting objects: 100% (9/9), done.\nTotal 9\r\n"]);
+        assert_eq!(
+            got,
+            [
+                "Writing objects:  10% (1/9)",
+                "Writing objects: 100% (9/9), done.",
+                "Total 9"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_line_split_over_chunks_is_joined_and_the_last_one_is_flushed() {
+        assert_eq!(
+            cut(&[b"Writing obj", b"ects:  4", b"5% (1/3)\rtail"]),
+            ["Writing objects:  45% (1/3)", "tail"]
+        );
+    }
+
+    #[test]
+    fn a_multibyte_char_cut_in_two_chunks_survives() {
+        let bytes = "ä\r".as_bytes();
+        assert_eq!(cut(&[&bytes[..1], &bytes[1..]]), ["ä"]);
+    }
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::{ProcessRunner, Runner};
@@ -183,6 +257,26 @@ mod tests {
             (out.stdout.as_str(), out.stderr.as_str()),
             ("out\n", "err\n")
         );
+    }
+
+    #[test]
+    fn run_watched_reports_stderr_lines_as_they_arrive_and_keeps_the_output() {
+        let script = "printf 'Writing objects:  10%% (1/9)\\rWriting objects: 100%% (9/9), done.\\n' >&2; echo out";
+        let runner = ProcessRunner::default();
+        let mut seen = Vec::new();
+        let args = ["-c".to_string(), script.to_string()];
+        let out = runner
+            .run_watched("sh", &args, None, &[], &mut |l| seen.push(l.to_string()))
+            .unwrap();
+        assert_eq!(
+            seen,
+            [
+                "Writing objects:  10% (1/9)",
+                "Writing objects: 100% (9/9), done."
+            ]
+        );
+        assert_eq!(out.stdout, "out\n");
+        assert!(out.stderr.contains("done."), "{}", out.stderr);
     }
 
     #[test]

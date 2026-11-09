@@ -301,3 +301,50 @@ fn a_growing_push_overwrites_and_adds_parts() {
     let sizes: Vec<_> = pushed.iter().map(|(n, b)| (n.as_str(), b.len())).collect();
     assert_eq!(sizes, [("data.000", 4), ("data.001", 4), ("data.002", 2)]);
 }
+
+fn lines(list: &[&str]) -> Vec<String> {
+    list.iter().map(ToString::to_string).collect()
+}
+
+#[test]
+fn push_reports_the_writing_percent_to_the_sink_and_nothing_else() {
+    let fake = Fake {
+        watch: lines(&[
+            "Counting objects: 100% (5/5), done.",
+            "Writing objects:   0% (0/3)",
+            "Writing objects:  45% (1/3), 12.00 MiB | 3.00 MiB/s",
+            "Writing objects: 100% (3/3), 45.00 MiB | 3.00 MiB/s, done.",
+        ]),
+        ..Fake::default()
+    };
+    let base = tempfile::tempdir().unwrap();
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = Arc::clone(&seen);
+    backend(&fake, base.path())
+        .with_progress(Arc::new(move |p| sink.lock().unwrap().push(p)))
+        .push_b("abc123", None, "M", b"sealed")
+        .unwrap();
+    assert_eq!(*seen.lock().unwrap(), [0, 45, 100]);
+}
+
+#[test]
+fn a_clone_during_push_stays_silent_and_pull_reports_the_receiving_percent() {
+    let watch = lines(&[
+        "Receiving objects:  45% (9/20), 12.00 MiB | 3.00 MiB/s",
+        "Receiving objects: 100% (20/20), done.",
+    ]);
+    let fake = Fake {
+        watch,
+        remote: remote_parts(1),
+        ..Fake::default()
+    };
+    let base = tempfile::tempdir().unwrap();
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = Arc::clone(&seen);
+    let b =
+        backend(&fake, base.path()).with_progress(Arc::new(move |p| sink.lock().unwrap().push(p)));
+    let _ = b.push_b("abc123", Some("none"), "M", b"x");
+    assert!(seen.lock().unwrap().is_empty());
+    let _ = b.pull("abc123").unwrap();
+    assert_eq!(*seen.lock().unwrap(), [45, 100]);
+}
