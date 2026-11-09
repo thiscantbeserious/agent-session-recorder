@@ -4,16 +4,17 @@ pub(super) mod pace;
 pub(super) mod parse;
 pub(super) mod parts;
 pub(super) mod runner;
+mod scratch;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use self::pace::{Clock, Pacer, SystemClock};
 use self::parse::{check_auth, id_from_create_output, map_failure, parse_list, DESC_PREFIX};
 use self::parts::{check_sequence, part_names, PartReader, PartWriter, PART_SIZE};
 use self::runner::{Output, ProcessRunner, Runner};
+use self::scratch::Scratch;
 use crate::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 
 /// Neutral dotfile, only there because `gh gist create` refuses an empty gist.
@@ -41,8 +42,6 @@ const IDENTITY_ENV: [(&str, &str); 4] = [
     ("GIT_COMMITTER_EMAIL", "agr@localhost"),
 ];
 
-static CLONE_COUNTER: AtomicU64 = AtomicU64::new(0);
-
 /// Secret gists through `gh` and `git`, one gist per session.
 pub struct GistBackend<R: Runner = ProcessRunner> {
     runner: R,
@@ -64,39 +63,6 @@ impl Default for GistBackend<ProcessRunner> {
     fn default() -> Self {
         Self::new()
     }
-}
-
-/// Scratch directory under the temp dir, removed on drop (also on error paths).
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn create(base: &Path) -> Result<Self, BackendError> {
-        let n = CLONE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = base.join(format!("agr-sync-{}-{n}", std::process::id()));
-        let builder = private_dir_builder();
-        builder
-            .create(&dir)
-            .map_err(|e| BackendError::Other(format!("temp dir: {e}")))?;
-        Ok(Self(dir))
-    }
-
-    fn join(&self, name: &str) -> PathBuf {
-        self.0.join(name)
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn private_dir_builder() -> std::fs::DirBuilder {
-    #[allow(unused_mut)]
-    let mut builder = std::fs::DirBuilder::new();
-    #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-    builder
 }
 
 fn strings(args: &[&str]) -> Vec<String> {
