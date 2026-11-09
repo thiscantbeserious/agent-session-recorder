@@ -14,6 +14,10 @@ pub enum Event<'a> {
     },
     /// A session is done, skipped or failed.
     Finished { item: &'a Item, i: usize, n: usize },
+    /// The remote list is being fetched, first event of every run.
+    Listing,
+    /// Local sessions are being looked at, `done` of `total`, throttled to about every 1%.
+    Scanning { done: usize, total: usize },
 }
 
 /// Called for every event, `Started` always comes before the `Finished` of the same session.
@@ -23,6 +27,8 @@ pub type Observer<'a> = dyn FnMut(&Event<'_>) + 'a;
 pub(super) enum Step<'a> {
     Started { path: &'a str, size: u64 },
     Finished(&'a Item),
+    Listing,
+    Scanning { done: usize, total: usize },
 }
 
 pub(super) fn no_progress(_: &Event<'_>) {}
@@ -49,7 +55,17 @@ pub(super) fn counted<'o>(
             });
         }
         Step::Finished(_) => {}
+        Step::Listing => observer(&Event::Listing),
+        Step::Scanning { done, total } => observer(&Event::Scanning { done, total }),
     }
+}
+
+/// Report at the start, at the end and about every 1% in between, never more than 25 apart.
+// is_multiple_of needs a newer toolchain than the MSRV 1.88
+#[allow(clippy::manual_is_multiple_of)]
+pub(super) fn scan_tick(done: usize, total: usize) -> bool {
+    let step = (total / 100).clamp(1, 25);
+    done == total || done % step == 0
 }
 
 fn acted(item: &Item) -> bool {

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use super::summary::{conflict_line, detail, failed_line};
+use super::summary::{conflict_line, count_lines, detail, failed_line, planned_head};
 use super::{backend_line, label, size, status_block};
 use crate::sync::engine::plan::Decision;
 use crate::sync::engine::run::{Item, Outcome, Report};
@@ -21,6 +21,45 @@ pub fn compact_status_lines(report: &Report, backend: &str) -> Vec<String> {
     lines.extend(action_lines(report));
     lines.push(HINT.into());
     lines
+}
+
+/// What a push or pull would do, compact: the head, skip reasons grouped, then the sessions
+/// that need action. `preview_lines` and `problem_lines` are the per-session list behind `-v`.
+pub fn compact_preview_lines(report: &Report, verb: &str) -> Vec<String> {
+    let mut lines =
+        vec![planned_head(report, verb).unwrap_or_else(|| format!("Nothing to {verb}."))];
+    lines.extend(skipped_lines(report));
+    lines.extend(action_lines(report));
+    lines.push(hint(verb));
+    lines
+}
+
+/// Result of a real run, compact: counts, skip reasons grouped, conflicts and failures listed.
+pub fn compact_summary_lines(report: &Report, verb: &str) -> Vec<String> {
+    let mut lines = count_lines(report);
+    lines.extend(skipped_lines(report));
+    lines.extend(detail("Conflicts", report.conflicts, report, conflict_line));
+    lines.extend(detail("Failed", report.failed, report, failed_line));
+    if lines.is_empty() {
+        lines.push("Nothing to do.".into());
+    } else if report.skipped > 0 {
+        lines.push(hint(verb));
+    }
+    lines.extend(report.warning.iter().map(|w| format!("Warning: {w}")));
+    lines
+}
+
+/// Remote copies `agr sync delete` would remove, compact, the paths are behind `-v`.
+pub fn compact_delete_preview_lines(report: &Report) -> Vec<String> {
+    let mut lines = super::delete_preview_lines(report);
+    if lines.len() > 2 {
+        lines.splice(1..lines.len() - 1, [hint("delete")]);
+    }
+    lines
+}
+
+fn hint(verb: &str) -> String {
+    format!("Run agr sync {verb} -v for the per-session list.")
 }
 
 fn category_lines(report: &Report) -> Vec<String> {
@@ -103,9 +142,15 @@ fn action_lines(report: &Report) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::compact_status_lines;
+    use super::{
+        compact_delete_preview_lines, compact_preview_lines, compact_status_lines,
+        compact_summary_lines,
+    };
     use crate::sync::app::format::status_lines;
     use crate::sync::app::format::tests::{item, report, sync};
+    use crate::sync::app::format::{
+        delete_preview_lines, preview_lines, problem_lines, summary_lines,
+    };
     use crate::sync::engine::plan::{Decision, SkipReason};
     use crate::sync::engine::run::{Item, Outcome, Report};
 
@@ -217,5 +262,76 @@ mod tests {
         assert!(text.contains("claude/719.cast.gz"), "{text}");
         assert!(text.contains("Totals: 3 in sync"), "{text}");
         assert!(!text.contains("per-session list"), "{text}");
+    }
+
+    #[test]
+    fn compact_preview_is_one_head_a_grouped_skip_line_and_the_problems() {
+        let text = compact_preview_lines(&big_report(), "push").join("\n");
+        assert!(
+            text.contains("Would push 721 session(s), 130.64 MiB"),
+            "{text}"
+        );
+        assert!(
+            text.contains("6 skipped: plain .cast, run `agr compress` first"),
+            "{text}"
+        );
+        assert!(text.contains("Conflicts: 1"), "{text}");
+        assert!(text.contains("claude/c.cast.gz local"), "{text}");
+        assert!(text.contains("Other key: 1"), "{text}");
+        assert!(
+            text.contains("Run agr sync push -v for the per-session list."),
+            "{text}"
+        );
+        assert!(!text.contains("claude/0.cast.gz"), "{text}");
+        assert!(text.lines().count() < 14, "{text}");
+    }
+
+    #[test]
+    fn verbose_preview_keeps_the_old_per_session_list() {
+        let r = big_report();
+        let text = [preview_lines(&r, "push"), problem_lines(&r)]
+            .concat()
+            .join("\n");
+        assert!(text.contains("  claude/0.cast.gz (185.55 KiB)"), "{text}");
+        assert!(text.contains("  claude/720.cast.gz"), "{text}");
+    }
+
+    #[test]
+    fn compact_preview_of_nothing_says_so() {
+        let text = compact_preview_lines(&Report::default(), "pull").join("\n");
+        assert!(text.starts_with("Nothing to pull."), "{text}");
+    }
+
+    #[test]
+    fn compact_summary_groups_skips_and_always_lists_failures() {
+        let mut r = big_report();
+        r.skipped = 6;
+        r.failed = 1;
+        r.items.push(item(
+            "claude/f.cast.gz",
+            Decision::Push,
+            Outcome::Failed("boom".into()),
+        ));
+        let text = compact_summary_lines(&r, "push").join("\n");
+        assert!(text.contains("6 skipped: plain .cast"), "{text}");
+        assert!(text.contains("  claude/f.cast.gz: boom"), "{text}");
+        assert!(!text.contains("claude/0.cast.gz"), "{text}");
+        let full = summary_lines(&r).join("\n");
+        assert!(full.contains("claude/0.cast.gz (plain"), "{full}");
+    }
+
+    #[test]
+    fn compact_delete_preview_swaps_the_paths_for_the_hint() {
+        let r = report(vec![
+            item("a/x.cast.gz", Decision::Push, Outcome::Planned),
+            item("a/y.cast.gz", sync(), Outcome::Nothing),
+        ]);
+        let text = compact_delete_preview_lines(&r).join("\n");
+        assert!(text.contains("Would delete 2 remote session(s)"), "{text}");
+        assert!(text.contains("agr sync delete -v"), "{text}");
+        assert!(!text.contains("a/x.cast.gz"), "{text}");
+        assert!(delete_preview_lines(&r)
+            .join("\n")
+            .contains("  a/x.cast.gz"));
     }
 }

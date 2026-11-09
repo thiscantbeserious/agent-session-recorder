@@ -58,6 +58,41 @@ impl LiveLine {
     }
 }
 
+/// The one line shown while the engine lists the remote and hashes local sessions.
+#[derive(Debug, Default)]
+pub struct LoadLine {
+    width: usize,
+    shown: bool,
+}
+
+impl LoadLine {
+    /// The remote list is being fetched.
+    pub fn listing(&mut self) -> String {
+        self.draw("Listing remote sessions...")
+    }
+
+    /// `done` of `total` local sessions looked at.
+    pub fn scanning(&mut self, done: usize, total: usize) -> String {
+        self.draw(&format!("Scanning local sessions {done}/{total}"))
+    }
+
+    /// Wipes the line back to the full width it ever had, `None` when nothing is shown.
+    pub fn clear(&mut self) -> Option<String> {
+        if !std::mem::take(&mut self.shown) {
+            return None;
+        }
+        let blank = " ".repeat(std::mem::take(&mut self.width));
+        Some(format!("\r{blank}\r"))
+    }
+
+    fn draw(&mut self, text: &str) -> String {
+        let pad = " ".repeat(self.width.saturating_sub(text.chars().count()));
+        self.width = self.width.max(text.chars().count());
+        self.shown = true;
+        format!("\r{text}{pad}")
+    }
+}
+
 /// `[i/n] path size`, the part of the live line that stays while the percent moves.
 pub fn live_head(path: &str, size: u64, i: usize, n: usize) -> String {
     format!("[{i}/{n}] {path} {}", super::size(size))
@@ -65,7 +100,7 @@ pub fn live_head(path: &str, size: u64, i: usize, n: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{live_head, LiveLine};
+    use super::{live_head, LiveLine, LoadLine};
 
     #[test]
     fn head_names_index_path_and_size() {
@@ -139,5 +174,32 @@ mod tests {
         assert_eq!(wipe.trim_matches('\r').trim(), "");
         assert!(!shown.contains('\u{1b}') && !wipe.contains('\u{1b}'));
         assert!(live.clear().is_none());
+    }
+
+    #[test]
+    fn load_line_names_listing_and_the_scan_count() {
+        let mut load = LoadLine::default();
+        assert_eq!(load.listing(), "\rListing remote sessions...");
+        assert_eq!(load.scanning(312, 727), "\rScanning local sessions 312/727");
+    }
+
+    #[test]
+    fn load_line_pads_a_shorter_redraw_over_the_old_text() {
+        let mut load = LoadLine::default();
+        load.scanning(10, 727);
+        let short = load.scanning(9, 9);
+        assert_eq!(short.trim_start_matches('\r').chars().count(), 30);
+    }
+
+    #[test]
+    fn load_line_clear_returns_the_full_width_and_never_has_escape_codes() {
+        let mut load = LoadLine::default();
+        assert!(load.clear().is_none());
+        let shown = load.scanning(312, 727);
+        let wipe = load.clear().unwrap();
+        let width = shown.trim_start_matches('\r').chars().count();
+        assert_eq!(wipe, format!("\r{}\r", " ".repeat(width)));
+        assert!(!shown.contains('\u{1b}') && !wipe.contains('\u{1b}'));
+        assert!(load.clear().is_none());
     }
 }

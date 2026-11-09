@@ -1531,10 +1531,23 @@ fn finished_log(seen: &mut Vec<(String, usize, usize)>) -> impl FnMut(&Event) + 
     }
 }
 
+fn is_run(event: &Event) -> bool {
+    !matches!(event, Event::Listing | Event::Scanning { .. })
+}
+
+/// The per-session events only, the load events have their own tests.
+fn run_only(seen: &mut Vec<String>, event: &Event) {
+    if is_run(event) {
+        seen.push(show(event));
+    }
+}
+
 fn show(event: &Event) -> String {
     match event {
         Event::Started { path, size, i, n } => format!("started {path} {size} {i}/{n}"),
         Event::Finished { item, i, n } => format!("finished {} {i}/{n}", item.path),
+        Event::Listing => "listing".to_string(),
+        Event::Scanning { done, total } => format!("scanning {done}/{total}"),
     }
 }
 
@@ -1544,7 +1557,7 @@ fn started_comes_before_finished_for_each_session_in_order() {
     three(&m);
     let size = fs::metadata(m.storage.storage_dir().join(A)).unwrap().len();
     let mut seen = Vec::new();
-    let mut observe = |event: &Event| seen.push(show(event));
+    let mut observe = |event: &Event| run_only(&mut seen, event);
     m.engine(&backend, &key)
         .push_with(&opts(), 3, &mut observe)
         .unwrap();
@@ -1577,7 +1590,7 @@ fn seen_size(m: &Machine, path: &str) -> u64 {
 fn nothing_starts_for_dry_runs_and_in_sync_sessions() {
     let (m, backend, key) = pushed_machine();
     let mut seen = Vec::new();
-    let mut observe = |event: &Event| seen.push(show(event));
+    let mut observe = |event: &Event| run_only(&mut seen, event);
     let dry = Options {
         dry_run: true,
         ..opts()
@@ -1596,7 +1609,7 @@ fn pull_reports_the_remote_size_with_started() {
     let (_m, backend, key) = pushed_machine();
     let other = machine();
     let mut seen = Vec::new();
-    let mut observe = |event: &Event| seen.push(show(event));
+    let mut observe = |event: &Event| run_only(&mut seen, event);
     other
         .engine(&backend, &key)
         .pull_with(&opts(), 3, &mut observe)
@@ -1631,7 +1644,7 @@ fn observer_runs_once_per_acted_on_item_in_order_with_index_and_total() {
 fn observer_is_not_called_for_in_sync_items() {
     let (m, backend, key) = pushed_machine();
     let mut calls = 0;
-    let mut observe = |_: &Event| calls += 1;
+    let mut observe = |event: &Event| calls += usize::from(is_run(event));
     let report = m
         .engine(&backend, &key)
         .push_with(&opts(), 0, &mut observe)
@@ -1665,4 +1678,92 @@ fn observer_counts_only_acted_on_items_and_covers_pull_and_delete() {
         )
         .unwrap();
     assert_eq!(seen_paths(&seen), [("claude/a.cast.gz", 1, 1)]);
+}
+
+fn loads(seen: &[String]) -> Vec<&str> {
+    let end = seen
+        .iter()
+        .position(|s| s.starts_with("started"))
+        .unwrap_or(seen.len());
+    seen[..end].iter().map(String::as_str).collect()
+}
+
+#[test]
+fn load_events_come_first_listing_then_scanning_up_to_the_total() {
+    let (m, backend, key) = (machine(), MemoryBackend::new(), Key::generate());
+    three(&m);
+    let mut seen = Vec::new();
+    let mut observe = |event: &Event| seen.push(show(event));
+    m.engine(&backend, &key)
+        .push_with(&opts(), 3, &mut observe)
+        .unwrap();
+    assert_eq!(
+        loads(&seen),
+        [
+            "listing",
+            "scanning 0/3",
+            "scanning 1/3",
+            "scanning 2/3",
+            "scanning 3/3"
+        ]
+    );
+    assert!(seen[5].starts_with("started"), "{seen:?}");
+}
+
+#[test]
+fn big_scans_report_about_every_one_percent_or_25_sessions_and_end_at_the_total() {
+    let (m, backend, key) = (machine(), MemoryBackend::new(), Key::generate());
+    for i in 0..60 {
+        m.session("claude", &format!("s{i:02}.cast.gz"), &format!("text {i}"));
+    }
+    let mut seen = Vec::new();
+    let mut observe = |event: &Event| seen.push(show(event));
+    m.engine(&backend, &key)
+        .status_with(&[], &mut observe)
+        .unwrap();
+    assert_eq!(seen.first().map(String::as_str), Some("listing"));
+    assert_eq!(seen.last().map(String::as_str), Some("scanning 60/60"));
+    assert_eq!(seen.len(), 62, "{seen:?}");
+}
+
+#[test]
+fn every_networked_entry_point_emits_the_load_events() {
+    let (m, backend, key) = pushed_machine();
+    let e = m.engine(&backend, &key);
+    let dry = Options {
+        dry_run: true,
+        ..opts()
+    };
+    let one = ["claude/a.cast.gz".to_string()];
+    let runs: Vec<(&str, Vec<String>)> = vec![
+        ("status", run_log(|o| e.status_with(&[], o))),
+        ("push", run_log(|o| e.push_with(&dry, 0, o))),
+        ("pull", run_log(|o| e.pull_with(&dry, 0, o))),
+        ("delete", run_log(|o| e.delete_with(&one, 0, o))),
+    ];
+    for (name, seen) in runs {
+        assert_eq!(seen.first().map(String::as_str), Some("listing"), "{name}");
+        assert_eq!(
+            seen.get(1).map(String::as_str),
+            Some("scanning 0/3"),
+            "{name}"
+        );
+        let last = seen
+            .iter()
+            .rposition(|s| s.starts_with("scanning"))
+            .unwrap();
+        assert_eq!(seen[last], "scanning 3/3", "{name}");
+        assert!(
+            seen[..last].iter().all(|s| !s.starts_with("started")),
+            "{name}"
+        );
+    }
+}
+
+fn run_log(
+    run: impl FnOnce(&mut dyn FnMut(&Event<'_>)) -> Result<agr::sync::Report, SyncError>,
+) -> Vec<String> {
+    let mut seen = Vec::new();
+    run(&mut |event: &Event| seen.push(show(event))).unwrap();
+    seen
 }

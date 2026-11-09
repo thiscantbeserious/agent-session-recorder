@@ -6,27 +6,33 @@ use crate::sync::engine::run::{Item, Outcome, Report};
 
 /// What a push or pull would do (`verb` is `push` or `pull`), with sizes.
 pub fn preview_lines(report: &Report, verb: &str) -> Vec<String> {
-    let planned: Vec<&Item> = report
+    let Some(head) = planned_head(report, verb) else {
+        return vec![format!("Nothing to {verb}.")];
+    };
+    let rows = planned(report).map(|i| format!("  {} ({})", i.path, size(planned_bytes(i, verb))));
+    std::iter::once(head).chain(rows).collect()
+}
+
+fn planned(report: &Report) -> impl Iterator<Item = &Item> {
+    report
         .items
         .iter()
         .filter(|i| i.outcome == Outcome::Planned)
-        .collect();
-    if planned.is_empty() {
-        return vec![format!("Nothing to {verb}.")];
+}
+
+fn planned_bytes(item: &Item, verb: &str) -> u64 {
+    if verb == "pull" {
+        item.remote_size
+    } else {
+        item.size
     }
-    let bytes = |i: &Item| {
-        if verb == "pull" {
-            i.remote_size
-        } else {
-            i.size
-        }
-    };
-    let total: u64 = planned.iter().copied().map(bytes).sum();
-    let head = format!("Would {verb} {} session(s), {}", planned.len(), size(total));
-    let rows = planned
-        .iter()
-        .map(|i| format!("  {} ({})", i.path, size(bytes(i))));
-    std::iter::once(head).chain(rows).collect()
+}
+
+/// `Would push 721 session(s), 440.77 MiB`, `None` when nothing is planned.
+pub(super) fn planned_head(report: &Report, verb: &str) -> Option<String> {
+    let count = planned(report).count();
+    let total: u64 = planned(report).map(|i| planned_bytes(i, verb)).sum();
+    (count > 0).then(|| format!("Would {verb} {count} session(s), {}", size(total)))
 }
 
 /// First push notice, privacy and key backup.
@@ -97,7 +103,7 @@ pub fn summary_lines(report: &Report) -> Vec<String> {
     lines
 }
 
-fn count_lines(report: &Report) -> Vec<String> {
+pub(super) fn count_lines(report: &Report) -> Vec<String> {
     let counts = [
         ("Pushed", report.pushed),
         ("Pulled", report.pulled),

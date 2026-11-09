@@ -6,12 +6,12 @@ use super::fail::{Fail, Stop};
 use super::index::{self, Index};
 use super::item::{hash_of, not_found, passive, remote_hash_of, strip_done};
 use super::lock::SyncLock;
-use super::observe::{counted, no_progress, Observer, Step};
+use super::observe::{counted, no_progress, scan_tick, Observer, Step};
 use super::plan::{decide, resolve, Command, Decision, Local, Remote};
 use super::pull::pull_one;
 use super::push::{heal, push_one};
 use super::record::{record, save_index, Synced};
-use super::scan::{scan, select, Duplicate, Row};
+use super::scan::{scan_with, select, Duplicate, Row};
 use crate::sync::backend::{BackendError, SyncBackend};
 use crate::sync::crypto::Key;
 use crate::StorageManager;
@@ -87,25 +87,6 @@ pub struct Report {
     pub warning: Option<String>,
 }
 
-impl Report {
-    fn add(&mut self, command: Command, item: Item) {
-        match (&item.outcome, item.decision) {
-            (Outcome::Done(bytes), _) => {
-                self.bytes += bytes;
-                match command {
-                    Command::Push => self.pushed += 1,
-                    Command::Pull => self.pulled += 1,
-                }
-            }
-            (Outcome::Skipped(_), Decision::Conflict) => self.conflicts += 1,
-            (Outcome::Skipped(_), _) => self.skipped += 1,
-            (Outcome::Failed(_), _) => self.failed += 1,
-            _ => {}
-        }
-        self.items.push(item);
-    }
-}
-
 /// Engine over any backend, the key and the storage dir.
 pub struct Engine<'a> {
     pub backend: &'a dyn SyncBackend,
@@ -122,12 +103,21 @@ struct Loaded {
 impl Engine<'_> {
     /// Decisions only, never changes anything.
     pub fn status(&self, sessions: &[String]) -> Result<Report, SyncError> {
+        self.status_with(sessions, &mut no_progress)
+    }
+
+    /// Like `status`, the observer gets the load events.
+    pub fn status_with(
+        &self,
+        sessions: &[String],
+        observer: &mut Observer<'_>,
+    ) -> Result<Report, SyncError> {
         let opts = Options {
             dry_run: true,
             sessions: sessions.to_vec(),
             ..Options::default()
         };
-        self.sync(Command::Push, &opts, &mut counted(0, &mut no_progress))
+        self.sync(Command::Push, &opts, &mut counted(0, observer))
     }
 
     pub fn push(&self, opts: &Options) -> Result<Report, SyncError> {
@@ -173,7 +163,7 @@ impl Engine<'_> {
             return Ok(Report::default());
         }
         let _lock = SyncLock::acquire(&self.storage.storage_dir())?;
-        let mut loaded = self.load(sessions)?;
+        let mut loaded = self.load(sessions, &mut observer)?;
         let mut rows = std::mem::take(&mut loaded.rows).into_iter();
         while let Some(row) = rows.next() {
             let outcome = self.delete_one(&row, &mut loaded.index).map_err(|Stop| {
@@ -201,7 +191,7 @@ impl Engine<'_> {
         } else {
             Some(SyncLock::acquire(&self.storage.storage_dir())?)
         };
-        let mut loaded = self.load(&opts.sessions)?;
+        let mut loaded = self.load(&opts.sessions, observer)?;
         let mut rows = std::mem::take(&mut loaded.rows).into_iter();
         while let Some(row) = rows.next() {
             let item = self
@@ -236,12 +226,29 @@ impl Engine<'_> {
         Ok(self.item(&row, decision, outcome))
     }
 
-    fn load(&self, sessions: &[String]) -> Result<Loaded, SyncError> {
+    fn load(
+        &self,
+        sessions: &[String],
+        observer: &mut dyn FnMut(Step<'_>),
+    ) -> Result<Loaded, SyncError> {
         let (index, warning) = index::load(&self.storage.storage_dir());
+        observer(Step::Listing);
         let remote = self.backend.list()?;
         let names = (!sessions.is_empty()).then_some(sessions);
-        let mut rows = scan(self.storage, self.key, &remote, &index, names)
-            .map_err(|e| SyncError::Failed(e.to_string()))?;
+        let mut progress = |done, total| {
+            if scan_tick(done, total) {
+                observer(Step::Scanning { done, total });
+            }
+        };
+        let mut rows = scan_with(
+            self.storage,
+            self.key,
+            &remote,
+            &index,
+            names,
+            &mut progress,
+        )
+        .map_err(|e| SyncError::Failed(e.to_string()))?;
         let mut report = Report {
             warning,
             ..Report::default()

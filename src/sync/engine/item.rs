@@ -1,7 +1,26 @@
 //! Item helpers of the engine, pure functions over decisions and rows.
 
-use super::plan::{Decision, Local, Remote, SkipReason};
-use super::run::{Item, Outcome};
+use super::plan::{Command, Decision, Local, Remote, SkipReason};
+use super::run::{Item, Outcome, Report};
+
+impl Report {
+    pub(super) fn add(&mut self, command: Command, item: Item) {
+        match (&item.outcome, item.decision) {
+            (Outcome::Done(bytes), _) => {
+                self.bytes += bytes;
+                match command {
+                    Command::Push => self.pushed += 1,
+                    Command::Pull => self.pulled += 1,
+                }
+            }
+            (Outcome::Skipped(_), Decision::Conflict) => self.conflicts += 1,
+            (Outcome::Skipped(_), _) => self.skipped += 1,
+            (Outcome::Failed(_), _) => self.failed += 1,
+            _ => {}
+        }
+        self.items.push(item);
+    }
+}
 
 /// Outcome of a decision that does not act.
 pub(super) fn passive(decision: Decision) -> Outcome {

@@ -10,8 +10,11 @@ mod live;
 mod status;
 mod summary;
 
-pub use live::{live_head, LiveLine};
-pub use status::compact_status_lines;
+pub use live::{live_head, LiveLine, LoadLine};
+pub use status::{
+    compact_delete_preview_lines, compact_preview_lines, compact_status_lines,
+    compact_summary_lines,
+};
 pub use summary::{
     delete_preview_lines, preview_lines, privacy_lines, problem_lines, progress_line,
     rate_limit_lines, summary_lines,

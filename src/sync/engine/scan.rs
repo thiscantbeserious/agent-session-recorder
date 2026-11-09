@@ -77,10 +77,25 @@ pub fn scan(
     index: &Index,
     names: Option<&[String]>,
 ) -> Result<Vec<Row>> {
+    scan_with(storage, key, remote, index, names, &mut |_, _| {})
+}
+
+/// Like `scan`, `progress(done, total)` runs before the first and after every local session.
+pub(super) fn scan_with(
+    storage: &StorageManager,
+    key: &Key,
+    remote: &[RemoteEntry],
+    index: &Index,
+    names: Option<&[String]>,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<Vec<Row>> {
     let wanted: Option<BTreeSet<String>> =
         names.map(|n| n.iter().map(|name| wanted_path(storage, name)).collect());
     let mut rows = BTreeMap::new();
-    for session in storage.list_sessions(None)? {
+    let sessions = storage.list_sessions(None)?;
+    let total = sessions.len();
+    progress(0, total);
+    for (done, session) in sessions.into_iter().enumerate() {
         let path = format!("{}/{}", session.agent, session.filename);
         // Rows that `select` drops are listed but never hashed.
         let local = match &wanted {
@@ -88,6 +103,7 @@ pub fn scan(
             _ => local_state(&session),
         };
         rows.insert(path.clone(), row(&path, local, index));
+        progress(done + 1, total);
     }
     merge_remotes(&mut rows, key, remote, index);
     fall_back_to_index(&mut rows, index);
