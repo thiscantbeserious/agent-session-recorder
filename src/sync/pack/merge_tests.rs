@@ -99,3 +99,9 @@ fn other_key_pack_is_reported_never_merged() {
     assert_eq!(view.rejected, vec![("bad".to_string(), Rejected::OtherKey)]);
     assert!(view.get("x").is_none());
 }
+
+#[test]
+fn unknown_version_pack_is_reported() {
+    let view = merge(&[rejected_pack("bad", IndexError::UnknownVersion(4))]);
+    assert_eq!(view.rejected[0].1, Rejected::UnknownVersion(4));
+}
