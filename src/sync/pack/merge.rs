@@ -208,7 +208,9 @@ fn finish(view: &mut View) {
         let live = if fork { &m.places[..] } else { &m.places[..1] };
         for p in live {
             if let Some(d) = view.dead_bytes.get_mut(&p.pack) {
-                *d = d.saturating_sub(p.length);
+                *d = d
+                    .checked_sub(p.length)
+                    .expect("keeper length is in the pack sum");
             }
         }
         if fork {
