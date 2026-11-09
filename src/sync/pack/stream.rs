@@ -12,7 +12,6 @@ use std::path::Path;
 use thiserror::Error;
 
 /// One session file as a sealed segment, `len` is the exact byte count `write` produces.
-#[allow(dead_code)] // used by Stage 51 Repo
 pub struct FileSegment<'a> {
     pub len: u64,
     key: &'a Key,
@@ -28,7 +27,6 @@ pub struct FileSegment<'a> {
 /// compares it to the planned entry, a same-size rewrite in between changes the digest. A
 /// session still being recorded is skipped by caller policy, the engine skips locked sessions
 /// (`SkipReason::Locked`, `engine/scan.rs`) before it plans anything.
-#[allow(dead_code)] // used by Stage 51 Repo
 pub fn segment<'a>(
     key: &'a Key,
     pack: &'a str,
@@ -46,7 +44,6 @@ pub fn segment<'a>(
     })
 }
 
-#[allow(dead_code)] // used by Stage 51 Repo
 impl FileSegment<'_> {
     /// Streams the sealed blob into `dst`, one frame in memory at a time.
     pub fn write(&self, dst: &mut dyn Write) -> io::Result<Digest> {

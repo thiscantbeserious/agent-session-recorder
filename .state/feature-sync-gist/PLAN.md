@@ -1078,7 +1078,7 @@ Goal: `pack::Repo` with `open`, `view`, `push_batch`, `read_session`, `tombstone
 Owner: implementer
 PR: B
 
-- [ ] RED commit: `push_batch_appends_to_own_open_pack` [`assert_eq!(store.list()?.packs.len(), 1)` after two pushes on one writer, the stub creates a pack per push].
+- [x] RED commit: `push_batch_appends_to_own_open_pack` [`assert_eq!(store.list()?.packs.len(), 1)` after two pushes on one writer, the stub creates a pack per push].
 - [ ] RED commit:
   - `seal_then_next_push_creates_a_pack` [`assert_eq!(store.list()?.packs.len(), 2)`]
   - `big_session_gets_own_sealed_pack_and_open_pack_stays_open` [`assert!(own.sealed)` and `assert_eq!(repo.open_pack(), Some(old_id))`]
