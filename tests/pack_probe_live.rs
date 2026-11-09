@@ -518,7 +518,7 @@ fn append_fetch_trigger() {
     git(&dir, &["checkout"]);
     report("sparse_noncone_checkout", &dir, &oid);
     let name = write_new(&dir, next());
-    git(&dir, &["add", &name, "index"]);
+    git(&dir, &["add", "--sparse", &name, "index"]);
     git(&dir, &["commit", "-m", "append"]);
     report("sparse_noncone_commit", &dir, &oid);
     let pushed = git_try(&dir, &["push", "--no-verify", "origin", "HEAD"]);
