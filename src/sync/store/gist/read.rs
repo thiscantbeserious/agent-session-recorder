@@ -12,6 +12,7 @@ use crate::sync::backend::gist::parts::PartReader;
 use crate::sync::backend::gist::runner::Runner;
 use crate::sync::backend::gist::scratch::Scratch;
 use crate::sync::backend::gist::{io_result, strings};
+use crate::sync::backend::BackendError;
 
 /// `(part, first byte, last byte)` of every part the range `offset..offset + len` touches.
 fn covering(parts: &[FileRef], offset: u64, len: u64) -> Result<Vec<(&FileRef, u64, u64)>, String> {
@@ -40,9 +41,16 @@ impl<R: Runner> GistStore<R> {
         let range = format!("Range: bytes={from}-{to}");
         let args = strings(&["api", "-H", &range, url]);
         let out = io_result("gh", self.runner.run_to_file("gh", &args, &[], file)).map_err(be)?;
-        match out.success() {
+        if !out.success() {
+            return Err(be(map_failure("gh", &out.stderr, out.code)));
+        }
+        let got = std::fs::metadata(file).map_err(|e| be(BackendError::Other(e.to_string())))?;
+        match got.len() == to - from + 1 {
             true => Ok(()),
-            false => Err(be(map_failure("gh", &out.stderr, out.code))),
+            false => Err(StoreError::Other(format!(
+                "range {from}-{to} came back with {} bytes, the server ignored the range",
+                got.len()
+            ))),
         }
     }
 
