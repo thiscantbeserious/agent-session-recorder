@@ -23,6 +23,7 @@ struct Inner {
 #[derive(Default)]
 pub struct MemoryStore {
     inner: Mutex<Inner>,
+    slots: Option<usize>,
 }
 
 impl MemoryStore {
@@ -33,6 +34,14 @@ impl MemoryStore {
     /// Every later `read_index` for `id` fails, for the abort tests of the pack layer.
     pub fn fail_read_index(&self, id: &str) {
         self.lock().failing.insert(id.to_string());
+    }
+
+    /// Store whose packs hold at most `n` file slots, one per append, for `fits`.
+    pub fn with_slots(n: usize) -> Self {
+        Self {
+            slots: Some(n),
+            ..Self::default()
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -67,6 +76,11 @@ impl PackStore for MemoryStore {
             packs,
             legacy: Vec::new(),
         })
+    }
+
+    fn fits(&self, _info: &PackInfo, _lens: &[u64]) -> bool {
+        let _ = self.slots;
+        true
     }
 
     fn read_index(&self, id: &str) -> Result<String, StoreError> {
@@ -140,4 +154,16 @@ mod tests {
     use super::*;
 
     contract_tests!(|| (MemoryStore::new(), ()));
+
+    #[test]
+    fn memory_fits_false_when_slots_run_out() {
+        let store = MemoryStore::with_slots(2);
+        let id = store.create("t", "i0").unwrap();
+        let w = |w: &mut dyn std::io::Write| w.write_all(b"a");
+        let seg = || Segment { len: 1, write: &w };
+        store.append(&id, 0, "i0", &[seg()], "i1").unwrap();
+        store.append(&id, 1, "i1", &[seg()], "i2").unwrap();
+        let info = store.list().unwrap().packs.remove(0);
+        assert!(!store.fits(&info, &[1]));
+    }
 }
