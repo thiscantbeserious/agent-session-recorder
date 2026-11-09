@@ -5,7 +5,28 @@ use crate::sync::pack::stream::RangeError;
 use crate::sync::pack::stream::{open_range, segment};
 use crate::sync::store::{PackStore, Segment};
 use crate::sync::testing::MemoryStore;
-use std::io::Write;
+use std::io::{self, Write};
+
+/// Records the size of every `write` call.
+#[derive(Default)]
+struct Rec {
+    data: Vec<u8>,
+    writes: Vec<usize>,
+}
+
+impl Write for Rec {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.data.extend_from_slice(buf);
+        self.writes.push(buf.len());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+const FRAME: usize = 64 * 1024;
 
 #[test]
 fn segment_len_equals_written_bytes() {
@@ -104,4 +125,14 @@ fn truncated_range_fails() {
     let mut out = Vec::new();
     assert!(open_range(&key, &store, &id, &short, &mut out).is_err());
     assert!(out.is_empty());
+}
+
+#[test]
+fn open_range_streams_frames() {
+    let (store, key) = (MemoryStore::new(), Key::generate());
+    let id = store.create("tag", "i").unwrap();
+    let entry = push(&store, &key, &id, &vec![9u8; 3 * FRAME + 5]);
+    let mut w = Rec::default();
+    open_range(&key, &store, &id, &entry, &mut w).unwrap();
+    assert_eq!(w.writes, vec![FRAME, FRAME, FRAME, 5]);
 }

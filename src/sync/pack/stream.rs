@@ -2,7 +2,7 @@
 
 #![allow(dead_code)] // Repo of Stage 51 uses it
 
-use crate::sync::crypto::blob::{open_stream, seal_stream, sealed_len, BlobError};
+use crate::sync::crypto::blob::{open_stream, seal_stream, sealed_len, BlobError, Digest};
 use crate::sync::crypto::Key;
 use crate::sync::pack::index::Entry;
 use crate::sync::store::{PackStore, StoreError};
@@ -58,19 +58,19 @@ pub enum RangeError {
     Blob(#[from] BlobError),
 }
 
-/// Opens the range of `entry` from pack `id` into `out`, returns plaintext hash and size.
+/// Opens the range of `entry` from pack `id` into `dst`, returns plaintext hash and size.
 pub fn open_range(
     key: &Key,
     store: &dyn PackStore,
     id: &str,
     entry: &Entry,
-    out: &mut Vec<u8>,
-) -> Result<(String, u64), RangeError> {
+    dst: &mut dyn Write,
+) -> Result<Digest, RangeError> {
     let src = store.read(id, entry.offset, entry.length)?;
-    // ponytail: whole session in memory, `out` only gets plaintext once every frame verified
+    // ponytail: whole session in memory, `dst` only gets plaintext once every frame verified
     let mut opened = Vec::new();
     let digest = open_stream(key, &entry.path, entry.gen, src, &mut opened)?;
-    *out = opened;
+    dst.write_all(&opened).map_err(BlobError::Io)?;
     Ok(digest)
 }
 

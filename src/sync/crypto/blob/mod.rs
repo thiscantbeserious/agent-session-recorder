@@ -28,7 +28,7 @@ pub enum BlobError {
 }
 
 /// Plaintext SHA-256 (hex) and size seen by the sealer or opener.
-pub(super) type Digest = (String, u64);
+pub type Digest = (String, u64);
 
 /// Exact byte count of a sealed blob for `size` plain bytes: header, one tag per frame, an
 /// empty input still has one (last) frame.
