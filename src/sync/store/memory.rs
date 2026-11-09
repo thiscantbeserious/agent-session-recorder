@@ -140,8 +140,10 @@ impl PackStore for MemoryStore {
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError> {
         let inner = self.lock();
         let data = &inner.packs.get(id).ok_or(StoreError::NotFound)?.data;
-        let (from, to) = (offset as usize, (offset + len) as usize);
-        let range = data.get(from..to).ok_or(StoreError::NotFound)?;
+        let end = offset.checked_add(len).ok_or(StoreError::NotFound)?;
+        let range = data
+            .get(offset as usize..end as usize)
+            .ok_or(StoreError::NotFound)?;
         Ok(Box::new(Cursor::new(range.to_vec())))
     }
 
