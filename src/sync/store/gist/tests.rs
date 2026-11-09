@@ -285,3 +285,16 @@ fn cache_survives_corrupt_file() {
         "{rewritten}"
     );
 }
+
+#[test]
+fn read_index_hits_the_cache_after_a_listing() {
+    let dir = tempfile::tempdir().unwrap();
+    run_once(dir.path(), "t1", "idx");
+    let fake = Fake::with(vec![ok(&listed("t1")), ok(&listed("t1"))]);
+    let store = cache_store(&fake, dir.path());
+    store.list().unwrap();
+    assert_eq!(store.read_index("a").unwrap(), "idx");
+    store.list().unwrap();
+    assert_eq!(store.read_index("a").unwrap(), "idx");
+    assert_eq!(api_calls_for(&fake, "a"), 0);
+}
