@@ -49,3 +49,11 @@ fn same_hash_twice_is_one_session_two_places() {
     let view = merge(&[a, b]);
     assert_eq!(view.get("a").unwrap().places.len(), 2);
 }
+
+#[test]
+fn different_hash_same_top_gen_is_fork() {
+    let a = pack("p1", "P1", 10, vec![entry("a", 4, "x", 10, false)]);
+    let b = pack("p2", "P2", 10, vec![entry("a", 4, "y", 10, false)]);
+    let view = merge(&[a, b]);
+    assert_eq!(view.forks, vec!["a"]);
+}
