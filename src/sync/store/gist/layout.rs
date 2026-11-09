@@ -8,28 +8,55 @@ pub(crate) const PART_BYTES: u64 = 8 * MIB;
 /// Sizes of the parts one append writes, cut at session boundaries. A session over 8 MiB gets
 /// its own parts of 8 MiB and a closing remainder.
 pub(crate) fn cut_parts(lens: &[u64]) -> Vec<u64> {
-    lens.to_vec()
+    let (mut parts, mut open) = (Vec::new(), 0);
+    for &len in lens {
+        if open > 0 && open + len > PART_BYTES {
+            parts.push(std::mem::take(&mut open));
+        }
+        if len > PART_BYTES {
+            let (full, rest) = (len / PART_BYTES, len % PART_BYTES);
+            parts.extend(std::iter::repeat_n(PART_BYTES, full as usize));
+            open = rest;
+        } else {
+            open += len;
+        }
+    }
+    if open > 0 {
+        parts.push(open);
+    }
+    parts
 }
 
 /// Most files a pack gist may hold, the index included, under the 300 file limit of the listing.
 pub(crate) const MAX_FILES: usize = 250;
 
-/// Names for the parts of the next append, numbered on after the existing ones.
-pub(crate) fn next_names(existing: &[&str], count: usize) -> Result<Vec<String>, String> {
-    let _ = existing;
-    Ok((0..count).map(|i| format!("data.{i:03}")).collect())
+fn part_name(n: usize) -> String {
+    format!("data.{n:03}")
 }
 
 /// `existing` must be exactly `data.000` up to `data.N`, no gap and no reorder, none is fine.
 pub(crate) fn check_parts(existing: &[&str]) -> Result<(), String> {
-    let _ = existing;
-    Ok(())
+    match existing
+        .iter()
+        .enumerate()
+        .find(|(i, n)| **n != part_name(*i))
+    {
+        Some((i, n)) => Err(format!("expected {} but found {n}", part_name(i))),
+        None => Ok(()),
+    }
+}
+
+/// Names for the parts of the next append, numbered on after the existing ones.
+pub(crate) fn next_names(existing: &[&str], count: usize) -> Result<Vec<String>, String> {
+    check_parts(existing)?;
+    Ok((existing.len()..existing.len() + count)
+        .map(part_name)
+        .collect())
 }
 
 /// Whether an append of sessions with these `lens` fits a gist that holds `files` files now.
 pub(crate) fn fits(files: usize, lens: &[u64]) -> bool {
-    let _ = (files, lens);
-    true
+    files + cut_parts(lens).len() <= MAX_FILES
 }
 
 #[cfg(test)]
