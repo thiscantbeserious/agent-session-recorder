@@ -1094,7 +1094,7 @@ PR: B
   - `retry_uses_the_index_from_moved` [`assert_eq!(store.read_index_calls(id), 0)` during the retry and the retry's `expected_index` equals the `Moved` text, the stub re-reads through `read_index`]
   - tombstone case: A tombstones s, B tombstones t on an index read before A's push [`assert!(view.get("s").unwrap().is_deleted() && view.get("t").unwrap().is_deleted())`, the stub guards on length only and s comes back]
 - [x] RED commit: `read_pack_takes_the_key_as_argument` (P9, room for `agr share`): `pack::read_pack(store, id, &key)` opens one pack sealed with a test key that is not the sync key, without the merge and without any global or app key [`assert_eq!(sessions.len(), 2)`, the stub returns an empty vec].
-- [ ] RED commit:
+- [x] RED commit:
   - `read_session_tries_next_place_on_not_found` [`assert_eq!(sha, want)` with the first place deleted]
   - `read_session_writes_to_temp_and_renames_only_on_success` [`assert!(!target.exists())` and no hidden temp file left after an error, `open_range` streams into a hidden temp file, digest and size are checked, rename only on success, the temp is deleted on error]
   - `read_session_checks_sha256_after_open` [`assert!(matches!(err, ReadError::HashMismatch))` and `assert!(!target.exists())`, a range that opens under the right AAD but whose plaintext hash differs from the index is never written]

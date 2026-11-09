@@ -10,6 +10,8 @@ mod tests_fits;
 mod tests_read;
 #[cfg(test)]
 mod tests_retry;
+#[cfg(test)]
+mod tests_session;
 
 pub use push::{PushItem, PushReport};
 pub use read::{read_pack, ReadError};

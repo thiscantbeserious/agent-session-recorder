@@ -1,9 +1,11 @@
 //! Reads: one whole pack under a given key, and one session of the merged view.
 
+use super::Repo;
 use crate::sync::crypto::Key;
 use crate::sync::pack::index::{open_index, Entry};
 use crate::sync::pack::stream::{open_range, RangeError};
 use crate::sync::store::{PackStore, StoreError};
+use std::path::Path;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -16,6 +18,8 @@ pub enum ReadError {
     Index,
     #[error("session does not match its recorded hash")]
     HashMismatch,
+    #[error("no such session: {0}")]
+    Unknown(String),
     #[error(transparent)]
     Io(#[from] std::io::Error),
 }
@@ -45,4 +49,11 @@ pub fn read_pack(
         out.push((e, plain));
     }
     Ok(out)
+}
+
+impl Repo<'_> {
+    /// Opens the session `path` of the merged view into `target`.
+    pub fn read_session(&self, _path: &str, _target: &Path) -> Result<(), ReadError> {
+        Ok(())
+    }
 }
