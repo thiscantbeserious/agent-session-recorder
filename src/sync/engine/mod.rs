@@ -2,6 +2,7 @@
 
 mod fail;
 pub mod index;
+mod item;
 pub(super) mod lock;
 pub(super) mod plan;
 mod pull;
