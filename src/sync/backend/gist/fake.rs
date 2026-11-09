@@ -13,7 +13,7 @@ use std::time::Duration;
 type Files = Vec<(String, Vec<u8>)>;
 
 /// Whole-blob shorthands over the streaming trait.
-pub(super) trait Bytes: SyncBackend + Sized {
+pub(crate) trait Bytes: SyncBackend + Sized {
     fn push_b(&self, id: &str, e: Option<&str>, m: &str, b: &[u8]) -> Result<(), BackendError> {
         push_bytes(self, id, e, m, b)
     }
@@ -24,23 +24,25 @@ pub(super) trait Bytes: SyncBackend + Sized {
 impl<T: SyncBackend> Bytes for T {}
 
 #[derive(Default)]
-pub(super) struct Fake {
-    pub(super) calls: RefCell<Vec<String>>,
-    pub(super) replies: RefCell<VecDeque<std::io::Result<Output>>>,
-    pub(super) pushed: RefCell<Option<Files>>,
-    pub(super) stub_seen: RefCell<Option<String>>,
-    pub(super) clone_dirs: RefCell<Vec<PathBuf>>,
-    pub(super) envs: RefCell<Vec<Vec<(String, String)>>>,
-    pub(super) pushed_manifest: RefCell<Option<String>>,
-    pub(super) stamps: RefCell<Vec<(String, Duration)>>,
-    pub(super) clock: Option<Arc<FakeClock>>,
-    pub(super) remote: Files,
+pub(crate) struct Fake {
+    pub(crate) calls: RefCell<Vec<String>>,
+    pub(crate) replies: RefCell<VecDeque<std::io::Result<Output>>>,
+    pub(crate) pushed: RefCell<Option<Files>>,
+    pub(crate) stub_seen: RefCell<Option<String>>,
+    pub(crate) clone_dirs: RefCell<Vec<PathBuf>>,
+    pub(crate) envs: RefCell<Vec<Vec<(String, String)>>>,
+    pub(crate) pushed_manifest: RefCell<Option<String>>,
+    pub(crate) stamps: RefCell<Vec<(String, Duration)>>,
+    pub(crate) clock: Option<Arc<FakeClock>>,
+    pub(crate) remote: Files,
     /// Stderr lines `run_watched` hands to the watcher of a `git push` or `git clone`.
-    pub(super) watch: Vec<String>,
+    pub(crate) watch: Vec<String>,
+    /// A server that ignores `Range` and answers 200 with the whole part.
+    pub(crate) ignore_range: bool,
 }
 
 /// Every `data.*` file of a clone, sorted by name.
-pub(super) fn data_files(dir: &Path) -> Files {
+pub(crate) fn data_files(dir: &Path) -> Files {
     let mut files: Vec<_> = part_names(dir)
         .unwrap()
         .into_iter()
@@ -53,11 +55,11 @@ pub(super) fn data_files(dir: &Path) -> Files {
     files
 }
 
-pub(super) fn remote_parts(n: usize) -> Files {
+pub(crate) fn remote_parts(n: usize) -> Files {
     (0..n).map(|i| (part_name(i), vec![i as u8; 3])).collect()
 }
 
-pub(super) fn ok(stdout: &str) -> std::io::Result<Output> {
+pub(crate) fn ok(stdout: &str) -> std::io::Result<Output> {
     Ok(Output {
         code: Some(0),
         stdout: stdout.into(),
@@ -65,7 +67,7 @@ pub(super) fn ok(stdout: &str) -> std::io::Result<Output> {
     })
 }
 
-pub(super) fn fail(stderr: &str) -> std::io::Result<Output> {
+pub(crate) fn fail(stderr: &str) -> std::io::Result<Output> {
     Ok(Output {
         code: Some(1),
         stdout: String::new(),
@@ -74,18 +76,18 @@ pub(super) fn fail(stderr: &str) -> std::io::Result<Output> {
 }
 
 impl Fake {
-    pub(super) fn with(replies: Vec<std::io::Result<Output>>) -> Self {
+    pub(crate) fn with(replies: Vec<std::io::Result<Output>>) -> Self {
         Self {
             replies: RefCell::new(replies.into()),
             ..Self::default()
         }
     }
 
-    pub(super) fn calls(&self) -> Vec<String> {
+    pub(crate) fn calls(&self) -> Vec<String> {
         self.calls.borrow().clone()
     }
 
-    pub(super) fn side_effects(&self, program: &str, args: &[String], cwd: Option<&Path>) {
+    pub(crate) fn side_effects(&self, program: &str, args: &[String], cwd: Option<&Path>) {
         if program == "gh" && args.get(1).map(String::as_str) == Some("create") {
             let stub = std::fs::read_to_string(&args[2]).unwrap();
             *self.stub_seen.borrow_mut() = Some(stub);
@@ -107,6 +109,24 @@ impl Fake {
     }
 }
 
+impl Fake {
+    /// The `remote` bytes a `gh api -H "Range: bytes=a-b" <raw_url>` reads, the file is named like
+    /// the last url segment.
+    fn raw_body(&self, program: &str, args: &[String]) -> Option<Vec<u8>> {
+        let range = args.iter().find_map(|a| a.strip_prefix("Range: bytes="))?;
+        let name = args.last()?.rsplit('/').next()?;
+        let (from, to) = range.split_once('-')?;
+        let (from, to): (usize, usize) = (from.parse().ok()?, to.parse().ok()?);
+        let (_, body) = self.remote.iter().find(|(n, _)| n == name)?;
+        let wanted = if self.ignore_range {
+            body.clone()
+        } else {
+            body[from..=to].to_vec()
+        };
+        (program == "gh").then_some(wanted)
+    }
+}
+
 impl Runner for &Fake {
     fn run_watched(
         &self,
@@ -119,6 +139,20 @@ impl Runner for &Fake {
         let out = self.run(program, args, cwd, env);
         self.watch.iter().for_each(|line| on_line(line));
         out
+    }
+
+    fn run_to_file(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &[(&str, String)],
+        dest: &Path,
+    ) -> std::io::Result<Output> {
+        let out = self.run(program, args, None, env)?;
+        if let (true, Some(body)) = (out.success(), self.raw_body(program, args)) {
+            std::fs::write(dest, body)?;
+        }
+        Ok(out)
     }
 
     fn run(
@@ -139,18 +173,16 @@ impl Runner for &Fake {
         }
         self.calls.borrow_mut().push(call);
         self.side_effects(program, args, cwd);
-        self.replies
-            .borrow_mut()
-            .pop_front()
-            .unwrap_or_else(|| ok(""))
+        let reply = self.replies.borrow_mut().pop_front();
+        reply.unwrap_or_else(|| ok(""))
     }
 }
 
-pub(super) fn backend<'a>(fake: &'a Fake, base: &Path) -> GistBackend<&'a Fake> {
+pub(crate) fn backend<'a>(fake: &'a Fake, base: &Path) -> GistBackend<&'a Fake> {
     GistBackend::with_runner(fake, base.to_path_buf())
 }
 
-pub(super) fn scrub(calls: &[String], base: &Path) -> Vec<String> {
+pub(crate) fn scrub(calls: &[String], base: &Path) -> Vec<String> {
     let base = base.to_string_lossy();
     calls
         .iter()
@@ -349,7 +381,7 @@ fn a_stalled_call_says_so_and_names_the_retry() {
     );
 }
 
-pub(super) fn source_of(
+pub(crate) fn source_of(
     bytes: &'static [u8],
 ) -> impl Fn(&mut dyn std::io::Write) -> std::io::Result<()> {
     move |w| w.write_all(bytes)

@@ -35,6 +35,7 @@ pub mod testing {
         pack_size, place, should_seal, should_seal_index, PackSizeError, Place,
     };
     pub use crate::sync::store::dir::DirStore;
+    pub use crate::sync::store::gist::GistStore;
     pub use crate::sync::store::memory::MemoryStore;
     pub use crate::sync::store::{Listing, PackInfo, PackStore, Segment, StoreError};
 }

@@ -1,11 +1,11 @@
 //! Gist backend, `gh` for create, list and delete, `git` for the binary blob.
 
-pub(super) mod pace;
-pub(super) mod parse;
-pub(super) mod parts;
+pub(crate) mod pace;
+pub(crate) mod parse;
+pub(crate) mod parts;
 mod progress;
-pub(super) mod runner;
-mod scratch;
+pub(crate) mod runner;
+pub(crate) mod scratch;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -72,11 +72,14 @@ impl Default for GistBackend<ProcessRunner> {
     }
 }
 
-fn strings(args: &[&str]) -> Vec<String> {
+pub(crate) fn strings(args: &[&str]) -> Vec<String> {
     args.iter().map(ToString::to_string).collect()
 }
 
-fn io_result(tool: &'static str, result: std::io::Result<Output>) -> Result<Output, BackendError> {
+pub(crate) fn io_result(
+    tool: &'static str,
+    result: std::io::Result<Output>,
+) -> Result<Output, BackendError> {
     match result {
         Ok(out) => Ok(out),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(BackendError::NotInstalled(tool)),
@@ -378,7 +381,7 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
 }
 
 #[cfg(test)]
-mod fake;
+pub(crate) mod fake;
 #[cfg(test)]
 mod pull_tests;
 #[cfg(test)]

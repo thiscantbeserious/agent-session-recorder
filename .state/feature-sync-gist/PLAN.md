@@ -1113,16 +1113,16 @@ Goal: `store/gist` lists `agr:v2` gists, reads the index through `gh api` with a
 Owner: implementer
 PR: B
 
-- [ ] Visibility and error changes in `backend/gist/` (no behaviour change, a commit `refactor(sync): ...` before the first RED): `mod progress` and `writing_percent`, `receiving_percent` become `pub(crate)`, `Pacer`, `SystemClock`, `MIN_GAP` and `runner::Lines` become `pub(crate)`, `Fake`, `ok`, `fail` in `fake.rs` become `pub(crate)` under `cfg(test)`. `Clock::unix_secs` returns `Result<u64, ClockError>` (a small error in `pace.rs`) instead of `BackendError`, `BackendError` and `StoreError` both get `From<ClockError>`. The existing `pace.rs` tests stay green.
-- [ ] RED commit: `parts_cut_at_session_boundaries` [`assert_eq!(parts, vec![7 * MIB, 2 * MIB])` for lens 3, 4 and 2 MiB, the stub gives one part per session].
-- [ ] RED commit:
+- [x] Visibility and error changes in `backend/gist/` (no behaviour change, a commit `refactor(sync): ...` before the first RED): `mod progress` and `writing_percent`, `receiving_percent` become `pub(crate)`, `Pacer`, `SystemClock`, `MIN_GAP` and `runner::Lines` become `pub(crate)`, `Fake`, `ok`, `fail` in `fake.rs` become `pub(crate)` under `cfg(test)`. `Clock::unix_secs` returns `Result<u64, ClockError>` (a small error in `pace.rs`) instead of `BackendError`, `BackendError` and `StoreError` both get `From<ClockError>`. The existing `pace.rs` tests stay green.
+- [x] RED commit: `parts_cut_at_session_boundaries` [`assert_eq!(parts, vec![7 * MIB, 2 * MIB])` for lens 3, 4 and 2 MiB, the stub gives one part per session].
+- [x] RED commit:
   - `session_over_8_mib_gets_own_parts` [`assert_eq!(parts, vec![8 * MIB, 8 * MIB, 4 * MIB])` for 20 MiB]
   - `append_numbers_continue_after_last_part` [`assert_eq!(names[0], "data.003")`]
   - `gap_or_order_in_parts_is_an_error` [`assert!(check_parts(&["data.000", "data.002"]).is_err())`, port of the `parts.rs` tests]
   - `fits_refuses_over_250_files` [`assert!(!store.fits(&info_249_files, &[9 * MIB]))`]
   - `fits_false_when_no_file_slot_left` [`assert!(!store.fits(&info_250_files, &[1]))`]
-- [ ] GREEN commit: `layout.rs`.
-- [ ] RED commit (Fake runner):
+- [x] GREEN commit: `layout.rs`.
+- [x] RED commit (Fake runner):
   - `list_keeps_only_agr_v2_over_pages` [`assert_eq!(ids, vec!["a", "c"])` over two pages]
   - `list_passes_agr_v1_descriptions_as_legacy` [`assert_eq!(listing.legacy, vec!["agr:v1 tok"])`, `agr:pending` and foreign gists are in neither list, the stub drops them]
   - `truncated_index_is_other_not_half_an_index` [`assert!(matches!(err, StoreError::Other(_)))`]
@@ -1130,14 +1130,14 @@ PR: B
   - `pack_description_is_agr_v2_and_uuid_only` [`assert_eq!(desc, format!("agr:v2 {tag}"))`]
   - `read_range_requests_only_covering_parts` [`assert_eq!(range_calls, vec!["data.001 bytes=..."])`, no clone in the calls]
   - `failed_raw_url_read_is_a_store_error_no_clone` [`assert!(matches!(err, StoreError::Unreachable))` and `assert!(!calls.iter().any(|c| c.contains("clone")))`]
-- [ ] GREEN commit: `api.rs` and `read.rs`.
+- [x] GREEN commit: `api.rs` and `read.rs`.
 - [x] Probe dependency: the key comes from `updated_at_moves_on_git_push` (Stage 46). Both lines PASSED on 2026-11-09: the tests below as written, the fallback is not needed. Either line FAILS: the fallback of ADR "Index cache (pending probe)", the two `updated_at` tests become `sealed_entry_is_cached_forever_by_id` [`assert_eq!(api_calls_for(id), 0)` with a changed `updated_at`] and `open_pack_is_read_every_time_and_keyed_on_history_version` [`assert_eq!(api_calls_for(id), 2)` over two opens, the entry key is `history[0].version`], plus `gone_id_drops_its_entry` [`assert!(cache.get(id).is_none())`].
-- [ ] RED commit, index cache (`<user cache dir>/agr/index-cache.json`, keyed by gist id plus `updated_at`):
+- [x] RED commit, index cache (`<user cache dir>/agr/index-cache.json`, keyed by gist id plus `updated_at`):
   - `sealed_index_cache_hit_skips_the_api` [`assert_eq!(api_calls_for(id), 0)` on the second `read_index` with the same `updated_at`, the stub always calls the API]
   - `changed_updated_at_refetches` [`assert_eq!(api_calls_for(id), 1)`]
   - `cache_survives_corrupt_file` [`assert_eq!(store.read_index(id)?, text)` with garbage in the cache file, the file is rewritten valid]
   - `cache_entry_dropped_on_moved` [`assert!(cache.get(id).is_none())`]
-- [ ] GREEN commit: `index_cache.rs`, temp plus rename, sealed text only.
+- [x] GREEN commit: `index_cache.rs`, temp plus rename, sealed text only.
 - [ ] Probe dependency: Stage 46 verified `raw_url` with `Range` (206, correct bytes) on secret gists, so no branch is needed here.
 
 Files: `src/sync/store/mod.rs`, `src/sync/store/gist/mod.rs`, `src/sync/store/gist/layout.rs`, `src/sync/store/gist/api.rs`, `src/sync/store/gist/read.rs`, `src/sync/store/gist/index_cache.rs`, `src/sync/store/gist/tests.rs`, `src/sync/backend/gist/mod.rs`, `src/sync/backend/gist/pace.rs`, `src/sync/backend/gist/progress.rs`, `src/sync/backend/gist/runner.rs`, `src/sync/backend/gist/fake.rs`, `src/sync/backend/mod.rs`

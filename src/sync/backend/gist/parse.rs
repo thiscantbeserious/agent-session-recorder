@@ -3,7 +3,7 @@
 use crate::sync::backend::{BackendError, RemoteEntry};
 
 /// Description prefix of every agr gist.
-pub(super) const DESC_PREFIX: &str = "agr:v1 ";
+pub(crate) const DESC_PREFIX: &str = "agr:v1 ";
 
 #[derive(serde::Deserialize)]
 struct Gist {
@@ -14,13 +14,13 @@ struct Gist {
 }
 
 /// Sorts after every real timestamp, a gist without `created_at` never wins the pick (D7).
-pub(super) const NO_CREATED_AT: &str = "9999-12-31T23:59:59Z";
+pub(crate) const NO_CREATED_AT: &str = "9999-12-31T23:59:59Z";
 
 /// GitHub stops listing after this many gists, see https://docs.github.com/en/rest/gists/gists.
-pub(super) const LIST_LIMIT: usize = 3000;
+pub(crate) const LIST_LIMIT: usize = 3000;
 
 /// Parse `gh api gists --paginate`, which prints one JSON array per page back to back.
-pub(super) fn parse_list(json: &str) -> Result<Vec<RemoteEntry>, BackendError> {
+pub(crate) fn parse_list(json: &str) -> Result<Vec<RemoteEntry>, BackendError> {
     let pages = serde_json::Deserializer::from_str(json).into_iter::<Vec<Gist>>();
     let mut entries = Vec::new();
     let mut total = 0;
@@ -51,7 +51,7 @@ fn to_entry(gist: Gist) -> Option<RemoteEntry> {
 }
 
 /// Gist id from the URL `gh gist create` prints.
-pub(super) fn id_from_create_output(stdout: &str) -> Option<String> {
+pub(crate) fn id_from_create_output(stdout: &str) -> Option<String> {
     let url = stdout.lines().find(|l| l.contains("gist.github.com/"))?;
     let id = url.trim().rsplit('/').next()?;
     (!id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric())).then(|| id.to_string())
@@ -81,7 +81,7 @@ const GIT_NO_ACCESS: &str = "repository not found";
 const REJECTED: [&str; 3] = ["! [rejected]", "non-fast-forward", "fetch first"];
 
 /// Map a failed `gh` or `git` run to one clear error, never echoes raw stderr.
-pub(super) fn map_failure(tool: &'static str, stderr: &str, code: Option<i32>) -> BackendError {
+pub(crate) fn map_failure(tool: &'static str, stderr: &str, code: Option<i32>) -> BackendError {
     let text = stderr.to_lowercase();
     let has = |needles: &[&str]| needles.iter().any(|n| text.contains(n));
     if has(&RATE_LIMIT) {
@@ -112,7 +112,7 @@ pub(super) fn map_failure(tool: &'static str, stderr: &str, code: Option<i32>) -
 /// Check `gh auth status` output, stdout and stderr together. Only called after exit 0.
 /// Fine-grained tokens print no scopes line, a missing gist permission then shows on
 /// the first gist call.
-pub(super) fn check_auth(output: &str) -> Result<(), BackendError> {
+pub(crate) fn check_auth(output: &str) -> Result<(), BackendError> {
     let scopes = output.lines().find(|l| l.contains("Token scopes"));
     match scopes {
         Some(line) if line.contains("gist") => Ok(()),
