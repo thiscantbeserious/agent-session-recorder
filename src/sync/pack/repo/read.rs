@@ -75,24 +75,27 @@ impl Repo<'_> {
             Some(m) if !m.is_deleted() => m,
             _ => return Err(ReadError::Unknown(path.into())),
         };
-        let places: Vec<_> = merged.places.iter().collect();
-        atomic_write_raw_with(target, |out| {
-            let mut last = ReadError::Unknown(path.into());
-            for place in &places {
-                let entry = self.entry_of(path, merged.gen, place);
-                match entry.map(|e| self.open_into(&place.pack, &e, out)) {
-                    Some(Err(e)) if e.is_not_found() => {}
-                    None => {}
-                    Some(Err(e)) => return Err(e.into()),
-                    Some(Ok(())) => return Ok(()),
-                }
-                last = ReadError::Store(StoreError::NotFound);
+        let mut last = ReadError::Unknown(path.into());
+        for place in &merged.places {
+            let Some(entry) = self.entry_of(path, merged.gen, place) else {
+                continue;
+            };
+            match self.read_place(&place.pack, &entry, target) {
+                Ok(()) => return Ok(()),
+                Err(e) if e.is_not_found() => last = ReadError::Store(StoreError::NotFound),
+                Err(e) => return Err(e),
             }
-            Err(last.into())
-        })
-        .map_err(|e| match e.downcast::<ReadError>() {
-            Ok(read) => read,
-            Err(other) => ReadError::Io(std::io::Error::other(other.to_string())),
+        }
+        Err(last)
+    }
+
+    /// One place into its own temp file, a failed place leaves nothing for the next one.
+    fn read_place(&self, pack: &str, entry: &Entry, target: &Path) -> Result<(), ReadError> {
+        atomic_write_raw_with(target, |out| Ok(self.open_into(pack, entry, out)?)).map_err(|e| {
+            match e.downcast::<ReadError>() {
+                Ok(read) => read,
+                Err(other) => ReadError::Io(std::io::Error::other(other.to_string())),
+            }
         })
     }
 
