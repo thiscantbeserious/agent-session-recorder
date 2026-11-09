@@ -1015,7 +1015,7 @@ PR: B
   - `index_from_another_pack_is_rejected` [`assert!(matches!(open_index(key, other_uuid, &text), Err(IndexError::OtherPack)))`, the AAD binds the pack uuid and the stub ignores it]
   - `two_seals_of_one_index_differ` [`assert_ne!(seal_index(k, &i), seal_index(k, &i))`, fresh nonce, the `expected_index` guard relies on it]
   - `pack_uuid_is_26_base32_chars` [`assert_eq!(new_pack_uuid().len(), 26)`]
-- [ ] GREEN commit: `Index { v, pack, writer, sealed, len, entries }`, `Entry { path, gen, sha256, size, offset, length, deleted, at }`, `seal_index`, `open_index`, `new_pack_uuid` on the existing one-shot `seal`.
+- [x] GREEN commit: `Index { v, pack, writer, sealed, len, entries }`, `Entry { path, gen, sha256, size, offset, length, deleted, at }`, `seal_index`, `open_index`, `new_pack_uuid` on the existing one-shot `seal`.
 - [ ] RED commit, table tests in `rules.rs`:
   - `seal_at_target` [`assert!(should_seal(target, target))`, the stub returns `false`, plus `assert!(!should_seal(target, target - 1))`]
   - `big_session_gets_own_pack` [`assert_eq!(place(target, target + 1), Place::OwnPack)`]

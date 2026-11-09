@@ -9,6 +9,7 @@ mod seal;
 
 pub use phrase::PhraseError;
 pub(in crate::sync) use phrase::{export_phrase, import_phrase};
+pub(in crate::sync) use seal::open;
 pub use seal::{open_meta, seal, seal_meta, Meta};
 
 use chacha20poly1305::aead::{Generate, KeyInit};

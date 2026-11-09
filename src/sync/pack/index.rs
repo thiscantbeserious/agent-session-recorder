@@ -1,6 +1,9 @@
 //! Sealed pack index: JSON v3 under AAD `agr:pack-index:` plus the pack uuid.
 
-use crate::sync::crypto::Key;
+use crate::sync::crypto::{open, seal, CryptoError, Key};
+use chacha20poly1305::aead::Generate;
+use chacha20poly1305::XNonce;
+use data_encoding::{BASE32_NOPAD, BASE64URL_NOPAD};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -40,23 +43,44 @@ pub enum IndexError {
     Bad,
 }
 
-pub fn seal_index(_key: &Key, _idx: &Index) -> String {
-    "=+/".to_string()
+const AAD_PREFIX: &str = "agr:pack-index:";
+const VERSION: u8 = 3;
+
+fn aad(uuid: &str) -> Vec<u8> {
+    format!("{AAD_PREFIX}{uuid}").into_bytes()
 }
 
-pub fn open_index(_key: &Key, uuid: &str, _text: &str) -> Result<Index, IndexError> {
-    Ok(Index {
-        v: 3,
-        pack: uuid.to_string(),
-        writer: String::new(),
-        sealed: false,
-        len: 0,
-        entries: Vec::new(),
-    })
+/// `<uuid>.<base64url(sealed json)>`. The uuid is also the public pack tag, the plain prefix only
+/// tells "other pack" from "other key", the AAD still binds it.
+pub fn seal_index(key: &Key, idx: &Index) -> String {
+    let json = serde_json::to_vec(idx).expect("Index serializes to JSON");
+    let sealed = seal(key, &aad(&idx.pack), &json);
+    format!("{}.{}", idx.pack, BASE64URL_NOPAD.encode(&sealed))
 }
 
+pub fn open_index(key: &Key, uuid: &str, text: &str) -> Result<Index, IndexError> {
+    let (pack, body) = text.split_once('.').ok_or(IndexError::Bad)?;
+    if pack != uuid {
+        return Err(IndexError::OtherPack);
+    }
+    let raw = BASE64URL_NOPAD
+        .decode(body.as_bytes())
+        .map_err(|_| IndexError::Bad)?;
+    let json = open(key, &aad(uuid), &raw).map_err(|e| match e {
+        CryptoError::Authentication => IndexError::OtherKey,
+        _ => IndexError::Bad,
+    })?;
+    let idx: Index = serde_json::from_slice(&json).map_err(|_| IndexError::Bad)?;
+    match idx.v {
+        VERSION => Ok(idx),
+        v => Err(IndexError::UnknownVersion(v)),
+    }
+}
+
+/// Random 128 bit pack id as 26 base32 characters.
 pub fn new_pack_uuid() -> String {
-    String::new()
+    let nonce = XNonce::generate();
+    BASE32_NOPAD.encode(&nonce[..16])
 }
 
 #[cfg(test)]
