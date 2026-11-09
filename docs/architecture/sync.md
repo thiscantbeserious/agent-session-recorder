@@ -256,24 +256,34 @@ flowchart TD
     off -- yes --> silent[nothing printed]
     off -- no --> block{blocker: ack, key, tools, compressed, lock}
     block -- yes --> hint[one hint line]
-    block -- no --> spawn[detached agr sync push --auto]
-    spawn --> child[child: new session plus changed synced ones]
-    child --> err{failed or skipped?}
+    block -- no --> spawn[spawn]
+    spawn --> queue[queue entry written first]
+    queue --> child[detached agr sync push --auto]
+    child --> lock{got the lock?}
+    lock -- no --> quiet[exit quietly, entry stays queued]
+    lock -- yes --> drain[drain queue plus changed synced ones]
+    drain --> again{queue has new entries?}
+    again -- yes --> drain
+    again -- no --> err{failed or skipped?}
     err -- yes --> state[last_auto_push_error in state.toml]
     err -- no --> done[nothing stored]
     hint --> warn[storage warning]
     silent --> warn
     spawn --> warn
 ```
-Legend: the hook runs in the recording process, the child runs detached and only talks back through `state.toml`.
+Legend: the hook runs in the recording process and queues the session before it spawns, the child runs detached, the lock holder drains the queue and the child that loses the race has nothing left to do, errors only go back through `state.toml`.
 
 **Child side:** `push_auto` returns silently without the ack and needs an existing key, it never creates one ([commands/sync/run.rs](../../src/commands/sync/run.rs#L297)). It pushes without a prompt, never pulls, never deletes and never uses `--overwrite`, so a conflict is skipped and reported ([app/auto/child.rs](../../src/sync/app/auto/child.rs#L42)).
 
-**Changed synced sessions go with the next recording:** besides the new session the child pushes every index entry whose file no longer matches the stored size and mtime stamp, pending entries excluded ([engine/index.rs](../../src/sync/engine/index.rs#L51)). Only those files get hashed and the plan still decides by hash, as decided on 2026-11-07 ([ADR 5a](../../.state/feature-sync-gist/ADR.md#5a-changed-sessions-go-with-the-next-recording-2026-11-07-user-decision)). A session that was never synced stays out until a manual push.
+**Changed synced sessions go with the next recording:** besides the new session the child pushes every index entry whose file no longer matches the stored size and mtime stamp, pending entries excluded ([engine/index.rs](../../src/sync/engine/index.rs#L51)). Only those files get hashed and the plan still decides by hash, as decided on 2026-11-07 ([ADR 5a](../../.state/feature-sync-gist/ADR.md#5a-changed-sessions-go-with-the-next-recording-2026-11-07-user-decision)). A never synced session that is not queued stays out until a manual push.
 
 **Renames excluded:** a renamed file is a new path without an index entry and its old path is gone, so the child leaves it to a manual `agr sync push` and never uploads a second copy ([app/auto/child.rs](../../src/sync/app/auto/child.rs#L38)).
 
-**Busy lock reported:** when another sync holds the lock, the stored line says the session was skipped and asks for `agr sync push` ([app/auto/child.rs](../../src/sync/app/auto/child.rs#L11)). The stored error is shown once on the next recording and by `agr sync status`, then cleared ([app/auto/child.rs](../../src/sync/app/auto/child.rs#L29)).
+**Queue instead of giving up:** the hook writes an empty marker file `<storage>/.agr-sync-queue/<agent>/<name>.cast.gz` before it spawns the child, creating it twice is one entry ([engine/queue.rs](../../src/sync/engine/queue.rs)). The child that gets the lock pushes the whole queue plus the changed synced sessions and removes the entry of every pushed or in-sync session. A failed, locked or unreadable one stays for the next run and its error is stored as before, a conflict or skip leaves the queue and is reported once. A rate limit stops the drain and the entries stay. A child that finds the lock held exits quietly and stores no error, its entry is already queued. A manual `agr sync push` also removes the entries of the sessions it pushed, and `agr sync status` shows `N queued for auto push` when the queue is not empty, compact and with `-v`.
+
+**No lost wakeup:** the entry is written before the spawn, so a recording that finishes during a drain is either seen by the holder, which looks at the queue after every round under the lock and once more after releasing it, or its own child takes the lock after the release. Entries that failed in this run are not retried in the same run, so the loop ends.
+
+**Hidden queue dir:** listing, `status`, `cleanup` and `compress` only read agent directories and `valid_path` refuses a leading dot, so `.agr-sync-queue` is treated like `.agr-sync.json` and never shows up as an agent ([engine/scan.rs](../../src/sync/engine/scan.rs#L224)). A test covers listing, cleanup and compress.
 
 ## Output and progress
 
@@ -315,14 +325,16 @@ Legend: the engine knows which session runs, the backend only knows a percent, t
 flowchart LR
     storage[storage dir] --> index[.agr-sync.json]
     storage --> lock[.agr-sync.lock]
+    storage --> queue[.agr-sync-queue]
     config[~/.config/agr] --> key[sync.key]
     config --> state[state.toml]
     engine --> index
     engine --> lock
+    engine --> queue
     app --> key
     app --> state
 ```
-Legend: index and lock sit next to the sessions and are never synced or listed as sessions, key and state are machine local in the config dir.
+Legend: index, lock and queue sit next to the sessions and are never synced or listed as sessions, key and state are machine local in the config dir.
 
 ### Index `.agr-sync.json`
 
@@ -343,6 +355,10 @@ Fields per entry ([engine/index.rs](../../src/sync/engine/index.rs#L14)):
 ### Lock `.agr-sync.lock`
 
 Push, pull and delete take it, dry runs and status do not ([engine/run.rs](../../src/sync/engine/run.rs#L217)). The lock JSON (pid and start time) is written to a temp file and hard linked into place, so a second process never sees it empty ([engine/lock.rs](../../src/sync/engine/lock.rs#L47)). On a filesystem without hard links it falls back to `create_new` and a write in place, an empty lock file then counts as held ([engine/lock.rs](../../src/sync/engine/lock.rs#L70)). A lock whose pid is dead is reclaimed, a live one gives `Busy` ([engine/lock.rs](../../src/sync/engine/lock.rs#L16)). The lock is removed on drop.
+
+### Queue `.agr-sync-queue/`
+
+One empty file per session waiting for an auto push, named like the session (`claude/x.cast.gz`), created in place without truncating so two racing writers end in the same single file and nothing half written exists. Reading follows the `valid_path` rules, anything else in there is ignored ([engine/queue.rs](../../src/sync/engine/queue.rs)). It is not synced and lives and dies with the storage dir.
 
 ### `state.toml`
 

@@ -133,6 +133,25 @@ else
     fail "auto push did not run (rc=$RC, before=$BEFORE, after=$AFTER)"
 fi
 
+test_header "three recordings finishing at once are all pushed"
+BEFORE=$(ls "$SYNC_REMOTE"/*.blob 2>/dev/null | wc -l | tr -d ' ')
+for n in 1 2 3; do
+    HOME="$HOME_A" XDG_CONFIG_HOME="$HOME_A/.config" PATH="$SYNC_ROOT/fakebin:$PATH" \
+        AGR_SYNC_TEST_BACKEND_DIR="$SYNC_REMOTE" "$AGR" record echo -- "burst $n" </dev/null >/dev/null 2>&1 &
+done
+wait
+# polling with a timeout, 15 s at most
+for _ in $(seq 1 75); do
+    AFTER=$(ls "$SYNC_REMOTE"/*.blob 2>/dev/null | wc -l | tr -d ' ')
+    [[ "$AFTER" -ge $((BEFORE + 3)) ]] && break
+    sleep 0.2
+done
+if [[ "$AFTER" -ge $((BEFORE + 3)) ]]; then
+    pass "all 3 simultaneous recordings reached the remote"
+else
+    fail "only $((AFTER - BEFORE)) of 3 simultaneous recordings were pushed"
+fi
+
 test_header "auto push off keeps the session local"
 sed -i.bak 's/^auto_push = true/auto_push = false/' "$HOME_A/.config/agr/config.toml"
 BEFORE=$(ls "$SYNC_REMOTE"/*.blob | wc -l | tr -d ' ')

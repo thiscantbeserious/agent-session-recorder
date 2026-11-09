@@ -3,7 +3,7 @@
 use agr::files::codec;
 use agr::sync::testing::queue;
 use agr::sync::testing::MemoryBackend;
-use agr::sync::{auto, format, Engine, Event, Key, Options, SyncError};
+use agr::sync::{format, Engine, Event, Key, Options, SyncError};
 use agr::{Config, StorageManager};
 use std::path::Path;
 use tempfile::TempDir;
@@ -118,7 +118,7 @@ fn a_busy_auto_run_leaves_the_entry_and_stores_no_error() {
     let result = w.drain("claude/a.cast.gz");
     assert_eq!(result.as_ref().err(), Some(&SyncError::Busy));
     assert_eq!(queue::list(w.dir()), ["claude/a.cast.gz"]);
-    assert_eq!(auto::error_line(&result), None);
+    assert_eq!(agr::sync::auto::error_line(&result), None);
 }
 
 #[test]

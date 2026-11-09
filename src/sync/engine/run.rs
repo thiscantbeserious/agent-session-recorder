@@ -4,10 +4,10 @@ use thiserror::Error;
 
 use super::fail::{Fail, Stop};
 use super::index::{self, Index};
-use super::item::{hash_of, not_found, passive, remote_hash_of, strip_done};
+use super::item::{not_found, passive, strip_done};
 use super::lock::SyncLock;
 use super::observe::{counted, no_progress, scan_tick, Observer, Step};
-use super::plan::{decide, resolve, Command, Decision, Local, Remote};
+use super::plan::{decide, resolve, Command, Decision, Local};
 use super::pull::pull_one;
 use super::push::{heal, push_one};
 use super::queue;
@@ -318,46 +318,6 @@ impl Engine<'_> {
             }
             _ => passive(decision),
         })
-    }
-
-    /// Tells the observer which session is about to move and how big it is.
-    fn started(&self, row: &Row, observer: &mut dyn FnMut(Step<'_>), pull: bool) {
-        let remote = row.meta.as_ref().map(|m| m.size);
-        let local = std::fs::metadata(self.storage.storage_dir().join(&row.path))
-            .map(|m| m.len())
-            .ok();
-        let size = if pull {
-            remote.or(local)
-        } else {
-            local.or(remote)
-        };
-        observer(Step::Started {
-            path: &row.path,
-            size: size.unwrap_or(0),
-        });
-    }
-
-    fn item(&self, row: &Row, decision: Decision, outcome: Outcome) -> Item {
-        let local = std::fs::metadata(self.storage.storage_dir().join(&row.path))
-            .as_ref()
-            .map(std::fs::Metadata::len)
-            .ok();
-        let remote = row.meta.as_ref().map(|m| m.size);
-        Item {
-            path: row.path.clone(),
-            decision,
-            outcome,
-            size: local.or(remote).unwrap_or(0),
-            // a fallback id from the index is not a listed remote copy
-            on_remote: row.input.remote != Remote::Absent,
-            on_local: local.is_some(),
-            local_hash: hash_of(&row.input.local),
-            remote_hash: remote_hash_of(&row.input.remote),
-            remote_size: remote.unwrap_or(0),
-            remote_id: row.remote_id.clone(),
-            pending: row.pending,
-            duplicates: row.duplicates.clone(),
-        }
     }
 
     fn act(&self, result: Result<u64, Fail>) -> Result<Outcome, Stop> {
