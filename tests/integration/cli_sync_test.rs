@@ -687,3 +687,16 @@ fn delete_warns_that_a_plain_push_uploads_the_session_again() {
         out.stdout
     );
 }
+
+#[test]
+fn push_prints_no_progress_lines_when_stderr_is_not_a_terminal() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "text");
+    m.session("claude", "b.cast.gz", "other");
+    let out = m.run(&["push", "--yes"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(out.stdout.contains("Pushed: 2"), "{}", out.stdout);
+    assert!(!out.all().contains("[1/2]"), "{}", out.all());
+    assert!(!out.all().contains("pushed claude/"), "{}", out.all());
+}

@@ -8,6 +8,13 @@ use crate::sync::engine::scan::Duplicate;
 
 mod summary;
 
+/// One progress line per acted-on session, `[i/n] pushed path (size)`.
+/// `done` is the past tense verb of the command, `pushed`, `pulled` or `deleted`.
+pub fn progress_line(done: &str, _item: &Item, _i: usize, _n: usize) -> String {
+    let _ = done;
+    String::new()
+}
+
 pub use summary::{
     delete_preview_lines, preview_lines, privacy_lines, problem_lines, rate_limit_lines,
     summary_lines,
@@ -97,7 +104,7 @@ fn size(bytes: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{label, status_lines, Decision, Item, Outcome, Report};
+    use super::{label, progress_line, status_lines, Decision, Item, Outcome, Report};
     use crate::sync::engine::plan::SkipReason;
     use crate::sync::engine::scan::Duplicate;
 
@@ -236,5 +243,35 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("No sessions"), "{text}");
+    }
+
+    #[test]
+    fn progress_line_covers_done_skipped_and_failed() {
+        let p = "claude/x.cast.gz";
+        let done = item(p, Decision::Push, Outcome::Done(12 * 1024 * 1024));
+        let skip = item(
+            p,
+            Decision::Conflict,
+            Outcome::Skipped("conflict, use --overwrite".into()),
+        );
+        let fail = item(p, Decision::Push, Outcome::Failed("upload broke".into()));
+        let gone = item(p, Decision::Push, Outcome::Done(0));
+        let got = [
+            progress_line("pushed", &done, 3, 40),
+            progress_line("pulled", &done, 1, 2),
+            progress_line("deleted", &gone, 2, 2),
+            progress_line("pushed", &skip, 4, 40),
+            progress_line("pushed", &fail, 5, 40),
+        ];
+        assert_eq!(
+            got,
+            [
+                "[3/40] pushed claude/x.cast.gz (12 MiB)",
+                "[1/2] pulled claude/x.cast.gz (12 MiB)",
+                "[2/2] deleted claude/x.cast.gz",
+                "[4/40] skipped claude/x.cast.gz: conflict, use --overwrite",
+                "[5/40] failed claude/x.cast.gz: upload broke",
+            ]
+        );
     }
 }

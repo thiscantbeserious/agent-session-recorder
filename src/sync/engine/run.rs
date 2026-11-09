@@ -105,6 +105,9 @@ impl Report {
     }
 }
 
+/// Called after each acted-on item with the item, its 1-based index and the total.
+pub type Observer<'a> = dyn FnMut(&Item, usize, usize) + 'a;
+
 /// Engine over any backend, the key and the storage dir.
 pub struct Engine<'a> {
     pub backend: &'a dyn SyncBackend,
@@ -135,6 +138,34 @@ impl Engine<'_> {
 
     pub fn pull(&self, opts: &Options) -> Result<Report, SyncError> {
         self.sync(Command::Pull, opts)
+    }
+
+    /// Stub, the observer is not called yet.
+    pub fn push_with(
+        &self,
+        opts: &Options,
+        _total: usize,
+        _o: &mut Observer<'_>,
+    ) -> Result<Report, SyncError> {
+        self.push(opts)
+    }
+
+    pub fn pull_with(
+        &self,
+        opts: &Options,
+        _total: usize,
+        _o: &mut Observer<'_>,
+    ) -> Result<Report, SyncError> {
+        self.pull(opts)
+    }
+
+    pub fn delete_with(
+        &self,
+        sessions: &[String],
+        _total: usize,
+        _o: &mut Observer<'_>,
+    ) -> Result<Report, SyncError> {
+        self.delete(sessions)
     }
 
     /// Remove the remote entry and the index entry, the local file stays.

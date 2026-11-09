@@ -1517,3 +1517,71 @@ fn the_scan_hash_of_a_session_is_the_sha256_of_its_bytes() {
         Some(hash.as_str())
     );
 }
+
+fn seen_paths(seen: &[(String, usize, usize)]) -> Vec<(&str, usize, usize)> {
+    seen.iter().map(|(p, i, n)| (p.as_str(), *i, *n)).collect()
+}
+
+#[test]
+fn observer_runs_once_per_acted_on_item_in_order_with_index_and_total() {
+    let (m, backend, key) = (machine(), MemoryBackend::new(), Key::generate());
+    three(&m);
+    let mut seen = Vec::new();
+    let mut observe = |item: &agr::sync::Item, i: usize, n: usize| {
+        assert!(matches!(item.outcome, Outcome::Done(_)));
+        seen.push((item.path.clone(), i, n));
+    };
+    m.engine(&backend, &key)
+        .push_with(&opts(), 3, &mut observe)
+        .unwrap();
+    assert_eq!(
+        seen_paths(&seen),
+        [
+            ("claude/a.cast.gz", 1, 3),
+            ("claude/b.cast.gz", 2, 3),
+            ("codex/c.cast.gz", 3, 3)
+        ]
+    );
+}
+
+#[test]
+fn observer_is_not_called_for_in_sync_items() {
+    let (m, backend, key) = pushed_machine();
+    let mut calls = 0;
+    let mut observe = |_: &agr::sync::Item, _: usize, _: usize| calls += 1;
+    let report = m
+        .engine(&backend, &key)
+        .push_with(&opts(), 0, &mut observe)
+        .unwrap();
+    assert_eq!((report.pushed, calls), (0, 0));
+}
+
+#[test]
+fn observer_counts_only_acted_on_items_and_covers_pull_and_delete() {
+    let (m, backend, key) = pushed_machine();
+    m.session("claude", "d.cast.gz", &CAST.replace("secret", "fourth"));
+    let mut seen = Vec::new();
+    let mut observe =
+        |item: &agr::sync::Item, i: usize, n: usize| seen.push((item.path.clone(), i, n));
+    m.engine(&backend, &key)
+        .push_with(&opts(), 1, &mut observe)
+        .unwrap();
+    assert_eq!(seen_paths(&seen), [("claude/d.cast.gz", 1, 1)]);
+    let other = machine();
+    seen.clear();
+    let mut observe =
+        |item: &agr::sync::Item, i: usize, n: usize| seen.push((item.path.clone(), i, n));
+    other
+        .engine(&backend, &key)
+        .pull_with(&opts(), 4, &mut observe)
+        .unwrap();
+    assert_eq!(seen.len(), 4);
+    assert_eq!(seen[3].1, 4);
+    seen.clear();
+    let mut observe =
+        |item: &agr::sync::Item, i: usize, n: usize| seen.push((item.path.clone(), i, n));
+    m.engine(&backend, &key)
+        .delete_with(&["claude/a.cast.gz".to_string()], 1, &mut observe)
+        .unwrap();
+    assert_eq!(seen_paths(&seen), [("claude/a.cast.gz", 1, 1)]);
+}
