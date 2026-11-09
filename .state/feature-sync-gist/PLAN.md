@@ -1298,6 +1298,7 @@ PR: C
 - [ ] RED commit, local index:
   - `index_v1_gens_carry_into_v2` [`assert_eq!((e.sha256.as_str(), e.gen), ("h", 3))` per entry after the conversion, the stub starts every gen at 1]
   - `unsynced_local_edit_survives_migrate` [`assert_eq!(read(local), edited)` after migrate, and the next push plans it as `Push` at gen 4, the migrated gen 3 content never overwrites it]
+- [ ] RED commit: `unreadable_v1_is_kept_and_named` [`assert!(report.lines.iter().any(|l| l.contains("gh gist delete") && l.contains("cannot be read")))` and `assert_eq!(deletes, 0)` for a v1 gist of our key whose part is missing, the stub keeps it silently].
 - [ ] RED commit: `dry_run_counts_and_writes_nothing` [`assert_eq!(line, "2 sessions to move (3 KiB), 1 already moved, 4 empty stubs to delete, 1 not ours (kept)")` and `assert_eq!((appends, deletes), (0, 0))`, the local index stays v1].
 - [ ] RED commit:
   - `moved_session_keeps_gen_and_sha` [`assert_eq!((e.gen, e.sha256), (3, sha))`]
