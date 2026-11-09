@@ -107,7 +107,6 @@ impl DirStore {
     }
 
     /// The next append writes its part file and then fails before the manifest is renamed.
-
     #[cfg(test)]
     fn crash_before_manifest(&self) {
         self.crash_before_manifest.store(true, Ordering::SeqCst);

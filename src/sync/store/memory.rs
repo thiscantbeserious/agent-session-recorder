@@ -173,7 +173,7 @@ mod tests {
     fn memory_fits_false_when_slots_run_out() {
         let store = MemoryStore::with_slots(2);
         let id = store.create("t", "i0").unwrap();
-        let w = |w: &mut dyn std::io::Write| w.write_all(b"a");
+        let w = |w: &mut dyn Write| w.write_all(b"a");
         let seg = || Segment { len: 1, write: &w };
         store.append(&id, 0, "i0", &[seg()], "i1").unwrap();
         store.append(&id, 1, "i1", &[seg()], "i2").unwrap();
