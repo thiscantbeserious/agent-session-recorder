@@ -98,6 +98,9 @@ impl View {
 pub fn merge(packs: &[PackIn]) -> View {
     let mut view = View::default();
     for p in packs {
+        if let Err(err) = &p.index {
+            view.rejected.push((p.id.clone(), reject(err)));
+        }
         if let Ok(idx) = &p.index {
             for e in &idx.entries {
                 match view.merged.get_mut(&e.path) {
@@ -113,6 +116,13 @@ pub fn merge(packs: &[PackIn]) -> View {
     }
     finish(&mut view);
     view
+}
+
+fn reject(err: &IndexError) -> Rejected {
+    match err {
+        IndexError::OtherKey => Rejected::OtherKey,
+        _ => Rejected::Bad,
+    }
 }
 
 fn finish(view: &mut View) {
