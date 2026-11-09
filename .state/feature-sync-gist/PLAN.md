@@ -925,6 +925,300 @@ Owner: implementer
 Files: `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
 Depends on: Stage 44
 
+## Pack layer stages
+
+References: ADR "Pack layer (2026-11-09)", rough stages 1 to 11. ADR stage 12 ("Later") is not planned here.
+
+**PR split**: #166 has 117 changed files vs main, which is over the CodeRabbit limit of 100, as such nothing of the pack layer goes into it.
+- **PR A** (#166 as is): per-session gists, already live tested, plus the probe file of Stage 46 (one ignored test file). Merged first.
+- **PR B** (new branch on `main` after PR A): Stages 47 to 53, the store and pack layers and the gist store, reachable only through `sync::testing`, no user visible change.
+- **PR C** (new branch on `main` after PR B): Stages 54 to 59, engine and app switch to packs, `agr sync migrate`, removal of the per-session code, docs.
+- **PR D** (new branch on `main` after PR C): Stages 60 and 61, `agr sync prune`.
+
+Reasons:
+1. PR A is reviewed and live tested, holding it back for the pack layer only grows it further.
+2. PR B only adds new files next to the old ones, so it is reviewable on its own and main keeps working.
+3. Migrate sits in the same PR as the switch: once the engine reads packs, the ~60 per-session gists the user already pushed are invisible to sync, as such the release that switches has to bring `agr sync migrate`. Until PR C is released those gists keep working with PR A.
+4. Prune is only needed once dead data piles up, it follows without blocking anyone.
+
+Rough size: PR B about 25 files, PR C about 60 files (the deleted `backend/` files count too), PR D about 12. The last stage of each PR checks `git diff --stat origin/main...HEAD` and splits before 100.
+
+**TDD for these stages** (the last round skipped separate RED commits, as such this is spelled out):
+- Every `RED commit:` item is its own commit `test(<scope>): ... (RED)` that compiles and fails on the named assertion. Stubs return a wrong value (empty vec, `Ok(())`, `false`), never `todo!()` or `unimplemented!()`, and a compile error is not a RED.
+- The `GREEN commit:` item is the next commit `feat(...)` or `fix(...)` and does not touch the RED test except imports.
+- The reviewer checks `git log --oneline` for the RED and GREEN pair of every item, a missing RED commit is a blocking finding.
+- Sizes: functions about 20 lines, files under 400 lines, tests move into a sibling `tests.rs` once a module passes about 250 lines. Every stage names where a split is expected.
+
+**Probe branches**: Stage 46 decides ADR Open risk 1.
+- **Branch P** (partial clone append works): append and pull clone with `--depth 1 --filter=blob:none --no-checkout` into a temp dir outside the storage dir, nothing is cached.
+- **Branch C** (cached clone fallback): the own open pack is kept as a clone under `<cache dir>/agr/packs/<id>`, fast-forwarded before every append and removed after its seal or on `Moved`. Pulls of other packs keep the partial clone when Stage 46 shows it reads on secret gists, else a plain `--depth 1` clone per pack.
+- `raw_url` reads stay out of every stage whatever the probe says (ADR stage 12).
+
+### Stage 46: Pack probe against real secret gists (live, by hand)
+
+Goal: answer ADR Open risk 1 and the `raw_url` question with real secret gists before any pack code.
+Owner: implementer (written in parallel by another agent), run by the user
+PR: A
+
+- [ ] `tests/pack_probe_live.rs` written, every test `#[ignore]`, gists deleted on drop, every fact printed as a `PROBE:` line (in progress).
+- [ ] Default `cargo test` stays offline, the probe only runs with `--ignored`.
+- [ ] The user runs `cargo test --test pack_probe_live -- --ignored --nocapture --test-threads=1` by hand and hands over the `PROBE:` lines.
+- [ ] ADR "Verified facts" gets the results with the date, Open risk 1 is closed as branch P or branch C, the `raw_url` result is recorded for ADR stage 12 only.
+
+Files: `tests/pack_probe_live.rs`, `.state/feature-sync-gist/ADR.md`
+Depends on: Stage 45
+
+Considerations: no RED and GREEN here, it is a measurement. Stage 53 picks its branch from the result, Stages 47 to 52 do not wait for it.
+
+### Stage 47: Store trait, memory and directory stores, layer rules
+
+Goal: `PackStore` as in ADR "Store trait" with `MemoryStore` and `DirStore`, only reachable through `sync::testing`.
+Owner: implementer
+PR: B
+
+- [ ] RED commit: `violations_flags_pack_naming_engine` and `violations_flags_store_naming_crypto` in `src/sync/mod.rs`, both fail on `assert_eq!(v.len(), 1)` with 0.
+- [ ] GREEN commit: this stage extends `layer_rules_hold` for `pack/` and `store/`. New `RULES` rows: `pack/` must not name `crate::sync::app`, `crate::sync::engine`, `crate::sync::store::memory`, `crate::sync::store::dir`, `crate::sync::store::gist`, and `store/` must not name `crate::sync::crypto`, `crate::sync::engine`, `crate::sync::pack`, `crate::sync::app`, `chacha20poly1305`, `sha2::`, `aead::`. `layer_rules_hold` green on the tree.
+- [ ] RED commit: `append_refuses_wrong_expected_len` in a shared `contract(store: &dyn PackStore)` (`store/contract.rs`, cfg test), run for `MemoryStore`. Append with `expected_len` 10 on a new pack must be `Err(StoreError::Moved)`, the stub returns `Ok(())`.
+- [ ] RED commit: `append_is_all_or_nothing` (a failing segment writer leaves `len` and index as they were), `read_returns_the_exact_range` (a range across two appends equals the joined bytes), `create_then_list_shows_len_zero`, `delete_then_read_index_is_not_found`.
+- [ ] GREEN commit: `MemoryStore` passes the contract.
+- [ ] RED commit: the contract runs for `DirStore` too, plus `dir_crash_before_index_keeps_old_index` (test-only fault hook between parts and index) failing on `assert_eq!(store.list()[0].len, old_len)`.
+- [ ] GREEN commit: `DirStore` writes new part files first and renames `index.tmp` over `index` last.
+- [ ] `StoreError` (`NotInstalled`, `NotLoggedIn`, `MissingScope`, `Unreachable`, `RateLimited`, `NotFound`, `Moved`, `Other`), `PackInfo`, `Segment`. `BlobSource` is re-exported from `backend/mod.rs` until Stage 58 moves it.
+- [ ] Trait addition for the 250 file cap: `fn fits(&self, info: &PackInfo, lens: &[u64])` returning `bool`, default `true`, the gist store overrides it in Stage 52. Confirm with the user at review, the ADR trait has no part count.
+
+Files: `src/sync/mod.rs`, `src/sync/store/mod.rs`, `src/sync/store/memory.rs`, `src/sync/store/dir.rs`, `src/sync/store/contract.rs`
+Depends on: Stage 45
+
+Considerations: `store/mod.rs` is trait and types only (about 100 lines), `memory.rs` and `dir.rs` under 250 each. Exports in `sync::testing` keep clippy free of dead code warnings until PR C wires it.
+
+### Stage 48: Pack index and seal rules
+
+Goal: `pack/index.rs` with the index JSON v3 sealed under AAD `agr:pack-index` as base64url text, and the pure seal rules in `pack/rules.rs`.
+Owner: implementer
+PR: B
+
+- [ ] RED commit: `index_round_trips_through_seal`, `open_index(key, &seal_index(key, &idx))` must equal `idx`, the stub returns an empty index and fails on `assert_eq!`.
+- [ ] RED commit: `index_with_other_key_is_other_key`, `index_with_v_4_is_unknown_version`, `index_text_is_base64url` (no `=`, `+`, `/`).
+- [ ] GREEN commit: `Index { v, writer, sealed, len, entries }`, `Entry { path, gen, sha256, size, offset, length, deleted, at }`, `seal_index`, `open_index` on the existing one-shot `seal`.
+- [ ] RED commit: `seal_at_target` table test, not sealed at target - 1, sealed at target and above, `big_session_gets_own_pack` for a session over the target, `index_over_768_kib_seals_early`, `pack_size_mib_range_16_to_512` (8 and 1024 refused). First failing assertion `assert!(should_seal(target, target))` with a stub returning `false`.
+- [ ] GREEN commit: `rules.rs` pure functions, no store and no IO.
+
+Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/index.rs`, `src/sync/pack/rules.rs`
+Depends on: Stage 47
+
+Considerations: `index.rs` about 200 lines with tests, `rules.rs` under 150. The 768 KiB check measures the encoded text, not the JSON.
+
+### Stage 49: Pack stream, segments and range read
+
+Goal: `pack/stream.rs` turns session files into `Segment`s (blob v2 with path and gen in the AAD) and opens a range from `read(id, offset, len)` back into the session.
+Owner: implementer
+PR: B
+
+- [ ] RED commit: `segment_len_equals_written_bytes` for plain sizes 0, 1, 64 KiB, 64 KiB + 1, fails on `assert_eq!(seg.len, written)` with a stub `len` of 0.
+- [ ] RED commit: `range_read_opens_the_second_session` (two appends to a `MemoryStore`, sha256 of the opened second range equals the file), `blob_under_other_path_or_gen_fails` (`Authentication`), `truncated_range_fails` (len - 1 gives an error and no partial plaintext).
+- [ ] GREEN commit: `segment(path, gen, file)`, `open_range`. The sealed length comes from a pure `sealed_len(size)` in `crypto/blob`, added there when it does not exist yet.
+
+Files: `src/sync/pack/mod.rs`, `src/sync/pack/stream.rs`, `src/sync/crypto/blob/mod.rs`
+Depends on: Stage 48
+
+Considerations: `stream.rs` under 200 lines. `crypto/blob/mod.rs` is 186 lines, `sealed_len` stays a few lines, KAT constants untouched.
+
+### Stage 50: Merge
+
+Goal: `pack/merge.rs`, the five merge rules of the ADR as pure functions over opened indexes.
+Owner: implementer
+PR: B
+
+- [ ] RED commit: `highest_gen_wins`, fails on `assert_eq!(view.get("a").unwrap().gen, 4)` with a stub that keeps the first entry seen.
+- [ ] RED commit: `same_hash_twice_is_one_session_two_places`, `different_hash_same_top_gen_is_fork`, `fork_below_top_gen_is_ignored`, `tombstone_on_top_is_absent_and_next_gen_is_above`, `other_key_pack_is_reported_never_merged`, `unknown_version_pack_is_reported`, `dead_bytes_per_pack` (live vs dead length per pack, used by status and prune).
+- [ ] GREEN commit: `merge(packs)` returning a `View` with `places`, `forks`, `rejected` and `dead_bytes`.
+
+Files: `src/sync/pack/mod.rs`, `src/sync/pack/merge.rs`
+Depends on: Stage 49
+
+Considerations: pure, no store, under 250 lines, tests inline.
+
+### Stage 51: Repo facade over any store
+
+Goal: `pack::Repo` with `open`, `view`, `push_batch`, `read_session`, `tombstone` and the re-read after the last append, tested on `MemoryStore` only.
+Owner: implementer
+PR: B
+
+- [ ] RED commit: `push_batch_appends_to_own_open_pack`, two pushes on one writer, fails on `assert_eq!(store.list().len(), 1)` with a stub that creates a pack per push.
+- [ ] RED commit: `seal_then_next_push_creates_a_pack`, `big_session_gets_own_sealed_pack_and_open_pack_stays_open`, `open_pack_found_by_writer_when_local_id_missing`, `index_of_other_writer_or_sealed_is_moved`.
+- [ ] RED commit: `two_writers_on_one_id_retry_once` (ADR Open risk 3, mandatory): the second writer gets `Moved`, re-reads, appends once on top with new part numbers, a second `Moved` gives "changed on the remote, run again".
+- [ ] RED commit: `read_session_tries_next_place_on_not_found`, `tombstone_appends_deleted_at_gen_plus_one`, `fork_created_by_push_is_reported_by_the_re_read`.
+- [ ] GREEN commit per RED commit above.
+
+Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/repo/mod.rs`, `src/sync/pack/repo/push.rs`, `src/sync/pack/repo/tests.rs`
+Depends on: Stage 50
+
+Considerations: split expected from the start, `repo/mod.rs` (open, view, read) and `repo/push.rs` (push_batch, retry, tombstone), each under 300 lines. The writer id and the target size come in as arguments, the app owns them (Stage 54).
+
+### Stage 52: Gist store, layout and read side
+
+Goal: `store/gist` lists `agr:v2` gists, reads the index through `gh api`, creates a pack gist, reads a range via clone and `git cat-file`, and cuts 8 MiB parts at session boundaries. It reuses the runner, pace and progress of `backend/gist/` until Stage 58 moves them.
+Owner: implementer
+PR: B
+
+- [ ] RED commit: `parts_cut_at_session_boundaries`, lens 3, 4 and 2 MiB give parts of 7 and 2 MiB, fails on `assert_eq!` with a stub of one part per session.
+- [ ] RED commit: `session_over_8_mib_gets_own_parts`, `append_numbers_continue_after_last_part`, `gap_or_order_in_parts_is_an_error` (port of the `parts.rs` tests), `fits_refuses_over_250_files`.
+- [ ] GREEN commit: `layout.rs`.
+- [ ] RED commit (Fake runner): `list_keeps_only_agr_v2_over_pages`, `truncated_index_is_other_not_half_an_index`, `create_sends_only_the_index` (no `.keep`), `read_range_fetches_only_covering_parts` (the recorded `cat-file` calls are exactly the covering parts).
+- [ ] GREEN commit: `api.rs` and `read.rs`.
+- [ ] Probe dependency of the read side: branch P and branch C both read with the partial clone. If Stage 46 shows partial clone fails on secret gists, `read.rs` clones with plain `--depth 1` and the RED test becomes `read_range_opens_the_covering_parts`.
+
+Files: `src/sync/store/mod.rs`, `src/sync/store/gist/mod.rs`, `src/sync/store/gist/layout.rs`, `src/sync/store/gist/api.rs`, `src/sync/store/gist/read.rs`, `src/sync/store/gist/tests.rs`
+Depends on: Stage 47
+
+Considerations: `layout.rs` pure (about 150 lines), `mod.rs` only the `PackStore` impl dispatching (about 100), tests in `tests.rs`. Runs in parallel with Stages 48 to 51, no shared files.
+
+### Stage 53: Gist store append, PR B gates
+
+Goal: `append` per ADR "Append and seal" steps 2, 4 and 6 (steps 3 and 5 are the pack layer), in the branch Stage 46 picked.
+Owner: implementer
+PR: B
+
+- [ ] RED commit: `tree_len_not_expected_is_moved`, the sum of the part sizes in the tree differs from `expected_len`, fails on `assert!(matches!(err, StoreError::Moved))` with a stub that pushes anyway.
+- [ ] RED commit: `rejected_push_is_moved` (non-fast-forward stderr, no `--force` in the args), `append_is_one_commit_with_parts_and_index`, `pushes_to_one_gist_are_paced_10s` (second append on the same id waits 10 s on the fake clock, other mutating calls keep 1 s), `progress_percent_belongs_to_the_append`.
+- [ ] Branch P: GREEN commit clones `--depth 1 --filter=blob:none --no-checkout` into a temp dir and pushes from there.
+- [ ] Branch C: extra RED commit `cached_clone_is_reused_then_dropped_on_seal` and `cached_clone_dropped_on_moved`, then GREEN with the clone under `<cache dir>/agr/packs/<id>`, fast-forward only.
+- [ ] `tests/pack_gist_live.rs` (ignored): create, two appends, read both ranges, delete. The user runs it once.
+- [ ] PR B gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo +1.88 check --all-targets --locked`, `cargo check --target x86_64-pc-windows-msvc`, `git diff --stat origin/main...HEAD` under 100 files, `wc -l` of every new file under 400.
+
+Files: `src/sync/store/gist/mod.rs`, `src/sync/store/gist/append.rs`, `src/sync/store/gist/tests.rs`, `src/sync/backend/gist/pace.rs`, `tests/pack_gist_live.rs`
+Depends on: Stage 46, Stage 51, Stage 52
+
+Considerations: the one retry lives in `Repo` (Stage 51), the store only reports `Moved`. `append.rs` under 250 lines in branch P, branch C may need `append/cache.rs`.
+
+### Stage 54: Engine and app on the Repo, local index v2
+
+Goal: the engine plans against the merged view and writes through `Repo`, the app builds `Repo` over the gist store, the engine no longer calls `SyncBackend`.
+Owner: implementer
+PR: C
+
+- [ ] RED commit: `push_of_three_sessions_is_one_pack` in `sync_engine_test.rs` on `MemoryStore`, fails on `assert_eq!(store.list().len(), 1)`. The commit carries the new `Engine` constructor with a stub body returning an empty report, so it compiles.
+- [ ] RED commit: `index_v1_reads_as_empty_plus_one_warning`, `open_pack_saved_after_push_and_cleared_after_seal`, `delete_is_a_tombstone`, `rollback_below_local_gen_is_refused` (port), `overwrite_resolves_fork_with_gen_plus_one`.
+- [ ] RED commit: `fork_is_reported_right_after_push` in `sync_multi_machine_test.rs` (two machines, two writer ids).
+- [ ] RED commit: `pack_size_mib_defaults_to_64` in `config/types.rs`, `writer_id_created_once_in_state_toml` in `config/state.rs`.
+- [ ] RED commit: `violations_flags_engine_naming_gist_store`, GREEN adds `RULES` rows so `engine/` must not name `crate::sync::store::gist`, `crate::sync::store::memory`, `crate::sync::store::dir`.
+- [ ] GREEN commit per RED commit above. `AGR_SYNC_TEST_BACKEND_DIR` now points a `DirStore` at the dir, so `tests/e2e_test.sh` keeps its variable.
+
+Files: `src/sync/mod.rs`, `src/sync/engine/run.rs`, `src/sync/engine/remote.rs`, `src/sync/engine/push.rs`, `src/sync/engine/pull.rs`, `src/sync/engine/plan.rs`, `src/sync/engine/index.rs`, `src/sync/engine/item.rs`, `src/sync/engine/scan.rs`, `src/sync/app/setup.rs`, `src/commands/sync/run.rs`, `src/config/types.rs`, `src/config/state.rs`, `tests/integration/sync_engine_test.rs`, `tests/integration/sync_multi_machine_test.rs`, `tests/integration/sync_index_fields_test.rs`, `tests/integration/helpers/sync_net.rs`
+Depends on: Stage 53
+
+Considerations: the biggest stage, the reviewer-pair runs after every RED and GREEN pair. `run.rs` is 369 lines today, the merged view lookups split out into `engine/remote.rs`. `index.rs` loses `remote_id`, `token`, `pending` only in Stage 58, here it just gains `version` 2 and `open_pack`.
+
+### Stage 55: Auto push on packs
+
+Goal: one drain round is one append, queue and drain stay as they are.
+Owner: implementer
+PR: C
+
+- [ ] RED commit: `ten_queued_sessions_are_one_append` in `sync_queue_test.rs`, fails on `assert_eq!(appends, 1)` with the per session drain.
+- [ ] RED commit: `burst_during_drain_lands_in_the_next_round_together` (2 appends), `single_recording_is_pushed_without_waiting` (no local buffering).
+- [ ] GREEN commit.
+- [ ] Probe dependency: no code difference here. Cost per round is a tree only clone in branch P and a fetch of the cached clone in branch C, both covered by Stage 53.
+
+Files: `src/sync/app/auto/mod.rs`, `src/sync/app/auto/child.rs`, `src/sync/engine/queue.rs`, `src/recording/auto_push.rs`, `tests/integration/sync_queue_test.rs`
+Depends on: Stage 54
+
+Considerations: `child.rs` 317 and `auto/mod.rs` 330 lines today, new logic goes into the engine batch call, not into these files.
+
+### Stage 56: Status and output
+
+Goal: status shows forks with the next step, `OtherKey` per pack, the prune hint, and the live line per append, without any clone.
+Owner: implementer
+PR: C
+
+- [ ] RED commit: `status_shows_fork_with_next_step`, fails on `assert!(out.contains("agr sync push --overwrite"))`.
+- [ ] RED commit: `status_shows_other_key_per_pack`, `prune_hint_at_21_percent_dead_not_at_19`, `live_line_per_append`, `status_needs_no_clone` (no `git clone` in the Fake runner calls, one API call per pack).
+- [ ] GREEN commit. `Duplicate` leaves the public exports, `Fork` replaces it.
+
+Files: `src/sync/mod.rs`, `src/sync/app/format/mod.rs`, `src/sync/app/format/status.rs`, `src/sync/app/format/packs.rs`, `src/sync/app/format/summary.rs`, `src/sync/app/format/live.rs`, `src/commands/sync/live.rs`, `tests/integration/cli_sync_test.rs`
+Depends on: Stage 55
+
+Considerations: `status.rs` is 338 lines, the per pack lines go into the new `format/packs.rs`.
+
+### Stage 57: agr sync migrate
+
+Goal: ADR "Migration from per-session gists", the ~60 per-session gists and the `agr:pending` stubs of the user move into packs.
+Owner: implementer
+PR: C
+
+- [ ] RED commit: `stub_younger_than_one_hour_is_kept` in the pure `recognise` table test, fails on `assert_eq!(kind, Kept)` with a stub that calls every `agr:pending` a `Stub`.
+- [ ] RED commit: the rest of the table, ours v1, stub over 1 hour, other key, unknown version, extra files.
+- [ ] RED commit: `dry_run_counts_and_writes_nothing` (the line `N sessions to move (size), M already moved, K empty stubs to delete, L not ours (kept)`, zero appends and deletes).
+- [ ] RED commit: `moved_session_keeps_gen_and_sha`, `already_moved_is_skipped`, `old_gist_deleted_only_after_the_index_shows_it` (re-read fails, nothing deleted), `sha_mismatch_is_kept_and_reported`, `rate_limit_stops_with_n_left_and_rerun_finishes`, `listing_past_3000_does_not_abort`.
+- [ ] GREEN commit per RED commit above.
+- [ ] CLI `agr sync migrate [--yes]`, parse test in `cli_sync_parse_test.rs` RED first.
+
+Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/migrate/mod.rs`, `src/sync/pack/migrate/recognise.rs`, `src/sync/pack/migrate/tests.rs`, `src/sync/backend/gist/mod.rs`, `src/cli/subcommands.rs`, `src/commands/sync/mod.rs`, `src/commands/sync/migrate.rs`, `src/dispatch.rs`, `tests/integration/cli_sync_parse_test.rs`
+Depends on: Stage 56
+
+Considerations: migrate reads old gists through `&dyn SyncBackend` (not a concrete store, so the `pack/` rules hold) and tests run on `MemoryBackend`. `recognise.rs` pure under 150 lines, the move loop in `mod.rs` under 300.
+
+### Stage 58: Drop the per-session code
+
+Goal: ADR "Kept and dropped" applied. `SyncBackend` shrinks to the read side migrate needs (`list`, `pull`, `delete`) under `store/legacy/`, the rest of `backend/` is gone.
+Owner: implementer
+PR: C
+
+- [ ] RED commit: `violations_flags_any_backend_path`, `violations("engine/x.rs", "use crate::sync::backend::X;")` must give 1 and gives 0.
+- [ ] GREEN commit: `backend/` rows replaced by `crate::sync::backend` for every layer, `runner.rs`, `pace.rs`, `progress.rs`, `scratch.rs`, `fake.rs` moved with `git mv` into `store/gist/`, `SPAWNERS` points at `store/gist/runner.rs`.
+- [ ] Deleted: `.keep`, `manifest`, `agr:pending` creation, description token, heal and repair, adopt own commit, pending resume, index id fallback, duplicate by `created_at`, `RemoteEntry`, `BackendError::Changed`, index fields `remote_id`, `token`, `pending`, the test-only `backend/file.rs`.
+- [ ] `tests/sync_gist_live.rs` and `tests/pack_probe_live.rs` deleted, their facts sit in the ADR and `tests/pack_gist_live.rs` covers the store.
+- [ ] No behaviour change: the full test run is green before and after, `rg 'RemoteEntry|agr:pending|remote_id' src` only hits `store/legacy/`.
+
+Files: `src/sync/mod.rs`, `src/sync/backend/mod.rs`, `src/sync/backend/memory.rs`, `src/sync/backend/file.rs`, `src/sync/backend/gist/mod.rs`, `src/sync/backend/gist/parse.rs`, `src/sync/backend/gist/parts.rs`, `src/sync/backend/gist/pace.rs`, `src/sync/backend/gist/progress.rs`, `src/sync/backend/gist/runner.rs`, `src/sync/backend/gist/scratch.rs`, `src/sync/backend/gist/fake.rs`, `src/sync/backend/gist/pull_tests.rs`, `src/sync/backend/gist/push_tests.rs`, `src/sync/store/mod.rs`, `src/sync/store/gist/mod.rs`, `src/sync/store/gist/runner.rs`, `src/sync/store/gist/pace.rs`, `src/sync/store/gist/progress.rs`, `src/sync/store/gist/scratch.rs`, `src/sync/store/gist/fake.rs`, `src/sync/store/legacy/mod.rs`, `src/sync/store/legacy/gist.rs`, `src/sync/store/legacy/memory.rs`, `src/sync/pack/migrate/mod.rs`, `src/sync/engine/index.rs`, `tests/sync_gist_live.rs`, `tests/pack_probe_live.rs`
+Depends on: Stage 57
+
+Considerations: removing the legacy reader for good is one release later (ADR), not in this plan. `store/legacy/gist.rs` keeps only the old pull path, under 250 lines.
+
+### Stage 59: Docs, PR C gates, live migrate
+
+Goal: docs match packs, all gates green, the user's real account is migrated.
+Owner: implementer, live part run by the user
+PR: C
+
+- [ ] `docs/architecture/sync.md` with the layer and pack format diagrams from the ADR, `docs/wiki/Command-sync.md` (push, pull, status, delete, migrate, fork and `--overwrite`), `docs/wiki/Configuration.md` (`pack_size_mib`), `README.md`, `docs/COMMANDS.md`.
+- [ ] Gates as in Stage 53 plus `cargo build --release && ./tests/e2e_test.sh`, `git diff --stat origin/main...HEAD` under 100 files.
+- [ ] Live by the user: `tests/pack_gist_live.rs` once more, then `agr sync migrate` on the real account (dry-run line shows about 60 sessions plus the stubs), then `agr sync migrate --yes`, then `agr sync status` shows a few packs, the gist page shows only `agr:v2` entries.
+- [ ] ADR section status Accepted (built), Open risks 1 and 3 closed with evidence.
+
+Files: `docs/architecture/sync.md`, `docs/wiki/Command-sync.md`, `docs/wiki/Configuration.md`, `docs/COMMANDS.md`, `README.md`, `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
+Depends on: Stage 58
+
+### Stage 60: Prune planner and execution
+
+Goal: ADR "Changes, deletes and `agr sync prune`", pure planner plus execution on `MemoryStore`.
+Owner: implementer
+PR: D
+
+- [ ] RED commit: `fully_dead_sealed_pack_is_deleted`, fails on `assert_eq!(plan.delete, vec![id])` with a stub returning an empty plan.
+- [ ] RED commit: `dead_share_20_percent_is_repacked_19_is_kept`, `open_packs_are_never_planned` (own and other writers), `tombstones_are_copied`, `dry_run_reports_bytes_to_move_and_free`.
+- [ ] GREEN commit: `prune/plan.rs`.
+- [ ] RED commit: `copies_keep_path_gen_and_sha`, `old_pack_deleted_only_after_copies_are_visible` (re-read fails, nothing deleted), `two_prunes_at_once_lose_nothing`, `pull_during_prune_retries_with_the_copy`.
+- [ ] GREEN commit: `prune/mod.rs`.
+
+Files: `src/sync/pack/mod.rs`, `src/sync/pack/prune/mod.rs`, `src/sync/pack/prune/plan.rs`, `src/sync/pack/prune/tests.rs`
+Depends on: Stage 59
+
+Considerations: `plan.rs` pure under 150 lines, execution under 250, dead bytes come from `merge` (Stage 50).
+
+### Stage 61: agr sync prune command, docs, PR D gates
+
+Goal: `agr sync prune [--dry-run]` under the local lock, documented, all gates green.
+Owner: implementer
+PR: D
+
+- [ ] RED commit: `parses_prune_dry_run` in `cli_sync_parse_test.rs` and `prune_while_locked_is_busy` in `cli_sync_test.rs`, the second fails on `assert!(out.contains("busy"))`.
+- [ ] GREEN commit: command, summary output.
+- [ ] `docs/wiki/Command-sync.md` and `docs/architecture/sync.md` get prune, gates as in Stage 59, `git diff --stat origin/main...HEAD` under 100 files.
+
+Files: `src/sync/mod.rs`, `src/cli/subcommands.rs`, `src/commands/sync/mod.rs`, `src/commands/sync/prune.rs`, `src/dispatch.rs`, `src/sync/app/format/summary.rs`, `tests/integration/cli_sync_parse_test.rs`, `tests/integration/cli_sync_test.rs`, `docs/wiki/Command-sync.md`, `docs/architecture/sync.md`, `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
+Depends on: Stage 60
+
 ## Batches
 
 1. Stage 1, Stage 2, Stage 3 (parallel, no shared files)
@@ -959,6 +1253,20 @@ Depends on: Stage 44
 30. Stage 43
 31. Stage 44
 32. Stage 45
+33. Stage 46, Stage 47 (parallel, probe file vs new store module)
+34. Stage 48, Stage 52 (parallel, pack index vs gist store read side)
+35. Stage 49
+36. Stage 50
+37. Stage 51
+38. Stage 53 (waits for the Stage 46 result)
+39. Stage 54
+40. Stage 55
+41. Stage 56
+42. Stage 57
+43. Stage 58
+44. Stage 59
+45. Stage 60
+46. Stage 61
 
 Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 
@@ -1012,3 +1320,19 @@ Stages 4 to 7 share `src/sync/mod.rs`, as such they run in order.
 | 43 | todo | |
 | 44 | todo | chacha20poly1305 0.11 |
 | 45 | todo | |
+| 46 | todo | PR A, probe, run by the user |
+| 47 | todo | PR B |
+| 48 | todo | PR B |
+| 49 | todo | PR B |
+| 50 | todo | PR B |
+| 51 | todo | PR B |
+| 52 | todo | PR B |
+| 53 | todo | PR B |
+| 54 | todo | PR C |
+| 55 | todo | PR C |
+| 56 | todo | PR C |
+| 57 | todo | PR C |
+| 58 | todo | PR C |
+| 59 | todo | PR C |
+| 60 | todo | PR D |
+| 61 | todo | PR D |
