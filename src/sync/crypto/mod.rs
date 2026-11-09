@@ -14,7 +14,7 @@ pub use seal::{open_meta, seal, seal_meta, Meta};
 
 use chacha20poly1305::aead::{Generate, KeyInit};
 use chacha20poly1305::XChaCha20Poly1305;
-use data_encoding::HEXLOWER;
+use data_encoding::{BASE32_NOPAD, HEXLOWER};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use zeroize::Zeroize;
@@ -75,6 +75,12 @@ impl Key {
     }
 }
 
+/// Random id of `n` bytes (at most 24) as base32 without padding.
+pub(in crate::sync) fn random_id_base32(n: usize) -> String {
+    let nonce = chacha20poly1305::XNonce::generate();
+    BASE32_NOPAD.encode(&nonce[..n])
+}
+
 pub fn sha256_hex(data: &[u8]) -> String {
     HEXLOWER.encode(&Sha256::digest(data))
 }
@@ -98,6 +104,11 @@ mod tests {
             sha256_hex(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn random_id_base32_is_26_chars_for_16_bytes() {
+        assert_eq!(super::random_id_base32(16).len(), 26);
     }
 
     #[test]

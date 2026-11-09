@@ -1,9 +1,7 @@
 //! Sealed pack index: JSON v3 under AAD `agr:pack-index:` plus the pack uuid.
 
-use crate::sync::crypto::{open, seal, CryptoError, Key};
-use chacha20poly1305::aead::Generate;
-use chacha20poly1305::XNonce;
-use data_encoding::{BASE32_NOPAD, BASE64URL_NOPAD};
+use crate::sync::crypto::{open, random_id_base32, seal, CryptoError, Key};
+use data_encoding::BASE64URL_NOPAD;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -89,8 +87,7 @@ pub fn open_index(key: &Key, uuid: &str, text: &str) -> Result<Index, IndexError
 
 /// Random 128 bit pack id as 26 base32 characters.
 pub fn new_pack_uuid() -> String {
-    let nonce = XNonce::generate();
-    BASE32_NOPAD.encode(&nonce[..16])
+    random_id_base32(16)
 }
 
 #[cfg(test)]
