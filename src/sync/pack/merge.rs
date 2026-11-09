@@ -34,6 +34,14 @@ pub struct Place {
     pub offset: u64,
     pub length: u64,
     pub sha256: String,
+    pub deleted: bool,
+}
+
+impl Place {
+    /// Tombstones are all alike, live places differ by hash.
+    fn identity(&self) -> Option<&str> {
+        (!self.deleted).then_some(self.sha256.as_str())
+    }
 }
 
 /// One path at its highest gen with every place that holds it.
@@ -109,9 +117,14 @@ pub fn merge(packs: &[PackIn]) -> View {
 
 fn finish(view: &mut View) {
     for (path, m) in view.merged.iter_mut() {
-        if m.places.iter().any(|p| p.sha256 != m.places[0].sha256) {
+        if m.places
+            .iter()
+            .any(|p| p.identity() != m.places[0].identity())
+        {
             m.top = Top::Fork;
             view.forks.push(path.clone());
+        } else if m.places[0].deleted {
+            m.top = Top::Deleted { gen: m.gen };
         }
     }
 }
@@ -132,5 +145,6 @@ fn place(pack: &str, e: &Entry) -> Place {
         offset: e.offset,
         length: e.length,
         sha256: e.sha256.clone(),
+        deleted: e.deleted,
     }
 }
