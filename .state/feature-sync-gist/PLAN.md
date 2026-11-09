@@ -1064,6 +1064,7 @@ PR: B
   - `dead_bytes_per_pack` [`assert_eq!(view.dead_bytes[&id], old_gen_length)`, live vs dead length per pack, a top-gen tombstone counts as live, used by status and prune]
   - `duplicated_pack_is_merged_and_reported` (ADR merge rule 6) [`assert_eq!(view.duplicates, vec![("a", "b")])` for packs `a` and `b` with one tag and the same index, `assert_eq!(view.get("x").unwrap().places.len(), 2)` and a tombstone only in that tag stays `is_deleted()`, the stub drops both packs]
   - `keeper_is_the_place_in_the_highest_pack_id` [`assert_eq!(view.get("a").unwrap().keeper().pack, "b")` for places in packs `a` and `b`, the other place counts as dead bytes]
+  - `older_index_of_same_pack_is_not_accepted` [`assert_eq!(view.pack("a").unwrap().len, 200)` and `assert_eq!(view.get("x").unwrap().gen, 4)` for an index of pack `a` at gen 4, len 200 and an older one at gen 3, len 100, the merged view keeps the higher gen and len, the stub keeps the last index seen]
 - [ ] GREEN commit: `merge(packs)` returning a `View` with `places`, `keeper`, `forks`, `rejected`, `duplicates` and `dead_bytes`. `View::is_frozen(id)` is true for both ids of a duplicate, push, prune and `--seal-orphans` never write or delete a frozen pack.
 
 Files: `src/sync/pack/mod.rs`, `src/sync/pack/merge.rs`, `src/sync/pack/merge_tests.rs`
