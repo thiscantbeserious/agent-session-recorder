@@ -127,7 +127,11 @@ impl<R: Runner> GistStore<R> {
         let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
         for gist in parse_pages(&out.stdout)? {
             let desc = gist.description.clone().unwrap_or_default();
-            if let Some(tag) = desc.strip_prefix(PACK_PREFIX) {
+            // An empty tag is no pack we made, it is ignored like any foreign gist.
+            let tag = desc
+                .strip_prefix(PACK_PREFIX)
+                .filter(|t| !t.trim().is_empty());
+            if let Some(tag) = tag {
                 let info = seen_of(&gist);
                 listing.packs.push(PackInfo {
                     id: gist.id.clone(),
@@ -136,7 +140,7 @@ impl<R: Runner> GistStore<R> {
                     updated_at: gist.updated_at.clone(),
                 });
                 seen.insert(gist.id, info);
-            } else if desc.starts_with(DESC_PREFIX) {
+            } else if desc.starts_with(DESC_PREFIX) && !desc.starts_with(PACK_PREFIX) {
                 listing.legacy.push(desc);
             }
         }
