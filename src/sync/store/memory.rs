@@ -10,6 +10,8 @@ struct Pack {
     tag: String,
     data: Vec<u8>,
     index: String,
+    /// Data files so far, one per segment.
+    files: usize,
 }
 
 #[derive(Default)]
@@ -78,9 +80,10 @@ impl PackStore for MemoryStore {
         })
     }
 
-    fn fits(&self, _info: &PackInfo, _lens: &[u64]) -> bool {
-        let _ = self.slots;
-        true
+    fn fits(&self, info: &PackInfo, lens: &[u64]) -> bool {
+        let Some(max) = self.slots else { return true };
+        let used = self.lock().packs.get(&info.id).map_or(0, |p| p.files);
+        used + lens.len() <= max
     }
 
     fn read_index(&self, id: &str) -> Result<String, StoreError> {
@@ -105,6 +108,7 @@ impl PackStore for MemoryStore {
             tag: tag.to_string(),
             data: Vec::new(),
             index: index.to_string(),
+            files: 0,
         };
         inner.packs.insert(id.clone(), pack);
         Ok(id)
@@ -128,6 +132,7 @@ impl PackStore for MemoryStore {
             (s.write)(&mut grown).map_err(|e| StoreError::Other(e.to_string()))?;
         }
         pack.data = grown;
+        pack.files += segments.len();
         pack.index = index.to_string();
         Ok(())
     }
