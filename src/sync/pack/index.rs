@@ -135,6 +135,16 @@ mod tests {
     }
 
     #[test]
+    fn index_v4_with_other_shape_is_unknown_version() {
+        let key = Key::generate();
+        let sealed =
+            crate::sync::crypto::seal(&key, &super::aad("PACK"), br#"{"v":4,"something":"else"}"#);
+        let text = format!("PACK.{}", super::BASE64URL_NOPAD.encode(&sealed));
+        let err = open_index(&key, "PACK", &text).unwrap_err();
+        assert!(matches!(err, IndexError::UnknownVersion(4)), "{err:?}");
+    }
+
+    #[test]
     fn index_text_is_base64url() {
         let text = seal_index(&Key::generate(), &sample("PACK"));
         assert!(!text.contains(['=', '+', '/']));
