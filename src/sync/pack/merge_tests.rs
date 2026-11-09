@@ -149,3 +149,13 @@ fn both_ids_of_a_duplicate_are_frozen() {
     assert!(view.is_frozen("a") && view.is_frozen("b"));
     assert!(!view.is_frozen("c"));
 }
+
+#[test]
+fn keeper_is_the_place_in_the_highest_pack_id() {
+    let a = pack("a", "A", 10, vec![entry("x", 1, "h", 10, false)]);
+    let b = pack("b", "B", 10, vec![entry("x", 1, "h", 10, false)]);
+    let view = merge(&[a, b]);
+    assert_eq!(view.get("x").unwrap().keeper().pack, "b");
+    assert_eq!(view.dead_bytes["a"], 10);
+    assert_eq!(view.dead_bytes["b"], 0);
+}
