@@ -57,7 +57,13 @@ impl IndexCache {
     }
 
     /// Forgets `id`, called when an append came back `Moved`.
-    pub(super) fn drop_entry(&self, _id: &str) {}
+    #[allow(dead_code)] // `append` of Stage 53 calls it
+    pub(super) fn drop_entry(&self, id: &str) {
+        let mut all = self.load();
+        if all.remove(id).is_some() {
+            self.save(&all);
+        }
+    }
 }
 
 #[cfg(test)]

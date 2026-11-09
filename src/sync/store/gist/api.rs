@@ -5,6 +5,7 @@ use std::sync::PoisonError;
 
 use serde::Deserialize;
 
+use super::index_cache::{Entry, IndexCache};
 use super::{GistStore, Listing, PackInfo, StoreError};
 use crate::sync::backend::gist::parse::{check_auth, id_from_create_output, map_failure};
 use crate::sync::backend::gist::parse::{DESC_PREFIX, LIST_LIMIT};
@@ -49,7 +50,6 @@ pub(super) struct FileRef {
 /// What the store knows about one pack gist.
 #[derive(Clone)]
 pub(super) struct Seen {
-    #[allow(dead_code)] // the index cache of the next commit reads it
     pub updated_at: String,
     pub files: Vec<FileRef>,
 }
@@ -167,13 +167,36 @@ impl<R: Runner> GistStore<R> {
         }
     }
 
+    /// The `updated_at` of the last listing or fetch of `id`.
+    fn known_update(&self, id: &str) -> Option<String> {
+        let seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
+        seen.get(id).map(|s| s.updated_at.clone())
+    }
+
     pub(super) fn index_of(&self, id: &str) -> Result<String, StoreError> {
-        let gist = self.fetch_gist(id)?;
-        match gist.files.get(INDEX_FILE) {
-            Some(f) if !f.truncated => Ok(f.content.clone().unwrap_or_default()),
-            Some(_) => Err(StoreError::Other("the index came back truncated".into())),
-            None => Err(StoreError::Other("the pack has no index".into())),
+        let cache = self.cache_file.as_deref().map(IndexCache::new);
+        let known = self.known_update(id);
+        if let (Some(cache), Some(at)) = (&cache, &known) {
+            if let Some(hit) = cache.get(id, at) {
+                return Ok(hit.index);
+            }
         }
+        let gist = self.fetch_gist(id)?;
+        let index = match gist.files.get(INDEX_FILE) {
+            Some(f) if !f.truncated => f.content.clone().unwrap_or_default(),
+            Some(_) => return Err(StoreError::Other("the index came back truncated".into())),
+            None => return Err(StoreError::Other("the pack has no index".into())),
+        };
+        if let Some(cache) = &cache {
+            let seen = seen_of(&gist);
+            let entry = Entry {
+                updated_at: seen.updated_at,
+                index: index.clone(),
+                files: seen.files,
+            };
+            cache.put(id, entry);
+        }
+        Ok(index)
     }
 
     pub(super) fn create_pack(&self, tag: &str, index: &str) -> Result<String, StoreError> {

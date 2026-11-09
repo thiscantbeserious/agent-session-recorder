@@ -1131,12 +1131,12 @@ PR: B
   - `failed_raw_url_read_is_a_store_error_no_clone` [`assert!(matches!(err, StoreError::Unreachable))` and `assert!(!calls.iter().any(|c| c.contains("clone")))`]
 - [x] GREEN commit: `api.rs` and `read.rs`.
 - [x] Probe dependency: the key comes from `updated_at_moves_on_git_push` (Stage 46). Both lines PASSED on 2026-11-09: the tests below as written, the fallback is not needed. Either line FAILS: the fallback of ADR "Index cache (pending probe)", the two `updated_at` tests become `sealed_entry_is_cached_forever_by_id` [`assert_eq!(api_calls_for(id), 0)` with a changed `updated_at`] and `open_pack_is_read_every_time_and_keyed_on_history_version` [`assert_eq!(api_calls_for(id), 2)` over two opens, the entry key is `history[0].version`], plus `gone_id_drops_its_entry` [`assert!(cache.get(id).is_none())`].
-- [ ] RED commit, index cache (`<user cache dir>/agr/index-cache.json`, keyed by gist id plus `updated_at`):
+- [x] RED commit, index cache (`<user cache dir>/agr/index-cache.json`, keyed by gist id plus `updated_at`):
   - `sealed_index_cache_hit_skips_the_api` [`assert_eq!(api_calls_for(id), 0)` on the second `read_index` with the same `updated_at`, the stub always calls the API]
   - `changed_updated_at_refetches` [`assert_eq!(api_calls_for(id), 1)`]
   - `cache_survives_corrupt_file` [`assert_eq!(store.read_index(id)?, text)` with garbage in the cache file, the file is rewritten valid]
   - `cache_entry_dropped_on_moved` [`assert!(cache.get(id).is_none())`]
-- [ ] GREEN commit: `index_cache.rs`, temp plus rename, sealed text only.
+- [x] GREEN commit: `index_cache.rs`, temp plus rename, sealed text only.
 - [ ] Probe dependency: Stage 46 verified `raw_url` with `Range` (206, correct bytes) on secret gists, so no branch is needed here.
 
 Files: `src/sync/store/mod.rs`, `src/sync/store/gist/mod.rs`, `src/sync/store/gist/layout.rs`, `src/sync/store/gist/api.rs`, `src/sync/store/gist/read.rs`, `src/sync/store/gist/index_cache.rs`, `src/sync/store/gist/tests.rs`, `src/sync/backend/gist/mod.rs`, `src/sync/backend/gist/pace.rs`, `src/sync/backend/gist/progress.rs`, `src/sync/backend/gist/runner.rs`, `src/sync/backend/gist/fake.rs`, `src/sync/backend/mod.rs`
