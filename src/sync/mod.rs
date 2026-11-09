@@ -150,12 +150,24 @@ mod layer_check {
     }
 
     /// Rule violations of one file, `rel` is relative to `src/sync`.
+    /// `needle` occurs and ends on a segment boundary, so `crate::sync::app` does not
+    /// match `crate::sync::appx`. A needle ending in `::` (`sha2::`) is a prefix.
+    fn has_segment(text: &str, needle: &str) -> bool {
+        if needle.ends_with("::") {
+            return text.contains(needle);
+        }
+        text.match_indices(needle).any(|(i, _)| {
+            let next = text[i + needle.len()..].chars().next();
+            !next.is_some_and(|c| c.is_alphanumeric() || c == '_')
+        })
+    }
+
     fn violations(rel: &str, text: &str) -> Vec<String> {
         let text = &strip_comments(text);
         let paths = use_paths(text);
         let mut bad = Vec::new();
         for (layer, needle) in RULES.iter().filter(|(l, _)| rel.starts_with(l)) {
-            if text.contains(needle) || paths.iter().any(|p| p.contains(needle)) {
+            if has_segment(text, needle) || paths.iter().any(|p| has_segment(p, needle)) {
                 bad.push(format!("{rel} ({layer}) must not contain `{needle}`"));
             }
         }
