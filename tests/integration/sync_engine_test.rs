@@ -4,7 +4,7 @@ use agr::files::{codec, lock};
 use agr::sync::testing::index::{self, Index};
 use agr::sync::testing::{seal, seal_meta, sha256_hex, MemoryBackend, Meta};
 use agr::sync::{BackendError, BlobSource, RemoteEntry, SyncBackend};
-use agr::sync::{Decision, Engine, Key, Options, Outcome, SkipReason, SyncError};
+use agr::sync::{Decision, Engine, Event, Key, Options, Outcome, SkipReason, SyncError};
 use agr::{Config, StorageManager};
 
 use crate::helpers::sync_net::{open_blob, seal_blob};
@@ -1522,18 +1522,101 @@ fn seen_paths(seen: &[(String, usize, usize)]) -> Vec<(&str, usize, usize)> {
     seen.iter().map(|(p, i, n)| (p.as_str(), *i, *n)).collect()
 }
 
+/// Records `(path, i, n)` of every `Finished` event.
+fn finished_log(seen: &mut Vec<(String, usize, usize)>) -> impl FnMut(&Event) + '_ {
+    move |event| {
+        if let Event::Finished { item, i, n } = event {
+            seen.push((item.path.clone(), *i, *n));
+        }
+    }
+}
+
+fn show(event: &Event) -> String {
+    match event {
+        Event::Started { path, size, i, n } => format!("started {path} {size} {i}/{n}"),
+        Event::Finished { item, i, n } => format!("finished {} {i}/{n}", item.path),
+    }
+}
+
+#[test]
+fn started_comes_before_finished_for_each_session_in_order() {
+    let (m, backend, key) = (machine(), MemoryBackend::new(), Key::generate());
+    three(&m);
+    let size = fs::metadata(m.storage.storage_dir().join(A)).unwrap().len();
+    let mut seen = Vec::new();
+    let mut observe = |event: &Event| seen.push(show(event));
+    m.engine(&backend, &key)
+        .push_with(&opts(), 3, &mut observe)
+        .unwrap();
+    assert_eq!(
+        seen,
+        [
+            format!("started claude/a.cast.gz {size} 1/3"),
+            "finished claude/a.cast.gz 1/3".to_string(),
+            format!(
+                "started claude/b.cast.gz {} 2/3",
+                seen_size(&m, "claude/b.cast.gz")
+            ),
+            "finished claude/b.cast.gz 2/3".to_string(),
+            format!(
+                "started codex/c.cast.gz {} 3/3",
+                seen_size(&m, "codex/c.cast.gz")
+            ),
+            "finished codex/c.cast.gz 3/3".to_string(),
+        ]
+    );
+}
+
+fn seen_size(m: &Machine, path: &str) -> u64 {
+    fs::metadata(m.storage.storage_dir().join(path))
+        .unwrap()
+        .len()
+}
+
+#[test]
+fn nothing_starts_for_dry_runs_and_in_sync_sessions() {
+    let (m, backend, key) = pushed_machine();
+    let mut seen = Vec::new();
+    let mut observe = |event: &Event| seen.push(show(event));
+    let dry = Options {
+        dry_run: true,
+        ..opts()
+    };
+    m.engine(&backend, &key)
+        .push_with(&dry, 0, &mut observe)
+        .unwrap();
+    m.engine(&backend, &key)
+        .push_with(&opts(), 0, &mut observe)
+        .unwrap();
+    assert!(seen.is_empty(), "{seen:?}");
+}
+
+#[test]
+fn pull_reports_the_remote_size_with_started() {
+    let (_m, backend, key) = pushed_machine();
+    let other = machine();
+    let mut seen = Vec::new();
+    let mut observe = |event: &Event| seen.push(show(event));
+    other
+        .engine(&backend, &key)
+        .pull_with(&opts(), 3, &mut observe)
+        .unwrap();
+    assert_eq!(seen.len(), 6, "{seen:?}");
+    assert!(seen[0].starts_with("started claude/a.cast.gz "), "{seen:?}");
+    assert!(!seen[0].contains(" 0 1/3"), "{seen:?}");
+    assert_eq!(seen[1], "finished claude/a.cast.gz 1/3");
+}
+
 #[test]
 fn observer_runs_once_per_acted_on_item_in_order_with_index_and_total() {
     let (m, backend, key) = (machine(), MemoryBackend::new(), Key::generate());
     three(&m);
     let mut seen = Vec::new();
-    let mut observe = |item: &agr::sync::Item, i: usize, n: usize| {
-        assert!(matches!(item.outcome, Outcome::Done(_)));
-        seen.push((item.path.clone(), i, n));
-    };
-    m.engine(&backend, &key)
-        .push_with(&opts(), 3, &mut observe)
+    let report = m
+        .engine(&backend, &key)
+        .push_with(&opts(), 3, &mut finished_log(&mut seen))
         .unwrap();
+    assert_eq!(report.pushed, 3);
     assert_eq!(
         seen_paths(&seen),
         [
@@ -1548,7 +1631,7 @@ fn observer_runs_once_per_acted_on_item_in_order_with_index_and_total() {
 fn observer_is_not_called_for_in_sync_items() {
     let (m, backend, key) = pushed_machine();
     let mut calls = 0;
-    let mut observe = |_: &agr::sync::Item, _: usize, _: usize| calls += 1;
+    let mut observe = |_: &Event| calls += 1;
     let report = m
         .engine(&backend, &key)
         .push_with(&opts(), 0, &mut observe)
@@ -1561,27 +1644,25 @@ fn observer_counts_only_acted_on_items_and_covers_pull_and_delete() {
     let (m, backend, key) = pushed_machine();
     m.session("claude", "d.cast.gz", &CAST.replace("secret", "fourth"));
     let mut seen = Vec::new();
-    let mut observe =
-        |item: &agr::sync::Item, i: usize, n: usize| seen.push((item.path.clone(), i, n));
     m.engine(&backend, &key)
-        .push_with(&opts(), 1, &mut observe)
+        .push_with(&opts(), 1, &mut finished_log(&mut seen))
         .unwrap();
     assert_eq!(seen_paths(&seen), [("claude/d.cast.gz", 1, 1)]);
     let other = machine();
     seen.clear();
-    let mut observe =
-        |item: &agr::sync::Item, i: usize, n: usize| seen.push((item.path.clone(), i, n));
     other
         .engine(&backend, &key)
-        .pull_with(&opts(), 4, &mut observe)
+        .pull_with(&opts(), 4, &mut finished_log(&mut seen))
         .unwrap();
     assert_eq!(seen.len(), 4);
     assert_eq!(seen[3].1, 4);
     seen.clear();
-    let mut observe =
-        |item: &agr::sync::Item, i: usize, n: usize| seen.push((item.path.clone(), i, n));
     m.engine(&backend, &key)
-        .delete_with(&["claude/a.cast.gz".to_string()], 1, &mut observe)
+        .delete_with(
+            &["claude/a.cast.gz".to_string()],
+            1,
+            &mut finished_log(&mut seen),
+        )
         .unwrap();
     assert_eq!(seen_paths(&seen), [("claude/a.cast.gz", 1, 1)]);
 }

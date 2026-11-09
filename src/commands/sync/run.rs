@@ -12,7 +12,7 @@ use agr::sync::setup::{
     default_key_path, explain, needs_privacy_ack, open_backend, resolve_key, KeyNeed, KeyState,
     SetupError, IMPORT_HINT,
 };
-use agr::sync::{BackendError, Engine, Item, Options, Outcome, Report, SyncBackend, SyncError};
+use agr::sync::{BackendError, Engine, Event, Options, Outcome, Report, SyncBackend, SyncError};
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
 
@@ -280,13 +280,12 @@ pub fn delete(args: Args) -> Result<()> {
 }
 
 /// Prints one line per acted-on session on stderr, only on a terminal.
-fn progress<'a>(done: &'a str) -> impl FnMut(&Item, usize, usize) + 'a {
+fn progress<'a>(done: &'a str) -> impl FnMut(&Event<'_>) + 'a {
     let tty = std::io::stderr().is_terminal();
-    move |item, i, n| {
-        if tty {
-            let line = format::progress_line(done, item, i, n);
-            let theme = current_theme();
-            eprintln!("{}", theme.secondary_text(&line));
+    move |event| {
+        if let (true, Event::Finished { item, i, n }) = (tty, event) {
+            let line = format::progress_line(done, item, *i, *n);
+            eprintln!("{}", current_theme().secondary_text(&line));
         }
     }
 }

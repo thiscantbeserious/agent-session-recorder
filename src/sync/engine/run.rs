@@ -6,7 +6,7 @@ use super::fail::{Fail, Stop};
 use super::index::{self, Index};
 use super::item::{hash_of, not_found, passive, remote_hash_of, strip_done};
 use super::lock::SyncLock;
-use super::observe::{counted, no_progress, Observer};
+use super::observe::{counted, no_progress, Observer, Step};
 use super::plan::{decide, resolve, Command, Decision, Local, Remote};
 use super::pull::pull_one;
 use super::push::{heal, push_one};
@@ -183,7 +183,7 @@ impl Engine<'_> {
             })?;
             let done = matches!(outcome, Outcome::Done(_));
             let item = self.item(&row, decide(&row.input), outcome);
-            observer(&item);
+            observer(Step::Finished(&item));
             loaded.report.deleted += usize::from(done);
             loaded.report.add(Command::Push, strip_done(item));
         }
@@ -194,7 +194,7 @@ impl Engine<'_> {
         &self,
         command: Command,
         opts: &Options,
-        observer: &mut dyn FnMut(&Item),
+        observer: &mut dyn FnMut(Step<'_>),
     ) -> Result<Report, SyncError> {
         let _lock = if opts.dry_run {
             None
@@ -209,7 +209,7 @@ impl Engine<'_> {
                 .map_err(|Stop| SyncError::RateLimited {
                     left: rows.len() + 1,
                 })?;
-            observer(&item);
+            observer(Step::Finished(&item));
             loaded.report.add(command, item);
         }
         Ok(loaded.report)
