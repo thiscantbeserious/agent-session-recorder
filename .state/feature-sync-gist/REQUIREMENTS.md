@@ -469,9 +469,9 @@ Sessions only live on one machine. We want to sync them between machines, with G
 **P17. Later (recorded, not built)**
 - [ ] Nothing in the pack layer hardcodes the backend name `gist` outside the gist store, so a rename to host and kind and a GitLab store only add code.
 
-### Open questions for the user
+### Answered by the user (2026-11-09)
 
-1. Pack size range: ADR accepts 16 to 512 MiB with default 64, is that the range you want?
-2. Delete patterns: from how many matches do we ask the typed number, 2 or more, or a higher threshold like 10?
-3. A delete is a tombstone and frees space only after `agr sync prune`, is that fine, or must it free space at once?
-4. Pattern delete lands in which PR, with the switch (PR C), or its own PR after PR D?
+1. **Pack size range**: 16 to 512 MiB, default 64.
+2. **Typed number**: asked when a delete matches more than 10 sessions.
+3. **Space after delete**: a delete is a tombstone, `agr sync prune` frees the bytes later, like restic.
+4. **Pattern delete**: lands in PR C together with the engine switch.
