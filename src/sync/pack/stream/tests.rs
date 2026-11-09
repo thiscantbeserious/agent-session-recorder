@@ -155,3 +155,15 @@ fn truncated_multi_frame_range_leaves_only_whole_verified_frames() {
         assert_eq!(w.writes, vec![FRAME, FRAME, FRAME], "cut {cut}");
     }
 }
+
+#[test]
+fn segment_write_returns_the_sealed_digest() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("s.cast");
+    std::fs::write(&file, b"sealed bytes").unwrap();
+    let key = Key::generate();
+    let seg = segment(&key, "a/s.cast", 1, &file).unwrap();
+    let digest = seg.write(&mut Vec::new()).unwrap();
+    assert_eq!(digest.0, sha256_hex(&std::fs::read(&file).unwrap()));
+    assert_eq!(digest.1, 12);
+}
