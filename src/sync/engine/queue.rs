@@ -5,20 +5,57 @@ use std::path::Path;
 
 use anyhow::Result;
 
+use super::scan::valid_path;
+
 pub const QUEUE_DIR: &str = ".agr-sync-queue";
 
-/// Queue `session` (`agent/name.cast.gz`), queuing it twice is one entry.
-pub fn enqueue(_storage_dir: &Path, _session: &str) -> Result<()> {
+/// Queue `session` (`agent/name.cast.gz`), queuing it twice is one entry. The entry is an
+/// empty file, so there is no half written state. `create` without `truncate` makes two racing
+/// calls end in the same single file, no temp file is involved.
+pub fn enqueue(storage_dir: &Path, session: &str) -> Result<()> {
+    anyhow::ensure!(valid_path(session), "not a session path: {session}");
+    let path = storage_dir.join(QUEUE_DIR).join(session);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)?;
     Ok(())
 }
 
 /// Queued sessions, sorted, entries that are not a valid session path are ignored.
-pub fn list(_storage_dir: &Path) -> Vec<String> {
-    Vec::new()
+pub fn list(storage_dir: &Path) -> Vec<String> {
+    let names = |dir: &Path| -> Vec<String> {
+        std::fs::read_dir(dir).map_or_else(
+            |_| Vec::new(),
+            |rd| {
+                let files = rd.flatten().map(|e| e.file_name());
+                files.filter_map(|n| n.to_str().map(String::from)).collect()
+            },
+        )
+    };
+    let root = storage_dir.join(QUEUE_DIR);
+    let mut found: Vec<String> = names(&root)
+        .into_iter()
+        .flat_map(|agent| {
+            let files = names(&root.join(&agent));
+            files.into_iter().map(move |f| format!("{agent}/{f}"))
+        })
+        .filter(|s| valid_path(s))
+        .collect();
+    found.sort();
+    found
 }
 
 /// Drop the entries of `sessions`, missing ones are fine.
-pub fn remove(_storage_dir: &Path, _sessions: &[String]) {}
+pub fn remove(storage_dir: &Path, sessions: &[String]) {
+    for session in sessions.iter().filter(|s| valid_path(s)) {
+        let _ = std::fs::remove_file(storage_dir.join(QUEUE_DIR).join(session));
+    }
+}
 
 #[cfg(test)]
 mod tests {
