@@ -83,6 +83,13 @@ fn pack_len(seen: &Seen) -> u64 {
     data.map(|f| f.size).sum()
 }
 
+fn data_files(seen: &Seen) -> usize {
+    seen.files
+        .iter()
+        .filter(|f| f.name.starts_with("data."))
+        .count()
+}
+
 fn parse_pages(text: &str) -> Result<Vec<Gist>, StoreError> {
     let pages = serde_json::Deserializer::from_str(text).into_iter::<Vec<Gist>>();
     let mut all = Vec::new();
@@ -138,6 +145,7 @@ impl<R: Runner> GistStore<R> {
                     tag: tag.trim().to_string(),
                     len: pack_len(&info),
                     updated_at: gist.updated_at.clone(),
+                    files: data_files(&info),
                 });
                 seen.insert(gist.id, info);
             } else if desc.starts_with(DESC_PREFIX) && !desc.starts_with(PACK_PREFIX) {
@@ -215,9 +223,8 @@ impl<R: Runner> GistStore<R> {
             .ok_or_else(|| StoreError::Other("gh did not print a gist url".into()))
     }
 
+    /// The index file counts on top of the data files of `info`.
     pub(super) fn fits_files(&self, info: &PackInfo, lens: &[u64]) -> bool {
-        let seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
-        let files = seen.get(&info.id).map_or(1, |s| s.files.len());
-        super::layout::fits(files, lens)
+        super::layout::fits(info.files + 1, lens)
     }
 }

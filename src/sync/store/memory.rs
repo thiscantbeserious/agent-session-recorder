@@ -134,6 +134,7 @@ impl PackStore for MemoryStore {
                 tag: p.tag.clone(),
                 len: p.data.len() as u64,
                 updated_at: String::new(),
+                files: p.files,
             })
             .collect();
         Ok(Listing {
@@ -144,8 +145,7 @@ impl PackStore for MemoryStore {
 
     fn fits(&self, info: &PackInfo, lens: &[u64]) -> bool {
         let Some(max) = self.slots else { return true };
-        let used = self.lock().packs.get(&info.id).map_or(0, |p| p.files);
-        used + lens.len() <= max
+        info.files + lens.len() <= max
     }
 
     fn read_index(&self, id: &str) -> Result<String, StoreError> {

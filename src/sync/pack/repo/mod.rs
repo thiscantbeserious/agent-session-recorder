@@ -23,7 +23,7 @@ pub use read::{read_pack, ReadError};
 use crate::sync::crypto::{open_meta, Key};
 use crate::sync::pack::index::{open_index, Index};
 use crate::sync::pack::merge::{merge, PackIn, View};
-use crate::sync::store::{PackStore, StoreError};
+use crate::sync::store::{PackInfo, PackStore, StoreError};
 use std::collections::BTreeMap;
 use thiserror::Error;
 
@@ -37,6 +37,8 @@ pub enum RepoError {
     NeedsMigrate,
     #[error("could not read every pack index: {0}")]
     PartialView(StoreError),
+    #[error("could not list the packs: {0}")]
+    List(StoreError),
 }
 
 /// The open pack of this writer with the index text it was planned against.
@@ -44,8 +46,23 @@ pub enum RepoError {
 pub(super) struct OpenPack {
     pub id: String,
     pub tag: String,
+    /// Data files of the pack, as listed and grown by this run's appends.
+    pub files: usize,
     pub text: String,
     pub index: Index,
+}
+
+impl OpenPack {
+    /// The pack as a listing would show it, for `fits`.
+    pub(super) fn info(&self) -> PackInfo {
+        PackInfo {
+            id: self.id.clone(),
+            tag: self.tag.clone(),
+            len: self.index.len,
+            updated_at: String::new(),
+            files: self.files,
+        }
+    }
 }
 
 /// Index text and opened index per pack id.
@@ -59,15 +76,24 @@ pub struct Repo<'a> {
     view: View,
     /// Opened index text and index per pack id.
     packs: Packs,
+    files: Files,
     open: Option<OpenPack>,
 }
 
-/// One pass over every pack: list, read each index, open, merge. One failed read fails the pass,
+/// Data file count per pack id.
+type Files = BTreeMap<String, usize>;
+
+/// One pass over the listed packs: read each index, open, merge. One failed read fails the pass,
 /// a view of part of the packs would plan against data that is not there.
-fn load(store: &dyn PackStore, key: &Key) -> Result<(View, Packs), StoreError> {
-    let (mut ins, mut packs) = (Vec::new(), BTreeMap::new());
-    for p in store.list()?.packs {
+fn load(
+    store: &dyn PackStore,
+    key: &Key,
+    listed: Vec<PackInfo>,
+) -> Result<(View, Packs, Files), StoreError> {
+    let (mut ins, mut packs, mut files) = (Vec::new(), BTreeMap::new(), BTreeMap::new());
+    for p in listed {
         let text = store.read_index(&p.id)?;
+        files.insert(p.id.clone(), p.files);
         let index = open_index(key, &p.tag, &text);
         if let Ok(i) = &index {
             packs.insert(p.id.clone(), (text, i.clone()));
@@ -78,7 +104,7 @@ fn load(store: &dyn PackStore, key: &Key) -> Result<(View, Packs), StoreError> {
             index,
         });
     }
-    Ok((merge(&ins), packs))
+    Ok((merge(&ins), packs, files))
 }
 
 impl<'a> Repo<'a> {
@@ -90,7 +116,8 @@ impl<'a> Repo<'a> {
         target: u64,
         hint: Option<&str>,
     ) -> Result<Self, RepoError> {
-        let legacy = store.list()?.legacy;
+        let listing = store.list().map_err(RepoError::List)?;
+        let legacy = &listing.legacy;
         let ours = |d: &String| {
             let token = d.strip_prefix("agr:v1 ").unwrap_or_default().trim();
             open_meta(key, token).is_ok()
@@ -98,7 +125,7 @@ impl<'a> Repo<'a> {
         if legacy.iter().any(ours) {
             return Err(RepoError::NeedsMigrate);
         }
-        Self::open_for_migrate(store, key, writer, target, hint)
+        Self::from_listing(store, key, (writer, target, hint), listing.packs)
     }
 
     /// `hint` is the open pack id the app saved locally, `target` the pack size in bytes.
@@ -109,7 +136,17 @@ impl<'a> Repo<'a> {
         target: u64,
         hint: Option<&str>,
     ) -> Result<Self, RepoError> {
-        let (view, packs) = load(store, key).map_err(RepoError::PartialView)?;
+        let listing = store.list().map_err(RepoError::List)?;
+        Self::from_listing(store, key, (writer, target, hint), listing.packs)
+    }
+
+    fn from_listing(
+        store: &'a dyn PackStore,
+        key: &'a Key,
+        (writer, target, hint): (&str, u64, Option<&str>),
+        listed: Vec<PackInfo>,
+    ) -> Result<Self, RepoError> {
+        let (view, packs, files) = load(store, key, listed).map_err(RepoError::PartialView)?;
         let mut repo = Self {
             store,
             key,
@@ -117,6 +154,7 @@ impl<'a> Repo<'a> {
             target,
             view,
             packs,
+            files,
             open: None,
         };
         repo.open = repo.pick_open(hint);
@@ -125,7 +163,8 @@ impl<'a> Repo<'a> {
 
     /// Reads every index again, the view then shows what the last append wrote.
     pub(super) fn reload(&mut self) -> Result<(), StoreError> {
-        (self.view, self.packs) = load(self.store, self.key)?;
+        let listed = self.store.list()?.packs;
+        (self.view, self.packs, self.files) = load(self.store, self.key, listed)?;
         Ok(())
     }
 
@@ -155,6 +194,7 @@ impl<'a> Repo<'a> {
         Some(OpenPack {
             id: id.to_string(),
             tag,
+            files: self.files.get(id).copied().unwrap_or(0),
             text,
             index,
         })

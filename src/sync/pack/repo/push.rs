@@ -3,13 +3,15 @@
 use super::{OpenPack, Repo, RepoError};
 use crate::sync::crypto::blob::sealed_len;
 use crate::sync::crypto::sha256_reader;
-use crate::sync::pack::index::{new_pack_uuid, open_index, seal_index, Entry, Index};
+use crate::sync::pack::index::{new_pack_uuid, seal_index, Entry, Index};
 use crate::sync::pack::rules::{place, should_seal, Place};
 use crate::sync::pack::stream::{digest_is, segment, FileSegment};
 use crate::sync::store::{Segment, StoreError};
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::PathBuf;
+
+mod retry;
 
 /// One session file to push at `gen`.
 pub struct PushItem {
@@ -41,6 +43,7 @@ impl<'b> Batch<'b> {
 }
 
 /// A session with its hash read up front, the sealed write must reproduce it.
+#[derive(Clone)]
 pub(super) struct Staged {
     path: String,
     gen: u64,
@@ -102,7 +105,7 @@ impl Repo<'_> {
             let sum: u64 = chunk.iter().map(|s| s.len).sum();
             let seal = should_seal(self.target, pack.index.len + sum);
             let next = self.try_append(&pack, &Batch::of(chunk, seal))?;
-            self.open = (!seal).then_some(next);
+            self.open = open_of(next);
             rest = tail;
         }
         Ok(())
@@ -115,20 +118,12 @@ impl Repo<'_> {
             return self.new_pack().map(Some);
         };
         let lens: Vec<u64> = chunk.iter().map(|s| s.len).collect();
-        if self.has_room(&open, &lens)? {
+        if self.store.fits(&open.info(), &lens) {
             return Ok(Some(open));
         }
         self.try_append(&open, &Batch::of(&[], true))?;
         self.open = None;
         Ok(None)
-    }
-
-    fn has_room(&self, open: &OpenPack, lens: &[u64]) -> Result<bool, StoreError> {
-        let packs = self.store.list()?.packs;
-        Ok(packs
-            .iter()
-            .find(|p| p.id == open.id)
-            .is_none_or(|p| self.store.fits(p, lens)))
     }
 
     /// Appends a tombstone at gen + 1 of the merged entry of `path` to the open pack.
@@ -147,7 +142,8 @@ impl Repo<'_> {
             tombs: vec![(path.to_string(), gen + 1)],
             seal: false,
         };
-        self.open = Some(self.try_append(&pack, &batch)?);
+        let next = self.try_append(&pack, &batch)?;
+        self.open = open_of(next);
         self.reload()?;
         Ok(())
     }
@@ -167,34 +163,10 @@ impl Repo<'_> {
         Ok(OpenPack {
             id,
             tag,
+            files: 0,
             text,
             index,
         })
-    }
-
-    /// Appends once, on `Moved(current)` plans again against `current` and appends once more.
-    /// A sealed pack means a new pack, a pack of another writer is never appended to.
-    fn try_append(&self, pack: &OpenPack, batch: &Batch) -> Result<OpenPack, StoreError> {
-        let StoreError::Moved(current) = (match self.append_once(pack, batch) {
-            Err(e @ StoreError::Moved(_)) => e,
-            other => return other,
-        }) else {
-            unreachable!("matched Moved above")
-        };
-        let moved = open_index(self.key, &pack.tag, &current)
-            .map_err(|e| StoreError::Other(e.to_string()))?;
-        if moved.writer != self.writer {
-            return Err(StoreError::Moved(current));
-        }
-        if moved.sealed {
-            return self.append_once(&self.new_pack()?, batch);
-        }
-        let again = OpenPack {
-            text: current,
-            index: moved,
-            ..pack.clone()
-        };
-        self.append_once(&again, batch)
     }
 
     /// One append behind the end of `pack`, `Moved` is the caller's to handle.
@@ -204,6 +176,7 @@ impl Repo<'_> {
         batch: &Batch,
     ) -> Result<OpenPack, StoreError> {
         let staged = batch.staged;
+        let lens: Vec<u64> = staged.iter().map(|s| s.len).collect();
         let segs = staged
             .iter()
             .map(|s| segment(self.key, &pack.tag, &s.path, s.gen, &s.file))
@@ -222,10 +195,16 @@ impl Repo<'_> {
         Ok(OpenPack {
             id: pack.id.clone(),
             tag: pack.tag.clone(),
+            files: pack.files + self.store.files_for(&lens),
             text,
             index: next,
         })
     }
+}
+
+/// The pack stays open for the next chunk while it is not sealed.
+fn open_of(next: OpenPack) -> Option<OpenPack> {
+    (!next.index.sealed).then_some(next)
 }
 
 /// The old index plus one entry per session, ranges laid out behind the old end.

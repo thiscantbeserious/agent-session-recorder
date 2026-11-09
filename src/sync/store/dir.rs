@@ -181,6 +181,7 @@ impl PackStore for DirStore {
                 tag: m.tag,
                 len: m.len,
                 updated_at: String::new(),
+                files: m.parts.len(),
             });
         }
         packs.sort_by(|a, b| a.id.cmp(&b.id));
@@ -234,6 +235,10 @@ impl PackStore for DirStore {
         }
         m.index = index.to_string();
         self.write_manifest(id, &m)
+    }
+
+    fn files_for(&self, lens: &[u64]) -> usize {
+        usize::from(!lens.is_empty())
     }
 
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError> {

@@ -149,8 +149,9 @@ fn own_open_pack_duplicated_starts_a_new_pack() {
     assert_eq!(packs_of(&store).len(), 3);
 }
 
+/// 721 sessions of 560 plain bytes seal to about 422 KiB, the 440 MiB of the ADR scaled by 1/1024.
 #[test]
-fn push_of_440_mib_is_six_sealed_and_one_open_pack() {
+fn push_of_721_small_sessions_is_six_sealed_and_one_open_pack() {
     let (store, key, dir) = (
         MemoryStore::new(),
         Key::generate(),

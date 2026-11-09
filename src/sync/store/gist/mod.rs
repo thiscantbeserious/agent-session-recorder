@@ -90,6 +90,10 @@ impl<R: Runner> PackStore for GistStore<R> {
         self.fits_files(info, lens)
     }
 
+    fn files_for(&self, lens: &[u64]) -> usize {
+        layout::cut_parts(lens).len()
+    }
+
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError> {
         self.read_range(id, offset, len)
     }
