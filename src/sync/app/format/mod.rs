@@ -6,8 +6,10 @@ use crate::sync::engine::plan::Decision;
 use crate::sync::engine::run::{Item, Outcome, Report};
 use crate::sync::engine::scan::Duplicate;
 
+mod status;
 mod summary;
 
+pub use status::compact_status_lines;
 pub use summary::{
     delete_preview_lines, preview_lines, privacy_lines, problem_lines, progress_line,
     rate_limit_lines, summary_lines,
@@ -40,8 +42,7 @@ pub fn label(item: &Item) -> &'static str {
 
 /// Backend line, one line per session and totals per state.
 pub fn status_lines(report: &Report, backend: &str) -> Vec<String> {
-    let remote = report.items.iter().filter(|i| i.on_remote).count();
-    let mut lines = vec![format!("Backend: {backend}, {remote} remote session(s)")];
+    let mut lines = vec![backend_line(report, backend)];
     if report.items.is_empty() {
         lines.push("No sessions.".into());
         return lines;
@@ -49,6 +50,11 @@ pub fn status_lines(report: &Report, backend: &str) -> Vec<String> {
     lines.extend(report.items.iter().flat_map(status_block));
     lines.push(totals(report));
     lines
+}
+
+fn backend_line(report: &Report, backend: &str) -> String {
+    let remote = report.items.iter().filter(|i| i.on_remote).count();
+    format!("Backend: {backend}, {remote} remote session(s)")
 }
 
 fn status_block(item: &Item) -> Vec<String> {
