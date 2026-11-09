@@ -111,3 +111,21 @@ fn index_of_other_pack_is_reported() {
     let view = merge(&[rejected_pack("bad", IndexError::OtherPack)]);
     assert_eq!(view.rejected[0].1, Rejected::OtherPack);
 }
+
+#[test]
+fn dead_bytes_per_pack() {
+    let p = pack(
+        "p",
+        "P",
+        90,
+        vec![entry("a", 2, "x", 40, false), entry("a", 4, "y", 50, false)],
+    );
+    let view = merge(&[p]);
+    assert_eq!(view.dead_bytes["p"], 40);
+}
+
+#[test]
+fn dead_bytes_count_a_top_gen_tombstone_as_live() {
+    let p = pack("p", "P", 30, vec![entry("a", 5, "x", 30, true)]);
+    assert_eq!(merge(&[p]).dead_bytes["p"], 0);
+}

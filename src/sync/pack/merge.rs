@@ -102,6 +102,8 @@ pub fn merge(packs: &[PackIn]) -> View {
             view.rejected.push((p.id.clone(), reject(err)));
         }
         if let Ok(idx) = &p.index {
+            view.dead_bytes.insert(p.id.clone(), 0);
+            view.packs.insert(p.id.clone(), meta(&p.tag, idx));
             for e in &idx.entries {
                 match view.merged.get_mut(&e.path) {
                     None => {
@@ -116,6 +118,15 @@ pub fn merge(packs: &[PackIn]) -> View {
     }
     finish(&mut view);
     view
+}
+
+fn meta(tag: &str, idx: &Index) -> PackMeta {
+    PackMeta {
+        tag: tag.to_string(),
+        writer: idx.writer.clone(),
+        sealed: idx.sealed,
+        len: idx.len,
+    }
 }
 
 fn reject(err: &IndexError) -> Rejected {
