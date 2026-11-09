@@ -1413,7 +1413,7 @@ flowchart LR
 ```
 Legend: the data parts joined in order are the pack stream, the index maps every session to one range of it, both are written in the same commit.
 
-- **Pack stream**: the concatenation of unchanged blob v2 (STREAM, 64 KiB frames, AAD `AGR1 || 0x02 || "agr:blob:" || path || ":" || gen`). A blob moved to another range or replayed under another gen still fails to open. No pack header, the index carries the layout.
+- **Pack stream**: the concatenation of unchanged blob v2 (STREAM, 64 KiB frames, AAD `AGR1 || 0x02 || "agr:blob:" || path || ":" || gen`). A blob moved to another range or replayed under another gen still fails to open. The segment AAD includes the pack uuid (`AGR1 || 0x02 || "agr:pack-blob:" || uuid || ":" || path || ":" || gen`), so an authentic segment copied into another pack fails too, the legacy blob v2 AAD is unchanged. No pack header, the index carries the layout.
 - **Index**: one-shot `seal` (AAD `agr:pack-index:` || pack uuid) over JSON `{ v: 3, pack, writer, sealed, len, entries: [{ path, gen, sha256, size, offset, length, deleted, at }] }`, stored as base64url text so the gist API returns it as text. The index is the one file an append replaces, its old versions stay in the git history and stay small.
 - **Index cap 768 KiB**: the REST API returns at most 1 MB of content per file, as such the index stays well below that and status reads it without a clone. A pack whose next index would cross 768 KiB is sealed early.
 - **Delete is a tombstone**: `agr sync delete` appends an entry with `deleted: true` at gen + 1 to the open pack of the deleting machine. Tombstones are kept forever (a few hundred bytes each), so a machine with an old local index never pushes a deleted session back as "remote absent".

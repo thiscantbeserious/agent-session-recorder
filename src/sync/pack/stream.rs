@@ -2,7 +2,9 @@
 
 #![allow(dead_code)] // Repo of Stage 51 uses it
 
-use crate::sync::crypto::blob::{open_stream, seal_stream, sealed_len, BlobError, Digest};
+use crate::sync::crypto::blob::{
+    open_pack_stream, seal_pack_stream, sealed_len, BlobError, Digest,
+};
 use crate::sync::crypto::Key;
 use crate::sync::pack::index::Entry;
 use crate::sync::store::{PackStore, StoreError};
@@ -21,7 +23,7 @@ pub struct FileSegment<'a> {
     file: &'a Path,
 }
 
-/// Seals `file` under `path` and `gen` (both in the AAD) once `write` runs.
+/// Seals `file` under `pack`, `path` and `gen` (all in the AAD) once `write` runs.
 ///
 /// `len` comes from the size now, only the digest `write` returns is authoritative: the caller
 /// compares it to the planned entry, a same-size rewrite in between changes the digest. A
@@ -48,8 +50,8 @@ impl FileSegment<'_> {
     /// Streams the sealed blob into `dst`, one frame in memory at a time.
     pub fn write(&self, dst: &mut dyn Write) -> io::Result<Digest> {
         let src = File::open(self.file)?;
-        let (hash, size) =
-            seal_stream(self.key, self.path, self.gen, src, dst).map_err(io::Error::other)?;
+        let (hash, size) = seal_pack_stream(self.key, self.pack, self.path, self.gen, src, dst)
+            .map_err(io::Error::other)?;
         if sealed_len(size) != self.len {
             return Err(io::Error::other("session file changed while sealing"));
         }
@@ -66,7 +68,7 @@ pub enum RangeError {
     Blob(#[from] BlobError),
 }
 
-/// Opens the range of `entry` from pack `id` into `dst`, returns plaintext hash and size.
+/// Opens the range of `entry` from pack `id` (uuid `pack`) into `dst`, returns plaintext hash and size.
 pub fn open_range(
     key: &Key,
     store: &dyn PackStore,
@@ -75,9 +77,15 @@ pub fn open_range(
     entry: &Entry,
     dst: &mut dyn Write,
 ) -> Result<Digest, RangeError> {
-    let _ = pack; // stub
     let src = store.read(id, entry.offset, entry.length)?;
-    Ok(open_stream(key, &entry.path, entry.gen, src, dst)?)
+    Ok(open_pack_stream(
+        key,
+        pack,
+        &entry.path,
+        entry.gen,
+        src,
+        dst,
+    )?)
 }
 
 #[cfg(test)]
