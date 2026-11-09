@@ -103,7 +103,17 @@ pub fn merge(packs: &[PackIn]) -> View {
             }
         }
     }
+    finish(&mut view);
     view
+}
+
+fn finish(view: &mut View) {
+    for (path, m) in view.merged.iter_mut() {
+        if m.places.iter().any(|p| p.sha256 != m.places[0].sha256) {
+            m.top = Top::Fork;
+            view.forks.push(path.clone());
+        }
+    }
 }
 
 fn first(pack: &str, e: &Entry) -> Merged {
