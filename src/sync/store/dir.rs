@@ -1,7 +1,7 @@
 //! Directory pack store: `<root>/<id>/part.NNNNNN` files plus one `manifest`.
 
 use std::fs::{self, File};
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,11 +18,18 @@ struct Manifest {
     index: String,
 }
 
-/// One directory per pack under `root`.
+/// One directory per pack under `root`. Single writer: there is no lock here, the engine's local
+/// `SyncLock` serializes writers on one machine.
+///
+/// Durability: part files and `manifest.tmp` are fsynced before the rename and, on unix, the
+/// directory after it. There is no clean test seam for fsync, so that is covered by this comment
+/// and by routing every manifest write through `write_manifest`, `write_synced` and `sync_dir`.
 pub struct DirStore {
     root: PathBuf,
     #[cfg(test)]
     crash_before_manifest: AtomicBool,
+    #[cfg(test)]
+    crash_before_rename: AtomicBool,
 }
 
 fn io_err(e: io::Error) -> StoreError {
@@ -50,7 +57,36 @@ fn rename_retry(
     to: &Path,
     rename: &dyn Fn(&Path, &Path) -> io::Result<()>,
 ) -> io::Result<()> {
-    rename(from, to)
+    let mut tries = 1;
+    loop {
+        match rename(from, to) {
+            // Windows refuses a rename over a file an indexer or virus scanner holds open.
+            Err(e) if e.kind() == io::ErrorKind::PermissionDenied && tries < 3 => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            other => return other,
+        }
+    }
+}
+
+/// Writes `bytes` to a new file and fsyncs it, so the later rename never exposes empty data.
+fn write_synced(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let mut file = File::create(path)?;
+    file.write_all(bytes)?;
+    file.sync_all()
+}
+
+/// Fsyncs the pack directory so the rename itself survives a power cut.
+#[cfg(unix)]
+fn sync_dir(dir: &Path) -> io::Result<()> {
+    File::open(dir)?.sync_all()
+}
+
+// Windows cannot open a directory as a file, so there is no directory fsync there.
+#[cfg(not(unix))]
+fn sync_dir(_dir: &Path) -> io::Result<()> {
+    Ok(())
 }
 
 impl DirStore {
@@ -59,12 +95,18 @@ impl DirStore {
             root: root.to_path_buf(),
             #[cfg(test)]
             crash_before_manifest: AtomicBool::new(false),
+            #[cfg(test)]
+            crash_before_rename: AtomicBool::new(false),
         }
     }
 
-    /// The next append writes its part file and then fails before the manifest is renamed.
+    /// The next manifest write fails after `manifest.tmp` is written, before the rename.
     #[cfg(test)]
-    fn crash_before_rename(&self) {}
+    fn crash_before_rename(&self) {
+        self.crash_before_rename.store(true, Ordering::SeqCst);
+    }
+
+    /// The next append writes its part file and then fails before the manifest is renamed.
 
     #[cfg(test)]
     fn crash_before_manifest(&self) {
@@ -80,8 +122,13 @@ impl DirStore {
         let dir = self.root.join(id);
         let tmp = dir.join("manifest.tmp");
         let text = serde_json::to_string(m).map_err(|e| StoreError::Other(e.to_string()))?;
-        fs::write(&tmp, text).map_err(io_err)?;
-        fs::rename(tmp, dir.join("manifest")).map_err(io_err)
+        write_synced(&tmp, text.as_bytes()).map_err(io_err)?;
+        #[cfg(test)]
+        if self.crash_before_rename.swap(false, Ordering::SeqCst) {
+            return Err(StoreError::Other("crash before rename".into()));
+        }
+        rename_retry(&tmp, &dir.join("manifest"), &|a, b| fs::rename(a, b)).map_err(io_err)?;
+        sync_dir(&dir).map_err(io_err)
     }
 
     /// Deletes part files the manifest does not list, left behind by a crash before the rename.
@@ -106,6 +153,7 @@ impl DirStore {
             drop(fs::remove_file(&path));
             return Err(e);
         }
+        file.sync_all().map_err(io_err)?;
         Ok(file.metadata().map_err(io_err)?.len())
     }
 }
@@ -219,8 +267,10 @@ impl PackStore for DirStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::io::Write;
+    use super::{rename_retry, DirStore, PackStore, Segment};
+    use std::fs;
+    use std::io::{self, Write};
+    use std::path::Path;
 
     contract_tests!(|| {
         let dir = tempfile::tempdir().expect("tempdir");

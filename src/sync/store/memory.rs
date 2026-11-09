@@ -38,7 +38,7 @@ impl MemoryStore {
         self.lock().failing.insert(id.to_string());
     }
 
-    /// Store whose packs hold at most `n` file slots, one per append, for `fits`.
+    /// Store whose packs hold at most `n` file slots, one per segment, for `fits`.
     pub fn with_slots(n: usize) -> Self {
         Self {
             slots: Some(n),
