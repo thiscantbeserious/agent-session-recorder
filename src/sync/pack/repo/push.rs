@@ -53,8 +53,11 @@ fn stage(item: &PushItem) -> Result<Staged, StoreError> {
 impl Repo<'_> {
     pub fn push_batch(&mut self, items: &[PushItem]) -> Result<PushReport, StoreError> {
         let staged = items.iter().map(stage).collect::<Result<Vec<_>, _>>()?;
-        let pack = self.new_pack()?;
-        self.try_append(&pack, &staged)?;
+        let pack = match self.open.clone() {
+            Some(p) => p,
+            None => self.new_pack()?,
+        };
+        self.open = Some(self.try_append(&pack, &staged)?);
         Ok(PushReport::default())
     }
 
