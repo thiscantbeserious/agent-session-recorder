@@ -532,3 +532,67 @@ fn append_fetch_trigger() {
     );
     report("sparse_noncone_push", &dir, &oid);
 }
+
+/// `updated_at` of gist `id` as the paginated listing shows it, the index cache keys on this value.
+fn listing_updated_at(id: &str) -> String {
+    pace();
+    let jq = format!(".[] | select(.id == \"{id}\") | .updated_at");
+    let out = Command::new("gh")
+        .args(["api", "gists?per_page=100", "--paginate", "--jq", &jq])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "gh api gists failed");
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+fn api_updated_at(id: &str) -> (String, String) {
+    let v = api(id);
+    let at = v["updated_at"].as_str().unwrap_or_default().to_string();
+    let version = v["history"][0]["version"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    (at, version)
+}
+
+#[test]
+#[ignore = "creates a real secret gist, run by hand"]
+fn updated_at_moves_on_git_push() {
+    let backend = new_gist();
+    let id = backend.create().unwrap();
+    let _cleanup = Cleanup(&backend, id.clone());
+    push_files(&id, &[("index", b"v1\n")]);
+    // updated_at has second resolution, keep the push clearly in a later second.
+    std::thread::sleep(Duration::from_secs(2));
+    let (api_before, version_before) = api_updated_at(&id);
+    let list_before = listing_updated_at(&id);
+
+    push_files(&id, &[("index", b"v2\n")]);
+    let (mut api_after, mut version_after) = (api_before.clone(), version_before.clone());
+    let mut list_after = list_before.clone();
+    for _ in 0..10 {
+        (api_after, version_after) = api_updated_at(&id);
+        list_after = listing_updated_at(&id);
+        if api_after != api_before && list_after != list_before {
+            break;
+        }
+        std::thread::sleep(Duration::from_secs(1));
+    }
+    let api_ok = !api_before.is_empty() && api_after != api_before;
+    let list_ok = !list_before.is_empty() && list_after != list_before;
+    probe(
+        "updated_at.api",
+        api_ok,
+        &format!("before={api_before} after={api_after}"),
+    );
+    probe(
+        "updated_at.listing",
+        list_ok,
+        &format!("before={list_before} after={list_after}"),
+    );
+    info(
+        "updated_at.history_version",
+        &format!("before={version_before} after={version_after}"),
+    );
+    assert!(api_ok && list_ok);
+}
