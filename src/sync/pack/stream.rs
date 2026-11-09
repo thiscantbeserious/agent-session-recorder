@@ -40,8 +40,12 @@ impl FileSegment<'_> {
     /// Streams the sealed blob into `dst`, one frame in memory at a time.
     pub fn write(&self, dst: &mut dyn Write) -> io::Result<Digest> {
         let src = File::open(self.file)?;
-        let _ = seal_stream(self.key, self.path, self.gen, src, dst);
-        Ok((String::new(), 0))
+        let (hash, size) =
+            seal_stream(self.key, self.path, self.gen, src, dst).map_err(io::Error::other)?;
+        if sealed_len(size) != self.len {
+            return Err(io::Error::other("session file changed while sealing"));
+        }
+        Ok((hash, size))
     }
 }
 
