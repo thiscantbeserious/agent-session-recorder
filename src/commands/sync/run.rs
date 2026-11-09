@@ -158,13 +158,18 @@ fn show_auto_error() {
     }
 }
 
-pub fn status() -> Result<()> {
+pub fn status(verbose: bool) -> Result<()> {
     let ctx = prepare(KeyNeed::MayCreate)?;
     let report = ctx
         .engine()
         .status(&[])
         .unwrap_or_else(|e| engine_failed(e));
-    say(&format::status_lines(&report, ctx.backend.name()));
+    let name = ctx.backend.name();
+    say(&if verbose {
+        format::status_lines(&report, name)
+    } else {
+        format::compact_status_lines(&report, name)
+    });
     show_auto_error();
     Ok(())
 }

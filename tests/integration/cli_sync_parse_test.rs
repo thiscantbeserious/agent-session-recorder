@@ -14,7 +14,20 @@ fn sync(args: &[&str]) -> SyncCommands {
 
 #[test]
 fn status_parses() {
-    assert!(matches!(sync(&["status"]), SyncCommands::Status));
+    assert!(matches!(
+        sync(&["status"]),
+        SyncCommands::Status { verbose: false }
+    ));
+}
+
+#[test]
+fn status_verbose_parses_long_and_short() {
+    for flag in ["-v", "--verbose"] {
+        assert!(matches!(
+            sync(&["status", flag]),
+            SyncCommands::Status { verbose: true }
+        ));
+    }
 }
 
 #[test]

@@ -2201,7 +2201,7 @@ _agr() {
             return 0
             ;;
         agr__sync__status)
-            opts="-h --help"
+            opts="-v -h --verbose --help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0

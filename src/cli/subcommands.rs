@@ -234,10 +234,17 @@ pub enum SyncCommands {
     #[command(long_about = "Show what `agr sync push` and `agr sync pull` would do.
 
 Read only, never prompts. Needs the network to list the remote sessions.
+Prints one summary line per category, conflicts, failures and sessions
+sealed with another key are always listed. Use -v for every session.
 
-EXAMPLE:
-    agr sync status")]
-    Status,
+EXAMPLES:
+    agr sync status       Summary per category
+    agr sync status -v    One line per session")]
+    Status {
+        /// List every session, not only the summary
+        #[arg(long, short = 'v', help = "List every session, not only the summary")]
+        verbose: bool,
+    },
     /// Upload new and changed sessions (encrypted)
     #[command(
         long_about = "Upload new and changed sessions, encrypted with your sync key.

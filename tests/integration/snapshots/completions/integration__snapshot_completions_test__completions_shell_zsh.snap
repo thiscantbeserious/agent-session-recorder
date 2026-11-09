@@ -527,6 +527,8 @@ _arguments "${_arguments_options[@]}" : \
         case $line[1] in
             (status)
 _arguments "${_arguments_options[@]}" : \
+'-v[List every session, not only the summary]' \
+'--verbose[List every session, not only the summary]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
 && ret=0

@@ -52,7 +52,7 @@ fi
 
 test_header "dry run and status work without a TTY"
 if sync_agr "$HOME_A" push --dry-run 2>&1 | grep -q "Would push 1 session" \
-   && sync_agr "$HOME_A" status 2>&1 | grep -q "local only (push)"; then
+   && sync_agr "$HOME_A" status -v 2>&1 | grep -q "local only (push)"; then
     pass "dry run and status work"
 else
     fail "dry run or status failed"

@@ -273,11 +273,7 @@ fn no_tty_without_yes_aborts_push_and_pull_but_dry_run_and_status_work() {
     assert!(remote_files(remote.path(), ".blob").is_empty());
     let status = m.run(&["status"]);
     assert_eq!(status.code, 0, "{}", status.all());
-    assert!(
-        status.stdout.contains("local only (push)"),
-        "{}",
-        status.stdout
-    );
+    assert!(status.stdout.contains("1 to push"), "{}", status.stdout);
     assert!(!m.key_path().exists());
 }
 
@@ -423,7 +419,7 @@ fn status_lists_states_totals_without_colour_and_shows_the_auto_push_error() {
         "sync_privacy_ack = true\nlast_auto_push_error = \"offline\"\n",
     )
     .unwrap();
-    let out = m.run(&["status"]);
+    let out = m.run(&["status", "-v"]);
     assert_eq!(out.code, 0, "{}", out.all());
     assert!(!out.all().contains('\u{1b}'));
     assert!(
@@ -455,6 +451,32 @@ fn status_lists_states_totals_without_colour_and_shows_the_auto_push_error() {
         again.all()
     );
     assert!(!m.state().contains("offline"));
+}
+
+#[test]
+fn default_status_is_a_compact_summary_and_verbose_lists_sessions() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "one");
+    m.session("claude", "plain.cast", "plain");
+    let compact = m.run(&["status"]);
+    assert_eq!(compact.code, 0, "{}", compact.all());
+    for want in [
+        "1 to push (",
+        "Run agr sync status -v for the per-session list.",
+    ] {
+        assert!(compact.stdout.contains(want), "{}", compact.stdout);
+    }
+    assert!(
+        !compact.stdout.contains("claude/a.cast.gz"),
+        "{}",
+        compact.stdout
+    );
+    let verbose = m.run(&["status", "--verbose"]);
+    assert!(verbose
+        .stdout
+        .contains("claude/a.cast.gz local only (push)"));
+    assert!(!verbose.stdout.contains("per-session list"));
 }
 
 #[test]

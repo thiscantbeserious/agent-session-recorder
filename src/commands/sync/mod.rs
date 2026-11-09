@@ -11,7 +11,7 @@ mod run;
 #[cfg(not(tarpaulin_include))]
 pub fn handle(cmd: SyncCommands) -> Result<()> {
     match cmd {
-        SyncCommands::Status => run::status(),
+        SyncCommands::Status { verbose } => run::status(verbose),
         SyncCommands::Push {
             sessions,
             dry_run,

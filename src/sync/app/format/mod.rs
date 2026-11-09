@@ -52,12 +52,12 @@ pub fn status_lines(report: &Report, backend: &str) -> Vec<String> {
     lines
 }
 
-fn backend_line(report: &Report, backend: &str) -> String {
+pub(super) fn backend_line(report: &Report, backend: &str) -> String {
     let remote = report.items.iter().filter(|i| i.on_remote).count();
     format!("Backend: {backend}, {remote} remote session(s)")
 }
 
-fn status_block(item: &Item) -> Vec<String> {
+pub(super) fn status_block(item: &Item) -> Vec<String> {
     let mut lines = vec![status_line(item)];
     if let (true, Some(id)) = (item.pending, &item.remote_id) {
         lines.push(format!("    pending upload, the next push resumes {id}"));

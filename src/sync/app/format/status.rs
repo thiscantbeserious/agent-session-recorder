@@ -1,10 +1,104 @@
 //! Compact `agr sync status`, one summary line per category.
 
-use crate::sync::engine::run::Report;
+use std::collections::BTreeMap;
 
-/// Backend line, one line per category with count and size, then what needs action.
-pub fn compact_status_lines(_report: &Report, _backend: &str) -> Vec<String> {
-    Vec::new()
+use super::summary::{conflict_line, detail, failed_line};
+use super::{backend_line, label, size, status_block};
+use crate::sync::engine::plan::Decision;
+use crate::sync::engine::run::{Item, Outcome, Report};
+
+const HINT: &str = "Run agr sync status -v for the per-session list.";
+
+/// Backend line, one line per category with count and size, the sessions that need action,
+/// then the hint. `status_lines` is the full per-session list behind `-v`.
+pub fn compact_status_lines(report: &Report, backend: &str) -> Vec<String> {
+    let mut lines = vec![backend_line(report, backend)];
+    if report.items.is_empty() {
+        lines.push("No sessions.".into());
+        return lines;
+    }
+    lines.extend(category_lines(report));
+    lines.extend(action_lines(report));
+    lines.push(HINT.into());
+    lines
+}
+
+fn category_lines(report: &Report) -> Vec<String> {
+    let of = |names: &[&str]| -> Vec<&Item> {
+        let hit = |i: &&Item| names.contains(&label(i));
+        report.items.iter().filter(hit).collect()
+    };
+    let push = of(&["local ahead (push)", "local only (push)"]);
+    let pull = of(&["remote ahead (pull)", "remote only (pull)"]);
+    let synced = of(&["in sync"]);
+    let conflicts = of(&["conflict"]).len();
+    let mut lines = Vec::new();
+    lines.extend(sized(push.len(), "to push", push.iter().map(|i| i.size)));
+    lines.extend(sized(
+        pull.len(),
+        "to pull",
+        pull.iter().map(|i| i.remote_size),
+    ));
+    lines.extend(sized(
+        synced.len(),
+        "in sync",
+        synced.iter().map(|i| i.size),
+    ));
+    lines.extend(plural(conflicts, "conflict"));
+    lines.extend(plural(of(&["duplicate"]).len(), "duplicate"));
+    lines.extend(skipped_lines(report));
+    lines
+}
+
+fn sized(n: usize, name: &str, bytes: impl Iterator<Item = u64>) -> Option<String> {
+    (n > 0).then(|| format!("{n} {name} ({})", size(bytes.sum())))
+}
+
+fn plural(n: usize, name: &str) -> Option<String> {
+    match n {
+        0 => None,
+        1 => Some(format!("1 {name}")),
+        n => Some(format!("{n} {name}s")),
+    }
+}
+
+/// One line per skip reason, biggest group first.
+fn skipped_lines(report: &Report) -> Vec<String> {
+    let mut groups: BTreeMap<&str, usize> = BTreeMap::new();
+    for item in &report.items {
+        if let (Outcome::Skipped(why), false) = (&item.outcome, item.decision == Decision::Conflict)
+        {
+            *groups.entry(why).or_default() += 1;
+        }
+    }
+    let mut groups: Vec<_> = groups.into_iter().collect();
+    groups.sort_by_key(|(why, n)| (std::cmp::Reverse(*n), *why));
+    groups
+        .into_iter()
+        .map(|(why, n)| format!("{n} skipped: {why}"))
+        .collect()
+}
+
+/// Conflicts, failures, other-key entries and duplicates per session, then the index warning.
+fn action_lines(report: &Report) -> Vec<String> {
+    let mut lines = detail("Conflicts", report.conflicts, report, conflict_line);
+    lines.extend(detail("Failed", report.failed, report, failed_line));
+    let other: Vec<&Item> = report
+        .items
+        .iter()
+        .filter(|i| i.decision == Decision::OtherKey)
+        .collect();
+    if !other.is_empty() {
+        lines.push(format!("Other key: {}", other.len()));
+        lines.extend(other.iter().map(|i| format!("  {}", i.path)));
+    }
+    let dups = report
+        .items
+        .iter()
+        .filter(|i| i.decision == Decision::Duplicate);
+    lines.extend(dups.flat_map(status_block));
+    lines.extend(report.warning.iter().map(|w| format!("Warning: {w}")));
+    lines
 }
 
 #[cfg(test)]
@@ -59,13 +153,13 @@ mod tests {
     #[test]
     fn compact_status_has_one_summary_line_per_category() {
         let lines = compact_status_lines(&big_report(), "gist");
-        assert_eq!(lines[0], "Backend: gist, 735 remote session(s)");
+        assert_eq!(lines[0], "Backend: gist, 734 remote session(s)");
         assert_eq!(lines[1], "721 to push (130.64 MiB)");
         assert_eq!(lines[2], "2 to pull (6 MiB)");
         assert_eq!(lines[3], "3 in sync (3 MiB)");
         assert_eq!(lines[4], "1 conflict");
-        assert_eq!(lines[5], "1 skipped: sealed with another key");
-        assert_eq!(lines[6], "6 skipped: plain .cast, run `agr compress` first");
+        assert_eq!(lines[5], "6 skipped: plain .cast, run `agr compress` first");
+        assert_eq!(lines[6], "1 skipped: sealed with another key");
         assert_eq!(
             lines.last().unwrap(),
             "Run agr sync status -v for the per-session list."
@@ -117,7 +211,7 @@ mod tests {
     fn verbose_status_keeps_the_per_session_list() {
         let text = status_lines(&big_report(), "gist").join("\n");
         assert!(
-            text.contains("  claude/0.cast.gz local only (push)"),
+            text.contains("  claude/0.cast.gz local ahead (push)"),
             "{text}"
         );
         assert!(text.contains("claude/719.cast.gz"), "{text}");

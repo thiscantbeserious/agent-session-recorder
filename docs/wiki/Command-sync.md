@@ -17,9 +17,12 @@ Show what push and pull would do, per session
 Show what `agr sync push` and `agr sync pull` would do.
 
 Read only, never prompts. Needs the network to list the remote sessions.
+Prints one summary line per category, conflicts, failures and sessions
+sealed with another key are always listed. Use -v for every session.
 
-EXAMPLE:
-    agr sync status
+EXAMPLES:
+    agr sync status       Summary per category
+    agr sync status -v    One line per session
 
 ### sync push
 

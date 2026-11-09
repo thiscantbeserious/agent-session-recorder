@@ -114,7 +114,7 @@ fn count_lines(report: &Report) -> Vec<String> {
     lines
 }
 
-fn detail(
+pub(super) fn detail(
     name: &str,
     count: usize,
     report: &Report,
@@ -136,7 +136,7 @@ fn skipped_line(item: &Item) -> Option<String> {
     }
 }
 
-fn conflict_line(item: &Item) -> Option<String> {
+pub(super) fn conflict_line(item: &Item) -> Option<String> {
     let (Outcome::Skipped(_), Decision::Conflict) = (&item.outcome, item.decision) else {
         return None;
     };
@@ -150,7 +150,7 @@ fn conflict_line(item: &Item) -> Option<String> {
     ))
 }
 
-fn failed_line(item: &Item) -> Option<String> {
+pub(super) fn failed_line(item: &Item) -> Option<String> {
     match &item.outcome {
         Outcome::Failed(why) => Some(format!("  {}: {why}", item.path)),
         _ => None,
