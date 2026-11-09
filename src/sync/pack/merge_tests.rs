@@ -168,3 +168,23 @@ fn older_index_of_same_pack_is_not_accepted() {
     assert_eq!(view.pack("a").unwrap().len, 200);
     assert_eq!(view.get("x").unwrap().gen, 4);
 }
+
+#[test]
+fn pack_order_does_not_change_the_view() {
+    let rows = || vec![entry("x", 1, "h", 10, false), entry("y", 2, "k", 5, true)];
+    let mut all = vec![
+        pack("a", "T", 15, rows()),
+        pack("b", "T", 15, rows()),
+        pack("c", "C", 10, vec![entry("x", 1, "z", 10, false)]),
+        rejected_pack("d", IndexError::OtherKey),
+        rejected_pack("e", IndexError::OtherPack),
+        pack("f", "F", 30, vec![entry("x", 0, "h", 30, false)]),
+    ];
+    let want = format!("{:?}", merge(&all));
+    for shift in 1..all.len() {
+        all.rotate_left(shift);
+        assert_eq!(format!("{:?}", merge(&all)), want);
+        all.reverse();
+        assert_eq!(format!("{:?}", merge(&all)), want);
+    }
+}
