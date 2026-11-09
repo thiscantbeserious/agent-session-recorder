@@ -60,15 +60,15 @@ impl DirStore {
         fs::rename(tmp, dir.join("manifest")).map_err(io_err)
     }
 
-    /// Stub: sums the part files on disk.
-    fn pack_len(&self, id: &str) -> Result<u64, StoreError> {
-        let mut sum = 0;
+    /// Deletes part files the manifest does not list, left behind by a crash before the rename.
+    fn drop_unlisted(&self, id: &str, m: &Manifest) -> Result<(), StoreError> {
         for e in fs::read_dir(self.root.join(id)).map_err(io_err)?.flatten() {
-            if e.file_name().to_string_lossy().starts_with("part.") {
-                sum += e.metadata().map_err(io_err)?.len();
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with("part.") && !m.parts.contains(&name) {
+                fs::remove_file(e.path()).map_err(io_err)?;
             }
         }
-        Ok(sum)
+        Ok(())
     }
 
     /// Writes all segments into one new part file, removes it again when a writer fails.
@@ -98,11 +98,10 @@ impl PackStore for DirStore {
         for e in fs::read_dir(&self.root).map_err(io_err)?.flatten() {
             let id = e.file_name().to_string_lossy().into_owned();
             let Ok(m) = self.manifest(&id) else { continue };
-            let len = self.pack_len(&id)?;
             packs.push(PackInfo {
                 id,
                 tag: m.tag,
-                len,
+                len: m.len,
                 updated_at: String::new(),
             });
         }
@@ -142,9 +141,10 @@ impl PackStore for DirStore {
         index: &str,
     ) -> Result<(), StoreError> {
         let mut m = self.manifest(id)?;
-        if self.pack_len(id)? != expected_len || m.index != expected_index {
+        if m.len != expected_len || m.index != expected_index {
             return Err(StoreError::Moved(m.index));
         }
+        self.drop_unlisted(id, &m)?;
         if !segments.is_empty() {
             let name = format!("part.{:06}", m.parts.len());
             m.len += self.write_part(id, &name, segments)?;
