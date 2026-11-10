@@ -371,3 +371,14 @@ fn index_length_mismatch_is_an_error() {
     let res = store.read_index("a");
     assert!(res.is_err());
 }
+
+#[test]
+fn covering_with_overflowing_range_is_an_error() {
+    let part = super::api::FileRef {
+        name: "data.000".into(),
+        size: 100,
+        raw_url: "u".into(),
+    };
+    assert!(super::read::covering(&[part.clone()], u64::MAX, 2).is_err());
+    assert!(super::read::covering(&[part], 1, u64::MAX).is_err());
+}

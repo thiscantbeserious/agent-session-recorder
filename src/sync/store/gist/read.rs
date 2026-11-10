@@ -15,7 +15,11 @@ use crate::sync::backend::gist::{io_result, strings};
 use crate::sync::backend::BackendError;
 
 /// `(part, first byte, last byte)` of every part the range `offset..offset + len` touches.
-fn covering(parts: &[FileRef], offset: u64, len: u64) -> Result<Vec<(&FileRef, u64, u64)>, String> {
+pub(super) fn covering(
+    parts: &[FileRef],
+    offset: u64,
+    len: u64,
+) -> Result<Vec<(&FileRef, u64, u64)>, String> {
     let (end, mut start, mut out) = (offset + len, 0, Vec::new());
     for part in parts {
         let stop = start + part.size;
