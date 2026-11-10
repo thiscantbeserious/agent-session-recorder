@@ -421,4 +421,28 @@ mod moving {
         let report = report.expect("the report with the first delete, not a bare error");
         assert_eq!((report.moved, report.deleted), (3, 1));
     }
+
+    #[test]
+    fn a_gist_already_gone_is_reported_as_gone_not_as_deleted() {
+        let rig = Rig::new();
+        let ids = three(&rig);
+        let first = ids[0].clone();
+        let gone = || rig.legacy.delete_by_hand(&first);
+        let store = Listed(&rig.mem, &rig.legacy);
+        let mut env = rig.env(&store);
+        let once = std::cell::Cell::new(true);
+        let pace = || {
+            if once.replace(false) {
+                gone();
+            }
+        };
+        env.pace = &pace;
+        let report = migrate_run(&env).unwrap();
+        assert_eq!(report.deleted, 2, "{report:?}");
+        let said = report
+            .lines
+            .iter()
+            .any(|l| l.contains(&first) && l.contains("already gone"));
+        assert!(said, "{:?}", report.lines);
+    }
 }
