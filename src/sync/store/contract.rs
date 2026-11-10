@@ -94,6 +94,17 @@ pub fn read_returns_the_exact_range(store: &dyn PackStore) {
     assert_eq!(bytes, b"abcdefg"[2..6]);
 }
 
+pub fn read_past_end_is_reported_the_same_by_every_store(store: &dyn PackStore) {
+    let id = pack_with_abc(store);
+    for (offset, len) in [(0, 4), (3, 1), (10, 1), (u64::MAX, 2), (1, u64::MAX)] {
+        let err = store.read(&id, offset, len).err();
+        assert!(
+            matches!(err, Some(StoreError::NotFound)),
+            "{offset}+{len}: {err:?}"
+        );
+    }
+}
+
 pub fn create_then_list_shows_len_zero_and_tag(store: &dyn PackStore) {
     let id = store.create("tag-x", "i0").expect("create");
     let listing = store.list().expect("list");
@@ -118,6 +129,7 @@ pub fn contract(store: &dyn PackStore) {
     append_is_all_or_nothing(store);
     segment_len_mismatch_is_rejected(store);
     read_returns_the_exact_range(store);
+    read_past_end_is_reported_the_same_by_every_store(store);
     create_then_list_shows_len_zero_and_tag(store);
     delete_then_read_index_is_not_found(store);
 }
@@ -133,6 +145,7 @@ macro_rules! contract_tests {
             append_is_all_or_nothing,
             segment_len_mismatch_is_rejected,
             read_returns_the_exact_range,
+            read_past_end_is_reported_the_same_by_every_store,
             create_then_list_shows_len_zero_and_tag,
             delete_then_read_index_is_not_found
         );
