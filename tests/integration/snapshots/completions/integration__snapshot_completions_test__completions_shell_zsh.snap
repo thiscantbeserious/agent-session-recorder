@@ -563,7 +563,7 @@ _arguments "${_arguments_options[@]}" : \
 (delete)
 _arguments "${_arguments_options[@]}" : \
 '()--all[Delete every remote session]' \
-'--force[Allow more than 10 deletes without a terminal]' \
+'--force[Allow more than 10 deletes without a terminal, a terminal still asks the count]' \
 '--dry-run[Show what would happen, change nothing]' \
 '-y[Skip the confirmation prompt]' \
 '--yes[Skip the confirmation prompt]' \
