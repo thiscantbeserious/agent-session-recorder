@@ -125,3 +125,43 @@ fn default_run_to_file_is_unsupported() {
     let err = TextOnly.run_to_file("x", &[], &[], &dest).unwrap_err();
     assert_eq!(err.kind(), ErrorKind::Unsupported);
 }
+
+/// A sink that takes `room` bytes and then fails like a full disk.
+struct FullAfter {
+    room: usize,
+}
+
+impl std::io::Write for FullAfter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.room < buf.len() {
+            return Err(std::io::Error::new(ErrorKind::StorageFull, "disk full"));
+        }
+        self.room -= buf.len();
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn failed_write_reports_the_write_error_not_a_stall() {
+    let args = [
+        "-c".to_string(),
+        "head -c 8000000 /dev/zero; sleep 30".to_string(),
+    ];
+    let child = spawn("sh", &args, None, &[]).unwrap();
+    let start = Instant::now();
+    let out = watch_child(
+        child,
+        "sh",
+        Duration::from_secs(1),
+        &mut |_| {},
+        Some(Box::new(FullAfter { room: 1000 })),
+    );
+    let err = out.unwrap_err();
+    assert!(matches!(err.kind(), ErrorKind::StorageFull), "{err:?}");
+    assert_ne!(err.kind(), ErrorKind::TimedOut);
+    assert!(start.elapsed() < Duration::from_secs(10));
+}
