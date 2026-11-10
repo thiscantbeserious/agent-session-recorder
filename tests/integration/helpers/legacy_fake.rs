@@ -109,6 +109,11 @@ impl LegacyFake {
         self.deletes.lock().unwrap().clone()
     }
 
+    /// The user's own `gh gist delete`, not counted as a migrate delete.
+    pub fn delete_by_hand(&self, id: &str) {
+        self.gists.lock().unwrap().retain(|g| g.info.id != id);
+    }
+
     pub fn limit_deletes(&self, n: Option<usize>) {
         *self.delete_budget.lock().unwrap() = n;
     }

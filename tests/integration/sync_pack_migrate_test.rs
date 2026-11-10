@@ -134,10 +134,13 @@ mod moving {
     use crate::helpers::legacy_fake::{Listed, Rig, OLD};
     use agr::files::codec;
     use agr::sync::testing::index;
-    use agr::sync::testing::{migrate_preview, migrate_run, sha256_hex};
+    use agr::sync::testing::{
+        migrate_preview, migrate_run, sha256_hex, PackStore, Repo, RepoError,
+    };
     use agr::sync::{Engine, Options};
     use agr::{Config, StorageManager};
 
+    const TARGET: u64 = 64 * 1024;
     const A: &str = "claude/a.cast.gz";
 
     fn engine_dir(dir: &std::path::Path) -> StorageManager {
@@ -205,5 +208,141 @@ mod moving {
             (0, 0)
         );
         assert_eq!(rig.index_text(), before.1);
+    }
+
+    fn counts(rig: &Rig) -> (usize, usize) {
+        (rig.mem.appends(), rig.legacy.deletes().len())
+    }
+
+    #[test]
+    fn moved_session_keeps_gen_and_sha() {
+        let rig = Rig::new();
+        let plain = b"session body".to_vec();
+        let id = rig.legacy.v1(&rig.key, (A, 3), &plain, None);
+        let store = Listed(&rig.mem, &rig.legacy);
+        let report = migrate_run(&rig.env(&store)).unwrap();
+        assert_eq!(rig.merged(A), Some((3, sha256_hex(&plain))));
+        assert_eq!(rig.legacy.deletes(), vec![id]);
+        assert_eq!((report.moved, report.deleted), (1, 1));
+    }
+
+    #[test]
+    fn already_moved_is_skipped() {
+        let rig = Rig::new();
+        let plain = b"session body".to_vec();
+        rig.put_moved(A, 3, &plain);
+        let id = rig.legacy.v1(&rig.key, (A, 3), &plain, None);
+        let before = rig.mem.appends();
+        let store = Listed(&rig.mem, &rig.legacy);
+        migrate_run(&rig.env(&store)).unwrap();
+        assert_eq!(rig.mem.appends() - before, 0);
+        assert_eq!(rig.legacy.deletes(), vec![id]);
+    }
+
+    #[test]
+    fn old_gist_deleted_only_after_the_index_shows_it() {
+        let rig = Rig::new();
+        rig.legacy.v1(&rig.key, (A, 3), b"body", None);
+        rig.mem.before_append(|s, _| s.fail_list());
+        let store = Listed(&rig.mem, &rig.legacy);
+        let result = migrate_run(&rig.env(&store));
+        assert!(result.is_err(), "{result:?}");
+        assert_eq!(rig.legacy.deletes().len(), 0);
+    }
+
+    #[test]
+    fn sha_mismatch_is_kept_and_reported() {
+        let rig = Rig::new();
+        let wrong = "ab".repeat(32);
+        let id = rig.legacy.v1(&rig.key, (A, 3), b"body", Some(&wrong));
+        let store = Listed(&rig.mem, &rig.legacy);
+        let report = migrate_run(&rig.env(&store)).unwrap();
+        assert!(report.kept.contains(&id), "{report:?}");
+        assert_eq!(counts(&rig), (0, 0));
+        assert!(report
+            .lines
+            .iter()
+            .any(|l| l.contains(&format!("gh gist delete {id}"))));
+    }
+
+    #[test]
+    fn rate_limit_stops_with_n_left_and_rerun_finishes() {
+        let rig = Rig::new();
+        for n in 0..5 {
+            rig.legacy.v1(
+                &rig.key,
+                (&format!("claude/s{n}.cast.gz"), 1),
+                b"body",
+                None,
+            );
+        }
+        let store = Listed(&rig.mem, &rig.legacy);
+        rig.legacy.limit_deletes(Some(2));
+        let first = migrate_run(&rig.env(&store)).unwrap();
+        let out = first.lines.join("\n");
+        assert!(out.contains("3 left, run again later"), "{out}");
+        assert_eq!(rig.legacy.deletes().len(), 2);
+        let appended = rig.mem.appends();
+        rig.legacy.limit_deletes(None);
+        let second = migrate_run(&rig.env(&store)).unwrap();
+        assert_eq!((second.left, rig.legacy.deletes().len()), (0, 5));
+        assert_eq!(
+            rig.mem.appends(),
+            appended,
+            "the re-run moves nothing again"
+        );
+    }
+
+    #[test]
+    fn listing_past_3000_does_not_abort() {
+        let rig = Rig::new();
+        rig.legacy.plain(3100);
+        rig.legacy.v1(&rig.key, (A, 1), b"body", None);
+        let store = Listed(&rig.mem, &rig.legacy);
+        let report = migrate_run(&rig.env(&store));
+        assert!(report.is_ok(), "{report:?}");
+        assert_eq!(rig.legacy.deletes().len(), 1);
+    }
+
+    #[test]
+    fn migrate_aborts_on_partial_index_view() {
+        let rig = Rig::new();
+        rig.put_moved("claude/other.cast.gz", 1, b"x");
+        rig.legacy.v1(&rig.key, (A, 3), b"body", None);
+        rig.legacy.stub(OLD);
+        let id = rig.mem.list().unwrap().packs[0].id.clone();
+        rig.mem.fail_read_index(&id);
+        let before = counts(&rig);
+        let store = Listed(&rig.mem, &rig.legacy);
+        assert!(migrate_run(&rig.env(&store)).is_err());
+        assert!(migrate_preview(&rig.env(&store)).is_err());
+        assert_eq!(counts(&rig), before);
+        assert_eq!(rig.legacy.deletes().len(), 0);
+    }
+
+    #[test]
+    fn migrate_opens_without_the_v1_guard_and_unblocks() {
+        let rig = Rig::new();
+        rig.legacy.v1(&rig.key, (A, 3), b"body", None);
+        let bad = rig.legacy.v1(
+            &rig.key,
+            ("claude/b.cast.gz", 2),
+            b"b",
+            Some(&"cd".repeat(32)),
+        );
+        let store = Listed(&rig.mem, &rig.legacy);
+        let open = || Repo::open(&store, &rig.key, "w1", TARGET, None).err();
+        assert!(matches!(open(), Some(RepoError::NeedsMigrate)));
+        let report = migrate_run(&rig.env(&store)).unwrap();
+        assert!(report
+            .lines
+            .iter()
+            .any(|l| l.contains(&format!("gh gist delete {bad}"))));
+        assert!(
+            matches!(open(), Some(RepoError::NeedsMigrate)),
+            "the kept gist blocks"
+        );
+        rig.legacy.delete_by_hand(&bad);
+        assert!(open().is_none());
     }
 }
