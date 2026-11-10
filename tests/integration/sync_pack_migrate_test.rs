@@ -96,3 +96,37 @@ mod table {
         assert_eq!(recognise(&plain, &key, NOW), Kind::Ignored);
     }
 }
+
+mod local_index {
+    use super::*;
+    use agr::sync::testing::{convert_index, index};
+
+    fn v1_text() -> String {
+        let e = |sha: &str, gen: u32| {
+            format!(
+                r#"{{"sha256":"{sha}","remote_id":"gid","synced_at":"t","gen":{gen},"token":"tok","pending":false,"size":7,"mtime_ns":9}}"#
+            )
+        };
+        let (a, b) = (e("h", 3), e("k", 5));
+        format!(r#"{{"version":1,"entries":{{"claude/a.cast.gz":{a},"codex/b.cast.gz":{b}}}}}"#)
+    }
+
+    #[test]
+    fn index_v1_gens_carry_into_v2() {
+        let dir = tempfile::tempdir().unwrap();
+        let v2 = convert_index(&v1_text()).unwrap().unwrap();
+        std::fs::write(index::path_for(dir.path()), v2).unwrap();
+        let (idx, warning) = index::load(dir.path());
+        assert_eq!((idx.version, warning), (2, None));
+        let got: Vec<_> = idx
+            .entries
+            .values()
+            .map(|e| (e.sha256.as_str(), e.gen))
+            .collect();
+        assert_eq!(got, vec![("h", 3), ("k", 5)]);
+        assert!(idx
+            .entries
+            .values()
+            .all(|e| !e.pending && e.token.is_none()));
+    }
+}
