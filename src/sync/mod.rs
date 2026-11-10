@@ -66,6 +66,7 @@ mod layer_check {
         ("engine/", "aead::"),
         ("backend/", "aead::"),
         ("pack/", "crate::sync::app"),
+        ("pack/", "crate::sync::backend"),
         ("pack/", "crate::sync::engine"),
         ("pack/", "crate::sync::store::memory"),
         ("pack/", "crate::sync::store::dir"),
@@ -165,6 +166,13 @@ mod layer_check {
         })
     }
 
+    /// Pack files that are not tests, only tests may name the concrete stores in `testing`.
+    fn is_pack_production(rel: &str) -> bool {
+        let name = rel.rsplit('/').next().unwrap_or(rel);
+        let test = name.starts_with("tests") || name.ends_with("_tests.rs");
+        rel.starts_with("pack/") && !test
+    }
+
     fn violations(rel: &str, text: &str) -> Vec<String> {
         let text = &strip_comments(text);
         let paths = use_paths(text);
@@ -173,6 +181,11 @@ mod layer_check {
             if has_segment(text, needle) || paths.iter().any(|p| has_segment(p, needle)) {
                 bad.push(format!("{rel} ({layer}) must not contain `{needle}`"));
             }
+        }
+        if is_pack_production(rel) && has_segment(text, "crate::sync::testing") {
+            bad.push(format!(
+                "{rel} (pack) must not contain `crate::sync::testing`"
+            ));
         }
         if text.contains("Command::new") && !SPAWNERS.contains(&rel) {
             bad.push(format!("{rel} must not contain `Command::new`"));
