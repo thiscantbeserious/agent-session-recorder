@@ -31,6 +31,7 @@ pub struct MemoryStore {
     slots: Option<usize>,
     lists: AtomicUsize,
     list_fails: AtomicBool,
+    list_fails_once: AtomicBool,
     before_append: Mutex<Option<AppendHook>>,
 }
 
@@ -60,6 +61,11 @@ impl MemoryStore {
     /// Every later `list` fails.
     pub fn fail_list(&self) {
         self.list_fails.store(true, Ordering::SeqCst);
+    }
+
+    /// The next `list` fails, the ones after it work again.
+    pub fn fail_next_list(&self) {
+        self.list_fails_once.store(true, Ordering::SeqCst);
     }
 
     /// `hook` runs before every later append, outside the store lock.
@@ -122,7 +128,8 @@ impl PackStore for MemoryStore {
 
     fn list(&self) -> Result<Listing, StoreError> {
         self.lists.fetch_add(1, Ordering::SeqCst);
-        if self.list_fails.load(Ordering::SeqCst) {
+        let once = self.list_fails_once.swap(false, Ordering::SeqCst);
+        if once || self.list_fails.load(Ordering::SeqCst) {
             return Err(StoreError::Unreachable("list failed on purpose".into()));
         }
         let inner = self.lock();

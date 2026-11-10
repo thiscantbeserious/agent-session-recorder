@@ -6,6 +6,7 @@ use crate::sync::testing::MemoryStore;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::io::Read;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Store that counts `read_index` per id and records the `expected_index` of every append.
 struct Spy<'a> {
@@ -222,4 +223,25 @@ fn retry_decides_the_seal_from_the_moved_index() {
         .unwrap();
     let info = packs_of(&mem).remove(0);
     assert!(super::tests::index_of(&mem, &key, &info).sealed);
+}
+
+#[test]
+fn list_error_in_retry_is_returned_not_ignored() {
+    let (mem, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (mut a, mut b) = two_on_one_id(&mem, &key);
+    a.push_batch(&[item(dir.path(), "x", 1, b"x")]).unwrap();
+    let (once, hostile) = (AtomicBool::new(true), Key::from_bytes(*key.as_bytes()));
+    mem.before_append(move |m, id| {
+        if once.swap(false, Ordering::SeqCst) {
+            let info = packs_of(m).into_iter().find(|p| p.id == id).unwrap();
+            super::tests::tamper(m, &hostile, &info, |_| {});
+            m.fail_next_list();
+        }
+    });
+    let res = b.push_batch(&[item(dir.path(), "y", 1, b"y")]);
+    assert!(res.is_err(), "{res:?}");
 }
