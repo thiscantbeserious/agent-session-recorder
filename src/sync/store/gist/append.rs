@@ -11,8 +11,10 @@ use super::cache::PackCache;
 use super::layout::{cut_parts, next_names};
 use super::{GistStore, Segment, StoreError};
 use crate::sync::backend::gist::parse::map_failure;
+use crate::sync::backend::gist::progress::writing_percent;
 use crate::sync::backend::gist::runner::{Output, Runner};
 use crate::sync::backend::gist::{io_result, strings, GIT_IDENTITY, IDENTITY_ENV};
+use crate::sync::backend::BackendError;
 
 /// HTTPS with `gh` as the credential helper, never SSH, an unknown host key would prompt and stall.
 const CRED: [&str; 4] = [
@@ -188,22 +190,84 @@ impl<R: Runner> GistStore<R> {
         std::fs::write(dir.join(INDEX_FILE), req.index).map_err(other)
     }
 
-    /// Stub: parts and index in two commits.
+    /// One commit with the new parts and the new index, hooks off, identity and dates forced.
     fn commit(&self, dir: &Path) -> Result<(), StoreError> {
-        for _ in 0..2 {
-            self.git(&["add", "--all"], Some(dir), &[])?;
-            let mut commit = GIT_IDENTITY.to_vec();
-            commit.extend(["commit", "--allow-empty", "-m", "agr sync"]);
-            self.git(&commit, Some(dir), &[])?;
+        self.git(&["add", "--all"], Some(dir), &[])?;
+        let no_hooks = format!(
+            "core.hooksPath={}",
+            dir.with_file_name("no-hooks").display()
+        );
+        let mut commit = GIT_IDENTITY.to_vec();
+        commit.extend(["-c", &no_hooks, "commit", "-m", "agr sync"]);
+        let date = format!("@{} +0000", self.clock.unix_secs()?);
+        let mut env = vec![
+            ("GIT_AUTHOR_DATE", date.clone()),
+            ("GIT_COMMITTER_DATE", date),
+        ];
+        env.extend(IDENTITY_ENV.iter().map(|(k, v)| (*k, v.to_string())));
+        self.git(&commit, Some(dir), &env).map(drop)
+    }
+
+    /// Plain `git push`, never forced. A rejection is `Moved` with the index the remote has now.
+    fn push(&self, dir: &Path, id: &str) -> Result<(), StoreError> {
+        self.wait_turn(id)?;
+        let mut args = CRED.to_vec();
+        args.extend(["push", "--no-verify", "--progress"]);
+        let sink = self.progress.as_ref();
+        let mut on_line = |line: &str| {
+            sink.iter()
+                .for_each(|s| writing_percent(line).iter().for_each(|p| s(*p)))
+        };
+        let run = self
+            .runner
+            .run_watched("git", &strings(&args), Some(dir), &[], &mut on_line);
+        let out = io_result("git", run).map_err(be)?;
+        if out.success() {
+            return self.note_push(id);
         }
+        match map_failure("git", &out.stderr, out.code) {
+            BackendError::Changed(_) => Err(self.fetched_index(dir)),
+            e => Err(be(e)),
+        }
+    }
+
+    /// `Moved` with `FETCH_HEAD:index`, a failing fetch or read is that error and never a `Moved`.
+    fn fetched_index(&self, dir: &Path) -> StoreError {
+        let mut fetch = CRED.to_vec();
+        fetch.extend(["fetch", "--progress"]);
+        let read = |_| {
+            self.git(
+                &["show", &format!("FETCH_HEAD:{INDEX_FILE}")],
+                Some(dir),
+                &[],
+            )
+        };
+        match self.git(&fetch, Some(dir), &[]).and_then(read) {
+            Ok(out) => StoreError::Moved(out.stdout),
+            Err(e) => e,
+        }
+    }
+
+    /// Waits out the 10 s per gist (persisted, other processes count) and the 1 s of the pacer.
+    fn wait_turn(&self, id: &str) -> Result<(), StoreError> {
+        let last = self.last_push();
+        let wait = last
+            .as_ref()
+            .map(|l| l.wait_for(id, self.clock.unix_secs().unwrap_or(0)));
+        wait.filter(|w| !w.is_zero())
+            .iter()
+            .for_each(|w| self.clock.sleep(*w));
+        self.pacer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .wait();
         Ok(())
     }
 
-    /// Stub: plain push, no pacing, no progress, a rejection is a plain error.
-    fn push(&self, dir: &Path, _id: &str) -> Result<(), StoreError> {
-        let mut args = CRED.to_vec();
-        args.extend(["push", "--no-verify"]);
-        self.git(&args, Some(dir), &[]).map(drop)
+    fn note_push(&self, id: &str) -> Result<(), StoreError> {
+        let now = self.clock.unix_secs()?;
+        self.last_push().iter().for_each(|l| l.put(id, now));
+        Ok(())
     }
 
     pub(super) fn delete_pack(&self, id: &str) -> Result<(), StoreError> {

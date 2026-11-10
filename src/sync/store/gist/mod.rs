@@ -9,6 +9,7 @@ mod cache;
 #[cfg(test)]
 mod fake_remote;
 mod index_cache;
+mod last_push;
 mod layout;
 mod read;
 #[cfg(test)]
@@ -34,10 +35,8 @@ pub struct GistStore<R: Runner = ProcessRunner> {
     cache_file: Option<PathBuf>,
     /// The user cache dir, cached clones and `pace.toml` live under `agr/` in it.
     cache_root: Option<PathBuf>,
-    #[allow(dead_code)] // stub: commit date and pacing come later
     clock: Arc<dyn Clock>,
     /// Percent of the push of an append, `None` means nobody listens.
-    #[allow(dead_code)] // stub: push progress comes later
     progress: Option<ProgressSink>,
     pacer: Mutex<Pacer>,
     /// Files and `updated_at` of every pack this store listed or fetched.
