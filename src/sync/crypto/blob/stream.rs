@@ -5,14 +5,14 @@ use crate::sync::crypto::{CryptoError, Key};
 use chacha20poly1305::aead::AeadInOut;
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
 
-pub(super) const PREFIX_LEN: usize = 19;
-pub(super) const TAG_LEN: usize = 16;
+pub const PREFIX_LEN: usize = 19;
+pub const TAG_LEN: usize = 16;
 
 /// Shared state. Deliberately not Clone or Copy: two copies would hand out the same nonces.
-struct Stream {
+pub struct Stream {
     aead: XChaCha20Poly1305,
     prefix: [u8; PREFIX_LEN],
-    counter: u32,
+    pub counter: u32,
 }
 
 impl Stream {
@@ -25,7 +25,7 @@ impl Stream {
     }
 
     /// prefix || counter BE || flag, the only place a nonce is built.
-    fn nonce(&self, last: bool) -> XNonce {
+    pub fn nonce(&self, last: bool) -> XNonce {
         let mut n = [0u8; 24];
         n[..PREFIX_LEN].copy_from_slice(&self.prefix);
         n[PREFIX_LEN..PREFIX_LEN + 4].copy_from_slice(&self.counter.to_be_bytes());
@@ -55,8 +55,8 @@ impl Stream {
         })
     }
 
-    #[cfg(test)]
-    fn at(key: &Key, prefix: [u8; PREFIX_LEN], counter: u32) -> Self {
+    /// Stream resumed at `counter`, for the tests.
+    pub fn at(key: &Key, prefix: [u8; PREFIX_LEN], counter: u32) -> Self {
         Stream {
             counter,
             ..Stream::new(key, prefix)
@@ -64,39 +64,36 @@ impl Stream {
     }
 }
 
-pub(super) struct Sealer(Stream);
+pub struct Sealer(pub Stream);
 
 impl Sealer {
-    pub(super) fn new(key: &Key, prefix: [u8; PREFIX_LEN]) -> Self {
+    pub fn new(key: &Key, prefix: [u8; PREFIX_LEN]) -> Self {
         Sealer(Stream::new(key, prefix))
     }
 
-    pub(super) fn next(&mut self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
+    pub fn next(&mut self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
         let nonce = self.0.take_next()?;
         self.0.seal(&nonce, aad, buf)
     }
 
-    pub(super) fn last(self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
+    pub fn last(self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
         self.0.seal(&self.0.nonce(true), aad, buf)
     }
 }
 
-pub(super) struct Opener(Stream);
+pub struct Opener(pub Stream);
 
 impl Opener {
-    pub(super) fn new(key: &Key, prefix: [u8; PREFIX_LEN]) -> Self {
+    pub fn new(key: &Key, prefix: [u8; PREFIX_LEN]) -> Self {
         Opener(Stream::new(key, prefix))
     }
 
-    pub(super) fn next(&mut self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
+    pub fn next(&mut self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
         let nonce = self.0.take_next()?;
         self.0.open(&nonce, aad, buf)
     }
 
-    pub(super) fn last(self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
+    pub fn last(self, aad: &[u8], buf: &mut Vec<u8>) -> Result<(), CryptoError> {
         self.0.open(&self.0.nonce(true), aad, buf)
     }
 }
-
-#[cfg(test)]
-mod tests;

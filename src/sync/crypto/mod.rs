@@ -69,7 +69,7 @@ impl Key {
         &self.0
     }
 
-    pub(super) fn cipher(&self) -> XChaCha20Poly1305 {
+    pub(in crate::sync) fn cipher(&self) -> XChaCha20Poly1305 {
         XChaCha20Poly1305::new(&self.0.into())
     }
 }

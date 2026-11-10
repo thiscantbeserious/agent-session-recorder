@@ -6,16 +6,15 @@ use chacha20poly1305::aead::Generate;
 use data_encoding::HEXLOWER;
 use sha2::{Digest as _, Sha256};
 use std::io::{self, BufRead, BufReader, Read, Write};
-use stream::{Opener, Sealer};
 use thiserror::Error;
 
-mod stream;
-use stream::{PREFIX_LEN, TAG_LEN};
+pub mod stream;
+pub use stream::{Opener, Sealer, Stream, PREFIX_LEN, TAG_LEN};
 
 const MAGIC: &[u8] = b"AGR1";
 const VERSION: u8 = 2;
-const HEADER_LEN: usize = MAGIC.len() + 1 + PREFIX_LEN;
-const FRAME: usize = 64 * 1024;
+pub const HEADER_LEN: usize = MAGIC.len() + 1 + PREFIX_LEN;
+pub const FRAME: usize = 64 * 1024;
 const AAD_PREFIX: &[u8] = b"agr:blob:";
 
 /// Errors from sealing or opening a streamed blob.
@@ -28,9 +27,9 @@ pub enum BlobError {
 }
 
 /// Plaintext SHA-256 (hex) and size seen by the sealer or opener.
-pub(super) type Digest = (String, u64);
+pub type Digest = (String, u64);
 
-fn aad(path: &str, gen: u64) -> Vec<u8> {
+pub fn aad(path: &str, gen: u64) -> Vec<u8> {
     let tail = format!(":{gen}");
     [
         MAGIC,
@@ -95,7 +94,7 @@ fn open_frame(
     }
 }
 
-fn seal_with_prefix(
+pub fn seal_with_prefix(
     key: &Key,
     path: &str,
     gen: u64,
@@ -166,21 +165,16 @@ pub fn open_stream(
 }
 
 /// Whole-blob shorthand for tests, never on the production path.
-#[cfg(test)]
+#[doc(hidden)]
 pub fn seal_blob(key: &Key, path: &str, gen: u64, plain: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     seal_stream(key, path, gen, plain, &mut out).expect("sealing into a Vec cannot fail");
     out
 }
 
-#[cfg(test)]
+#[doc(hidden)]
 pub fn open_blob(key: &Key, path: &str, gen: u64, blob: &[u8]) -> Result<Vec<u8>, BlobError> {
     let mut out = Vec::new();
     open_stream(key, path, gen, blob, &mut out)?;
     Ok(out)
 }
-
-#[cfg(test)]
-mod kat_tests;
-#[cfg(test)]
-mod tests;

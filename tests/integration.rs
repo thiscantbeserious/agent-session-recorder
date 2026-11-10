@@ -227,3 +227,12 @@ mod analyze_rename_test;
 
 #[path = "integration/config_migrate_sections_test.rs"]
 mod config_migrate_sections_test;
+
+#[path = "integration/sync_blob_kat_test.rs"]
+mod sync_blob_kat_test;
+
+#[path = "integration/sync_blob_stream_test.rs"]
+mod sync_blob_stream_test;
+
+#[path = "integration/sync_blob_test.rs"]
+mod sync_blob_test;

@@ -21,11 +21,33 @@ pub mod testing {
     pub use crate::sync::backend::memory::MemoryBackend;
     pub use crate::sync::backend::{pull_bytes, push_bytes};
     pub use crate::sync::crypto::blob::{open_stream, seal_stream, BlobError};
+    pub use crate::sync::crypto::CryptoError;
     pub use crate::sync::crypto::{open_meta, seal, seal_meta, sha256_hex, Meta};
     pub use crate::sync::engine::index;
     pub use crate::sync::engine::plan::{decide, resolve, Command, Remote};
     pub use crate::sync::engine::queue;
     pub use crate::sync::engine::scan::{scan, Row};
+
+    /// Blob internals for the framing, nonce and known-answer tests.
+    pub mod blob {
+        pub use crate::sync::crypto::blob::{
+            aad, open_blob, seal_blob, seal_with_prefix, Digest, Opener, Sealer, Stream, FRAME,
+            HEADER_LEN, PREFIX_LEN, TAG_LEN,
+        };
+    }
+
+    /// Key access the tests need, kept off the public `Key` API.
+    pub fn key_from_bytes(bytes: [u8; 32]) -> crate::sync::Key {
+        crate::sync::Key::from_bytes(bytes)
+    }
+
+    pub fn key_bytes(key: &crate::sync::Key) -> &[u8; 32] {
+        key.as_bytes()
+    }
+
+    pub fn key_cipher(key: &crate::sync::Key) -> chacha20poly1305::XChaCha20Poly1305 {
+        key.cipher()
+    }
 }
 
 #[cfg(test)]
