@@ -1,5 +1,6 @@
 //! Gist backend, `gh` for create, list and delete, `git` for the binary blob.
 
+mod legacy;
 pub mod pace;
 pub mod parse;
 pub mod parts;
@@ -18,7 +19,6 @@ use self::progress::{receiving_percent, writing_percent};
 use self::runner::{Output, ProcessRunner, Runner};
 use self::scratch::Scratch;
 use crate::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
-use crate::sync::store::StoreError as StoreErr;
 
 /// Neutral dotfile, only there because `gh gist create` refuses an empty gist.
 pub const STUB_FILE: &str = ".keep";
@@ -378,23 +378,5 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
         self.pace();
         self.run_ok("gh", &["gist", "delete", id, "--yes"], None)?;
         Ok(())
-    }
-}
-
-/// The read side migrate needs, over the same `gh` and `git` calls as the sync backend.
-impl<R: Runner> crate::sync::pack::migrate::LegacyRead for GistBackend<R> {
-    fn list_all(&self) -> Result<Vec<crate::sync::pack::migrate::LegacyGist>, StoreErr> {
-        let out = self
-            .run_ok("gh", &["api", LIST_ENDPOINT, "--paginate"], None)
-            .map_err(StoreErr::from)?;
-        parse::parse_all(&out.stdout).map_err(StoreErr::from)
-    }
-
-    fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn Read>), StoreErr> {
-        SyncBackend::pull(self, id).map_err(StoreErr::from)
-    }
-
-    fn delete(&self, id: &str) -> Result<(), StoreErr> {
-        SyncBackend::delete(self, id).map_err(StoreErr::from)
     }
 }
