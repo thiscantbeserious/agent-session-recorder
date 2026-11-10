@@ -8,10 +8,10 @@ use crate::sync::backend::BackendError;
 static CLONE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Scratch directory under the temp dir, removed on drop (also on error paths).
-pub(crate) struct Scratch(pub(crate) PathBuf);
+pub struct Scratch(pub PathBuf);
 
 impl Scratch {
-    pub(crate) fn create(base: &Path) -> Result<Self, BackendError> {
+    pub fn create(base: &Path) -> Result<Self, BackendError> {
         let n = CLONE_COUNTER.fetch_add(1, Ordering::Relaxed);
         let dir = base.join(format!("agr-sync-{}-{n}", std::process::id()));
         let builder = private_dir_builder();

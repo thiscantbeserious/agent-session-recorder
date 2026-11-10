@@ -1,4 +1,4 @@
-use super::*;
+use agr::sync::testing::valid_path;
 
 #[test]
 fn valid_path_rejects_colon() {

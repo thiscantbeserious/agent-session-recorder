@@ -4,6 +4,7 @@ use super::{is_valid_filename_char, MAX_FILENAME_LENGTH, WINDOWS_RESERVED};
 use crate::files::backup::backup_path_for;
 use crate::files::codec;
 use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 /// Errors that can occur during file rename.
 #[derive(Debug)]
@@ -104,6 +105,25 @@ fn move_backup(old_path: &std::path::Path, new_path: &std::path::Path) {
     if source.exists() {
         let _ = std::fs::rename(&source, backup_path_for(new_path));
     }
+}
+
+/// Current file name without the session suffix, the input for the LLM suggestion.
+pub fn current_stem(filepath: &Path) -> String {
+    let name = filepath
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or("");
+    codec::session_stem(name).to_string()
+}
+
+/// Path the suggested name would give, same directory and suffix.
+pub fn target_path(filepath: &Path, suggested: &str) -> PathBuf {
+    filepath.with_file_name(format!("{suggested}{}", codec::session_suffix(filepath)))
+}
+
+/// Rename to the suggested stem, returns the new path.
+pub fn apply_rename(filepath: &Path, suggested: &str) -> Result<PathBuf, RenameError> {
+    rename_file(filepath, suggested)
 }
 
 #[cfg(test)]

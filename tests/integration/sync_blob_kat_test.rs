@@ -1,8 +1,8 @@
 //! Known-answer vectors, computed outside this code (Python `cryptography` plus a
 //! hand-written HChaCha20 checked against draft-irtf-cfrg-xchacha-03 2.2.1).
 
-use super::{seal_with_prefix, Key, FRAME, PREFIX_LEN};
-use crate::sync::crypto::sha256_hex;
+use agr::sync::testing::blob::{seal_with_prefix, FRAME, PREFIX_LEN};
+use agr::sync::testing::{key_from_bytes, seal_stream, sha256_hex};
 
 fn plain(n: usize) -> Vec<u8> {
     (0..n).map(|i| (i * 31 + 7) as u8).collect()
@@ -18,7 +18,7 @@ const KAT_TWO_FRAMES_SHA256: &str =
 
 #[test]
 fn known_answer_for_fixed_key_prefix_path_and_gen() {
-    let k = Key::from_bytes(core::array::from_fn(|i| i as u8));
+    let k = key_from_bytes(core::array::from_fn(|i| i as u8));
     let prefix: [u8; PREFIX_LEN] = core::array::from_fn(|i| 0x40 + i as u8);
     let mut out = Vec::new();
     seal_with_prefix(
@@ -50,7 +50,7 @@ const KAT_THREE_FRAMES_SHA256: &str =
 
 #[test]
 fn known_answer_for_three_frames_pins_counter_two_and_the_last_flag() {
-    let k = Key::from_bytes(core::array::from_fn(|i| i as u8));
+    let k = key_from_bytes(core::array::from_fn(|i| i as u8));
     let prefix: [u8; PREFIX_LEN] = core::array::from_fn(|i| 0x40 + i as u8);
     let mut out = Vec::new();
     let src = plain(2 * FRAME + 3);
@@ -84,13 +84,13 @@ impl std::io::Read for Flaky {
 
 #[test]
 fn an_interrupted_read_is_retried_not_failed() {
-    let k = Key::from_bytes([3; 32]);
+    let k = key_from_bytes([3; 32]);
     let src = Flaky {
         data: plain(2 * FRAME + 3),
         pos: 0,
         hiccup: true,
     };
     let mut out = Vec::new();
-    let res = super::seal_stream(&k, "a/b.cast.gz", 1, src, &mut out);
+    let res = seal_stream(&k, "a/b.cast.gz", 1, src, &mut out);
     assert!(res.is_ok(), "{res:?}");
 }

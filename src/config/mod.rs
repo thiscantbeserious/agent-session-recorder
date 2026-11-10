@@ -8,8 +8,17 @@ pub mod state;
 mod types;
 
 pub use analysis::*;
-pub use migrate::*;
+pub use migrate::{migrate_config, MigrateResult, CURRENT_VERSION};
 pub use types::*;
+
+/// Internals for the integration tests, not a stable API.
+#[doc(hidden)]
+pub mod testing {
+    pub use super::migrate::{
+        collect_section_blocks, ensure_blank_line_separator, parse_section_header, reassemble_toml,
+        sort_blocks_by_order,
+    };
+}
 
 use anyhow::Result;
 use std::path::PathBuf;

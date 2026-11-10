@@ -176,7 +176,10 @@ fn sort_toml_text(text: &str) -> String {
 ///
 /// Returns `Vec<(group_name, block_text)>` where non-consecutive sections with
 /// the same top-level group are concatenated into a single block.
-fn collect_section_blocks(headers: &[(usize, String)], lines: &[&str]) -> Vec<(String, String)> {
+pub fn collect_section_blocks(
+    headers: &[(usize, String)],
+    lines: &[&str],
+) -> Vec<(String, String)> {
     let mut blocks: Vec<(String, String)> = Vec::new();
     let mut seen_groups: Vec<String> = Vec::new();
 
@@ -202,7 +205,7 @@ fn collect_section_blocks(headers: &[(usize, String)], lines: &[&str]) -> Vec<(S
 }
 
 /// Sort blocks so that known sections appear in `SECTION_ORDER`, unknowns follow in original order.
-fn sort_blocks_by_order(blocks: &[(String, String)]) -> Vec<&(String, String)> {
+pub fn sort_blocks_by_order(blocks: &[(String, String)]) -> Vec<&(String, String)> {
     let mut sorted: Vec<&(String, String)> = Vec::new();
     for &section in SECTION_ORDER {
         if let Some(block) = blocks.iter().find(|(g, _)| g == section) {
@@ -220,7 +223,7 @@ fn sort_blocks_by_order(blocks: &[(String, String)]) -> Vec<&(String, String)> {
 /// Reassemble preamble and sorted blocks into a single TOML string.
 ///
 /// Ensures exactly one blank line between adjacent blocks and a trailing newline.
-fn reassemble_toml(preamble: &str, sorted_blocks: &[&(String, String)]) -> String {
+pub fn reassemble_toml(preamble: &str, sorted_blocks: &[&(String, String)]) -> String {
     let mut result = String::new();
 
     if !preamble.is_empty() {
@@ -247,7 +250,7 @@ fn reassemble_toml(preamble: &str, sorted_blocks: &[&(String, String)]) -> Strin
 ///
 /// Trims any excess trailing newlines down to one, then appends one more so the
 /// result always ends with `\n\n` (one blank line before the next block).
-fn ensure_blank_line_separator(result: &mut String) {
+pub fn ensure_blank_line_separator(result: &mut String) {
     let trimmed = result.trim_end_matches('\n');
     let new_len = trimmed.len();
     result.truncate(new_len);
@@ -256,7 +259,7 @@ fn ensure_blank_line_separator(result: &mut String) {
 
 /// Extract section name from a TOML header line like `[section]` or `[section.sub]`.
 /// Returns `None` for non-headers and `[[array_of_tables]]`.
-fn parse_section_header(line: &str) -> Option<String> {
+pub fn parse_section_header(line: &str) -> Option<String> {
     let trimmed = line.trim();
     if trimmed.starts_with("[[") || !trimmed.starts_with('[') {
         return None;
@@ -323,6 +326,3 @@ fn track_added_fields(path: &str, item: &Item, result: &mut MigrateResult) {
         result.added_fields.push(path.to_string());
     }
 }
-
-#[cfg(test)]
-mod tests;

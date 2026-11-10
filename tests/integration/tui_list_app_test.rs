@@ -1,9 +1,9 @@
 //! Unit tests for the list app.
 
-use super::render::*;
-use super::*;
-use crate::files::filename;
-use crate::tui::import;
+use agr::files::filename;
+use agr::tui::import;
+use agr::tui::list_app::{ContextMenuItem, Mode};
+use agr::tui::testing::list_app::*;
 
 #[test]
 fn mode_default_is_normal() {
@@ -266,14 +266,12 @@ fn footer_text_import_done_phase() {
 
 #[test]
 fn rename_stem_strips_full_session_suffix() {
-    use super::input::rename_stem;
     assert_eq!(rename_stem(std::path::Path::new("/s/a/x.cast.gz")), "x");
     assert_eq!(rename_stem(std::path::Path::new("/s/a/x.cast")), "x");
 }
 
 #[test]
 fn rename_stem_limit_uses_full_suffix() {
-    use super::input::max_stem_len;
     assert_eq!(
         max_stem_len(std::path::Path::new("/s/a/x.cast")),
         255 - ".cast".len()
@@ -286,7 +284,6 @@ fn rename_stem_limit_uses_full_suffix() {
 
 #[test]
 fn newest_session_in_finds_gzip_session() {
-    use super::session_actions::newest_session_in;
     let dir = tempfile::tempdir().unwrap();
     let gz = dir.path().join("renamed.cast.gz");
     std::fs::write(&gz, b"x").unwrap();

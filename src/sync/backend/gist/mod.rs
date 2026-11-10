@@ -1,11 +1,11 @@
 //! Gist backend, `gh` for create, list and delete, `git` for the binary blob.
 
-pub(crate) mod pace;
-pub(crate) mod parse;
-pub(crate) mod parts;
+pub mod pace;
+pub mod parse;
+pub mod parts;
 pub(crate) mod progress;
-pub(crate) mod runner;
-pub(crate) mod scratch;
+pub mod runner;
+pub mod scratch;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -20,11 +20,11 @@ use self::scratch::Scratch;
 use crate::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 
 /// Neutral dotfile, only there because `gh gist create` refuses an empty gist.
-const STUB_FILE: &str = ".keep";
+pub const STUB_FILE: &str = ".keep";
 /// gh refuses a file that is blank after trimming, so the stub carries a fixed word, no metadata.
-const STUB_BODY: &str = "agr\n";
+pub const STUB_BODY: &str = "agr\n";
 /// Holds the sealed manifest token the compare-and-swap checks.
-const MANIFEST_FILE: &str = "manifest";
+pub const MANIFEST_FILE: &str = "manifest";
 /// Placeholder until the blob is pushed, no `agr:v1 ` prefix so `parse_list` skips it.
 const PENDING_DESC: &str = "agr:pending";
 const LIST_ENDPOINT: &str = "gists?per_page=100";
@@ -379,10 +379,3 @@ impl<R: Runner> SyncBackend for GistBackend<R> {
         Ok(())
     }
 }
-
-#[cfg(test)]
-pub(crate) mod fake;
-#[cfg(test)]
-mod pull_tests;
-#[cfg(test)]
-mod push_tests;

@@ -8,7 +8,7 @@ use crate::files::{codec, filename};
 use crate::tui::import;
 
 /// Rename input pre-filled for a session path: its stem without `.cast` / `.cast.gz`.
-pub(super) fn rename_stem(path: &std::path::Path) -> String {
+pub fn rename_stem(path: &std::path::Path) -> String {
     let name = path
         .file_name()
         .and_then(std::ffi::OsStr::to_str)
@@ -17,7 +17,7 @@ pub(super) fn rename_stem(path: &std::path::Path) -> String {
 }
 
 /// Longest stem that still fits `MAX_FILENAME_LENGTH` with the path's real suffix.
-pub(super) fn max_stem_len(path: &std::path::Path) -> usize {
+pub fn max_stem_len(path: &std::path::Path) -> usize {
     filename::MAX_FILENAME_LENGTH.saturating_sub(codec::session_suffix(path).len())
 }
 

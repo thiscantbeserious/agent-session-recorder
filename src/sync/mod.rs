@@ -32,7 +32,7 @@ pub mod testing {
     pub use crate::sync::engine::index;
     pub use crate::sync::engine::plan::{decide, resolve, Command, Remote};
     pub use crate::sync::engine::queue;
-    pub use crate::sync::engine::scan::{scan, Row};
+    pub use crate::sync::engine::scan::{scan, valid_path, Row};
     pub use crate::sync::pack::index::{
         new_pack_uuid, open_index, seal_index, Entry, Index, IndexError,
     };
@@ -52,6 +52,37 @@ pub mod testing {
     /// A second handle on the same key bytes, as another machine of the same account holds it.
     pub fn copy_key(key: &crate::sync::Key) -> crate::sync::Key {
         crate::sync::Key::from_bytes(*key.as_bytes())
+    }
+
+    /// Gist backend internals for the fake runner tests.
+    pub mod gist {
+        pub use crate::sync::backend::gist::pace::{Clock, FakeClock};
+        pub use crate::sync::backend::gist::parse::{parse_list, NO_CREATED_AT};
+        pub use crate::sync::backend::gist::parts::{part_name, part_names};
+        pub use crate::sync::backend::gist::runner::{Output, Runner};
+        pub use crate::sync::backend::gist::scratch::Scratch;
+        pub use crate::sync::backend::gist::{MANIFEST_FILE, STUB_BODY, STUB_FILE};
+    }
+
+    /// Blob internals for the framing, nonce and known-answer tests.
+    pub mod blob {
+        pub use crate::sync::crypto::blob::{
+            aad, open_blob, seal_blob, seal_with_prefix, sealed_len, Digest, Opener, Sealer,
+            Stream, FRAME, HEADER_LEN, PREFIX_LEN, TAG_LEN,
+        };
+    }
+
+    /// Key access the tests need, kept off the public `Key` API.
+    pub fn key_from_bytes(bytes: [u8; 32]) -> crate::sync::Key {
+        crate::sync::Key::from_bytes(bytes)
+    }
+
+    pub fn key_bytes(key: &crate::sync::Key) -> &[u8; 32] {
+        key.as_bytes()
+    }
+
+    pub fn key_cipher(key: &crate::sync::Key) -> chacha20poly1305::XChaCha20Poly1305 {
+        key.cipher()
     }
 }
 

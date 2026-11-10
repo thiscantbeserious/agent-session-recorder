@@ -1,7 +1,7 @@
 //! One clock for the sync code, monotonic for pacing and unix seconds for commit dates,
 //! plus the pacer for mutating GitHub calls.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::sync::backend::BackendError;
@@ -74,6 +74,46 @@ fn secs_since_epoch(time: SystemTime) -> Result<u64, ClockError> {
         .map_err(|_| ClockError)
 }
 
+/// Test clock, always compiled so the integration tests can use it, never built by the product.
+/// Stateful fake, `sleep` advances `mono` and is recorded.
+pub struct FakeClock {
+    state: Mutex<(Duration, Vec<Duration>)>,
+    unix: u64,
+}
+
+impl FakeClock {
+    pub fn new(mono: Duration, unix: u64) -> Self {
+        Self {
+            state: Mutex::new((mono, Vec::new())),
+            unix,
+        }
+    }
+
+    pub fn advance(&self, by: Duration) {
+        self.state.lock().unwrap().0 += by;
+    }
+
+    pub fn slept(&self) -> Vec<Duration> {
+        self.state.lock().unwrap().1.clone()
+    }
+}
+
+impl Clock for FakeClock {
+    fn mono(&self) -> Duration {
+        self.state.lock().unwrap().0
+    }
+
+    fn unix_secs(&self) -> Result<u64, ClockError> {
+        Ok(self.unix)
+    }
+
+    fn sleep(&self, time: Duration) {
+        let mut state = self.state.lock().unwrap();
+        state.0 += time;
+        state.1.push(time);
+    }
+}
+
 /// Waits before a mutating call so two calls are at least `MIN_GAP` apart.
 /// There is no call budget, a real rate limit stops the run as `BackendError::RateLimited`.
 pub(crate) struct Pacer {
@@ -100,49 +140,8 @@ impl Pacer {
 }
 
 #[cfg(test)]
-pub mod tests {
-    use super::{secs_since_epoch, Arc, Clock, ClockError, Duration, Pacer, SystemTime};
-    use std::sync::Mutex;
-
-    /// Stateful fake, `sleep` advances `mono` and is recorded.
-    pub struct FakeClock {
-        state: Mutex<(Duration, Vec<Duration>)>,
-        unix: u64,
-    }
-
-    impl FakeClock {
-        pub fn new(mono: Duration, unix: u64) -> Self {
-            Self {
-                state: Mutex::new((mono, Vec::new())),
-                unix,
-            }
-        }
-
-        pub fn advance(&self, by: Duration) {
-            self.state.lock().unwrap().0 += by;
-        }
-
-        pub fn slept(&self) -> Vec<Duration> {
-            self.state.lock().unwrap().1.clone()
-        }
-    }
-
-    impl Clock for FakeClock {
-        fn mono(&self) -> Duration {
-            self.state.lock().unwrap().0
-        }
-
-        fn unix_secs(&self) -> Result<u64, ClockError> {
-            Ok(self.unix)
-        }
-
-        fn sleep(&self, time: Duration) {
-            let mut state = self.state.lock().unwrap();
-            state.0 += time;
-            state.1.push(time);
-        }
-    }
-
+mod tests {
+    use super::{secs_since_epoch, Arc, Duration, FakeClock, Pacer, SystemTime};
     fn ms(ms: u64) -> Duration {
         Duration::from_millis(ms)
     }
