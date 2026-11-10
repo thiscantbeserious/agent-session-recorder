@@ -947,6 +947,8 @@ Rough size (re-estimated 2026-11-09 after the review round, union of the `Files:
 - Every `RED commit:` item is its own commit `test(<scope>): ... (RED)` that compiles and fails on the named assertion. Every test in a RED item names its own failing assertion in brackets, not only the first one. Stubs return a wrong value (empty vec, `Ok(())`, `false`), never `todo!()` or `unimplemented!()`, and a compile error is not a RED.
 - The `GREEN commit:` item is the next commit `feat(...)` or `fix(...)` and does not touch the RED test except imports.
 - The reviewer checks `git log --oneline` for the RED and GREEN pair of every item, a missing RED commit is a blocking finding.
+- Pair review (user decision 2026-11-10): it runs only after Stages 57, 58 and 59 (the risky ones), not after 56 and 60.
+- Output tests (user decision 2026-11-10): written once, centrally, in Stage 56 through the shared formatter in `src/sync/app/format/`, every sync command gets them.
 - Sizes: functions about 20 lines, files under 400 lines, tests move into a sibling `tests.rs` once a module passes about 250 lines. Every stage names where a split is expected.
 
 **Probe branches**: Stage 46 decided ADR Open risk 1 on 2026-11-09. Partial clone append works and secret gists read, but the second probe `append_fetch_trigger` showed git fetches the existing parts during every commit and push variant, and with `GIT_NO_LAZY_FETCH=1` the push fails. No recipe exists, as such branch C is the plan.
@@ -1274,7 +1276,7 @@ PR: C
 - [ ] RED commit: `push_and_pull_print_compact_summary_and_full_list_with_v` (P12) [`assert!(lines(default) < 10)` and `assert_eq!(listed(verbose), 30)`].
 - [ ] RED commit: `loading_and_live_line_only_on_a_tty` (P12) for push and pull through `format/live.rs` with a fake tty flag [`assert!(tty_out.starts_with(LOADING))` and `assert!(!plain_out.contains(LOADING))`, `NO_COLOR` gives `assert!(!out.contains('\x1b'))`, no `gh` token text in any line].
 - [ ] GREEN commit. `Duplicate` leaves the public exports, `Fork` replaces it.
-- [ ] Delete, migrate and prune get the same two output tests in Stages 57, 58 and 62, where their commands are built.
+- [ ] Delete, migrate and prune print through this shared formatter, as such their commands get no output tests of their own in Stages 57, 58 and 62.
 
 Files: `src/sync/mod.rs`, `src/sync/app/format/mod.rs`, `src/sync/app/format/status.rs`, `src/sync/app/format/packs.rs`, `src/sync/app/format/summary.rs`, `src/sync/app/format/live.rs`, `src/commands/sync/live.rs`, `tests/integration/cli_sync_test.rs`
 Depends on: Stage 55
@@ -1300,7 +1302,7 @@ PR: C
 - [ ] RED commit: `over_ten_without_tty_needs_force` [`assert!(!st.success())` and `assert!(err.contains("--force"))` and zero appends, `--yes --force` gives 11 tombstones, one match without a TTY still needs `--yes` as today].
 - [ ] RED commit: `no_remote_match_says_so_and_exits_non_zero` [`assert!(!st.success())` and `assert!(err.contains("no remote session matches"))`, local files untouched].
 - [ ] RED commit: `pattern_delete_is_one_tombstone_append` [`assert_eq!(appends, 1)` and `assert_eq!(deleted_entries, 11)` at gen + 1 in the open pack, the local files stay, the dead bytes show up in `merge` so prune (Stage 61) frees them].
-- [ ] RED commit: `delete_prints_compact_summary_and_full_list_with_v` [`assert!(lines(default) < 10)`] and `delete_loading_and_live_line_only_on_a_tty` [`assert!(!plain_out.contains(LOADING))`] (P12, as in Stage 56).
+- [ ] Output of `agr sync delete` goes through the shared formatter in `src/sync/app/format/`, tested once in Stage 56 (no per command output tests).
 - [ ] GREEN commit per RED commit above. Each stub in the RED commits deletes without asking or returns `Ok(())` early, never `todo!()`.
 
 Files: `src/sync/mod.rs`, `src/sync/engine/mod.rs`, `src/sync/engine/select.rs`, `src/sync/engine/run.rs`, `src/cli/subcommands.rs`, `src/commands/sync/mod.rs`, `src/commands/sync/run.rs`, `src/commands/sync/delete.rs`, `src/sync/app/format/summary.rs`, `tests/integration/cli_sync_parse_test.rs`, `tests/integration/cli_sync_test.rs`
@@ -1332,7 +1334,7 @@ PR: C
   - `migrate_opens_without_the_v1_guard_and_unblocks` [`assert!(Repo::open(..).is_ok())` once migrate deleted the last `agr:v1` gist of our key, and a gist kept for a hash mismatch is named with `gh gist delete <id>` in the report]
 - [ ] GREEN commit per RED commit above.
 - [ ] RED commit: `parses_migrate_yes` in `cli_sync_parse_test.rs` [`assert!(parse(["migrate", "--yes"]).is_ok())`], GREEN adds `agr sync migrate [--yes]`.
-- [ ] RED commit: `migrate_prints_compact_summary_and_full_list_with_v` [`assert!(lines(default) < 10)`] and `migrate_loading_and_live_line_only_on_a_tty` [`assert!(!plain_out.contains(LOADING))`] (P12, as in Stage 56).
+- [ ] Output of `agr sync migrate` goes through the shared formatter in `src/sync/app/format/`, tested once in Stage 56 (no per command output tests).
 
 Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/migrate/mod.rs`, `src/sync/pack/migrate/recognise.rs`, `src/sync/pack/migrate/local.rs`, `tests/integration/sync_pack_migrate_test.rs`, `src/sync/engine/index.rs`, `src/sync/backend/gist/mod.rs`, `src/cli/subcommands.rs`, `src/commands/sync/mod.rs`, `src/commands/sync/migrate.rs`, `src/dispatch.rs`, `tests/integration/cli_sync_parse_test.rs`, `tests/integration/cli_sync_test.rs`
 Depends on: Stage 57
@@ -1420,7 +1422,7 @@ Owner: implementer
 PR: D
 
 - [ ] RED commit: `parses_prune_dry_run_and_seal_orphans` in `cli_sync_parse_test.rs` [`assert!(parse(["prune", "--dry-run", "--seal-orphans"]).is_ok())`] and `prune_while_locked_is_busy` in `cli_sync_test.rs` [`assert!(out.contains("busy"))`].
-- [ ] RED commit: `prune_prints_compact_summary_and_full_list_with_v` [`assert!(lines(default) < 10)`] and `prune_loading_and_live_line_only_on_a_tty` [`assert!(!plain_out.contains(LOADING))`] (P12, as in Stage 56).
+- [ ] Output of `agr sync prune` goes through the shared formatter in `src/sync/app/format/`, tested once in Stage 56 (no per command output tests).
 - [ ] GREEN commit: command, summary output.
 - [ ] `docs/wiki/Command-sync.md` and `docs/architecture/sync.md` get prune and `--seal-orphans`, gates as in Stage 60, `git diff --stat origin/feature/sync-gist...HEAD` under 100 files.
 
