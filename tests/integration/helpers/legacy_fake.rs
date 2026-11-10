@@ -224,6 +224,57 @@ impl PackStore for Listed<'_> {
     }
 }
 
+/// Once anything was written the listing stays at what it showed before, as a lagging GitHub does.
+pub struct Lagging<'a> {
+    pub inner: Listed<'a>,
+    frozen: Mutex<Option<Listing>>,
+    wrote: std::sync::atomic::AtomicBool,
+}
+
+impl<'a> Lagging<'a> {
+    pub fn new(inner: Listed<'a>) -> Self {
+        let frozen = Mutex::new(inner.list().ok());
+        Self {
+            inner,
+            frozen,
+            wrote: false.into(),
+        }
+    }
+}
+
+impl PackStore for Lagging<'_> {
+    fn name(&self) -> &'static str {
+        "lagging"
+    }
+    fn check(&self) -> Result<(), StoreError> {
+        self.inner.check()
+    }
+    fn list(&self) -> Result<Listing, StoreError> {
+        let stale = self.wrote.load(std::sync::atomic::Ordering::SeqCst);
+        match (stale, self.frozen.lock().unwrap().clone()) {
+            (true, Some(old)) => Ok(old),
+            _ => self.inner.list(),
+        }
+    }
+    fn read_index(&self, id: &str) -> Result<String, StoreError> {
+        self.inner.read_index(id)
+    }
+    fn create(&self, tag: &str, index: &str) -> Result<String, StoreError> {
+        self.wrote.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.inner.create(tag, index)
+    }
+    fn append(&self, id: &str, n: u64, e: &str, s: &[Segment], i: &str) -> Result<(), StoreError> {
+        self.wrote.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.inner.append(id, n, e, s, i)
+    }
+    fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError> {
+        self.inner.read(id, offset, len)
+    }
+    fn delete(&self, id: &str) -> Result<(), StoreError> {
+        self.inner.delete(id)
+    }
+}
+
 fn noop() {}
 
 /// One machine: storage dir, scratch dir, the pack store, the old gists and the key.

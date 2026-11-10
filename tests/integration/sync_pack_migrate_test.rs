@@ -141,7 +141,7 @@ mod local_index {
 }
 
 mod moving {
-    use crate::helpers::legacy_fake::{Listed, Rig, OLD};
+    use crate::helpers::legacy_fake::{Lagging, Listed, Rig, OLD};
     use agr::files::codec;
     use agr::sync::testing::index;
     use agr::sync::testing::{
@@ -445,5 +445,28 @@ mod moving {
             .iter()
             .any(|l| l.contains(&first) && l.contains("already gone"));
         assert!(said, "{:?}", report.lines);
+    }
+
+    #[test]
+    fn a_lagging_reread_tells_to_run_again_not_to_delete_by_hand() {
+        let rig = Rig::new();
+        let id = rig.legacy.v1(&rig.key, (A, 3), b"body", None);
+        let store = Lagging::new(Listed(&rig.mem, &rig.legacy));
+        let report = migrate_run(&rig.env(&store)).unwrap();
+        let line = report.lines.iter().find(|l| l.contains(&id)).unwrap();
+        assert!(line.contains("run `agr sync migrate` again"), "{line}");
+        assert!(!line.contains("gh gist delete"), "{line}");
+        assert_eq!(rig.legacy.deletes().len(), 0);
+    }
+
+    #[test]
+    fn migrate_aborts_when_the_reread_after_an_append_fails() {
+        let rig = Rig::new();
+        rig.legacy.v1(&rig.key, (A, 3), b"body", None);
+        rig.mem.before_append(|s, id| s.fail_read_index(id));
+        let store = Listed(&rig.mem, &rig.legacy);
+        let result = migrate_run(&rig.env(&store));
+        assert!(result.is_err(), "{result:?}");
+        assert_eq!(rig.legacy.deletes().len(), 0);
     }
 }
