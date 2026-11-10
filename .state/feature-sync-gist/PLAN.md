@@ -1189,34 +1189,37 @@ Goal: the engine plans against the merged view and writes through `Repo`, the ap
 Owner: implementer
 PR: C
 
-- [ ] RED commit: `push_of_three_sessions_is_one_pack` in `sync_engine_test.rs` on `MemoryStore` [`assert_eq!(store.list()?.packs.len(), 1)`]. The commit carries the new `Engine` constructor with a stub body returning an empty report, so it compiles.
-- [ ] RED commit:
+- [x] RED commit: `push_of_three_sessions_is_one_pack` in `sync_engine_test.rs` on `MemoryStore` [`assert_eq!(store.list()?.packs.len(), 1)`]. The commit carries the new `Engine` constructor with a stub body returning an empty report, so it compiles.
+- [x] RED commit:
   - `push_on_v1_index_requires_migrate_first` [`assert!(err.to_string().contains("run `agr sync migrate` first"))` and `assert_eq!(appends, 0)`, for push, pull and delete, the stub reads v1 as empty]
   - `open_pack_saved_after_push_and_cleared_after_seal` [`assert_eq!(index.open_pack, Some(id))`, then `assert_eq!(index.open_pack, None)`]
   - `delete_is_a_tombstone` [`assert!(view.get(p).unwrap().is_deleted())`]
   - `rollback_below_local_gen_is_refused` (port) [`assert!(report.refused.contains(p))` and the local file is unchanged]
   - `overwrite_resolves_fork_with_gen_plus_one` [`assert_eq!(view.get(p).unwrap().gen, 5)` and `assert!(view.forks.is_empty())`]
-- [ ] RED commit, `Remote::Deleted { gen }` in `engine/plan.rs` (ADR "Merge", today `(Local::Hash(_), Remote::Absent)` is `Push`):
+- [x] RED commit, `Remote::Deleted { gen }` in `engine/plan.rs` (ADR "Merge", today `(Local::Hash(_), Remote::Absent)` is `Push`):
   - `deleted_remote_is_not_pushed_back` [`assert_eq!(decide(local == last, Remote::Deleted { gen: 5 }), Decision::Skip(Reason::DeletedOnRemote))` and the reason text contains "agr sync push --overwrite", the stub maps `Deleted` to `Absent` and gives `Push`]
   - `local_edit_after_remote_delete_is_a_fork` [`assert_eq!(decide(local != last, Deleted { gen: 5 }), Decision::Fork)`]
   - `overwrite_restores_a_deleted_session` (engine run on `MemoryStore`) [`assert_eq!(view.get(p).unwrap().gen, 6)` and `assert!(!view.get(p).unwrap().is_deleted())`]
   - `local_absent_remote_deleted_is_in_sync` [`assert!(matches!(d, Decision::InSync { .. }))` and the index entry is dropped]
-- [ ] RED commit: `fresh_machine_with_v1_gists_on_remote_requires_migrate` in `sync_multi_machine_test.rs` (ADR "Fresh machine refuses too"): machine B has no local index, the store lists one `agr:v1` gist sealed with our key [`assert!(err.to_string().contains("run `agr sync migrate` first"))` and `assert_eq!(appends, 0)` for push, pull and delete, the stub reads the missing index as empty v2 and pushes gen 1]. Same test, two more cases: a deleted local index on machine A refuses the same way, and an `agr:v1` gist of another key does not block [`assert!(push.is_ok())`]. `Repo::open_for_migrate` skips the guard [`assert!(open_for_migrate(..).is_ok())`].
-- [ ] RED commit: `fork_is_reported_right_after_push` in `sync_multi_machine_test.rs` (two machines, two writer ids) [`assert_eq!(report.forks, vec!["claude/x.cast.gz"])`].
-- [ ] RED commit:
+- [x] RED commit: `fresh_machine_with_v1_gists_on_remote_requires_migrate` in `sync_multi_machine_test.rs` (ADR "Fresh machine refuses too"): machine B has no local index, the store lists one `agr:v1` gist sealed with our key [`assert!(err.to_string().contains("run `agr sync migrate` first"))` and `assert_eq!(appends, 0)` for push, pull and delete, the stub reads the missing index as empty v2 and pushes gen 1]. Same test, two more cases: a deleted local index on machine A refuses the same way, and an `agr:v1` gist of another key does not block [`assert!(push.is_ok())`]. `Repo::open_for_migrate` skips the guard [`assert!(open_for_migrate(..).is_ok())`].
+- [x] RED commit: `fork_is_reported_right_after_push` in `sync_multi_machine_test.rs` (two machines, two writer ids) [`assert_eq!(report.forks, vec!["claude/x.cast.gz"])`].
+- [x] RED commit:
   - `pack_size_mib_defaults_to_64` in `config/types.rs` [`assert_eq!(cfg.sync.pack_size_mib, 64)`]
   - `pack_size_mib_out_of_range_is_a_clear_error` (P4) [`assert!(err.to_string().contains("pack_size_mib must be between 16 and 512"))` for 8 and 1024]
   - `writer_id_created_once_in_state_toml` in `config/state.rs` [`assert_eq!(first, second)` over two loads]
   - `new_writer_id_after_state_loss` (P5) in `sync_multi_machine_test.rs` [`assert_ne!(old_writer, new_writer)`, and after a push with the new id `assert!(view.get(old_path).is_some())` and `assert_eq!(store.list()?.packs.len(), 2)`, the old open pack stays readable and merged]
-- [ ] Guard test commit `test(config): ...` (P14, existing behaviour, passes on arrival, the reviewer checks it fails when the default is flipped by hand): `sync_defaults_are_gist_and_auto_push_off` in `config/types.rs` [`assert_eq!((kind, auto), (Gist, false))`], re-checked once `pack_size_mib` is added.
-- [ ] RED commit: `missing_gh_or_git_breaks_nothing_outside_sync` in `cli_sync_test.rs` (P14): with `PATH` stripped of `gh` and `git`, `agr list` and `agr status` exit 0 with their normal output, `agr sync push` exits non-zero with the one line "gh not found, the gist backend needs gh and git" and the storage dir is unchanged [`assert!(!push.status.success())` and `assert_eq!(before, after)`]. Guard test commit as above (existing behaviour on the per-session code, kept true while `setup.rs` builds the `Repo`), it turns RED if the store is opened outside sync commands.
-- [ ] RED commit: `violations_flags_engine_naming_gist_store` [`assert_eq!(v.len(), 1)`, gives 0], GREEN adds `RULES` rows so `engine/` must not name `crate::sync::store::gist`, `crate::sync::store::memory`, `crate::sync::store::dir`.
-- [ ] GREEN commit per RED commit above. `AGR_SYNC_TEST_BACKEND_DIR` now points a `DirStore` at the dir, so `tests/e2e_test.sh` keeps its variable.
+- [x] Guard test commit `test(config): ...` (P14, existing behaviour, passes on arrival, the reviewer checks it fails when the default is flipped by hand): `sync_defaults_are_gist_and_auto_push_off` in `config/types.rs` [`assert_eq!((kind, auto), (Gist, false))`], re-checked once `pack_size_mib` is added.
+- [x] RED commit: `missing_gh_or_git_breaks_nothing_outside_sync` in `cli_sync_test.rs` (P14): with `PATH` stripped of `gh` and `git`, `agr list` and `agr status` exit 0 with their normal output, `agr sync push` exits non-zero with the one line "gh not found, the gist backend needs gh and git" and the storage dir is unchanged [`assert!(!push.status.success())` and `assert_eq!(before, after)`]. Guard test commit as above (existing behaviour on the per-session code, kept true while `setup.rs` builds the `Repo`), it turns RED if the store is opened outside sync commands.
+- [x] RED commit: `violations_flags_engine_naming_gist_store` [`assert_eq!(v.len(), 1)`, gives 0], GREEN adds `RULES` rows so `engine/` must not name `crate::sync::store::gist`, `crate::sync::store::memory`, `crate::sync::store::dir`.
+- [x] GREEN commit per RED commit above. `AGR_SYNC_TEST_BACKEND_DIR` now points a `DirStore` at the dir, so `tests/e2e_test.sh` keeps its variable.
 
 Files: `src/sync/mod.rs`, `src/sync/engine/run.rs`, `src/sync/engine/remote.rs`, `src/sync/engine/push.rs`, `src/sync/engine/pull.rs`, `src/sync/engine/plan.rs`, `src/sync/engine/index.rs`, `src/sync/engine/item.rs`, `src/sync/engine/scan.rs`, `src/sync/app/setup.rs`, `src/commands/sync/run.rs`, `src/config/types.rs`, `src/config/state.rs`, `tests/integration/sync_engine_test.rs`, `tests/integration/sync_multi_machine_test.rs`, `tests/integration/sync_index_fields_test.rs`, `tests/integration/helpers/sync_net.rs`, `tests/integration/cli_sync_test.rs`
 Depends on: Stage 53
 
 Considerations: the biggest stage, the reviewer-pair runs after every RED and GREEN pair. `run.rs` is 369 lines today, the merged view lookups split out into `engine/remote.rs`. `plan.rs` gains the `Deleted` rows only (about 30 lines). `index.rs` loses `remote_id`, `token`, `pending` only in Stage 59, here it gains `version` 2 and `open_pack`, the v1 to v2 conversion itself is Stage 58.
+
+**Done 2026-11-10, deviations**: the new engine is `Engine::new(store, key, storage, writer, target)` in `engine/pack_run.rs` (plus `pack_load.rs`, `pack_pull.rs`, `pack_push.rs`), the old one is `BackendEngine` until Stage 59, as such the new tests sit in `sync_engine_pack_test.rs` and `sync_engine_multi_test.rs`, not in `sync_engine_test.rs` and `sync_multi_machine_test.rs`. `writer_id_created_once_in_state_toml` and the config tests are in `config_test.rs`. `fork_is_reported_right_after_push` uses a rival append between plan and append (`MemoryStore::before_append`), two machines alone never fork. The writer id is stored in `state.toml` only when a push really runs. Left open: the `_dry run does not create a writer id_` check has no test of its own, and `sync_index_fields_test.rs` still tests the per-session rows (goes with Stage 59).
+
 
 ### Stage 55: Auto push on packs
 

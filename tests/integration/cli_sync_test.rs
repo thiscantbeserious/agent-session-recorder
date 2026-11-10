@@ -15,6 +15,7 @@ struct Out {
 }
 
 impl Out {
+    #[cfg(unix)]
     fn success(&self) -> bool {
         self.code == 0
     }
