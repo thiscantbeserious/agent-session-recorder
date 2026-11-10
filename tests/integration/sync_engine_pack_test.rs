@@ -131,3 +131,65 @@ fn local_absent_remote_deleted_drops_the_index_entry() {
     n.engine(&store, &key, "w1").push(&opts()).unwrap();
     assert!(!index_of(&n).entries.contains_key(A));
 }
+
+/// Store whose second append fails, the first one lands.
+struct FailSecond<'a>(&'a MemoryStore, std::cell::Cell<usize>);
+
+impl PackStore for FailSecond<'_> {
+    fn name(&self) -> &'static str {
+        "fail-second"
+    }
+    fn check(&self) -> Result<(), agr::sync::testing::StoreError> {
+        self.0.check()
+    }
+    fn list(&self) -> Result<agr::sync::testing::Listing, agr::sync::testing::StoreError> {
+        self.0.list()
+    }
+    fn read_index(&self, id: &str) -> Result<String, agr::sync::testing::StoreError> {
+        self.0.read_index(id)
+    }
+    fn create(&self, tag: &str, index: &str) -> Result<String, agr::sync::testing::StoreError> {
+        self.0.create(tag, index)
+    }
+    fn append(
+        &self,
+        id: &str,
+        n: u64,
+        e: &str,
+        s: &[agr::sync::testing::Segment],
+        i: &str,
+    ) -> Result<(), agr::sync::testing::StoreError> {
+        self.1.set(self.1.get() + 1);
+        if self.1.get() == 2 {
+            return Err(agr::sync::testing::StoreError::RateLimited);
+        }
+        self.0.append(id, n, e, s, i)
+    }
+    fn read(
+        &self,
+        id: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Box<dyn std::io::Read>, agr::sync::testing::StoreError> {
+        self.0.read(id, offset, len)
+    }
+    fn delete(&self, id: &str) -> Result<(), agr::sync::testing::StoreError> {
+        self.0.delete(id)
+    }
+}
+
+#[test]
+fn failed_append_mid_batch_keeps_the_index_entries_of_the_earlier_appends() {
+    let (n, mem, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    let store = FailSecond(&mem, std::cell::Cell::new(0));
+    // target 1 byte, every session is bigger and gets its own pack and its own append
+    let engine = agr::sync::Engine::new(&store, &key, &n.storage, "w1", 1);
+    let err = engine.push(&opts()).err().map(|e| e.to_string());
+    assert!(err.is_some(), "a rate limit ends the run");
+    assert_eq!(
+        index_of(&n).entries.len(),
+        1,
+        "the landed append is indexed"
+    );
+}
