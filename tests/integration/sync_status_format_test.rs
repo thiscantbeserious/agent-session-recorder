@@ -1,7 +1,8 @@
 //! What `agr sync status` prints for forks, tombstones, other keys and dead bytes, from a real
 //! engine status over the in-memory pack store.
 
-use crate::helpers::pack_engine::{node, raw_push, Node, CAST, TARGET};
+use crate::helpers::gist_rig::Rig;
+use crate::helpers::pack_engine::{node, opts, raw_push, three, Node, CAST, TARGET};
 use agr::sync::format::{compact_status_lines, status_lines};
 use agr::sync::testing::{MemoryStore, PackStore, Repo};
 use agr::sync::{Key, Report};
@@ -114,4 +115,40 @@ fn status_aborts_on_partial_index_view() {
     let err = n.engine(&store, &key, "w9").status(&[]).err();
     let text = err.map(|e| e.to_string()).unwrap_or_default();
     assert!(text.contains("could not read"), "{text:?}");
+}
+
+fn api_calls(rig: &Rig) -> usize {
+    rig.remote
+        .calls()
+        .iter()
+        .filter(|c| c.starts_with("gh api") && !c.contains("gists?"))
+        .count()
+}
+
+#[test]
+fn status_needs_no_clone() {
+    let (n, key, rig) = (node(), Key::generate(), Rig::new());
+    three(&n);
+    n.engine(&rig.store(), &key, "w1").push(&opts()).unwrap();
+    // a second machine: fresh store, cold index cache
+    let cache = tempfile::tempdir().unwrap();
+    let cold = rig.store().with_cache_dir(cache.path().to_path_buf());
+    rig.remote.clear_calls();
+    n.engine(&cold, &key, "w1").status(&[]).unwrap();
+    let calls = rig.remote.calls();
+    assert!(!calls.iter().any(|c| c.contains("clone")), "{calls:?}");
+    assert_eq!(
+        api_calls(&rig),
+        1,
+        "one index read per pack, cold: {calls:?}"
+    );
+    rig.remote.clear_calls();
+    let warm = rig.store().with_cache_dir(cache.path().to_path_buf());
+    n.engine(&warm, &key, "w1").status(&[]).unwrap();
+    assert_eq!(
+        api_calls(&rig),
+        0,
+        "sealed packs hit the cache: {:?}",
+        rig.remote.calls()
+    );
 }
