@@ -245,3 +245,29 @@ fn list_error_in_retry_is_returned_not_ignored() {
     let res = b.push_batch(&[item(dir.path(), "y", 1, b"y")]);
     assert!(res.is_err(), "{res:?}");
 }
+
+#[test]
+fn replanned_chunk_in_a_new_pack_does_not_seal_it_early() {
+    let (mem, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let mut first = repo(&mem, &key, "w1");
+    let near = vec![1u8; TARGET as usize - 2000];
+    first
+        .push_batch(&[item(dir.path(), "x", 1, &near)])
+        .unwrap();
+    let (once, same) = (AtomicBool::new(true), Key::from_bytes(*key.as_bytes()));
+    mem.before_append(move |m, id| {
+        if once.swap(false, Ordering::SeqCst) {
+            let info = packs_of(m).into_iter().find(|p| p.id == id).unwrap();
+            super::tests::tamper(m, &same, &info, |i| i.sealed = true);
+        }
+    });
+    first
+        .push_batch(&[item(dir.path(), "y", 1, &vec![2u8; 3000])])
+        .unwrap();
+    let newest = packs_of(&mem).pop().unwrap();
+    assert!(!super::tests::index_of(&mem, &key, &newest).sealed);
+}
