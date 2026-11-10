@@ -379,6 +379,6 @@ fn covering_with_overflowing_range_is_an_error() {
         size: 100,
         raw_url: "u".into(),
     };
-    assert!(super::read::covering(&[part.clone()], u64::MAX, 2).is_err());
+    assert!(super::read::covering(std::slice::from_ref(&part), u64::MAX, 2).is_err());
     assert!(super::read::covering(&[part], 1, u64::MAX).is_err());
 }
