@@ -133,3 +133,15 @@ fn auto_push_without_privacy_ack_pushes_nothing_and_stays_quiet() {
     assert_eq!(out.all(), "");
     assert_eq!(m.state(), "");
 }
+
+#[test]
+fn status_on_v1_index_hints_migrate() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "one");
+    let index = agr::sync::testing::index::path_for(&m.storage);
+    fs::write(index, r#"{"version":1,"entries":{}}"#).unwrap();
+    let out = m.run(&["status"]);
+    assert_ne!(out.code, 0, "{}", out.all());
+    assert!(out.all().contains("agr sync migrate"), "{}", out.all());
+}
