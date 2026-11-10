@@ -78,7 +78,9 @@ impl Repo<'_> {
             return Ok(again);
         }
         // the seal wish was for the old pack, a new pack decides it again from what it holds
-        let fresh = again.index.sealed || !self.fits_cap(&again, (staged, &tombs, &at))?;
+        let lens: Vec<u64> = staged.iter().map(|s| s.len).collect();
+        let room = !again.index.sealed && self.store.fits(&again.info(), &lens);
+        let fresh = !room || !self.fits_cap(&again, (staged, &tombs, &at))?;
         let (base, seal) = match fresh {
             true => (self.new_pack()?, false),
             false => (again, seal),
