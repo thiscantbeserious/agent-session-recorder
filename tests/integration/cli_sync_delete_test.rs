@@ -238,4 +238,56 @@ mod migrate {
         assert!(out.success(), "{}", out.all());
         assert_eq!(fingerprint(remote.path()), before);
     }
+
+    #[test]
+    fn a_declined_run_writes_nothing_and_keeps_the_v1_index() {
+        let remote = remote();
+        let m = Machine::gist(remote.path());
+        m.session("claude", "a.cast.gz", "one");
+        m.run(&["push", "--yes"]);
+        let index = m.storage.join(".agr-sync.json");
+        let v1 = r#"{"version":1,"entries":{"claude/a.cast.gz":{"sha256":"h","remote_id":"gid","synced_at":"t","gen":3,"token":"tok","pending":false,"size":7,"mtime_ns":9}}}"#;
+        std::fs::write(&index, v1).unwrap();
+        let before = fingerprint(remote.path());
+        // ponytail: a piped stdin is no terminal, the "n" is never read, the typed no is in sync_confirm_test
+        let out = m.run_stdin(&["migrate"], "n\n");
+        assert!(out.success(), "{}", out.all());
+        assert!(out.stdout.contains("No changes made."), "{}", out.stdout);
+        assert_eq!(
+            fingerprint(remote.path()),
+            before,
+            "zero appends, zero deletes"
+        );
+        assert_eq!(std::fs::read_to_string(&index).unwrap(), v1);
+    }
+
+    #[test]
+    fn yes_converts_only_the_index_of_the_configured_storage_dir() {
+        let remote = remote();
+        let m = Machine::gist(remote.path());
+        m.session("claude", "a.cast.gz", "one");
+        m.run(&["push", "--yes"]);
+        let index = m.storage.join(".agr-sync.json");
+        let v1 = r#"{"version":1,"entries":{"claude/a.cast.gz":{"sha256":"h","remote_id":"gid","synced_at":"t","gen":3,"token":"tok","pending":false,"size":7,"mtime_ns":9}}}"#;
+        std::fs::write(&index, v1).unwrap();
+        let out = m.run(&["migrate", "--yes"]);
+        assert!(out.success(), "{}", out.all());
+        let text = std::fs::read_to_string(&index).unwrap();
+        assert!(text.contains(r#""version":2"#), "{text}");
+        assert!(!m.remote.join(".agr-sync.json").exists());
+    }
+
+    #[test]
+    fn a_corrupt_v1_index_aborts_the_command() {
+        let remote = remote();
+        let m = Machine::gist(remote.path());
+        m.session("claude", "a.cast.gz", "one");
+        m.run(&["push", "--yes"]);
+        let index = m.storage.join(".agr-sync.json");
+        std::fs::write(&index, "{not json").unwrap();
+        let out = m.run(&["migrate", "--yes"]);
+        assert!(!out.success(), "{}", out.all());
+        assert!(out.stderr.contains("is not valid"), "{}", out.stderr);
+        assert_eq!(std::fs::read_to_string(&index).unwrap(), "{not json");
+    }
 }
