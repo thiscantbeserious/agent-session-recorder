@@ -157,6 +157,22 @@ impl DirStore {
     }
 }
 
+impl DirStore {
+    /// The first free `pack-N`, taken by `create_dir` itself so a racing writer never shares it.
+    fn make_pack_dir(&self) -> Result<String, StoreError> {
+        fs::create_dir_all(&self.root).map_err(io_err)?;
+        for n in 1.. {
+            let id = format!("pack-{n}");
+            match fs::create_dir(self.root.join(&id)) {
+                Ok(()) => return Ok(id),
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+                Err(e) => return Err(io_err(e)),
+            }
+        }
+        unreachable!("the counter does not run out")
+    }
+}
+
 impl PackStore for DirStore {
     fn name(&self) -> &'static str {
         "directory"
@@ -196,11 +212,7 @@ impl PackStore for DirStore {
     }
 
     fn create(&self, tag: &str, index: &str) -> Result<String, StoreError> {
-        let id = (1..)
-            .map(|n| format!("pack-{n}"))
-            .find(|id| !self.root.join(id).exists())
-            .unwrap_or_default();
-        fs::create_dir_all(self.root.join(&id)).map_err(io_err)?;
+        let id = self.make_pack_dir()?;
         let m = Manifest {
             tag: tag.into(),
             len: 0,
