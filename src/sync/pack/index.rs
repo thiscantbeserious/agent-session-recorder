@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// One session range in the pack stream, a tombstone has `deleted` set.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Entry {
     pub path: String,
     pub gen: u64,
@@ -19,7 +19,7 @@ pub struct Entry {
 }
 
 /// Index of one pack, stored next to its data.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Index {
     pub v: u8,
     pub pack: String,

@@ -126,12 +126,10 @@ fn newest(packs: &[PackIn]) -> Vec<&PackIn> {
 }
 
 /// A total order, a zero byte seal ties on len and entries, so sealed ranks above unsealed and
-/// the index text breaks what is left, the pick never depends on the listing order.
-fn rank(p: &PackIn) -> (u64, usize, bool, String) {
-    p.index.as_ref().map_or((0, 0, false, String::new()), |i| {
-        let text = serde_json::to_string(i).unwrap_or_default();
-        (i.len, i.entries.len(), i.sealed, text)
-    })
+/// the index itself breaks what is left, the pick never depends on the listing order.
+fn rank(p: &PackIn) -> Option<(u64, usize, bool, &Index)> {
+    let i = p.index.as_ref().ok()?;
+    Some((i.len, i.entries.len(), i.sealed, i))
 }
 
 pub fn merge(packs: &[PackIn]) -> View {
