@@ -15,13 +15,14 @@ use crate::sync::backend::gist::{io_result, strings};
 use crate::sync::backend::BackendError;
 
 /// `(part, first byte, last byte)` of every part the range `offset..offset + len` touches.
+/// A range past the end is `NotFound`, the same answer memory and dir give.
 /// The numbers come from the remote listing and the caller, so every sum is checked.
 pub(super) fn covering(
     parts: &[FileRef],
     offset: u64,
     len: u64,
-) -> Result<Vec<(&FileRef, u64, u64)>, String> {
-    let bad = || "the range does not fit the pack".to_string();
+) -> Result<Vec<(&FileRef, u64, u64)>, StoreError> {
+    let bad = || StoreError::NotFound;
     let end = offset.checked_add(len).ok_or_else(bad)?;
     let (mut start, mut out) = (0u64, Vec::new());
     for part in parts {
@@ -33,7 +34,7 @@ pub(super) fn covering(
         start = stop;
     }
     if start < end {
-        return Err("the range is past the end of the pack".into());
+        return Err(StoreError::NotFound);
     }
     Ok(out)
 }
@@ -75,7 +76,7 @@ impl<R: Runner> GistStore<R> {
             .collect();
         let names: Vec<&str> = parts.iter().map(|p| p.name.as_str()).collect();
         check_parts(&names).map_err(|e| StoreError::Other(format!("pack {id} {e}")))?;
-        let wanted = covering(&parts, offset, len).map_err(StoreError::Other)?;
+        let wanted = covering(&parts, offset, len)?;
         let scratch = Scratch::create(&self.temp_base).map_err(be)?;
         let mut paths = Vec::new();
         for (n, (part, from, to)) in wanted.into_iter().enumerate() {

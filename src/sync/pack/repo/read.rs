@@ -56,12 +56,19 @@ pub fn read_pack(
 }
 
 impl ReadError {
-    /// The place is gone, the next one may still hold the session. A hash mismatch is tried on
-    /// the next place too, see `read_session`.
-    fn is_not_found(&self) -> bool {
-        let gone = |e: &StoreError| matches!(e, StoreError::NotFound);
+    /// The failure is about this place alone, the next place may still hold the session: not
+    /// found, a range the place cannot serve, a failed AEAD tag, a hash mismatch. What applies
+    /// to every place stays fatal: a missing tool or login, rate limit, no network, local IO.
+    fn is_place_local(&self) -> bool {
+        let local = |e: &StoreError| {
+            matches!(
+                e,
+                StoreError::NotFound | StoreError::Moved(_) | StoreError::Other(_)
+            )
+        };
         match self {
-            Self::Store(e) | Self::Range(RangeError::Store(e)) => gone(e),
+            Self::Store(e) | Self::Range(RangeError::Store(e)) => local(e),
+            Self::Range(RangeError::Blob(BlobError::Crypto(_))) | Self::HashMismatch => true,
             Self::Range(RangeError::Blob(BlobError::Io(e))) => e.kind() == ErrorKind::NotFound,
             _ => false,
         }
@@ -83,10 +90,7 @@ impl Repo<'_> {
             };
             match self.read_place(&place.pack, &entry, target) {
                 Ok(()) => return Ok(()),
-                Err(e) if e.is_not_found() => {
-                    last.get_or_insert(ReadError::Store(StoreError::NotFound))
-                }
-                Err(e @ ReadError::HashMismatch) => last.insert(e),
+                Err(e) if e.is_place_local() => last.insert(e),
                 Err(e) => return Err(e),
             };
         }
