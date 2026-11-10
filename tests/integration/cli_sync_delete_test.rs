@@ -83,3 +83,28 @@ fn delete_dry_run_and_declined_prompt_store_no_writer_id() {
     assert_eq!(b.run(&["delete", "claude/a.cast.gz"]).code, 0);
     assert_eq!(writer_of(&b), None, "{}", b.state());
 }
+
+mod patterns {
+    use super::*;
+
+    #[test]
+    fn preview_is_collected_before_any_prompt() {
+        let remote = remote();
+        let (_a, b) = pushed_pair(remote.path(), 2);
+        let before = fingerprint(remote.path());
+        let out = b.run_tty(&["delete", "claude/s*"], "n\n");
+        let (count, ask) = (out.stdout.find("2 sessions"), out.stdout.find("Delete"));
+        assert!(
+            count.unwrap() < ask.unwrap(),
+            "preview first: {}",
+            out.stdout
+        );
+        assert!(!out.stdout.contains("zz-local"), "{}", out.stdout);
+        let verbose = b.run(&["delete", "-v", "--dry-run", "claude/s*"]);
+        for name in ["claude/s00.cast.gz", "claude/s01.cast.gz"] {
+            assert!(verbose.stdout.contains(name), "{}", verbose.stdout);
+        }
+        assert_eq!(fingerprint(remote.path()), before, "no append");
+        assert_eq!(writer_of(&b), None, "{}", b.state());
+    }
+}

@@ -76,6 +76,13 @@ impl Machine {
         self.exec(self.base(args), Some(input))
     }
 
+    /// Like `run_stdin`, but the command treats stdin as a terminal (`AGR_ASSUME_TTY`).
+    pub fn run_tty(&self, args: &[&str], input: &str) -> Out {
+        let mut cmd = self.base(args);
+        cmd.env("AGR_ASSUME_TTY", "1");
+        self.exec(cmd, Some(input))
+    }
+
     pub fn exec(&self, mut cmd: Command, input: Option<&str>) -> Out {
         cmd.stdin(if input.is_some() {
             Stdio::piped()
@@ -209,4 +216,36 @@ pub fn writer_of(m: &Machine) -> Option<String> {
         .find(|l| l.starts_with("writer_id"))?
         .to_string();
     Some(line)
+}
+
+/// Every file of the directory store with its bytes, equal before and after means no append.
+pub fn fingerprint(remote: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut files = Vec::new();
+    let mut todo = vec![remote.to_path_buf()];
+    while let Some(dir) = todo.pop() {
+        for e in fs::read_dir(&dir).into_iter().flatten().flatten() {
+            let path = e.path();
+            if path.is_dir() {
+                todo.push(path);
+            } else {
+                files.push((path.clone(), fs::read(&path).unwrap()));
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// Machine `a` pushed `n` sessions `claude/s00.cast.gz`..., machine `b` holds the key, no writer
+/// id and one local only session `claude/zz-local.cast.gz`.
+pub fn pushed_pair(remote: &Path, n: usize) -> (Machine, Machine) {
+    let a = Machine::gist(remote);
+    for i in 0..n {
+        a.session("claude", &format!("s{i:02}.cast.gz"), &format!("text {i}"));
+    }
+    assert_eq!(a.run(&["push", "--yes"]).code, 0);
+    let b = Machine::gist(remote);
+    assert_eq!(b.run(&["key", "import", &phrase_of(&a)]).code, 0);
+    b.session("claude", "zz-local.cast.gz", "only here");
+    (a, b)
 }
