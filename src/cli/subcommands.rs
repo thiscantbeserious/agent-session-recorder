@@ -334,8 +334,11 @@ EXAMPLE:
             help = "Delete every remote session"
         )]
         all: bool,
-        /// Allow more than 10 deletes without a terminal
-        #[arg(long, help = "Allow more than 10 deletes without a terminal")]
+        /// Allow more than 10 deletes without a terminal, a terminal still asks the count
+        #[arg(
+            long,
+            help = "Allow more than 10 deletes without a terminal, a terminal still asks the count"
+        )]
         force: bool,
         /// Show what would happen, change nothing
         #[arg(long, help = "Show what would happen, change nothing")]

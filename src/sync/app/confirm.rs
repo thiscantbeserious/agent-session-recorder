@@ -54,7 +54,6 @@ pub fn confirm_delete(
         }
     }
     if big
-        && !flags.force
         && flags.tty
         && ask(out, input, &format!("Type {count} to confirm:"))? != count.to_string()
     {
