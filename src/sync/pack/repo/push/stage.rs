@@ -56,33 +56,45 @@ pub(super) fn stage(item: &PushItem) -> Result<Staged, StoreError> {
     })
 }
 
+/// The tombstone entry of `path` at `gen`, starting at `offset`.
+pub(super) fn tomb_entry(path: &str, gen: u64, offset: u64) -> Entry {
+    Entry {
+        path: path.to_string(),
+        gen,
+        sha256: String::new(),
+        size: 0,
+        offset,
+        length: 0,
+        deleted: true,
+        at: chrono::Utc::now().to_rfc3339(),
+    }
+}
+
+impl Staged {
+    /// The index entry of this session, starting at `offset`.
+    pub(super) fn entry(&self, offset: u64) -> Entry {
+        Entry {
+            path: self.path.clone(),
+            gen: self.gen,
+            sha256: self.sha256.clone(),
+            size: self.size,
+            offset,
+            length: self.len,
+            deleted: false,
+            at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
 /// The old index plus one entry per session, ranges laid out behind the old end.
 pub(super) fn grown(old: &Index, batch: &Batch) -> Index {
     let mut next = old.clone();
     next.sealed = batch.seal;
     for (path, gen) in &batch.tombs {
-        next.entries.push(Entry {
-            path: path.clone(),
-            gen: *gen,
-            sha256: String::new(),
-            size: 0,
-            offset: next.len,
-            length: 0,
-            deleted: true,
-            at: chrono::Utc::now().to_rfc3339(),
-        });
+        next.entries.push(tomb_entry(path, *gen, next.len));
     }
     for s in batch.staged {
-        next.entries.push(Entry {
-            path: s.path.clone(),
-            gen: s.gen,
-            sha256: s.sha256.clone(),
-            size: s.size,
-            offset: next.len,
-            length: s.len,
-            deleted: false,
-            at: chrono::Utc::now().to_rfc3339(),
-        });
+        next.entries.push(s.entry(next.len));
         next.len += s.len;
     }
     next

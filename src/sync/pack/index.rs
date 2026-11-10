@@ -62,6 +62,33 @@ pub fn seal_index(key: &Key, idx: &Index) -> Result<String, IndexError> {
     Ok(format!("{}.{}", idx.pack, BASE64URL_NOPAD.encode(&sealed)))
 }
 
+/// Measures the sealed text of one index so a plan can ask how long it gets with more entries.
+pub struct TextLen {
+    text: usize,
+    raw: usize,
+}
+
+impl TextLen {
+    /// The sealed text length when the JSON grows by `extra` bytes.
+    pub fn with_extra(&self, extra: usize) -> usize {
+        let enc = |n| BASE64URL_NOPAD.encode_len(n);
+        self.text - enc(self.raw) + enc(self.raw + extra)
+    }
+}
+
+/// Seals `idx` once and keeps what is needed to size its growth, the seal overhead is not named here.
+pub fn text_len(key: &Key, idx: &Index) -> Result<TextLen, IndexError> {
+    let text = seal_index(key, idx)?;
+    let body = text.rsplit_once('.').map_or(0, |(_, b)| b.len());
+    let raw = BASE64URL_NOPAD
+        .decode_len(body)
+        .map_err(|_| IndexError::Bad)?;
+    Ok(TextLen {
+        text: text.len(),
+        raw,
+    })
+}
+
 pub fn open_index(key: &Key, uuid: &str, text: &str) -> Result<Index, IndexError> {
     let (pack, body) = text.rsplit_once('.').ok_or(IndexError::Bad)?;
     if pack != uuid {

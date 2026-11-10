@@ -8,6 +8,7 @@ use crate::sync::store::{Segment, StoreError};
 use std::io;
 use std::path::PathBuf;
 
+mod cap;
 mod retry;
 mod stage;
 
@@ -49,20 +50,43 @@ impl Repo<'_> {
         Ok(PushReport { forks })
     }
 
-    /// Fills the open pack up to the target, seals it and goes on in a new one.
+    /// Fills the open pack up to the target or the index cap, seals it and goes on in a new one.
     fn push_small(&mut self, mut rest: &[Staged]) -> Result<(), StoreError> {
         while !rest.is_empty() {
             let len = self.open.as_ref().map_or(0, |o| o.index.len);
-            let (chunk, tail) = rest.split_at(fill_count(rest, self.target, len));
+            let by_size = fill_count(rest, self.target, len);
+            let pack = self.open_or_new()?;
+            let by_cap = cap::take_within(self.key, &pack.index, &cap::session_costs(rest))?;
+            if by_cap == 0 && !pack.index.entries.is_empty() {
+                self.seal_open(&pack)?;
+                continue;
+            }
+            let n = by_size.min(by_cap.max(1));
+            let (chunk, tail) = rest.split_at(n);
             let Some(pack) = self.pack_with_room(chunk)? else {
                 continue;
             };
             let sum: u64 = chunk.iter().map(|s| s.len).sum();
-            let seal = should_seal(self.target, pack.index.len + sum);
+            let capped = n == by_cap.max(1) && !tail.is_empty();
+            let seal = capped || should_seal(self.target, pack.index.len + sum);
             let next = self.try_append(&pack, &Batch::of(chunk, seal))?;
             self.open = open_of(next);
             rest = tail;
         }
+        Ok(())
+    }
+
+    fn open_or_new(&mut self) -> Result<OpenPack, StoreError> {
+        if self.open.is_none() {
+            self.open = Some(self.new_pack()?);
+        }
+        Ok(self.open.clone().expect("set above"))
+    }
+
+    /// Seals `pack` with a zero byte append, the next chunk starts a new pack.
+    fn seal_open(&mut self, pack: &OpenPack) -> Result<(), StoreError> {
+        self.try_append(pack, &Batch::of(&[], true))?;
+        self.open = None;
         Ok(())
     }
 
@@ -76,8 +100,7 @@ impl Repo<'_> {
         if self.store.fits(&open.info(), &lens) {
             return Ok(Some(open));
         }
-        self.try_append(&open, &Batch::of(&[], true))?;
-        self.open = None;
+        self.seal_open(&open)?;
         Ok(None)
     }
 
@@ -97,19 +120,29 @@ impl Repo<'_> {
                 .gen;
             tombs.push((path.clone(), gen + 1));
         }
-        for tomb in tombs {
-            let pack = match self.open.clone() {
-                Some(p) => p,
-                None => self.new_pack()?,
-            };
+        self.append_tombs(tombs)?;
+        self.reload()?;
+        Ok(())
+    }
+
+    /// The tombstones in as few appends as the index cap allows, the pack that fills up is sealed.
+    fn append_tombs(&mut self, mut rest: Vec<(String, u64)>) -> Result<(), StoreError> {
+        while !rest.is_empty() {
+            let pack = self.open_or_new()?;
+            let by_cap = cap::take_within(self.key, &pack.index, &cap::tomb_costs(&rest))?;
+            if by_cap == 0 && !pack.index.entries.is_empty() {
+                self.seal_open(&pack)?;
+                continue;
+            }
+            let tail = rest.split_off(by_cap.max(1));
+            let seal = !tail.is_empty();
             let batch = Batch {
                 staged: &[],
-                tombs: vec![tomb],
-                seal: false,
+                tombs: rest,
+                seal,
             };
-            let next = self.try_append(&pack, &batch)?;
-            self.open = open_of(next);
-            self.reload()?;
+            self.open = open_of(self.try_append(&pack, &batch)?);
+            rest = tail;
         }
         Ok(())
     }

@@ -5,7 +5,7 @@ use thiserror::Error;
 const MIB: u64 = 1024 * 1024;
 const MIN_MIB: u64 = 16;
 const MAX_MIB: u64 = 512;
-/// The REST API returns 1 MB per file at most, the encoded index text stays well below.
+/// Every append rewrites the index and git keeps every version, so one index stays small.
 const INDEX_CAP: usize = 768 * 1024;
 
 /// Where one session goes.
