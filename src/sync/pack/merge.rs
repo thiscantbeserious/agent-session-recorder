@@ -140,7 +140,10 @@ pub fn merge(packs: &[PackIn]) -> View {
             view.rejected.push((p.id.clone(), reject(err)));
         }
         if let Ok(idx) = &p.index {
-            let all: u64 = idx.entries.iter().map(|e| e.length).sum();
+            let all = idx
+                .entries
+                .iter()
+                .fold(0u64, |a, e| a.saturating_add(e.length));
             view.dead_bytes.insert(p.id.clone(), all);
             view.packs.insert(p.id.clone(), meta(&p.tag, idx));
             for e in &idx.entries {
@@ -206,9 +209,8 @@ fn finish(view: &mut View) {
         let live = if fork { &m.places[..] } else { &m.places[..1] };
         for p in live {
             if let Some(d) = view.dead_bytes.get_mut(&p.pack) {
-                *d = d
-                    .checked_sub(p.length)
-                    .expect("keeper length is in the pack sum");
+                // remote data decides the lengths, a saturated sum must not panic
+                *d = d.saturating_sub(p.length);
             }
         }
         if fork {
