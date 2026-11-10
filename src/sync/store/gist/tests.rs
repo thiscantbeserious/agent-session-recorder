@@ -342,3 +342,24 @@ fn read_index_hits_the_cache_after_a_listing() {
     assert_eq!(store.read_index("a").unwrap(), "idx");
     assert_eq!(api_calls_for(&fake, "a"), 0);
 }
+
+/// Listing and `gists/a` of a pack whose index the API calls truncated, the bytes sit on the raw url.
+fn truncated_api_fake(raw: &[u8], listed_size: u64) -> Fake {
+    let files = [("index", listed_size), ("data.000", 100)];
+    let list = pages(&[vec![gist("a", "agr:v2 TAG", "t1", &files)]]);
+    let index = serde_json::json!({ "size": listed_size, "truncated": true, "content": "" });
+    let body = serde_json::json!({ "id": "a", "updated_at": "t1", "files": { "index": index } });
+    let mut fake = Fake::with(vec![ok(&list), ok(&body.to_string())]);
+    fake.remote = vec![("index".into(), raw.to_vec())];
+    fake
+}
+
+#[test]
+fn index_is_read_over_raw_url_even_when_the_api_says_truncated() {
+    let fake = truncated_api_fake(b"i4", 2);
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(&fake, dir.path());
+    store.list().unwrap();
+    let res = store.read_index("a");
+    assert_eq!(res.as_deref().ok(), Some("i4"));
+}

@@ -110,18 +110,18 @@ impl Fake {
 }
 
 impl Fake {
-    /// The `remote` bytes a `gh api -H "Range: bytes=a-b" <raw_url>` reads, the file is named like
-    /// the last url segment.
+    /// The `remote` bytes a `gh api [-H "Range: bytes=a-b"] <raw_url>` reads, the file is named like
+    /// the last url segment, without a `Range` it is the whole file.
     fn raw_body(&self, program: &str, args: &[String]) -> Option<Vec<u8>> {
-        let range = args.iter().find_map(|a| a.strip_prefix("Range: bytes="))?;
+        let range = args.iter().find_map(|a| a.strip_prefix("Range: bytes="));
         let name = args.last()?.rsplit('/').next()?;
-        let (from, to) = range.split_once('-')?;
-        let (from, to): (usize, usize) = (from.parse().ok()?, to.parse().ok()?);
         let (_, body) = self.remote.iter().find(|(n, _)| n == name)?;
-        let wanted = if self.ignore_range {
-            body.clone()
-        } else {
-            body[from..=to].to_vec()
+        let wanted = match range {
+            Some(r) if !self.ignore_range => {
+                let (from, to) = r.split_once('-')?;
+                body[from.parse::<usize>().ok()?..=to.parse::<usize>().ok()?].to_vec()
+            }
+            _ => body.clone(),
         };
         (program == "gh").then_some(wanted)
     }
