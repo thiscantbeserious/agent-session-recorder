@@ -156,3 +156,13 @@ fn progress_percent_belongs_to_the_append() {
     assert_eq!(seen.last(), Some(&100));
     assert_eq!(seen, vec![50, 100], "the clone reports no percent");
 }
+
+mod contract {
+    use super::{FakeRemote, GistStore, Rc, Rig};
+
+    contract_tests!(|| {
+        let rig = Rig::new();
+        let store: GistStore<Rc<FakeRemote>> = rig.store();
+        (store, rig)
+    });
+}
