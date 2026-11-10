@@ -15,6 +15,10 @@ struct Out {
 }
 
 impl Out {
+    fn success(&self) -> bool {
+        self.code == 0
+    }
+
     fn all(&self) -> String {
         format!("{}{}", self.stdout, self.stderr)
     }
@@ -821,4 +825,56 @@ fn no_loading_line_and_no_carriage_return_when_stderr_is_not_a_terminal() {
         );
         assert!(!out.all().contains('\r'), "{args:?} {:?}", out.all());
     }
+}
+
+/// Every file below `dir` with its size, sorted.
+#[cfg(unix)]
+fn tree(dir: &Path) -> Vec<(PathBuf, u64)> {
+    let mut out = Vec::new();
+    let mut todo = vec![dir.to_path_buf()];
+    while let Some(d) = todo.pop() {
+        for e in fs::read_dir(&d).into_iter().flatten().flatten() {
+            let meta = e.metadata().unwrap();
+            if meta.is_dir() {
+                todo.push(e.path());
+            } else {
+                out.push((e.path(), meta.len()));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// With `gh` and `git` off the PATH only the sync commands notice, everything else runs as before.
+#[cfg(unix)]
+#[test]
+fn missing_gh_or_git_breaks_nothing_outside_sync() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "text");
+    let bin = TempDir::new().unwrap();
+    let plain = |args: &[&str]| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_agr"));
+        cmd.args(args)
+            .env("NO_COLOR", "1")
+            .env("HOME", m.home.path())
+            .env("XDG_CONFIG_HOME", m.home.path().join(".config"))
+            .env("PATH", bin.path())
+            .env_remove("AGR_SYNC_TEST_BACKEND_DIR");
+        m.exec(cmd, None)
+    };
+    for args in [["list"], ["status"]] {
+        let out = plain(&args);
+        assert_eq!(out.code, 0, "{args:?}: {}", out.all());
+    }
+    let before = tree(&m.storage);
+    let push = gist_cmd(&m, &bin, &["push", "--yes"]);
+    assert!(!push.success(), "{}", push.all());
+    let first = push.stderr.lines().next().unwrap_or_default();
+    assert!(
+        first.ends_with(" not found, the gist backend needs gh and git"),
+        "{first}"
+    );
+    assert_eq!(before, tree(&m.storage));
 }
