@@ -22,6 +22,12 @@ struct Inner {
     failing: HashSet<String>,
     /// Reads of these packs fail after that many bytes.
     cut: HashMap<String, usize>,
+    /// Every index text an append wrote, in order.
+    indexes: Vec<String>,
+    /// Pack ids the pack layer called `sealed` for, in order.
+    sealed: Vec<String>,
+    /// Successful appends so far.
+    appends: usize,
 }
 
 /// Packs in a `Mutex`, ids are `mem-<n>`. One lock around check and write models the git ref.
@@ -58,6 +64,21 @@ impl MemoryStore {
         if let Some(p) = self.lock().packs.get_mut(id) {
             p.data.last_mut().iter_mut().for_each(|b| **b ^= 1);
         }
+    }
+
+    /// Every index text the appends of this store wrote, in order.
+    pub fn index_texts(&self) -> Vec<String> {
+        self.lock().indexes.clone()
+    }
+
+    /// How many appends went through.
+    pub fn appends(&self) -> usize {
+        self.lock().appends
+    }
+
+    /// The ids `sealed` was called for, in order.
+    pub fn sealed_ids(&self) -> Vec<String> {
+        self.lock().sealed.clone()
     }
 
     /// How often `list` ran.
@@ -217,6 +238,8 @@ impl PackStore for MemoryStore {
         pack.data = grown;
         pack.files += segments.len();
         pack.index = index.to_string();
+        inner.indexes.push(index.to_string());
+        inner.appends += 1;
         Ok(())
     }
 
