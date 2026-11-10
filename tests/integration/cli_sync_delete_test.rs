@@ -108,3 +108,19 @@ mod patterns {
         assert_eq!(writer_of(&b), None, "{}", b.state());
     }
 }
+
+mod prompts {
+    use super::*;
+
+    #[test]
+    fn one_prompt_up_to_ten_matches() {
+        let remote = remote();
+        let (_a, b) = pushed_pair(remote.path(), 10);
+        let before = fingerprint(remote.path());
+        let out = b.run_tty(&["delete", "claude/s*"], "n\n");
+        assert!(!out.stdout.contains("Type"), "{}", out.stdout);
+        assert!(out.stdout.contains("No changes made."), "{}", out.stdout);
+        assert_eq!(fingerprint(remote.path()), before, "no append");
+        assert_eq!(writer_of(&b), None, "{}", b.state());
+    }
+}
