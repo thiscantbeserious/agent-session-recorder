@@ -2,24 +2,6 @@
 
 mod push;
 mod read;
-#[cfg(test)]
-mod tests;
-#[cfg(test)]
-mod tests_cap;
-#[cfg(test)]
-mod tests_dir;
-#[cfg(test)]
-mod tests_fits;
-#[cfg(test)]
-mod tests_legacy;
-#[cfg(test)]
-mod tests_read;
-#[cfg(test)]
-mod tests_report;
-#[cfg(test)]
-mod tests_retry;
-#[cfg(test)]
-mod tests_session;
 
 pub use push::{OpenRef, Outcome, PushError, PushItem, PushReport};
 pub use read::{read_pack, ReadError};
