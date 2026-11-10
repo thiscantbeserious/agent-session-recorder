@@ -224,3 +224,6 @@ mod analyze_options_test;
 
 #[path = "integration/analyze_rename_test.rs"]
 mod analyze_rename_test;
+
+#[path = "integration/config_migrate_sections_test.rs"]
+mod config_migrate_sections_test;
