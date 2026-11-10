@@ -1,6 +1,6 @@
 //! Process runner behind a small trait, the only place that spawns `gh` and `git`.
 
-use std::io::{ErrorKind, Read};
+use std::io::{ErrorKind, Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex, PoisonError};
@@ -35,6 +35,19 @@ pub trait Runner {
         env: &[(&str, String)],
     ) -> std::io::Result<Output>;
 
+    /// Like `run`, stdout goes byte for byte into the file `dest`, `Output.stdout` stays empty.
+    /// The default is `Unsupported`, the lossy text of `run` would corrupt binary parts.
+    fn run_to_file(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &[(&str, String)],
+        dest: &Path,
+    ) -> std::io::Result<Output> {
+        let _ = (program, args, env, dest);
+        Err(ErrorKind::Unsupported.into())
+    }
+
     /// Like `run`, `on_line` also sees every line the process prints on stderr while it runs.
     /// `\r` and `\n` both end a line, git redraws its progress with `\r`. The default ignores them.
     fn run_watched(
@@ -52,13 +65,13 @@ pub trait Runner {
 
 /// Cuts a byte stream into lines at `\r` and `\n`, an unfinished line waits for more bytes.
 #[derive(Default)]
-pub(super) struct Lines {
+struct Lines {
     tail: Vec<u8>,
 }
 
 impl Lines {
     /// Calls `f` for every line the chunk completes, empty lines are skipped.
-    pub(super) fn push(&mut self, chunk: &[u8], f: &mut dyn FnMut(&str)) {
+    fn push(&mut self, chunk: &[u8], f: &mut dyn FnMut(&str)) {
         for byte in chunk {
             if matches!(byte, b'\r' | b'\n') {
                 self.finish(f);
@@ -69,7 +82,7 @@ impl Lines {
     }
 
     /// The last line when the stream ended without a line break.
-    pub(super) fn finish(&mut self, f: &mut dyn FnMut(&str)) {
+    fn finish(&mut self, f: &mut dyn FnMut(&str)) {
         if !self.tail.is_empty() {
             f(&String::from_utf8_lossy(&self.tail));
             self.tail.clear();
@@ -80,6 +93,9 @@ impl Lines {
 /// Longest a process may stay silent on stdout and stderr before it counts as stalled.
 // ponytail: fixed 120 s of silence, any output resets it, make it a config key if slow links need more
 const STALL_LIMIT: Duration = Duration::from_secs(120);
+
+/// Where `run_to_file` puts stdout, a file in real runs.
+type Sink = Box<dyn Write + Send>;
 
 /// Real processes, no stdin and no prompts so a missing credential fails instead of hanging.
 /// A process that prints nothing for `stall` is killed.
@@ -104,6 +120,24 @@ impl Runner for ProcessRunner {
         self.run_watched(program, args, cwd, env, &mut |_| {})
     }
 
+    fn run_to_file(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &[(&str, String)],
+        dest: &Path,
+    ) -> std::io::Result<Output> {
+        let file = std::fs::File::create(dest)?;
+        let child = spawn(program, args, None, env)?;
+        watch_child(
+            child,
+            program,
+            self.stall,
+            &mut |_| {},
+            Some(Box::new(file)),
+        )
+    }
+
     fn run_watched(
         &self,
         program: &str,
@@ -112,6 +146,20 @@ impl Runner for ProcessRunner {
         env: &[(&str, String)],
         on_line: &mut dyn FnMut(&str),
     ) -> std::io::Result<Output> {
+        let child = spawn(program, args, cwd, env)?;
+        watch_child(child, program, self.stall, on_line, None)
+    }
+}
+
+/// Spawns `program` with piped output, for the runner tests only.
+#[doc(hidden)]
+pub fn spawn(
+    program: &str,
+    args: &[String],
+    cwd: Option<&Path>,
+    env: &[(&str, String)],
+) -> std::io::Result<Child> {
+    {
         let mut command = Command::new(program);
         command
             .args(args)
@@ -123,27 +171,36 @@ impl Runner for ProcessRunner {
             command.current_dir(dir);
         }
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
-        let child = command.spawn()?;
-        supervise(child, program, self.stall, on_line)
+        command.spawn()
     }
 }
 
 /// Drain both pipes in threads that stamp every read, kill the child once nothing was read
 /// for `stall`. New stderr bytes go to `on_line` on every poll and once more after the exit.
-fn supervise(
+/// With a `sink` stdout is written into it as it arrives and the output text stays empty.
+#[doc(hidden)]
+pub fn watch_child(
     mut child: Child,
     program: &str,
     stall: Duration,
     on_line: &mut dyn FnMut(&str),
+    sink: Option<Sink>,
 ) -> std::io::Result<Output> {
     let last = Arc::new(Mutex::new(Instant::now()));
-    let stdout = drain(child.stdout.take(), &last);
-    let stderr = drain(child.stderr.take(), &last);
+    let stdout = drain(child.stdout.take(), &last, sink);
+    let failed = Arc::clone(&stdout.failed);
+    let stderr = drain(child.stderr.take(), &last, None);
     let mut watcher = Watcher::default();
     let status = loop {
         watcher.feed(&stderr.bytes, on_line);
         if let Some(status) = child.try_wait()? {
             break status;
+        }
+        // the drain stopped at a failed write, that is the cause, not the silence that follows
+        if let Some(e) = failed.lock().unwrap_or_else(PoisonError::into_inner).take() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(e);
         }
         let silent = last
             .lock()
@@ -163,6 +220,9 @@ fn supervise(
         finish(stdout),
         finish_watched(stderr, &mut watcher, on_line),
     );
+    if let Some(e) = failed.lock().unwrap_or_else(PoisonError::into_inner).take() {
+        return Err(e);
+    }
     Ok(Output {
         code: status.code(),
         stdout,
@@ -198,6 +258,8 @@ fn finish_watched(drain: Drain, watcher: &mut Watcher, on_line: &mut dyn FnMut(&
 struct Drain {
     bytes: Arc<Mutex<Vec<u8>>>,
     eof: mpsc::Receiver<()>,
+    /// The write error of the sink, the drain stops at the first one.
+    failed: Arc<Mutex<Option<std::io::Error>>>,
 }
 
 /// Text read, waits `GRACE` for EOF, a grandchild that kept the pipe open is left behind.
@@ -207,10 +269,16 @@ fn finish(drain: Drain) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-fn drain<R: Read + Send + 'static>(pipe: Option<R>, last: &Arc<Mutex<Instant>>) -> Drain {
+fn drain<R: Read + Send + 'static>(
+    pipe: Option<R>,
+    last: &Arc<Mutex<Instant>>,
+    mut sink: Option<Sink>,
+) -> Drain {
     let last = Arc::clone(last);
     let bytes = Arc::new(Mutex::new(Vec::new()));
     let (done, eof) = mpsc::channel();
+    let failed = Arc::new(Mutex::new(None));
+    let sink_failed = Arc::clone(&failed);
     let shared = Arc::clone(&bytes);
     thread::spawn(move || {
         let mut buf = [0u8; 8192];
@@ -223,12 +291,19 @@ fn drain<R: Read + Send + 'static>(pipe: Option<R>, last: &Arc<Mutex<Instant>>) 
                 Err(_) => break,
             };
             *last.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
+            if let Some(file) = sink.as_mut() {
+                if let Err(e) = file.write_all(&buf[..n]) {
+                    *sink_failed.lock().unwrap_or_else(PoisonError::into_inner) = Some(e);
+                    break;
+                }
+                continue;
+            }
             let mut all = shared.lock().unwrap_or_else(PoisonError::into_inner);
             all.extend_from_slice(&buf[..n]);
         }
         let _ = done.send(());
     });
-    Drain { bytes, eof }
+    Drain { bytes, eof, failed }
 }
 
 #[cfg(test)]
@@ -273,75 +348,6 @@ mod lines_tests {
     }
 }
 
-#[cfg(all(test, unix))]
-mod tests {
-    use super::{ProcessRunner, Runner};
-    use std::io::ErrorKind;
-    use std::time::{Duration, Instant};
-
-    fn sh(stall_ms: u64, script: &str) -> (std::io::Result<super::Output>, Duration) {
-        let runner = ProcessRunner {
-            stall: Duration::from_millis(stall_ms),
-        };
-        let start = Instant::now();
-        let out = runner.run("sh", &["-c".into(), script.into()], None, &[]);
-        (out, start.elapsed())
-    }
-
-    #[test]
-    fn a_silent_process_is_killed_after_the_stall_limit() {
-        let (out, took) = sh(300, "sleep 5");
-        assert_eq!(out.err().map(|e| e.kind()), Some(ErrorKind::TimedOut));
-        assert!(took < Duration::from_secs(3), "{took:?}");
-    }
-
-    #[test]
-    fn progress_resets_the_stall_clock() {
-        let script = "for i in 1 2 3 4 5 6 7 8 9 10; do echo $i; sleep 0.1; done";
-        let (out, took) = sh(300, script);
-        assert!(out.unwrap().success());
-        assert!(took >= Duration::from_millis(900), "{took:?}");
-    }
-
-    #[test]
-    fn exit_code_stdout_and_stderr_are_captured() {
-        let (out, _) = sh(5000, "echo out; echo err >&2; exit 3");
-        let out = out.unwrap();
-        assert_eq!(out.code, Some(3));
-        assert_eq!(
-            (out.stdout.as_str(), out.stderr.as_str()),
-            ("out\n", "err\n")
-        );
-    }
-
-    #[test]
-    fn run_watched_reports_stderr_lines_as_they_arrive_and_keeps_the_output() {
-        let script = "printf 'Writing objects:  10%% (1/9)\\rWriting objects: 100%% (9/9), done.\\n' >&2; echo out";
-        let runner = ProcessRunner::default();
-        let mut seen = Vec::new();
-        let args = ["-c".to_string(), script.to_string()];
-        let out = runner
-            .run_watched("sh", &args, None, &[], &mut |l| seen.push(l.to_string()))
-            .unwrap();
-        assert_eq!(
-            seen,
-            [
-                "Writing objects:  10% (1/9)",
-                "Writing objects: 100% (9/9), done."
-            ]
-        );
-        assert_eq!(out.stdout, "out\n");
-        assert!(out.stderr.contains("done."), "{}", out.stderr);
-    }
-
-    #[test]
-    fn a_grandchild_holding_the_pipe_does_not_block_the_result() {
-        let (out, took) = sh(5000, "(sleep 30 &) ; echo done");
-        assert_eq!(out.unwrap().stdout, "done\n");
-        assert!(took < Duration::from_secs(10), "{took:?}");
-    }
-}
-
 #[cfg(test)]
 mod drain_tests {
     use super::{drain, finish};
@@ -369,6 +375,6 @@ mod drain_tests {
     #[test]
     fn an_interrupted_read_does_not_end_the_drain() {
         let last = Arc::new(Mutex::new(Instant::now()));
-        assert_eq!(finish(drain(Some(Hiccup(0)), &last)), "abcd");
+        assert_eq!(finish(drain(Some(Hiccup(0)), &last, None)), "abcd");
     }
 }

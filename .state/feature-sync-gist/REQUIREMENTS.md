@@ -321,3 +321,168 @@ Sessions only live on one machine. We want to sync them between machines, with G
 **2026-11-09:** user decision, backend defaults to gist, `off` disables. Supersedes the autonomous decision to keep it unset.
 
 **2026-11-09:** user decision, auto_push off by default, nobody is forced to upload.
+
+---
+
+## Pack layer (2026-11-09)
+
+**Problem**: one secret gist per session does not scale. The first real push created about 60 `.keep` gists (stubs from the stopped push) and buried the gist page of the user. Every changed session also rewrites a whole gist, and git history keeps the old bytes anyway.
+
+**Outcome**: many sessions live in a few big encrypted packs, the backend is a dumb pack store, and push, pull, status and auto push do not get worse for the user.
+
+**Sources**: ADR section "Pack layer (2026-11-09)", PLAN Stages 46 to 62, `docs/architecture/sync.md` (current per-session behaviour). The decisions below were relayed from the main session on 2026-11-09, none of them is new here. Where this section conflicts with the per-session requirements above, this section wins once the pack layer is built.
+
+### User decisions (2026-11-09)
+
+1. Move away from one secret gist per session.
+2. Restic-style packs one level above the backend. The backend is a dumb object store, so it is not bound to gists and a self-hosted GitLab comes later.
+3. One gist is one pack. The pack is logical, the gist store splits it into parts internally.
+4. Pack size defaults to 64 MiB, configurable.
+5. One open pack per machine, append-only, sealed when full. Prune runs only for dead data, never to clean up small packs.
+6. Index per pack, readable without a clone.
+7. Sharing (`agr share`) comes later, the design leaves room for it.
+8. `agr sync delete` gets patterns (`*`, `?`) and `--all`, a collect-first preview and a second confirmation that asks the user to type the number when many sessions match. `--yes` skips only the first prompt, many sessions without a TTY need `--force`. Built after or with the pack layer, not before.
+9. #166 is not merged to main before the pack layer is complete. The pack PRs target `feature/sync-gist`.
+10. Progress and status apply to all networked sync subcommands. A compact default, `-v` for the full list, live lines and a loading line already exist and stay on the pack layer.
+11. Auto push keeps the queue for parallel recordings, nothing is lost when several recordings finish at once.
+12. Auto push stays off by default and the backend default is gist. Without `gh` or `git` nothing breaks.
+13. Later, not now: rename the backend to show host and kind (for example `github-gist`), and a self-hosted GitLab backend.
+14. The existing per-session gists (about 60 from the stopped push) are migrated or cleaned up safely, dry-run first, touching only gists we can decrypt.
+
+### Stage 46 probe facts (user's live run, 2026-11-09)
+
+- Appending from a partial clone pushes fine, but git fetched the existing part during the append. A second probe is pending to find a recipe that avoids it. This decides ADR Open risk 1 (branch P or branch C in the PLAN).
+- `raw_url` plus Range work on secret gists for binary parts.
+- A 700 KiB index comes back whole through the API.
+
+### Scope (pack layer)
+
+- Pack format, per-pack index, merge rules, the store trait, the gist mapping, append and seal.
+- Auto push on packs, status and pull cost, progress output on all networked subcommands.
+- `agr sync prune` for dead data, `agr sync migrate` for the old gists.
+- `agr sync delete` with patterns, `--all`, preview and confirmation.
+- `pack_size_mib` config key and the machine writer id.
+- A local cache of pack indexes keyed by gist id and `updated_at` (pending probe, fallback in the ADR), so status and auto push do not cost one API call per pack.
+- `agr sync prune --seal-orphans` for open packs left behind by a lost local state.
+- Docs: `docs/architecture/sync.md`, wiki command pages, README.
+
+### Out of Scope (pack layer)
+
+- `agr share` (the design leaves room, nothing is built).
+- A GitLab or S3 backend and the rename of the backend to host and kind. The store trait only has to leave room.
+- Dedup or content defined chunking.
+- A clone based read fallback. `raw_url` plus `Range` is the one read path (verified by the Stage 46 probe), the cached clone is only used for appends.
+- Automatic prune, background prune, a remote lock.
+- Any change to the key, the recovery phrase or blob v2.
+
+### Requirements
+
+**P1. No per-session gists**
+- [ ] After the switch a push of N sessions creates pack gists only, never one gist per session and never a `.keep` stub.
+- [ ] 440 MiB of sessions end up in 6 sealed packs plus one open pack (test on the memory store with sizes against the 64 MiB target).
+- [ ] Every pack gist has the description `agr:v2 <pack uuid>` and nothing else readable, the uuid is random.
+
+**P2. Backend neutral store**
+- [ ] The engine and pack layer run unchanged on a memory store and a directory store (one contract test passes on all stores, the gist store runs the same contract through the `Fake` runner).
+- [ ] After the switch `engine/` names neither `crate::sync::crypto` nor `crate::sync::store`, and only `pack/migrate/` names `store::legacy`.
+- [ ] `layer_rules_hold` fails when `pack/` names `app`, `engine` or a concrete store, or when `store/` names `crypto`, `engine`, `pack` or `app`.
+- [ ] The trait carries no gist, GitHub or part concept, only pack id, logical byte stream, index string and length.
+
+**P3. One gist is one pack**
+- [ ] The gist store maps one pack to one gist, data parts `data.NNN` plus one index file.
+- [ ] Parts are cut at session boundaries at 8 MiB, a session over 8 MiB gets its own parts, existing parts are never rewritten.
+- [ ] A pack that would pass 250 files is sealed early (`fits` is false, also when no file slot is left), the 300 file listing limit stays out of reach.
+
+**P4. Pack size**
+- [ ] `[sync] pack_size_mib` defaults to 64 and is read from the config, out of range values give a clear error (range 16 to 512 per ADR, see open question 1).
+- [ ] A pack is sealed by the append that reaches the target, a session larger than the target gets its own pack and the open pack stays open.
+
+**P5. One open pack per machine, append-only**
+- [ ] A machine has at most one open pack and only appends to it, a sealed pack is never written again (a contract test shows a second append to a sealed pack is refused).
+- [ ] An append writes new parts and the new index as one unit, a crash before the index leaves the old index valid, a directory store recovers from parts written before its manifest.
+- [ ] A wrong expected length or an index other than the one planned against gives `Moved` and writes nothing, also for a zero-byte append that only adds tombstones, one retry on top, then "changed on the remote, run again". `Moved` carries the index text at the current remote head, the retry plans against it without another read.
+- [ ] Two writers on one writer id never overwrite each other (mandatory test).
+- [ ] A lost local state does not lose remote data, the machine gets a new writer id, the old open pack stays readable and merged, `agr sync prune --seal-orphans` seals it after 30 idle days.
+- [ ] `--seal-orphans` is the one append to another writer's pack. Its dry-run prints the packs with their size and the total download (a seal downloads the orphan pack once), a run stops at 1 GiB of download. A `Moved` during the seal is never retried, the seal of that pack is dropped and reported.
+
+**P6. Index per pack, readable without a clone**
+- [ ] Each pack carries one sealed index with path, gen, sha256, size, offset, length, deleted and time per entry.
+- [ ] `agr sync status` makes no `git clone`, only the listing plus one `gh api` read of the index `raw_url` per pack that is not in the local index cache (same `updated_at`), never the API content, a corrupt cache file is rebuilt. The `updated_at` key is pending the probe `updated_at_moves_on_git_push`, if it does not move sealed indexes are cached forever by id and open packs are read on every open (ADR "Index cache (pending probe)").
+- [ ] An index copied into another pack does not open (the index AAD binds the pack uuid).
+- [ ] Push, pull, delete, migrate and prune abort before planning when any pack index read fails, never act on a partial view.
+- [ ] An index that would pass 768 KiB seals the pack early, a truncated index is reported as unreadable, never half read.
+- [ ] A pack with another key or an unknown version is reported and never touched.
+
+**P7. Merge and conflicts**
+- [ ] The highest gen per path wins, a tombstone on top is "deleted on the remote": a deleted session is never pushed back, a local edit after the last sync is a fork, `push --overwrite` restores it at gen + 1.
+- [ ] Two entries at the top gen with different hashes are a fork, reported per session, push and pull skip it, `push --overwrite` resolves it with gen + 1.
+- [ ] Two entries at the top gen with the same hash are one session with two places, the reader tries the next on `NotFound`.
+- [ ] A merged gen below the local last-sync gen is refused as before, the local file stays untouched.
+- [ ] Two packs with the same tag (a duplicated gist) are both merged as places, reported per pack as a copy, and never appended to, sealed, repacked or deleted by agr.
+- [ ] A fork a push has just created is reported in the same run, and status names the next step.
+
+**P8. Prune only for dead data**
+- [ ] `agr sync prune [--dry-run]` never touches an open pack (except the index-only seal of `--seal-orphans`), never a sealed pack under 20 percent dead bytes and never a pack it cannot read (`OtherKey`, `UnknownVersion`, read failure).
+- [ ] A live tombstone counts as live data. With two places of one session the lower pack id loses on every machine, two concurrent prunes never delete the last place.
+- [ ] A fully dead sealed pack is deleted, a pack at or over 20 percent is repacked with the same path, gen and sha256, tombstones included.
+- [ ] An old pack gist is deleted only after the copies show up in a fresh index read.
+- [ ] `--dry-run` prints bytes to move and bytes to free and changes nothing.
+- [ ] Status prints a hint at over 20 percent dead bytes, no automatic prune exists.
+- [ ] A pull that gets `NotFound` during a prune re-reads the indexes once and uses the copy.
+
+**P9. Room for sharing**
+- [ ] The pack reader takes its key as an argument and can read one pack without the merge, so a one-session share pack can reuse it later. `agr share` does not exist in the CLI.
+
+**P10. `agr sync delete` with patterns**
+- [ ] `agr sync delete` takes one or more patterns with `*` and `?`, or `--all`, matched against `<agent>/<name>`.
+- [ ] It collects first and prints the full list with count and size before anything is asked or changed, `--dry-run` stops there.
+- [ ] One match asks one confirmation. Many matches ask a second one where the user types the number of sessions, a wrong number aborts without changes (threshold in open question 2).
+- [ ] `--yes` skips only the first prompt, never the typed number.
+- [ ] Many matches without a TTY abort unless `--force` is given, one match without a TTY still needs `--yes` as today.
+- [ ] A pattern without a match exits non-zero and says so, local files are never deleted.
+- [ ] A delete is a tombstone in the open pack and the bytes are freed by the next prune (open question 3).
+- [ ] It is built after or in the same PR as the pack layer, never on the per-session code.
+
+**P11. Branch and merge order**
+- [ ] #166 is not merged to main until the pack layer is complete.
+- [ ] Every pack PR targets `feature/sync-gist`, each PR stays under 100 changed files.
+- [ ] The probe file of Stage 46 stays in the tree as an ignored test (it documents the verified facts and can be re-run when GitHub changes), the default `cargo test` stays offline.
+
+**P12. Progress and status on every networked subcommand**
+- [ ] `push`, `pull`, `status`, `delete`, `migrate` and `prune` print a compact summary by default and the full list with `-v`.
+- [ ] Each shows the live line while it works and the loading line before the first answer, on a TTY only.
+- [ ] The percent of a push belongs to the append, `NO_COLOR` is respected, no token appears in any output.
+
+**P13. Auto push keeps the queue**
+- [ ] N recordings that finish while a drain runs are all pushed, none lost and none pushed twice.
+- [ ] One drain round is one append (one commit, one push), a burst during a drain lands in the next round together.
+- [ ] A single recording is pushed without waiting for others (no local buffering).
+- [ ] Pushes to one gist are paced 10 s apart, also across auto push processes (last push time per gist persisted, read and written under the local sync lock).
+
+**P14. Defaults and missing tools**
+- [ ] Auto push is off by default, the backend default is `gist`, `off` disables sync.
+- [ ] Without `gh` or `git` every sync command prints one clear message, exits non-zero and changes nothing, all other agr commands are unaffected.
+- [ ] No token in config, state, log or output.
+
+**P15. Migrate the per-session gists**
+- [ ] `agr sync migrate` is a dry-run unless `--yes` and prints how many sessions move, are already moved, are empty stubs and are not ours.
+- [ ] Only gists that decrypt with our key and `agr:pending` stubs older than 1 hour with exactly one `.keep` are touched, everything else is listed and kept.
+- [ ] A moved session keeps path, gen and sha256, a hash mismatch keeps the old gist and is reported.
+- [ ] An old gist is deleted only after the append holding its session returned and a fresh index read shows it, stubs are deleted directly.
+- [ ] A rate limit stops with "N left, run again later", a re-run finishes, a listing past 3000 gists does not abort.
+- [ ] The release that switches to packs ships `agr sync migrate`.
+- [ ] Migrate runs before the first pack push, it converts the local index v1 to v2 with path, sha256 and gen kept, a local edit made before migrate survives. Every other sync command refuses on a v1 index with "run `agr sync migrate` first".
+- [ ] A machine with no local index or a deleted one refuses the same way while the remote listing shows any `agr:v1` gist of our key, the auto push child does nothing and keeps its queue entry.
+
+**P16. Docs**
+- [ ] `docs/architecture/sync.md`, the wiki command pages, `pack_size_mib` in the configuration page and the README describe packs, forks, prune, migrate and delete patterns, and state what a third party with the URL can see, including that the index size per revision roughly shows how many sessions each append added.
+
+**P17. Later (recorded, not built)**
+- [ ] Nothing in the pack layer hardcodes the backend name `gist` outside the gist store, so a rename to host and kind and a GitLab store only add code.
+
+### Answered by the user (2026-11-09)
+
+1. **Pack size range**: 16 to 512 MiB, default 64.
+2. **Typed number**: asked when a delete matches more than 10 sessions.
+3. **Space after delete**: a delete is a tombstone, `agr sync prune` frees the bytes later, like restic.
+4. **Pattern delete**: lands in PR C together with the engine switch.

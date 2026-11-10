@@ -1,5 +1,6 @@
 use agr::sync::testing::blob::{
-    aad, open_blob, seal_blob, seal_with_prefix, Digest, FRAME, HEADER_LEN, PREFIX_LEN, TAG_LEN,
+    aad, open_blob, seal_blob, seal_with_prefix, sealed_len, Digest, FRAME, HEADER_LEN, PREFIX_LEN,
+    TAG_LEN,
 };
 use agr::sync::testing::{
     key_bytes, key_from_bytes, open_stream, seal_stream, sha256_hex, BlobError, CryptoError,
@@ -369,4 +370,11 @@ fn empty_last_frame_is_just_a_tag() {
     seal_with_prefix(&key(1), PATH, 3, &prefix, &b""[..], &mut out).unwrap();
     assert_eq!(out.len(), HEADER_LEN + TAG_LEN);
     assert_eq!(out[HEADER_LEN..], raw_frame(&key(1), &prefix, 0, 1, b""));
+}
+
+#[test]
+fn sealed_len_matches_the_sealed_blob() {
+    for n in SIZES {
+        assert_eq!(sealed_len(n as u64), blob(n).len() as u64, "plain size {n}");
+    }
 }

@@ -1,5 +1,6 @@
 //! Integration tests for AGR library modules
 
+#[macro_use]
 #[path = "integration/helpers/mod.rs"]
 pub mod helpers;
 
@@ -218,6 +219,54 @@ mod sync_multi_machine_test;
 
 #[path = "integration/sync_queue_test.rs"]
 mod sync_queue_test;
+
+#[path = "integration/sync_pack_merge_test.rs"]
+mod sync_pack_merge_test;
+
+#[path = "integration/sync_pack_stream_test.rs"]
+mod sync_pack_stream_test;
+
+#[path = "integration/sync_runner_test.rs"]
+mod sync_runner_test;
+
+#[path = "integration/sync_pack_repo_test.rs"]
+mod sync_pack_repo_test;
+
+#[path = "integration/sync_pack_repo_cap_test.rs"]
+mod sync_pack_repo_cap_test;
+
+#[path = "integration/sync_pack_repo_dir_test.rs"]
+mod sync_pack_repo_dir_test;
+
+#[path = "integration/sync_pack_repo_fits_test.rs"]
+mod sync_pack_repo_fits_test;
+
+#[path = "integration/sync_pack_repo_legacy_test.rs"]
+mod sync_pack_repo_legacy_test;
+
+#[path = "integration/sync_pack_repo_read_test.rs"]
+mod sync_pack_repo_read_test;
+
+#[path = "integration/sync_pack_repo_report_test.rs"]
+mod sync_pack_repo_report_test;
+
+#[path = "integration/sync_pack_repo_retry_test.rs"]
+mod sync_pack_repo_retry_test;
+
+#[path = "integration/sync_pack_repo_session_test.rs"]
+mod sync_pack_repo_session_test;
+
+#[path = "integration/sync_store_contract_test.rs"]
+mod sync_store_contract_test;
+
+#[path = "integration/sync_store_gist_test.rs"]
+mod sync_store_gist_test;
+
+#[path = "integration/sync_store_gist_append_test.rs"]
+mod sync_store_gist_append_test;
+
+#[path = "integration/sync_store_gist_cache_test.rs"]
+mod sync_store_gist_cache_test;
 
 #[path = "integration/analyze_options_test.rs"]
 mod analyze_options_test;

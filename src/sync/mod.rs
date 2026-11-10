@@ -4,6 +4,8 @@ mod app;
 mod backend;
 mod crypto;
 mod engine;
+mod pack;
+mod store;
 
 pub use app::{auto, format, key, setup};
 pub use backend::gist::ProgressSink;
@@ -17,6 +19,10 @@ pub use engine::scan::Duplicate;
 /// Internals for the integration tests, not a stable API.
 #[doc(hidden)]
 pub mod testing {
+    pub use crate::sync::backend::gist::pace::{Clock, ClockError};
+    pub use crate::sync::backend::gist::runner::{
+        spawn, watch_child, Output, ProcessRunner, Runner,
+    };
     pub use crate::sync::backend::gist::GistBackend;
     pub use crate::sync::backend::memory::MemoryBackend;
     pub use crate::sync::backend::{pull_bytes, push_bytes};
@@ -27,6 +33,26 @@ pub mod testing {
     pub use crate::sync::engine::plan::{decide, resolve, Command, Remote};
     pub use crate::sync::engine::queue;
     pub use crate::sync::engine::scan::{scan, valid_path, Row};
+    pub use crate::sync::pack::index::{
+        new_pack_uuid, open_index, seal_index, Entry, Index, IndexError,
+    };
+    pub use crate::sync::pack::merge::{merge, PackIn, Rejected, Top};
+    pub use crate::sync::pack::repo::{
+        read_pack, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo, RepoError,
+    };
+    pub use crate::sync::pack::rules::{
+        pack_size, place, should_seal, should_seal_index, PackSizeError, Place,
+    };
+    pub use crate::sync::pack::stream::{open_range, segment, RangeError};
+    pub use crate::sync::store::dir::DirStore;
+    pub use crate::sync::store::gist::{pack_dir, GistStore};
+    pub use crate::sync::store::memory::MemoryStore;
+    pub use crate::sync::store::{Listing, PackInfo, PackStore, Segment, StoreError};
+
+    /// A second handle on the same key bytes, as another machine of the same account holds it.
+    pub fn copy_key(key: &crate::sync::Key) -> crate::sync::Key {
+        crate::sync::Key::from_bytes(*key.as_bytes())
+    }
 
     /// Gist backend internals for the fake runner tests.
     pub mod gist {
@@ -41,8 +67,8 @@ pub mod testing {
     /// Blob internals for the framing, nonce and known-answer tests.
     pub mod blob {
         pub use crate::sync::crypto::blob::{
-            aad, open_blob, seal_blob, seal_with_prefix, Digest, Opener, Sealer, Stream, FRAME,
-            HEADER_LEN, PREFIX_LEN, TAG_LEN,
+            aad, open_blob, seal_blob, seal_with_prefix, sealed_len, Digest, Opener, Sealer,
+            Stream, FRAME, HEADER_LEN, PREFIX_LEN, TAG_LEN,
         };
     }
 
@@ -82,6 +108,22 @@ mod layer_check {
         ("app/", "aead::"),
         ("engine/", "aead::"),
         ("backend/", "aead::"),
+        ("pack/", "crate::sync::app"),
+        ("pack/", "crate::sync::backend"),
+        ("pack/", "crate::sync::engine"),
+        ("pack/", "crate::sync::store::memory"),
+        ("pack/", "crate::sync::store::dir"),
+        ("pack/", "crate::sync::store::gist"),
+        ("pack/", "chacha20poly1305"),
+        ("pack/", "aead::"),
+        ("pack/", "sha2::"),
+        ("store/", "crate::sync::crypto"),
+        ("store/", "crate::sync::engine"),
+        ("store/", "crate::sync::pack"),
+        ("store/", "crate::sync::app"),
+        ("store/", "chacha20poly1305"),
+        ("store/", "sha2::"),
+        ("store/", "aead::"),
         ("", "super::super"),
     ];
     const SPAWNERS: &[&str] = &["backend/gist/runner.rs", "app/auto/mod.rs"];
@@ -155,14 +197,38 @@ mod layer_check {
     }
 
     /// Rule violations of one file, `rel` is relative to `src/sync`.
+    /// `needle` occurs and ends on a segment boundary, so `crate::sync::app` does not
+    /// match `crate::sync::appx`. A needle ending in `::` (`sha2::`) is a prefix.
+    fn has_segment(text: &str, needle: &str) -> bool {
+        if needle.ends_with("::") {
+            return text.contains(needle);
+        }
+        text.match_indices(needle).any(|(i, _)| {
+            let next = text[i + needle.len()..].chars().next();
+            !next.is_some_and(|c| c.is_alphanumeric() || c == '_')
+        })
+    }
+
+    /// Pack files that are not tests, only tests may name the concrete stores in `testing`.
+    fn is_pack_production(rel: &str) -> bool {
+        let name = rel.rsplit('/').next().unwrap_or(rel);
+        let test = name.starts_with("tests") || name.ends_with("_tests.rs");
+        rel.starts_with("pack/") && !test
+    }
+
     fn violations(rel: &str, text: &str) -> Vec<String> {
         let text = &strip_comments(text);
         let paths = use_paths(text);
         let mut bad = Vec::new();
         for (layer, needle) in RULES.iter().filter(|(l, _)| rel.starts_with(l)) {
-            if text.contains(needle) || paths.iter().any(|p| p.contains(needle)) {
+            if has_segment(text, needle) || paths.iter().any(|p| has_segment(p, needle)) {
                 bad.push(format!("{rel} ({layer}) must not contain `{needle}`"));
             }
+        }
+        if is_pack_production(rel) && has_segment(text, "crate::sync::testing") {
+            bad.push(format!(
+                "{rel} (pack) must not contain `crate::sync::testing`"
+            ));
         }
         if text.contains("Command::new") && !SPAWNERS.contains(&rel) {
             bad.push(format!("{rel} must not contain `Command::new`"));
@@ -236,8 +302,55 @@ mod layer_check {
     }
 
     #[test]
+    fn violations_match_whole_path_segments_only() {
+        // `super::supervise` is not `super::super`, `crate::sync::appx` is not `crate::sync::app`.
+        assert!(violations("store/x.rs", "fn f() { super::supervise(); }").is_empty());
+        assert!(violations("engine/x.rs", "use crate::sync::appx::Thing;").is_empty());
+        assert_eq!(violations("store/x.rs", "use super::super::x;").len(), 1);
+    }
+
+    #[test]
     fn violations_allows_sibling_imports_within_layer() {
         let src = "use crate::sync::{engine::index, backend::BlobSource};";
         assert!(violations("engine/x.rs", src).is_empty());
+    }
+
+    #[test]
+    fn violations_flags_pack_naming_engine() {
+        let v = violations("pack/x.rs", "use crate::sync::engine::index;");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
+    fn violations_flags_pack_naming_chacha20poly1305() {
+        let v = violations("pack/x.rs", "use chacha20poly1305::XNonce;");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
+    fn violations_flags_brace_form_crypto_in_store() {
+        let v = violations("store/x.rs", "use crate::sync::{crypto::Key};");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
+    fn violations_flags_store_naming_crypto() {
+        let v = violations("store/x.rs", "use crate::sync::crypto::Key;");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
+    fn violations_flags_pack_naming_backend() {
+        let v = violations("pack/x.rs", "use crate::sync::backend::BlobSource;");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
+    fn violations_flags_pack_production_naming_testing() {
+        let src = "use crate::sync::testing::MemoryStore;";
+        assert_eq!(violations("pack/repo/push.rs", src).len(), 1);
+        assert!(violations("pack/repo/tests_dir.rs", src).is_empty());
+        assert!(violations("pack/merge_tests.rs", src).is_empty());
+        assert!(violations("pack/stream/tests.rs", src).is_empty());
     }
 }

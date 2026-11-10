@@ -6,16 +6,16 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 
 /// Largest part, under git's 50 MiB warning.
-pub(super) const PART_SIZE: usize = 45 * 1024 * 1024;
+pub(crate) const PART_SIZE: usize = 45 * 1024 * 1024;
 /// Prefix of every part file, the name is `data.NNN`.
-pub(super) const PART_PREFIX: &str = "data.";
+pub(crate) const PART_PREFIX: &str = "data.";
 
 pub fn part_name(index: usize) -> String {
     format!("{PART_PREFIX}{index:03}")
 }
 
 /// `names` must be sorted and be exactly `part_name(0..n)`, anything else is an error.
-pub(super) fn check_sequence(names: &[String]) -> Result<(), String> {
+pub(crate) fn check_sequence(names: &[String]) -> Result<(), String> {
     if names.is_empty() {
         return Err("has no data parts".into());
     }
@@ -28,7 +28,7 @@ pub(super) fn check_sequence(names: &[String]) -> Result<(), String> {
 }
 
 /// Names of existing parts that a push of `count` parts leaves behind.
-pub(super) fn stale(existing: &[String], count: usize) -> Vec<String> {
+pub(crate) fn stale(existing: &[String], count: usize) -> Vec<String> {
     let keep: Vec<String> = (0..count).map(part_name).collect();
     existing
         .iter()
@@ -50,7 +50,7 @@ pub fn part_names(dir: &Path) -> io::Result<Vec<String>> {
 
 /// Writes into `data.000`, `data.001`, ... inside `dir`, a part is full at `size` bytes and the
 /// next one is only opened by the next byte, so an exact multiple leaves no empty part.
-pub(super) struct PartWriter {
+pub(crate) struct PartWriter {
     dir: PathBuf,
     size: usize,
     count: usize,
@@ -59,7 +59,7 @@ pub(super) struct PartWriter {
 }
 
 impl PartWriter {
-    pub(super) fn new(dir: &Path, size: usize) -> Self {
+    pub(crate) fn new(dir: &Path, size: usize) -> Self {
         Self {
             dir: dir.to_path_buf(),
             size,
@@ -84,7 +84,7 @@ impl PartWriter {
 
     /// Closes the last part (an empty blob still gets `data.000`), removes the stale higher
     /// parts and returns every touched name, written ones first.
-    pub(super) fn finish(mut self) -> io::Result<Vec<String>> {
+    pub(crate) fn finish(mut self) -> io::Result<Vec<String>> {
         if self.count == 0 {
             self.part()?;
         }
@@ -117,7 +117,7 @@ impl Write for PartWriter {
 
 /// Reads `files` one after the other as one stream, holds `guard` (the scratch clone) until
 /// it is dropped, the file handle closes before the guard.
-pub(super) struct PartReader {
+pub(crate) struct PartReader {
     files: Vec<PathBuf>,
     next: usize,
     current: Option<File>,
@@ -125,7 +125,7 @@ pub(super) struct PartReader {
 }
 
 impl PartReader {
-    pub(super) fn new(files: Vec<PathBuf>, guard: Box<dyn Any>) -> Self {
+    pub(crate) fn new(files: Vec<PathBuf>, guard: Box<dyn Any>) -> Self {
         Self {
             files,
             next: 0,

@@ -38,6 +38,8 @@ pub struct Fake {
     pub remote: Files,
     /// Stderr lines `run_watched` hands to the watcher of a `git push` or `git clone`.
     pub watch: Vec<String>,
+    /// A server that ignores `Range` and answers 200 with the whole part.
+    pub ignore_range: bool,
 }
 
 /// Every `data.*` file of a clone, sorted by name.
@@ -108,6 +110,24 @@ impl Fake {
     }
 }
 
+impl Fake {
+    /// The `remote` bytes a `gh api [-H "Range: bytes=a-b"] <raw_url>` reads, the file is named like
+    /// the last url segment, without a `Range` it is the whole file.
+    fn raw_body(&self, program: &str, args: &[String]) -> Option<Vec<u8>> {
+        let range = args.iter().find_map(|a| a.strip_prefix("Range: bytes="));
+        let name = args.last()?.rsplit('/').next()?;
+        let (_, body) = self.remote.iter().find(|(n, _)| n == name)?;
+        let wanted = match range {
+            Some(r) if !self.ignore_range => {
+                let (from, to) = r.split_once('-')?;
+                body[from.parse::<usize>().ok()?..=to.parse::<usize>().ok()?].to_vec()
+            }
+            _ => body.clone(),
+        };
+        (program == "gh").then_some(wanted)
+    }
+}
+
 impl Runner for &Fake {
     fn run_watched(
         &self,
@@ -120,6 +140,20 @@ impl Runner for &Fake {
         let out = self.run(program, args, cwd, env);
         self.watch.iter().for_each(|line| on_line(line));
         out
+    }
+
+    fn run_to_file(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &[(&str, String)],
+        dest: &Path,
+    ) -> std::io::Result<Output> {
+        let out = self.run(program, args, None, env)?;
+        if let (true, Some(body)) = (out.success(), self.raw_body(program, args)) {
+            std::fs::write(dest, body)?;
+        }
+        Ok(out)
     }
 
     fn run(

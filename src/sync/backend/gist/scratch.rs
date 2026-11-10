@@ -21,7 +21,7 @@ impl Scratch {
         Ok(Self(dir))
     }
 
-    pub(super) fn join(&self, name: &str) -> PathBuf {
+    pub(crate) fn join(&self, name: &str) -> PathBuf {
         self.0.join(name)
     }
 }

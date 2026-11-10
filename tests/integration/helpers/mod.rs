@@ -2,8 +2,14 @@
 
 #![allow(dead_code)]
 
+pub mod fake_remote;
 pub mod gist_fake;
+pub mod gist_rig;
+pub mod gist_store_fake;
+pub mod pack_repo;
 pub mod storage;
+#[macro_use]
+pub mod store_contract;
 pub mod sync_net;
 pub mod tui_snapshot;
 
