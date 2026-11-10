@@ -47,8 +47,7 @@ pub struct GistStore<R: Runner = ProcessRunner> {
 
 impl GistStore<ProcessRunner> {
     pub fn new() -> Self {
-        let cache = dirs::cache_dir().map(|d| d.join("agr").join("index-cache.json"));
-        let store = Self::with_runner(ProcessRunner::default(), std::env::temp_dir(), cache);
+        let store = Self::with_runner(ProcessRunner::default(), std::env::temp_dir(), None);
         store.with_cache_dir(dirs::cache_dir())
     }
 }
@@ -75,8 +74,10 @@ impl<R: Runner> GistStore<R> {
     }
 
     /// Where the cached clones and `pace.toml` go, `<dir>/agr/...`, `None` means no append.
+    /// Root for every cache file (the pack clones, `pace.toml`, `index-cache.json`).
     pub fn with_cache_dir(mut self, dir: impl Into<Option<PathBuf>>) -> Self {
         self.cache_root = dir.into();
+        self.cache_file = self.cache_root.as_ref().map(|d| index_cache_path(d));
         self
     }
 
@@ -149,4 +150,9 @@ impl<R: Runner> PackStore for GistStore<R> {
     fn delete(&self, id: &str) -> Result<(), StoreError> {
         self.delete_pack(id)
     }
+}
+
+/// `<cache root>/agr/index-cache.json`.
+fn index_cache_path(root: &std::path::Path) -> PathBuf {
+    root.join("agr").join("index-cache.json")
 }
