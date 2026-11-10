@@ -345,4 +345,18 @@ mod moving {
         rig.legacy.delete_by_hand(&bad);
         assert!(open().is_none());
     }
+
+    #[test]
+    fn a_session_the_view_holds_at_a_higher_gen_with_other_content_is_not_deleted() {
+        let rig = Rig::new();
+        rig.put_moved(A, 5, b"newer content from another machine");
+        let id = rig.legacy.v1(&rig.key, (A, 3), b"old content", None);
+        let store = Listed(&rig.mem, &rig.legacy);
+        let report = migrate_run(&rig.env(&store)).unwrap();
+        assert_eq!(rig.legacy.deletes().len(), 0, "{report:?}");
+        assert!(report
+            .lines
+            .iter()
+            .any(|l| l.contains(&format!("gh gist delete {id}"))));
+    }
 }
