@@ -98,7 +98,6 @@ mod table {
 }
 
 mod local_index {
-    use super::*;
     use agr::sync::testing::{convert_index, index};
 
     fn v1_text() -> String {
