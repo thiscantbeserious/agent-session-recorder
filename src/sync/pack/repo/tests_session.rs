@@ -188,3 +188,22 @@ fn mismatch_at_every_place_is_a_hash_mismatch() {
     assert!(matches!(err, Some(ReadError::HashMismatch)), "{err:?}");
     assert!(!target.exists());
 }
+
+#[test]
+fn auth_failure_at_first_place_reads_the_second() {
+    let (store, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let original = b"same bytes".to_vec();
+    for writer in ["w1", "w2"] {
+        let file = item(dir.path(), "a", 1, &original);
+        repo(&store, &key, writer).push_batch(&[file]).unwrap();
+    }
+    let reader = repo(&store, &key, "w3");
+    store.corrupt(&reader.view().get("a").unwrap().keeper().pack);
+    let target = dir.path().join("out.cast");
+    reader.read_session("a", &target).unwrap();
+    assert_eq!(std::fs::read(target).unwrap(), original);
+}

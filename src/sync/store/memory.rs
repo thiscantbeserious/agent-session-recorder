@@ -53,6 +53,13 @@ impl MemoryStore {
         self.lock().cut.insert(id.to_string(), bytes);
     }
 
+    /// Flips one bit of the last data byte of `id` (an AEAD tag byte), a damaged place for the read tests.
+    pub fn corrupt(&self, id: &str) {
+        if let Some(p) = self.lock().packs.get_mut(id) {
+            p.data.last_mut().iter_mut().for_each(|b| **b ^= 1);
+        }
+    }
+
     /// How often `list` ran.
     pub fn list_calls(&self) -> usize {
         self.lists.load(Ordering::SeqCst)
