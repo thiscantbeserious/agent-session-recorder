@@ -135,7 +135,7 @@ mod moving {
     use agr::files::codec;
     use agr::sync::testing::index;
     use agr::sync::testing::{
-        migrate_preview, migrate_run, sha256_hex, PackStore, Repo, RepoError,
+        migrate_preview, migrate_run, sha256_hex, MigrateError, PackStore, Repo, RepoError,
     };
     use agr::sync::{Engine, Options};
     use agr::{Config, StorageManager};
@@ -358,5 +358,19 @@ mod moving {
             .lines
             .iter()
             .any(|l| l.contains(&format!("gh gist delete {id}"))));
+    }
+
+    #[test]
+    fn corrupt_v1_index_aborts_with_zero_appends_and_deletes() {
+        let rig = Rig::new();
+        rig.legacy.v1(&rig.key, (A, 3), b"body", None);
+        rig.legacy.stub(OLD);
+        std::fs::write(rig.index_path(), r#"{"version":1,"entries":{"#).unwrap();
+        let before = rig.index_text();
+        let store = Listed(&rig.mem, &rig.legacy);
+        let result = migrate_run(&rig.env(&store));
+        assert!(matches!(result, Err(MigrateError::Local(_))), "{result:?}");
+        assert_eq!(counts(&rig), (0, 0));
+        assert_eq!(rig.index_text(), before);
     }
 }
