@@ -208,6 +208,9 @@ mod sync_engine_test;
 #[path = "integration/sync_engine_pack_test.rs"]
 mod sync_engine_pack_test;
 
+#[path = "integration/sync_engine_multi_test.rs"]
+mod sync_engine_multi_test;
+
 #[path = "integration/sync_plan_test.rs"]
 mod sync_plan_test;
 
