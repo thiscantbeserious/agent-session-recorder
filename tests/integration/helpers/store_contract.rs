@@ -97,17 +97,26 @@ pub fn read_returns_the_exact_range(store: &dyn PackStore) {
 pub fn zero_length_read_inside_a_part_is_empty(store: &dyn PackStore) {
     let id = pack_with_abc(store);
     let mut bytes = Vec::new();
-    store
-        .read(&id, 1, 0)
-        .expect("read")
-        .read_to_end(&mut bytes)
-        .expect("bytes");
+    for offset in [1, 3] {
+        store
+            .read(&id, offset, 0)
+            .expect("read")
+            .read_to_end(&mut bytes)
+            .expect("bytes");
+    }
     assert!(bytes.is_empty(), "{bytes:?}");
 }
 
 pub fn read_past_end_is_reported_the_same_by_every_store(store: &dyn PackStore) {
     let id = pack_with_abc(store);
-    for (offset, len) in [(0, 4), (3, 1), (10, 1), (u64::MAX, 2), (1, u64::MAX)] {
+    for (offset, len) in [
+        (0, 4),
+        (3, 1),
+        (10, 1),
+        (u64::MAX, 2),
+        (1, u64::MAX),
+        (5, 0),
+    ] {
         let err = store.read(&id, offset, len).err();
         assert!(
             matches!(err, Some(StoreError::NotFound)),
