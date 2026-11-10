@@ -4,6 +4,7 @@ use super::observe::Step;
 use super::plan::{Command, Decision, Local, Remote, SkipReason};
 use super::run::{BackendEngine, Item, Outcome, Report};
 use super::scan::Row;
+use crate::StorageManager;
 
 impl Report {
     /// Add the counts and items of a later round of the same run.
@@ -14,6 +15,8 @@ impl Report {
         self.failed += other.failed;
         self.bytes += other.bytes;
         self.warning = self.warning.take().or(other.warning);
+        self.forks.extend(other.forks);
+        self.refused.extend(other.refused);
         self.items.extend(other.items);
     }
 
@@ -103,44 +106,62 @@ pub(super) fn skip_text(reason: SkipReason) -> &'static str {
     }
 }
 
+/// Tells the observer which session is about to move and how big it is.
+pub(super) fn announce(
+    storage: &StorageManager,
+    row: &Row,
+    observer: &mut dyn FnMut(Step<'_>),
+    pull: bool,
+) {
+    let remote = row.meta.as_ref().map(|m| m.size);
+    let local = std::fs::metadata(storage.storage_dir().join(&row.path))
+        .map(|m| m.len())
+        .ok();
+    let size = if pull {
+        remote.or(local)
+    } else {
+        local.or(remote)
+    };
+    observer(Step::Started {
+        path: &row.path,
+        size: size.unwrap_or(0),
+    });
+}
+
+pub(super) fn build_item(
+    storage: &StorageManager,
+    row: &Row,
+    decision: Decision,
+    outcome: Outcome,
+) -> Item {
+    let local = std::fs::metadata(storage.storage_dir().join(&row.path))
+        .as_ref()
+        .map(std::fs::Metadata::len)
+        .ok();
+    let remote = row.meta.as_ref().map(|m| m.size);
+    Item {
+        path: row.path.clone(),
+        decision,
+        outcome,
+        size: local.or(remote).unwrap_or(0),
+        // a fallback id from the index is not a listed remote copy
+        on_remote: !matches!(row.input.remote, Remote::Absent | Remote::Deleted { .. }),
+        on_local: local.is_some(),
+        local_hash: hash_of(&row.input.local),
+        remote_hash: remote_hash_of(&row.input.remote),
+        remote_size: remote.unwrap_or(0),
+        remote_id: row.remote_id.clone(),
+        pending: row.pending,
+        duplicates: row.duplicates.clone(),
+    }
+}
+
 impl BackendEngine<'_> {
-    /// Tells the observer which session is about to move and how big it is.
     pub(super) fn started(&self, row: &Row, observer: &mut dyn FnMut(Step<'_>), pull: bool) {
-        let remote = row.meta.as_ref().map(|m| m.size);
-        let local = std::fs::metadata(self.storage.storage_dir().join(&row.path))
-            .map(|m| m.len())
-            .ok();
-        let size = if pull {
-            remote.or(local)
-        } else {
-            local.or(remote)
-        };
-        observer(Step::Started {
-            path: &row.path,
-            size: size.unwrap_or(0),
-        });
+        announce(self.storage, row, observer, pull);
     }
 
     pub(super) fn item(&self, row: &Row, decision: Decision, outcome: Outcome) -> Item {
-        let local = std::fs::metadata(self.storage.storage_dir().join(&row.path))
-            .as_ref()
-            .map(std::fs::Metadata::len)
-            .ok();
-        let remote = row.meta.as_ref().map(|m| m.size);
-        Item {
-            path: row.path.clone(),
-            decision,
-            outcome,
-            size: local.or(remote).unwrap_or(0),
-            // a fallback id from the index is not a listed remote copy
-            on_remote: row.input.remote != Remote::Absent,
-            on_local: local.is_some(),
-            local_hash: hash_of(&row.input.local),
-            remote_hash: remote_hash_of(&row.input.remote),
-            remote_size: remote.unwrap_or(0),
-            remote_id: row.remote_id.clone(),
-            pending: row.pending,
-            duplicates: row.duplicates.clone(),
-        }
+        build_item(self.storage, row, decision, outcome)
     }
 }

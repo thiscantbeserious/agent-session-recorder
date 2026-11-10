@@ -47,7 +47,7 @@ pub struct Duplicate {
     pub same_hash: bool,
 }
 
-fn row(path: &str, local: Local, index: &Index) -> Row {
+pub(super) fn row(path: &str, local: Local, index: &Index) -> Row {
     Row {
         path: path.to_string(),
         input: Input {
@@ -89,6 +89,20 @@ pub(super) fn scan_with(
     names: Option<&[String]>,
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<Vec<Row>> {
+    let mut rows = local_rows(storage, index, names, progress)?;
+    merge_remotes(&mut rows, key, remote, index);
+    fall_back_to_index(&mut rows, index);
+    Ok(rows.into_values().collect())
+}
+
+/// One row per local session, `names` limits which ones are hashed. `progress(done, total)` runs
+/// before the first and after every session.
+pub(super) fn local_rows(
+    storage: &StorageManager,
+    index: &Index,
+    names: Option<&[String]>,
+    progress: &mut dyn FnMut(usize, usize),
+) -> Result<BTreeMap<String, Row>> {
     let wanted: Option<BTreeSet<String>> =
         names.map(|n| n.iter().map(|name| wanted_path(storage, name)).collect());
     let mut rows = BTreeMap::new();
@@ -105,9 +119,7 @@ pub(super) fn scan_with(
         rows.insert(path.clone(), row(&path, local, index));
         progress(done + 1, total);
     }
-    merge_remotes(&mut rows, key, remote, index);
-    fall_back_to_index(&mut rows, index);
-    Ok(rows.into_values().collect())
+    Ok(rows)
 }
 
 fn local_state(session: &SessionInfo) -> Local {

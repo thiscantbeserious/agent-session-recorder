@@ -1,7 +1,14 @@
 //! Sync engine on a `Repo`, push, pull, delete and status against the merged pack view.
 
-use super::observe::Observer;
-use super::run::{Options, Report, SyncError};
+use super::item::{announce, build_item, passive};
+use super::lock::SyncLock;
+use super::observe::{counted, no_progress, Observer, Step};
+use super::pack_load::Loaded;
+use super::pack_pull::{needs_refresh, pull_one, refresh, PullFail};
+use super::plan::{decide, resolve, Command, Decision};
+use super::queue;
+use super::run::{Options, Outcome, Report, SyncError};
+use super::scan::Row;
 use crate::sync::crypto::Key;
 use crate::sync::store::PackStore;
 use crate::StorageManager;
@@ -33,54 +40,199 @@ impl<'a> Engine<'a> {
         }
     }
 
-    pub fn status(&self, _sessions: &[String]) -> Result<Report, SyncError> {
-        Ok(Report::default())
+    /// Decisions only, never changes anything.
+    pub fn status(&self, sessions: &[String]) -> Result<Report, SyncError> {
+        self.status_with(sessions, &mut no_progress)
     }
 
+    /// Like `status`, the observer gets the load events.
     pub fn status_with(
         &self,
-        _sessions: &[String],
-        _observer: &mut Observer<'_>,
+        sessions: &[String],
+        observer: &mut Observer<'_>,
     ) -> Result<Report, SyncError> {
-        Ok(Report::default())
+        let opts = Options {
+            dry_run: true,
+            sessions: sessions.to_vec(),
+            ..Options::default()
+        };
+        let mut report = self.sync(Command::Push, &opts, &mut counted(0, observer))?;
+        report.queued = queue::list(&self.storage.storage_dir()).len();
+        Ok(report)
     }
 
-    pub fn push(&self, _opts: &Options) -> Result<Report, SyncError> {
-        Ok(Report::default())
+    pub fn push(&self, opts: &Options) -> Result<Report, SyncError> {
+        self.sync(Command::Push, opts, &mut counted(0, &mut no_progress))
     }
 
-    pub fn pull(&self, _opts: &Options) -> Result<Report, SyncError> {
-        Ok(Report::default())
+    pub fn pull(&self, opts: &Options) -> Result<Report, SyncError> {
+        self.sync(Command::Pull, opts, &mut counted(0, &mut no_progress))
     }
 
+    /// Like `push`, `observer(item, i, total)` runs after each acted-on item, `i` counts from 1.
     pub fn push_with(
         &self,
-        _opts: &Options,
-        _total: usize,
-        _observer: &mut Observer<'_>,
+        opts: &Options,
+        total: usize,
+        observer: &mut Observer<'_>,
     ) -> Result<Report, SyncError> {
-        Ok(Report::default())
+        self.sync(Command::Push, opts, &mut counted(total, observer))
     }
 
     pub fn pull_with(
         &self,
-        _opts: &Options,
-        _total: usize,
-        _observer: &mut Observer<'_>,
+        opts: &Options,
+        total: usize,
+        observer: &mut Observer<'_>,
     ) -> Result<Report, SyncError> {
-        Ok(Report::default())
+        self.sync(Command::Pull, opts, &mut counted(total, observer))
     }
 
-    pub fn delete(&self, _sessions: &[String]) -> Result<Report, SyncError> {
-        Ok(Report::default())
-    }
-
-    pub fn delete_with(
+    /// The `--auto` run, see `queue::drain`.
+    pub fn drain_auto(
         &self,
-        _sessions: &[String],
-        _total: usize,
-        _observer: &mut Observer<'_>,
+        session: &str,
+        observer: &mut Observer<'_>,
     ) -> Result<Report, SyncError> {
-        Ok(Report::default())
+        queue::drain(self, session, observer)
+    }
+
+    fn sync(
+        &self,
+        command: Command,
+        opts: &Options,
+        observer: &mut dyn FnMut(Step<'_>),
+    ) -> Result<Report, SyncError> {
+        let _lock = if opts.dry_run {
+            None
+        } else {
+            Some(SyncLock::acquire(&self.storage.storage_dir())?)
+        };
+        self.sync_held(command, opts, observer)
+    }
+
+    /// `sync` for a caller that already holds the lock (or runs dry).
+    pub(super) fn sync_held(
+        &self,
+        command: Command,
+        opts: &Options,
+        observer: &mut dyn FnMut(Step<'_>),
+    ) -> Result<Report, SyncError> {
+        let mut loaded = self.load(&opts.sessions, observer)?;
+        let rows = std::mem::take(&mut loaded.rows);
+        match command {
+            Command::Push => self.push_rows(rows, opts, &mut loaded, observer)?,
+            Command::Pull => self.pull_rows(rows, opts, &mut loaded, observer)?,
+        }
+        if !opts.dry_run {
+            self.save(&loaded.index)?;
+        }
+        if command == Command::Push && !opts.dry_run {
+            let dir = self.storage.storage_dir();
+            loaded
+                .report
+                .items
+                .iter()
+                .for_each(|i| queue::settle(&dir, i));
+        }
+        Ok(loaded.report)
+    }
+
+    fn decide_row(&self, row: &Row, command: Command, opts: &Options) -> Decision {
+        resolve(decide(&row.input), command, opts.overwrite)
+    }
+
+    fn pull_rows(
+        &self,
+        rows: Vec<Row>,
+        opts: &Options,
+        loaded: &mut Loaded<'_>,
+        observer: &mut dyn FnMut(Step<'_>),
+    ) -> Result<(), SyncError> {
+        let mut rows = rows.into_iter();
+        while let Some(row) = rows.next() {
+            let decision = self.decide_row(&row, Command::Pull, opts);
+            let outcome = self.pull_step(&row, decision, opts, loaded, observer);
+            let outcome = outcome.map_err(|_| SyncError::RateLimited {
+                left: rows.len() + 1,
+            })?;
+            let item = build_item(self.storage, &row, decision, outcome);
+            observer(Step::Finished(&item));
+            loaded.report.add(Command::Pull, item);
+        }
+        Ok(())
+    }
+
+    fn pull_step(
+        &self,
+        row: &Row,
+        decision: Decision,
+        opts: &Options,
+        loaded: &mut Loaded<'_>,
+        observer: &mut dyn FnMut(Step<'_>),
+    ) -> Result<Outcome, PullFail> {
+        Ok(match decision {
+            Decision::Pull if opts.dry_run => Outcome::Planned,
+            Decision::Pull => {
+                announce(self.storage, row, observer, true);
+                match pull_one((&loaded.repo, self.storage), row, &mut loaded.index) {
+                    Ok(bytes) => Outcome::Done(bytes),
+                    Err(PullFail::Stop) => return Err(PullFail::Stop),
+                    Err(PullFail::Refused) => {
+                        loaded.report.refused.push(row.path.clone());
+                        Outcome::Failed(PullFail::Refused.text())
+                    }
+                    Err(other) => Outcome::Failed(other.text()),
+                }
+            }
+            Decision::InSync { .. } if !opts.dry_run => self.refresh_row(row, loaded),
+            other => passive(other),
+        })
+    }
+
+    /// Writes or drops the index entry of an in-sync row.
+    fn refresh_row(&self, row: &Row, loaded: &mut Loaded<'_>) -> Outcome {
+        if needs_refresh(self.storage, row, &loaded.index) {
+            refresh(self.storage, row, &mut loaded.index);
+        }
+        Outcome::Nothing
+    }
+
+    fn push_rows(
+        &self,
+        rows: Vec<Row>,
+        opts: &Options,
+        loaded: &mut Loaded<'_>,
+        observer: &mut dyn FnMut(Step<'_>),
+    ) -> Result<(), SyncError> {
+        let (mut batch, mut outcomes) = (Vec::new(), Vec::new());
+        for row in rows {
+            let decision = self.decide_row(&row, Command::Push, opts);
+            let outcome = match decision {
+                Decision::Push if opts.dry_run => Outcome::Planned,
+                Decision::Push => {
+                    announce(self.storage, &row, observer, false);
+                    let known = loaded.index.entries.get(&row.path).map_or(0, |e| e.gen);
+                    batch.push(self.push_item(&row, known));
+                    Outcome::Nothing
+                }
+                Decision::InSync { .. } if !opts.dry_run => self.refresh_row(&row, loaded),
+                other => passive(other),
+            };
+            outcomes.push((row, decision, outcome));
+        }
+        let pushed: Vec<&Row> = outcomes
+            .iter()
+            .filter(|(_, d, _)| *d == Decision::Push && !opts.dry_run)
+            .map(|(r, _, _)| r)
+            .collect();
+        let landed = self.push_batch(&batch, &pushed, loaded)?;
+        for (row, decision, planned) in outcomes {
+            let outcome = landed.get(&row.path).cloned().unwrap_or(planned);
+            let item = build_item(self.storage, &row, decision, outcome);
+            observer(Step::Finished(&item));
+            loaded.report.add(Command::Push, item);
+        }
+        Ok(())
     }
 }

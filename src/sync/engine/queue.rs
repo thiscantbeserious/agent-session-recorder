@@ -80,63 +80,96 @@ pub(super) fn settle(storage_dir: &Path, item: &Item) {
     }
 }
 
+/// What the auto drain needs from an engine, the old per-session one and the pack one.
+pub(super) trait Held {
+    fn storage_dir(&self) -> std::path::PathBuf;
+    /// One push round for `opts.sessions`, the caller holds the sync lock.
+    fn push_held(
+        &self,
+        opts: &Options,
+        observer: &mut dyn FnMut(Step<'_>),
+    ) -> Result<Report, SyncError>;
+}
+
+impl Held for BackendEngine<'_> {
+    fn storage_dir(&self) -> std::path::PathBuf {
+        self.storage.storage_dir()
+    }
+
+    fn push_held(
+        &self,
+        opts: &Options,
+        observer: &mut dyn FnMut(Step<'_>),
+    ) -> Result<Report, SyncError> {
+        self.sync_held(Command::Push, opts, observer)
+    }
+}
+
 impl BackendEngine<'_> {
-    /// The `--auto` run, pushes the queue plus the changed synced sessions, never pulls or
-    /// deletes. `Busy` when another sync holds the lock, the entry stays queued for the holder.
-    // No lost wakeup: a recording enqueues BEFORE it spawns its child. A child that finds the
-    // lock held exits quietly, so its entry is already on disk. The holder looks at the queue
-    // after every round while holding the lock (catches entries added mid-drain) and once more
-    // AFTER releasing it. A child that saw the lock held did so before the release, so its entry
-    // is on disk before that last look and gets seen. One that came later takes the lock itself.
-    // Entries that failed stay queued, `tried` keeps this run from looping on them.
+    /// The `--auto` run, see `drain`.
     pub fn drain_auto(
         &self,
         session: &str,
         observer: &mut Observer<'_>,
     ) -> Result<Report, SyncError> {
-        let dir = self.storage.storage_dir();
-        let mut observer = counted(0, observer);
-        let mut tried = BTreeSet::new();
-        let mut total = Report::default();
-        let mut next = vec![session.to_string()];
-        next.extend(index::maybe_changed(&dir, &index::load(&dir).0));
-        loop {
-            let lock = match SyncLock::acquire(&dir) {
-                Err(SyncError::Busy) if !tried.is_empty() => return Ok(total),
-                held => held?,
-            };
-            self.drain_held(&mut next, &mut tried, &mut total, &mut observer)?;
-            drop(lock);
-            next = list(&dir);
-            next.retain(|s| !tried.contains(s));
-            if next.is_empty() {
-                return Ok(total);
-            }
+        drain(self, session, observer)
+    }
+}
+
+/// The `--auto` run, pushes the queue plus the changed synced sessions, never pulls or
+/// deletes. `Busy` when another sync holds the lock, the entry stays queued for the holder.
+// No lost wakeup: a recording enqueues BEFORE it spawns its child. A child that finds the
+// lock held exits quietly, so its entry is already on disk. The holder looks at the queue
+// after every round while holding the lock (catches entries added mid-drain) and once more
+// AFTER releasing it. A child that saw the lock held did so before the release, so its entry
+// is on disk before that last look and gets seen. One that came later takes the lock itself.
+// Entries that failed stay queued, `tried` keeps this run from looping on them.
+pub(super) fn drain<E: Held + ?Sized>(
+    engine: &E,
+    session: &str,
+    observer: &mut Observer<'_>,
+) -> Result<Report, SyncError> {
+    let dir = engine.storage_dir();
+    let mut observer = counted(0, observer);
+    let mut tried = BTreeSet::new();
+    let mut total = Report::default();
+    let mut next = vec![session.to_string()];
+    next.extend(index::maybe_changed(&dir, &index::load(&dir).0));
+    loop {
+        let lock = match SyncLock::acquire(&dir) {
+            Err(SyncError::Busy) if !tried.is_empty() => return Ok(total),
+            held => held?,
+        };
+        drain_held(engine, &mut next, &mut tried, (&mut total, &mut observer))?;
+        drop(lock);
+        next = list(&dir);
+        next.retain(|s| !tried.contains(s));
+        if next.is_empty() {
+            return Ok(total);
         }
     }
+}
 
-    /// Push `next`, then whatever was queued meanwhile, until nothing untried is left.
-    fn drain_held(
-        &self,
-        next: &mut Vec<String>,
-        tried: &mut BTreeSet<String>,
-        total: &mut Report,
-        observer: &mut dyn FnMut(Step<'_>),
-    ) -> Result<(), SyncError> {
-        let dir = self.storage.storage_dir();
-        loop {
-            next.extend(list(&dir));
-            next.retain(|s| tried.insert(s.clone()));
-            if next.is_empty() {
-                return Ok(());
-            }
-            let sessions = std::mem::take(next);
-            let opts = Options {
-                sessions,
-                ..Options::default()
-            };
-            total.absorb(self.sync_held(Command::Push, &opts, observer)?);
+/// Push `next`, then whatever was queued meanwhile, until nothing untried is left.
+fn drain_held<E: Held + ?Sized>(
+    engine: &E,
+    next: &mut Vec<String>,
+    tried: &mut BTreeSet<String>,
+    (total, observer): (&mut Report, &mut dyn FnMut(Step<'_>)),
+) -> Result<(), SyncError> {
+    let dir = engine.storage_dir();
+    loop {
+        next.extend(list(&dir));
+        next.retain(|s| tried.insert(s.clone()));
+        if next.is_empty() {
+            return Ok(());
         }
+        let sessions = std::mem::take(next);
+        let opts = Options {
+            sessions,
+            ..Options::default()
+        };
+        total.absorb(engine.push_held(&opts, observer)?);
     }
 }
 

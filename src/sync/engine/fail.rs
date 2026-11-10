@@ -1,7 +1,8 @@
 //! Why one push or pull did not finish.
 
-use super::run::Outcome;
+use super::run::{Outcome, SyncError};
 use crate::sync::backend::BackendError;
+use crate::sync::store::StoreError;
 
 /// Error text for a `map_err`, instead of a closure per call site.
 pub(super) fn msg(e: impl std::fmt::Display) -> String {
@@ -56,3 +57,21 @@ impl Fail {
 /// Marker, the run ends with `SyncError::RateLimited`.
 #[derive(Debug)]
 pub(super) struct Stop;
+
+/// The tool, login and rate limit failures keep their hint lines in the app, the rest is text.
+pub fn backend_error(e: StoreError) -> BackendError {
+    match e {
+        StoreError::NotInstalled(tool) => BackendError::NotInstalled(tool),
+        StoreError::NotLoggedIn => BackendError::NotLoggedIn,
+        StoreError::MissingScope => BackendError::MissingScope,
+        StoreError::RateLimited => BackendError::RateLimited,
+        StoreError::NotFound => BackendError::NotFound,
+        StoreError::Unreachable(why) => BackendError::Unreachable(why),
+        other => BackendError::Other(other.to_string()),
+    }
+}
+
+/// A store failure that stops the whole run.
+pub(super) fn sync_error(e: StoreError) -> SyncError {
+    SyncError::Backend(backend_error(e))
+}

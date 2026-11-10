@@ -97,6 +97,35 @@ pub fn load(storage_dir: &Path) -> (Index, Option<String>) {
     }
 }
 
+/// The local index was written by the per-session engine, `agr sync migrate` converts it.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) struct IsV1;
+
+/// Like `load` for the pack engine: a missing or unreadable file is an empty v2 index, a v1 file
+/// is refused so nothing is planned against it.
+pub(super) fn load_v2(storage_dir: &Path) -> Result<(Index, Option<String>), IsV1> {
+    let (mut index, warning) = load(storage_dir);
+    if path_for(storage_dir).exists() && warning.is_none() && index.version < 2 {
+        return Err(IsV1);
+    }
+    index.version = 2;
+    Ok((index, warning))
+}
+
+/// The entry of a session the packs hold at `gen` with `sha256`, stamped from the local file.
+pub(super) fn record_synced(index: &mut Index, dir: &Path, path: &str, (sha256, gen): (&str, u64)) {
+    let (size, mtime_ns) = stamp(&dir.join(path));
+    let entry = IndexEntry {
+        sha256: sha256.to_string(),
+        synced_at: chrono::Utc::now().to_rfc3339(),
+        gen,
+        size,
+        mtime_ns,
+        ..IndexEntry::default()
+    };
+    index.entries.insert(path.to_string(), entry);
+}
+
 /// Save atomically.
 pub(super) fn save(storage_dir: &Path, index: &Index) -> Result<()> {
     let json = serde_json::to_string_pretty(index)?;
