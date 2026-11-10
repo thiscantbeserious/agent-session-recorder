@@ -94,6 +94,17 @@ pub fn read_returns_the_exact_range(store: &dyn PackStore) {
     assert_eq!(bytes, b"abcdefg"[2..6]);
 }
 
+pub fn zero_length_read_inside_a_part_is_empty(store: &dyn PackStore) {
+    let id = pack_with_abc(store);
+    let mut bytes = Vec::new();
+    store
+        .read(&id, 1, 0)
+        .expect("read")
+        .read_to_end(&mut bytes)
+        .expect("bytes");
+    assert!(bytes.is_empty(), "{bytes:?}");
+}
+
 pub fn read_past_end_is_reported_the_same_by_every_store(store: &dyn PackStore) {
     let id = pack_with_abc(store);
     for (offset, len) in [(0, 4), (3, 1), (10, 1), (u64::MAX, 2), (1, u64::MAX)] {
@@ -129,6 +140,7 @@ pub fn contract(store: &dyn PackStore) {
     append_is_all_or_nothing(store);
     segment_len_mismatch_is_rejected(store);
     read_returns_the_exact_range(store);
+    zero_length_read_inside_a_part_is_empty(store);
     read_past_end_is_reported_the_same_by_every_store(store);
     create_then_list_shows_len_zero_and_tag(store);
     delete_then_read_index_is_not_found(store);
@@ -145,6 +157,7 @@ macro_rules! contract_tests {
             append_is_all_or_nothing,
             segment_len_mismatch_is_rejected,
             read_returns_the_exact_range,
+            zero_length_read_inside_a_part_is_empty,
             read_past_end_is_reported_the_same_by_every_store,
             create_then_list_shows_len_zero_and_tag,
             delete_then_read_index_is_not_found
