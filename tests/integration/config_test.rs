@@ -311,3 +311,22 @@ mod state {
         assert_eq!(names, vec![std::ffi::OsString::from("state.toml")]);
     }
 }
+
+mod sync_defaults {
+    use agr::config::SyncBackendKind;
+    use agr::Config;
+
+    #[test]
+    fn sync_defaults_are_gist_and_auto_push_off() {
+        let sync = Config::default().sync;
+        assert_eq!(
+            (sync.backend, sync.auto_push),
+            (SyncBackendKind::Gist, false)
+        );
+        let parsed: Config = toml::from_str("[sync]\n").unwrap();
+        assert_eq!(
+            (parsed.sync.backend, parsed.sync.auto_push),
+            (SyncBackendKind::Gist, false)
+        );
+    }
+}
