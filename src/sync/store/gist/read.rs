@@ -15,16 +15,20 @@ use crate::sync::backend::gist::{io_result, strings};
 use crate::sync::backend::BackendError;
 
 /// `(part, first byte, last byte)` of every part the range `offset..offset + len` touches.
+/// The numbers come from the remote listing and the caller, so every sum is checked.
 pub(super) fn covering(
     parts: &[FileRef],
     offset: u64,
     len: u64,
 ) -> Result<Vec<(&FileRef, u64, u64)>, String> {
-    let (end, mut start, mut out) = (offset + len, 0, Vec::new());
+    let bad = || "the range does not fit the pack".to_string();
+    let end = offset.checked_add(len).ok_or_else(bad)?;
+    let (mut start, mut out) = (0u64, Vec::new());
     for part in parts {
-        let stop = start + part.size;
-        if start < end && stop > offset {
-            out.push((part, offset.max(start) - start, end.min(stop) - 1 - start));
+        let stop = start.checked_add(part.size).ok_or_else(bad)?;
+        if start < end && stop > offset && stop > start {
+            let last = end.min(stop) - 1 - start;
+            out.push((part, offset.max(start) - start, last));
         }
         start = stop;
     }
