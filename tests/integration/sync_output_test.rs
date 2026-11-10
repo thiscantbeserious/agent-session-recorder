@@ -1,0 +1,122 @@
+//! Output of every sync command goes through `sync::format`, tested once here: compact summary
+//! by default, the full list with `-v`, the loading and live line only on a terminal.
+
+use crate::helpers::pack_engine::{node, opts, Node, CAST};
+use agr::sync::format::{
+    compact_preview_lines, compact_status_lines, compact_summary_lines, preview_lines,
+    status_lines, Live,
+};
+use agr::sync::testing::MemoryStore;
+use agr::sync::{Key, Options, Report};
+use std::io::Write;
+use std::sync::{Arc, Mutex};
+
+const LOADING: &str = "Listing remote sessions...";
+
+fn thirty() -> Node {
+    let n = node();
+    for i in 0..30 {
+        n.session(
+            "claude",
+            &format!("s{i}.cast.gz"),
+            &CAST.replace("secret", &i.to_string()),
+        );
+    }
+    n
+}
+
+fn dry() -> Options {
+    Options {
+        dry_run: true,
+        ..opts()
+    }
+}
+
+fn listed(lines: &[String]) -> usize {
+    lines.iter().filter(|l| l.contains("claude/s")).count()
+}
+
+#[test]
+fn status_compact_and_full_list_with_v() {
+    let (n, store, key) = (thirty(), MemoryStore::new(), Key::generate());
+    let report = n.engine(&store, &key, "w1").status(&[]).unwrap();
+    let (short, long) = (
+        compact_status_lines(&report, "memory"),
+        status_lines(&report, "memory"),
+    );
+    assert!(short.len() < 10, "{short:?}");
+    assert_eq!(listed(&long), 30, "{long:?}");
+}
+
+#[test]
+fn push_and_pull_print_compact_summary_and_full_list_with_v() {
+    let (a, store, key) = (thirty(), MemoryStore::new(), Key::generate());
+    let plan = a.engine(&store, &key, "w1").push(&dry()).unwrap();
+    assert!(compact_preview_lines(&plan, "push").len() < 10);
+    assert_eq!(listed(&preview_lines(&plan, "push")), 30);
+    let done = a.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert!(compact_summary_lines(&done, "push").len() < 10);
+    let b = node();
+    let plan = b.engine(&store, &key, "w2").pull(&dry()).unwrap();
+    assert!(compact_preview_lines(&plan, "pull").len() < 10);
+    assert_eq!(listed(&preview_lines(&plan, "pull")), 30);
+}
+
+#[derive(Clone, Default)]
+struct Sink(Arc<Mutex<Vec<u8>>>);
+
+impl Write for Sink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Sink {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().unwrap()).into_owned()
+    }
+}
+
+/// Pushes 30 sessions through a `Live` with the given (tty, colour) flags, returns what it wrote.
+fn drawn(flags: (bool, bool)) -> (String, Report) {
+    let (n, store, key) = (thirty(), MemoryStore::new(), Key::generate());
+    let sink = Sink::default();
+    let live = Live::with("uploading", "pushed", flags, Box::new(sink.clone()));
+    let report = n
+        .engine(&store, &key, "w1")
+        .push_with(&opts(), 30, &mut live.observer())
+        .unwrap();
+    live.end();
+    (sink.text(), report)
+}
+
+#[test]
+fn loading_and_live_line_only_on_a_tty() {
+    let (tty_out, _) = drawn((true, false));
+    assert!(
+        tty_out.trim_start_matches('\r').starts_with(LOADING),
+        "{tty_out:?}"
+    );
+    let (plain_out, _) = drawn((false, false));
+    assert!(!plain_out.contains(LOADING), "{plain_out:?}");
+    assert!(plain_out.is_empty(), "{plain_out:?}");
+}
+
+#[test]
+fn no_color_gives_no_escape_and_no_token_text() {
+    let (plain, _) = drawn((true, false));
+    assert!(!plain.contains('\x1b'), "{plain:?}");
+    assert!(
+        !plain.contains("gho_") && !plain.contains("Token"),
+        "{plain:?}"
+    );
+    let (coloured, _) = drawn((true, true));
+    assert!(
+        coloured.contains('\x1b'),
+        "the colour flag must reach the final lines"
+    );
+}
