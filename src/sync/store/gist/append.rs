@@ -30,7 +30,6 @@ pub(super) struct Request<'a> {
     pub index: &'a str,
 }
 
-#[allow(dead_code)] // stub, the checks read every field
 /// The `index` blob and the data parts at HEAD of the clone.
 struct Head {
     index: String,
@@ -105,7 +104,7 @@ impl<R: Runner> GistStore<R> {
         let dir = cache.dir();
         self.sync_clone(cache, id)?;
         let head = self.read_head(dir)?;
-        if head.len != req.expected_len {
+        if head.len != req.expected_len || head.index != req.expected_index {
             return Err(StoreError::Moved(head.index));
         }
         self.write_parts(dir, &head.parts, req)?;
