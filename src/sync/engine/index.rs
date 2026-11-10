@@ -62,6 +62,9 @@ pub fn maybe_changed(storage_dir: &Path, index: &Index) -> Vec<String> {
 pub struct Index {
     pub version: u32,
     pub entries: BTreeMap<String, IndexEntry>,
+    /// Id of the open pack of this machine, the hint of the next `Repo::open`.
+    #[serde(default)]
+    pub open_pack: Option<String>,
 }
 
 impl Default for Index {
@@ -69,6 +72,7 @@ impl Default for Index {
         Self {
             version: 1,
             entries: BTreeMap::new(),
+            open_pack: None,
         }
     }
 }

@@ -24,6 +24,8 @@ pub enum SyncError {
     Busy,
     #[error(transparent)]
     Backend(#[from] BackendError),
+    #[error("run `agr sync migrate` first")]
+    NeedsMigrate,
     #[error("{0}")]
     Failed(String),
     /// GitHub reported a rate limit, `left` sessions were not done.
@@ -88,6 +90,10 @@ pub struct Report {
     pub warning: Option<String>,
     /// Sessions waiting in the auto push queue, only set by status.
     pub queued: usize,
+    /// Sessions with a fork in the merged view that this run pushed to.
+    pub forks: Vec<String>,
+    /// Sessions whose merged gen is below the last synced one, never pulled.
+    pub refused: Vec<String>,
 }
 
 /// BackendEngine over any backend, the key and the storage dir.

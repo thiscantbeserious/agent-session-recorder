@@ -109,3 +109,13 @@ pub fn raw_push(
     let mut repo = agr::sync::testing::Repo::open(store, key, writer, TARGET, None).unwrap();
     repo.push_batch(&[item]).unwrap();
 }
+
+/// Local index file of a node, `version` 1 as the per-session engine wrote it.
+pub fn write_v1_index(n: &Node) {
+    let json = r#"{"version":1,"entries":{}}"#;
+    fs::write(agr::sync::testing::index::path_for(n.dir()), json).unwrap();
+}
+
+pub fn index_of(n: &Node) -> agr::sync::testing::index::Index {
+    agr::sync::testing::index::load(n.dir()).0
+}
