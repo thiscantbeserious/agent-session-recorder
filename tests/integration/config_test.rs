@@ -330,3 +330,35 @@ mod sync_defaults {
         );
     }
 }
+
+mod pack_size {
+    use agr::Config;
+
+    #[test]
+    fn pack_size_mib_defaults_to_64() {
+        assert_eq!(Config::default().sync.pack_size_mib, 64);
+        let parsed: Config = toml::from_str("[sync]\n").unwrap();
+        assert_eq!(parsed.sync.pack_size_mib, 64);
+    }
+
+    fn load_with(mib: u64) -> anyhow::Result<Config> {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, format!("[sync]\npack_size_mib = {mib}\n")).unwrap();
+        Config::load_from(&path)
+    }
+
+    #[test]
+    fn pack_size_mib_out_of_range_is_a_clear_error() {
+        for mib in [8, 1024] {
+            let err = load_with(mib).unwrap_err();
+            let text = format!("{err:#}");
+            assert!(
+                text.contains("pack_size_mib must be between 16 and 512"),
+                "{mib}: {text}"
+            );
+        }
+        assert_eq!(load_with(16).unwrap().sync.pack_size_mib, 16);
+        assert_eq!(load_with(512).unwrap().sync.pack_size_mib, 512);
+    }
+}

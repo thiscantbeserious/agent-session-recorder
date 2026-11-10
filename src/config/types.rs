@@ -53,6 +53,9 @@ pub struct SyncConfig {
     /// Push new sessions automatically after recording (unless the backend is `off`).
     #[serde(default = "default_auto_push")]
     pub auto_push: bool,
+    /// Target size of one pack in MiB, 16 to 512.
+    #[serde(default = "default_pack_size_mib")]
+    pub pack_size_mib: u64,
 }
 
 /// Remote backend for session sync.
@@ -71,11 +74,16 @@ pub fn default_auto_push() -> bool {
     false
 }
 
+pub fn default_pack_size_mib() -> u64 {
+    0
+}
+
 impl Default for SyncConfig {
     fn default() -> Self {
         Self {
             backend: default_backend(),
             auto_push: default_auto_push(),
+            pack_size_mib: default_pack_size_mib(),
         }
     }
 }
