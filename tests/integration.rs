@@ -218,3 +218,9 @@ mod sync_multi_machine_test;
 
 #[path = "integration/sync_queue_test.rs"]
 mod sync_queue_test;
+
+#[path = "integration/analyze_options_test.rs"]
+mod analyze_options_test;
+
+#[path = "integration/analyze_rename_test.rs"]
+mod analyze_rename_test;

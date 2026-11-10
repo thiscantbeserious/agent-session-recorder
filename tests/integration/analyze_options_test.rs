@@ -1,7 +1,9 @@
-//! Unit tests for the analyze command handler (private helpers).
+//! Tests for the analyze option builders.
 
-use super::*;
+use agr::analyzer::options::{apply_agent_config, build_analyze_options, parse_agent_type};
+use agr::analyzer::{AgentType, AnalyzeOptions};
 use agr::config::{AgentAnalysisConfig, AnalysisConfig};
+use agr::Config;
 
 // ---- parse_agent_type ----
 
