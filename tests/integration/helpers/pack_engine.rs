@@ -82,3 +82,30 @@ pub fn three(n: &Node) {
     n.session("claude", "b.cast.gz", &CAST.replace("secret", "other"));
     n.session("codex", "c.cast.gz", &CAST.replace("secret", "third"));
 }
+
+/// Gen and tombstone flag of `path` in the merged view, plus the paths that are forks.
+pub fn merged(store: &dyn PackStore, key: &Key, path: &str) -> (Option<(u64, bool)>, Vec<String>) {
+    let repo = agr::sync::testing::Repo::open(store, key, "reader", TARGET, None).unwrap();
+    let at = repo.view().get(path).map(|m| (m.gen, m.is_deleted()));
+    (at, repo.view().forks().to_vec())
+}
+
+/// A raw one-session push of `text` at `gen` by `writer`, bypassing the engine.
+pub fn raw_push(
+    store: &dyn PackStore,
+    key: &Key,
+    writer: &str,
+    (path, gen): (&str, u64),
+    text: &str,
+) {
+    let dir = TempDir::new().unwrap();
+    let file = dir.path().join("raw");
+    fs::write(&file, text).unwrap();
+    let item = agr::sync::testing::PushItem {
+        path: path.to_string(),
+        gen,
+        file,
+    };
+    let mut repo = agr::sync::testing::Repo::open(store, key, writer, TARGET, None).unwrap();
+    repo.push_batch(&[item]).unwrap();
+}
