@@ -1,8 +1,7 @@
 //! The cached clone of the own open pack (branch C).
 
-use super::append_tests::{append, Rig};
-use super::cache::pack_dir;
-use super::{PackStore, StoreError};
+use crate::helpers::gist_rig::{append, Rig};
+use agr::sync::testing::{pack_dir, GistStore, PackStore, StoreError};
 
 #[test]
 fn cached_clone_is_reused_across_appends() {
@@ -125,9 +124,9 @@ fn cache_dir_is_0700_on_unix() {
 fn with_cache_dir_moves_every_cache_file() {
     // A run with a temp cache dir must not read or write the user's real cache.
     let root = std::path::PathBuf::from("tmp-root");
-    let store = super::GistStore::new().with_cache_dir(root.clone());
+    let store = GistStore::new().with_cache_dir(root.clone());
     assert_eq!(
-        store.cache_file.as_deref(),
+        store.cache_file(),
         Some(root.join("agr").join("index-cache.json").as_path())
     );
 }

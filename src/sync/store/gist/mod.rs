@@ -3,19 +3,11 @@
 
 mod api;
 mod append;
-#[cfg(test)]
-mod append_tests;
 mod cache;
-#[cfg(test)]
-mod cache_tests;
-#[cfg(test)]
-mod fake_remote;
 mod index_cache;
 mod last_push;
 mod layout;
 mod read;
-#[cfg(test)]
-mod tests;
 
 use std::collections::HashMap;
 use std::io::Read;

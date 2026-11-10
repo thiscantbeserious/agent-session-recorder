@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use super::{GistStore, PackStore, StoreError};
-use crate::sync::backend::gist::fake::{fail, ok, Fake};
+use crate::helpers::gist_store_fake::{fail, ok, Fake};
+use agr::sync::testing::{GistStore, PackStore, StoreError};
 
 /// One gist of a listing page, files are `(name, size)`.
 fn gist(id: &str, desc: &str, updated: &str, files: &[(&str, u64)]) -> serde_json::Value {
@@ -374,11 +374,10 @@ fn index_length_mismatch_is_an_error() {
 
 #[test]
 fn covering_with_overflowing_range_is_an_error() {
-    let part = super::api::FileRef {
-        name: "data.000".into(),
-        size: 100,
-        raw_url: "u".into(),
-    };
-    assert!(super::read::covering(std::slice::from_ref(&part), u64::MAX, 2).is_err());
-    assert!(super::read::covering(&[part], 1, u64::MAX).is_err());
+    let fake = Fake::with(vec![ok(&pages(&[vec![three_parts()]]))]);
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(&fake, dir.path());
+    store.list().unwrap();
+    assert!(store.read("a", u64::MAX, 2).is_err());
+    assert!(store.read("a", 1, u64::MAX).is_err());
 }

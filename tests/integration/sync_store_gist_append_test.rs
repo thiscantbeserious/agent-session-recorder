@@ -1,107 +1,9 @@
 //! Append of the gist store over the in-memory gist remote, nothing here reaches GitHub.
 
-use std::io::{self, Write};
-use std::path::PathBuf;
-use std::rc::Rc;
+use crate::helpers::gist_rig::{append, Rig, TickClock};
+use agr::sync::testing::{Clock, ClockError, PackStore, StoreError};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-use super::cache::pack_dir;
-use super::fake_remote::FakeRemote;
-use super::{GistStore, PackStore, Segment, StoreError};
-use crate::sync::backend::gist::pace::{Clock, ClockError};
-
-/// One store over its own fake remote, clock and cache dir.
-pub(super) struct Rig {
-    pub remote: Rc<FakeRemote>,
-    pub clock: Arc<TickClock>,
-    pub root: tempfile::TempDir,
-    base: tempfile::TempDir,
-}
-
-impl Rig {
-    pub(super) fn new() -> Self {
-        Self {
-            remote: FakeRemote::new(),
-            clock: Arc::new(TickClock::new()),
-            root: tempfile::tempdir().unwrap(),
-            base: tempfile::tempdir().unwrap(),
-        }
-    }
-
-    /// A store of its own (fresh pacer) on the shared remote, clock and cache dir.
-    pub(super) fn store(&self) -> GistStore<Rc<FakeRemote>> {
-        let runner = Rc::clone(&self.remote);
-        GistStore::with_runner(runner, self.base.path().to_path_buf(), None)
-            .with_cache_dir(self.root.path().to_path_buf())
-            .with_clock(self.clock.clone())
-    }
-
-    pub(super) fn clone_dir(&self, id: &str) -> PathBuf {
-        pack_dir(self.root.path(), id).unwrap()
-    }
-
-    /// Calls that run git or gh with `word` as one of their arguments.
-    pub(super) fn count(&self, word: &str) -> usize {
-        let calls = self.remote.calls();
-        calls
-            .iter()
-            .filter(|c| format!("{c} ").contains(&format!(" {word} ")))
-            .count()
-    }
-}
-
-pub(super) fn put(data: &'static [u8]) -> impl Fn(&mut dyn Write) -> io::Result<()> {
-    move |w| w.write_all(data)
-}
-
-/// Appends `data` as one segment.
-pub(super) fn append(
-    store: &GistStore<Rc<FakeRemote>>,
-    id: &str,
-    (len, index): (u64, &str),
-    (data, next): (&'static [u8], &str),
-) -> Result<(), StoreError> {
-    let w = put(data);
-    let segs = [Segment {
-        len: data.len() as u64,
-        write: &w,
-    }];
-    store.append(id, len, index, &segs, next)
-}
-
-/// Test clock where monotonic and unix time are one value, `sleep` moves it and is recorded.
-pub(super) struct TickClock(Mutex<(Duration, Vec<Duration>)>);
-
-impl TickClock {
-    fn new() -> Self {
-        Self(Mutex::new((Duration::from_secs(1_000), Vec::new())))
-    }
-
-    pub(super) fn advance(&self, by: Duration) {
-        self.0.lock().unwrap().0 += by;
-    }
-
-    pub(super) fn slept(&self) -> Vec<Duration> {
-        self.0.lock().unwrap().1.clone()
-    }
-}
-
-impl Clock for TickClock {
-    fn mono(&self) -> Duration {
-        self.0.lock().unwrap().0
-    }
-
-    fn unix_secs(&self) -> Result<u64, ClockError> {
-        Ok(self.mono().as_secs())
-    }
-
-    fn sleep(&self, time: Duration) {
-        let mut state = self.0.lock().unwrap();
-        state.0 += time;
-        state.1.push(time);
-    }
-}
 
 const PARTS: [(&str, &[u8]); 2] = [("data.000", b"abc"), ("data.001", b"def")];
 
@@ -247,16 +149,6 @@ fn pace_write_failure_after_push_is_not_an_append_error() {
     let res = append(&store, &id, (0, "i0"), (b"abc", "i1"));
     assert!(res.is_ok(), "{res:?}");
     assert_eq!(rig.remote.push_changes().len(), 1);
-}
-
-mod contract {
-    use super::{FakeRemote, GistStore, Rc, Rig};
-
-    contract_tests!(|| {
-        let rig = Rig::new();
-        let store: GistStore<Rc<FakeRemote>> = rig.store();
-        (store, rig)
-    });
 }
 
 #[test]

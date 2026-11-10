@@ -2,7 +2,7 @@
 
 use std::io::{self, Read, Write};
 
-use super::{PackStore, Segment, StoreError};
+use agr::sync::testing::{PackStore, Segment, StoreError};
 
 fn put(data: &'static [u8]) -> impl Fn(&mut dyn Write) -> io::Result<()> {
     move |w| w.write_all(data)
@@ -147,6 +147,7 @@ pub fn contract(store: &dyn PackStore) {
 }
 
 /// One `#[test]` per check for a store made by `$make`, which returns `(store, guard)`.
+#[allow(unused_macros)]
 macro_rules! contract_tests {
     ($make:expr) => {
         contract_tests!(@each $make;
@@ -165,7 +166,7 @@ macro_rules! contract_tests {
         #[test]
         fn passes_the_contract() {
             let (store, _guard) = ($make)();
-            $crate::sync::store::contract::contract(&store);
+            $crate::helpers::store_contract::contract(&store);
         }
     };
     (@each $make:expr; $($name:ident),*) => {
@@ -173,7 +174,7 @@ macro_rules! contract_tests {
             #[test]
             fn $name() {
                 let (store, _guard) = ($make)();
-                $crate::sync::store::contract::$name(&store);
+                $crate::helpers::store_contract::$name(&store);
             }
         )*
     };

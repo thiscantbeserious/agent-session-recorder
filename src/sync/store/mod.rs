@@ -3,9 +3,6 @@
 use std::fmt;
 use std::io::Read;
 
-#[cfg(test)]
-#[macro_use]
-mod contract;
 pub(super) mod dir;
 pub(super) mod gist;
 pub(super) mod memory;

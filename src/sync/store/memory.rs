@@ -286,8 +286,6 @@ mod tests {
     use super::{MemoryStore, PackStore, Segment};
     use std::io::Write;
 
-    contract_tests!(|| (MemoryStore::new(), ()));
-
     #[test]
     fn memory_fits_false_when_slots_run_out() {
         let store = MemoryStore::with_slots(2);

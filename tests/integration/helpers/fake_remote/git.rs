@@ -5,10 +5,10 @@ use std::io::{Error, ErrorKind, Result};
 use std::path::{Path, PathBuf};
 
 use super::{elsewhere, out, Checkout, FakeRemote, Files, State};
-use crate::sync::backend::gist::runner::Output;
+use agr::sync::testing::Output;
 
 /// The git subcommand, the `-c key=value` pairs in front of it skipped.
-pub(super) fn git_verb(args: &[String]) -> &str {
+pub fn git_verb(args: &[String]) -> &str {
     let mut rest = args.iter().map(String::as_str);
     while let Some(arg) = rest.next() {
         match arg {
@@ -20,7 +20,7 @@ pub(super) fn git_verb(args: &[String]) -> &str {
     ""
 }
 
-pub(super) fn changed(old: &Files, new: &Files) -> Vec<String> {
+pub fn changed(old: &Files, new: &Files) -> Vec<String> {
     let names = old.keys().chain(new.keys());
     let names = names.filter(|n| old.get(*n) != new.get(*n)).cloned();
     names.collect::<BTreeSet<_>>().into_iter().collect()
@@ -60,7 +60,7 @@ fn update(dir: &Path, files: &Files) {
 }
 
 impl FakeRemote {
-    pub(super) fn git(&self, args: &[String], cwd: Option<&Path>) -> Result<Output> {
+    pub fn git(&self, args: &[String], cwd: Option<&Path>) -> Result<Output> {
         let verb = git_verb(args);
         let mut state = self.state.borrow_mut();
         let dir = cwd.map(Path::to_path_buf);

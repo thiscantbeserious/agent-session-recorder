@@ -286,11 +286,6 @@ mod tests {
     use std::io::{self, Write};
     use std::path::Path;
 
-    contract_tests!(|| {
-        let dir = tempfile::tempdir().expect("tempdir");
-        (DirStore::new(dir.path()), dir)
-    });
-
     /// `exists` follows the link and says no, `create_dir` says AlreadyExists, as a racing writer would.
     #[cfg(unix)]
     #[test]

@@ -1,5 +1,6 @@
 //! Integration tests for AGR library modules
 
+#[macro_use]
 #[path = "integration/helpers/mod.rs"]
 pub mod helpers;
 
@@ -254,3 +255,15 @@ mod sync_pack_repo_retry_test;
 
 #[path = "integration/sync_pack_repo_session_test.rs"]
 mod sync_pack_repo_session_test;
+
+#[path = "integration/sync_store_contract_test.rs"]
+mod sync_store_contract_test;
+
+#[path = "integration/sync_store_gist_test.rs"]
+mod sync_store_gist_test;
+
+#[path = "integration/sync_store_gist_append_test.rs"]
+mod sync_store_gist_append_test;
+
+#[path = "integration/sync_store_gist_cache_test.rs"]
+mod sync_store_gist_cache_test;

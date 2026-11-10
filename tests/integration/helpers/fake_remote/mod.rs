@@ -8,11 +8,11 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use self::git::git_verb;
-use crate::sync::backend::gist::runner::{Output, Runner};
+use agr::sync::testing::{Output, Runner};
 
 mod git;
 
-pub(crate) type Files = BTreeMap<String, Vec<u8>>;
+pub type Files = BTreeMap<String, Vec<u8>>;
 
 #[derive(Default)]
 struct Gist {
@@ -44,14 +44,24 @@ struct State {
 
 type Race = Box<dyn FnOnce(&mut Files)>;
 
-/// Shared handle: the store owns one `Rc`, the test keeps another to look inside.
+/// Shared handle: the store owns one, the test keeps another to look inside.
+#[derive(Clone, Default)]
+pub struct Handle(Rc<FakeRemote>);
+
+impl std::ops::Deref for Handle {
+    type Target = FakeRemote;
+    fn deref(&self) -> &FakeRemote {
+        &self.0
+    }
+}
+
 #[derive(Default)]
-pub(crate) struct FakeRemote {
+pub struct FakeRemote {
     state: RefCell<State>,
     calls: RefCell<Vec<String>>,
 }
 
-pub(crate) fn out(code: i32, stdout: &str, stderr: &str) -> Result<Output> {
+pub fn out(code: i32, stdout: &str, stderr: &str) -> Result<Output> {
     Ok(Output {
         code: Some(code),
         stdout: stdout.into(),
@@ -67,11 +77,12 @@ fn elsewhere(gist: &mut Gist, edit: impl FnOnce(&mut Files)) {
 }
 
 impl FakeRemote {
-    pub(crate) fn new() -> Rc<Self> {
-        Rc::new(Self::default())
+    #[allow(clippy::new_ret_no_self)]
+    pub fn new() -> Handle {
+        Handle(Rc::new(Self::default()))
     }
 
-    pub(crate) fn calls(&self) -> Vec<String> {
+    pub fn calls(&self) -> Vec<String> {
         self.calls.borrow().clone()
     }
 
@@ -81,12 +92,12 @@ impl FakeRemote {
             .push(format!("{program} {}", args.join(" ")));
     }
 
-    pub(crate) fn clear_calls(&self) {
+    pub fn clear_calls(&self) {
         self.calls.borrow_mut().clear();
     }
 
     /// A pack gist with `index` and the given data parts, returns its id.
-    pub(crate) fn seed(&self, index: &str, parts: &[(&str, &[u8])]) -> String {
+    pub fn seed(&self, index: &str, parts: &[(&str, &[u8])]) -> String {
         let mut files = Files::from([("index".to_string(), index.as_bytes().to_vec())]);
         files.extend(parts.iter().map(|(n, b)| (n.to_string(), b.to_vec())));
         self.add("agr:v2 TAG", files)
@@ -102,17 +113,17 @@ impl FakeRemote {
     }
 
     /// Makes every `git <verb>` of a clone fail, `clone` or `fetch`.
-    pub(crate) fn fail(&self, verb: &'static str) {
+    pub fn fail(&self, verb: &'static str) {
         self.state.borrow_mut().failing.push(verb);
     }
 
     /// Another machine commits `edit` right before the next push of a clone.
-    pub(crate) fn race_on_push(&self, edit: impl FnOnce(&mut Files) + 'static) {
+    pub fn race_on_push(&self, edit: impl FnOnce(&mut Files) + 'static) {
         self.state.borrow_mut().race = Some(Box::new(edit));
     }
 
     /// A commit in the clone at `dir` that never reached the remote, a kill between commit and push.
-    pub(crate) fn commit_unpushed(&self, dir: &Path, index: &str) {
+    pub fn commit_unpushed(&self, dir: &Path, index: &str) {
         let mut state = self.state.borrow_mut();
         let c = state.clones.get_mut(dir).unwrap();
         let mut files = c.local.last().cloned().unwrap_or_default();
@@ -135,17 +146,17 @@ impl FakeRemote {
     }
 
     /// Names changed by every commit a clone made.
-    pub(crate) fn commit_changes(&self) -> Vec<Vec<String>> {
+    pub fn commit_changes(&self) -> Vec<Vec<String>> {
         self.state.borrow().commits.clone()
     }
 
     /// Names changed by every accepted push, what travelled to the remote.
-    pub(crate) fn push_changes(&self) -> Vec<Vec<String>> {
+    pub fn push_changes(&self) -> Vec<Vec<String>> {
         self.state.borrow().pushes.clone()
     }
 
     /// Another machine's commit on the gist, `edit` changes the head files.
-    pub(crate) fn commit_elsewhere(&self, id: &str, edit: impl FnOnce(&mut Files)) {
+    pub fn commit_elsewhere(&self, id: &str, edit: impl FnOnce(&mut Files)) {
         elsewhere(self.state.borrow_mut().gists.get_mut(id).unwrap(), edit);
     }
 
@@ -220,7 +231,7 @@ impl FakeRemote {
     }
 }
 
-impl Runner for Rc<FakeRemote> {
+impl Runner for Handle {
     fn run(
         &self,
         program: &str,
