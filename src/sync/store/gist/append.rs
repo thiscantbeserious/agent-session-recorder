@@ -46,7 +46,6 @@ fn other(e: impl std::fmt::Display) -> StoreError {
 impl<R: Runner> GistStore<R> {
     pub(super) fn append_pack(&self, id: &str, req: &Request) -> Result<(), StoreError> {
         let cache = self.pack_cache(id)?;
-        cache.remove_others();
         let res = self.append_in(&cache, id, req);
         if res.is_err() {
             // Any failure can leave the clone ahead of the remote or dirty, the next append clones again.

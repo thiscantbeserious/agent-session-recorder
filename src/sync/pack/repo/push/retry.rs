@@ -28,6 +28,14 @@ impl Repo<'_> {
         pack: &OpenPack,
         batch: &Batch,
     ) -> Result<OpenPack, StoreError> {
+        let next = self.append_retrying(pack, batch)?;
+        if next.index.sealed {
+            self.store.sealed(&next.id);
+        }
+        Ok(next)
+    }
+
+    fn append_retrying(&self, pack: &OpenPack, batch: &Batch) -> Result<OpenPack, StoreError> {
         let current = match self.append_once(pack, batch) {
             Err(StoreError::Moved(current)) => current,
             other => return other,

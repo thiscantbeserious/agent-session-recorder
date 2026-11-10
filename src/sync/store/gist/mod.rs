@@ -143,7 +143,9 @@ impl<R: Runner> PackStore for GistStore<R> {
         layout::cut_parts(lens).len()
     }
 
-    fn sealed(&self, _id: &str) {}
+    fn sealed(&self, id: &str) {
+        self.forget_clone(id);
+    }
 
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError> {
         self.read_range(id, offset, len)

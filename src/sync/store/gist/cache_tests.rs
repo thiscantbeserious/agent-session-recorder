@@ -23,7 +23,8 @@ fn cached_clone_removed_on_seal() {
     let store = rig.store();
     append(&store, &old, (0, "i0"), (b"abc", "i1")).unwrap();
     assert!(rig.clone_dir(&old).exists());
-    // The pack is sealed, the next append goes to the new open pack and the old clone goes.
+    // The pack is sealed, the pack layer says so and the old clone goes, the next one stays.
+    store.sealed(&old);
     append(&store, &next, (0, "j0"), (b"abc", "j1")).unwrap();
     assert!(!rig.clone_dir(&old).exists());
     assert!(rig.clone_dir(&next).exists());
@@ -118,23 +119,6 @@ fn cache_dir_is_0700_on_unix() {
         let mode = std::fs::metadata(dir).unwrap().permissions().mode();
         assert_eq!(mode & 0o777, 0o700, "{dir:?}");
     }
-}
-
-#[test]
-fn remove_others_keeps_foreign_dirs() {
-    let rig = Rig::new();
-    let cache = rig.store().pack_cache("abc1").unwrap();
-    let packs = cache.dir().parent().unwrap().to_path_buf();
-    let foreign = packs.join("notes");
-    let no_git = packs.join("beef");
-    let other_clone = packs.join("cafe");
-    for dir in [&foreign, &no_git, &other_clone.join(".git")] {
-        std::fs::create_dir_all(dir).unwrap();
-    }
-    cache.remove_others();
-    assert!(foreign.exists());
-    assert!(no_git.exists());
-    assert!(!other_clone.exists());
 }
 
 #[test]
