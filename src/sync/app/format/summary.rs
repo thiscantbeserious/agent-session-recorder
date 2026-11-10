@@ -56,13 +56,20 @@ pub fn problem_lines(report: &Report) -> Vec<String> {
     lines
 }
 
+fn sessions(n: usize) -> String {
+    format!("{n} session{}", if n == 1 { "" } else { "s" })
+}
+
 /// Remote copies `agr sync delete` would remove.
 pub fn delete_preview_lines(report: &Report) -> Vec<String> {
     let remote: Vec<&Item> = report.items.iter().filter(|i| i.on_remote).collect();
     if remote.is_empty() {
         return vec!["Nothing to delete.".into()];
     }
-    let mut lines = vec![format!("Would delete {} remote session(s)", remote.len())];
+    let mut lines = vec![format!(
+        "Would delete {} from the remote",
+        sessions(remote.len())
+    )];
     lines.extend(remote.iter().map(|i| format!("  {}", i.path)));
     lines.push("A later `agr sync push` uploads the session again.".into());
     lines
@@ -276,7 +283,10 @@ mod tests {
             local_only,
         ]);
         let text = delete_preview_lines(&r).join("\n");
-        assert!(text.contains("Would delete 1 remote session(s)"), "{text}");
+        assert!(
+            text.contains("Would delete 1 session from the remote"),
+            "{text}"
+        );
         assert!(text.contains("a/r.cast.gz"), "{text}");
         assert!(!text.contains("a/l.cast.gz"), "{text}");
         assert_eq!(

@@ -4,6 +4,7 @@ use anyhow::Result;
 
 use agr::cli::SyncCommands;
 
+mod delete;
 mod key;
 mod run;
 
@@ -44,16 +45,17 @@ pub fn handle(cmd: SyncCommands) -> Result<()> {
         }),
         SyncCommands::Delete {
             sessions,
-            all: _,
-            force: _,
+            all,
+            force,
             dry_run,
             yes,
             verbose,
-        } => run::delete(run::Args {
-            sessions,
+        } => delete::delete(&delete::Args {
+            patterns: sessions,
+            all,
+            force,
             dry_run,
             yes,
-            overwrite: false,
             verbose,
         }),
         SyncCommands::Key(cmd) => key::handle(cmd),

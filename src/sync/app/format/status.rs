@@ -321,7 +321,10 @@ mod tests {
             item("a/y.cast.gz", sync(), Outcome::Nothing),
         ]);
         let text = compact_delete_preview_lines(&r).join("\n");
-        assert!(text.contains("Would delete 2 remote session(s)"), "{text}");
+        assert!(
+            text.contains("Would delete 2 sessions from the remote"),
+            "{text}"
+        );
         assert!(text.contains("agr sync delete -v"), "{text}");
         assert!(!text.contains("a/x.cast.gz"), "{text}");
         assert!(delete_preview_lines(&r)

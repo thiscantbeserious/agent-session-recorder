@@ -1,4 +1,4 @@
-//! status, push, pull and delete, thin layer over `agr::sync::Engine`.
+//! status, push and pull, thin layer over `agr::sync::Engine`.
 
 use anyhow::Result;
 
@@ -26,22 +26,22 @@ pub struct Args {
 }
 
 /// Everything a command needs after the preconditions passed.
-struct Ctx {
-    store: Box<dyn PackStore>,
-    storage: StorageManager,
-    key: KeyState,
-    writer: String,
-    target: u64,
+pub(super) struct Ctx {
+    pub store: Box<dyn PackStore>,
+    pub storage: StorageManager,
+    pub key: KeyState,
+    pub writer: String,
+    pub target: u64,
 }
 
 impl Ctx {
-    fn engine(&self) -> Engine<'_> {
+    pub fn engine(&self) -> Engine<'_> {
         let (store, key) = (self.store.as_ref(), self.key.key());
         Engine::new(store, key, &self.storage, &self.writer, self.target)
     }
 }
 
-fn say(lines: &[String]) {
+pub(super) fn say(lines: &[String]) {
     let theme = current_theme();
     for line in lines {
         let failing = ["Failed", "Warning", "Conflicts"]
@@ -57,7 +57,7 @@ fn say(lines: &[String]) {
 }
 
 /// Print an error line and an optional hint on stderr, then exit non-zero.
-fn abort(message: &str, hint: Option<&str>) -> ! {
+pub(super) fn abort(message: &str, hint: Option<&str>) -> ! {
     let theme = current_theme();
     eprintln!("{}", theme.error_text(message));
     if let Some(hint) = hint {
@@ -127,7 +127,7 @@ fn try_prepare(
     })
 }
 
-fn prepare(need: KeyNeed) -> Result<Ctx> {
+pub(super) fn prepare(need: KeyNeed) -> Result<Ctx> {
     prepare_with(need, None)
 }
 
@@ -136,7 +136,7 @@ fn prepare_with(need: KeyNeed, progress: Option<ProgressSink>) -> Result<Ctx> {
         .unwrap_or_else(|Failure(message, hint)| abort(&message, hint.as_deref())))
 }
 
-fn engine_failed(e: SyncError) -> ! {
+pub(super) fn engine_failed(e: SyncError) -> ! {
     match e {
         SyncError::Busy => abort("Another sync is running, try again in a moment.", None),
         SyncError::Backend(e) => {
@@ -274,46 +274,8 @@ pub fn pull(args: Args) -> Result<()> {
     finish(result, "pull", args.verbose)
 }
 
-pub fn delete(args: Args) -> Result<()> {
-    let ctx = prepare(KeyNeed::Existing)?;
-    let load = Live::stderr("", "deleted");
-    let plan = ctx
-        .engine()
-        .status_with(&args.sessions, &mut load.loader())
-        .unwrap_or_else(|e| engine_failed(e));
-    load.end();
-    say(&if args.verbose {
-        format::delete_preview_lines(&plan)
-    } else {
-        format::compact_delete_preview_lines(&plan)
-    });
-    if args.dry_run || !plan.items.iter().any(|i| i.on_remote) {
-        return Ok(());
-    }
-    if !should_proceed(
-        "Delete these remote sessions? The local files stay.",
-        args.yes,
-    )? {
-        say(&["No changes made.".to_string()]);
-        return Ok(());
-    }
-    keep_writer(&ctx.writer)?;
-    let total = plan
-        .items
-        .iter()
-        .filter(|i| i.outcome != Outcome::Failed("no such session".into()))
-        .count();
-    let live = Live::stderr("", "deleted");
-    let mut observer = live.observer();
-    let result = ctx
-        .engine()
-        .delete_with(&args.sessions, total, &mut observer);
-    live.end();
-    finish(result, "delete", args.verbose)
-}
-
 /// Sessions that get a progress line in a real run, planned, skipped and failed ones.
-fn planned(plan: &Report) -> usize {
+pub(super) fn planned(plan: &Report) -> usize {
     let lined = |i: &&Item| {
         matches!(
             i.outcome,
@@ -342,7 +304,7 @@ fn push_auto(args: &Args) -> Result<()> {
 }
 
 /// Print the summary, exit non-zero when any session failed.
-fn finish(result: Result<Report, SyncError>, verb: &str, verbose: bool) -> Result<()> {
+pub(super) fn finish(result: Result<Report, SyncError>, verb: &str, verbose: bool) -> Result<()> {
     let report = result.unwrap_or_else(|e| engine_failed(e));
     say(&if verbose {
         format::summary_lines(&report)

@@ -6,6 +6,11 @@ use anyhow::Result;
 
 use agr::theme::current_theme;
 
+/// Stdin is a terminal. `AGR_ASSUME_TTY` makes the prompts read piped stdin, for the CLI tests.
+pub fn stdin_is_tty() -> bool {
+    io::IsTerminal::is_terminal(&io::stdin()) || std::env::var_os("AGR_ASSUME_TTY").is_some()
+}
+
 /// Determine whether to proceed with the operation.
 ///
 /// If `auto_confirm` is true (--yes flag), returns true immediately.
@@ -19,7 +24,7 @@ pub fn should_proceed(message: &str, auto_confirm: bool) -> Result<bool> {
     let theme = current_theme();
 
     // Check if stdin is a TTY - if not, skip prompt and return false
-    if !io::IsTerminal::is_terminal(&io::stdin()) {
+    if !stdin_is_tty() {
         println!(
             "{}",
             theme.secondary_text("Non-interactive mode: use --yes to apply changes automatically")

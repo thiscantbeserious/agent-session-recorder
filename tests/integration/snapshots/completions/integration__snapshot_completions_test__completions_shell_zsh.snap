@@ -562,6 +562,8 @@ _arguments "${_arguments_options[@]}" : \
 ;;
 (delete)
 _arguments "${_arguments_options[@]}" : \
+'()--all[Delete every remote session]' \
+'--force[Allow more than 10 deletes without a terminal]' \
 '--dry-run[Show what would happen, change nothing]' \
 '-y[Skip the confirmation prompt]' \
 '--yes[Skip the confirmation prompt]' \
@@ -569,7 +571,7 @@ _arguments "${_arguments_options[@]}" : \
 '--verbose[List every session, not only the summary]' \
 '-h[Print help (see more with '\''--help'\'')]' \
 '--help[Print help (see more with '\''--help'\'')]' \
-'*::sessions -- Sessions to delete from the remote:_default' \
+'*::sessions -- Patterns with * and ?, e.g. claude/*:_default' \
 && ret=0
 ;;
 (key)
