@@ -3,7 +3,6 @@
 use std::fs::{self, File};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-#[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
@@ -26,9 +25,8 @@ struct Manifest {
 /// and by routing every manifest write through `write_manifest`, `write_synced` and `sync_dir`.
 pub struct DirStore {
     root: PathBuf,
-    #[cfg(test)]
+    // Fault hooks for the integration tests, off until a test calls the matching method.
     crash_before_manifest: AtomicBool,
-    #[cfg(test)]
     crash_before_rename: AtomicBool,
 }
 
@@ -93,22 +91,20 @@ impl DirStore {
     pub fn new(root: &Path) -> Self {
         Self {
             root: root.to_path_buf(),
-            #[cfg(test)]
             crash_before_manifest: AtomicBool::new(false),
-            #[cfg(test)]
             crash_before_rename: AtomicBool::new(false),
         }
     }
 
     /// The next manifest write fails after `manifest.tmp` is written, before the rename.
-    #[cfg(test)]
-    fn crash_before_rename(&self) {
+    #[doc(hidden)]
+    pub fn crash_before_rename(&self) {
         self.crash_before_rename.store(true, Ordering::SeqCst);
     }
 
     /// The next append writes its part file and then fails before the manifest is renamed.
-    #[cfg(test)]
-    fn crash_before_manifest(&self) {
+    #[doc(hidden)]
+    pub fn crash_before_manifest(&self) {
         self.crash_before_manifest.store(true, Ordering::SeqCst);
     }
 
@@ -122,7 +118,6 @@ impl DirStore {
         let tmp = dir.join("manifest.tmp");
         let text = serde_json::to_string(m).map_err(|e| StoreError::Other(e.to_string()))?;
         write_synced(&tmp, text.as_bytes()).map_err(io_err)?;
-        #[cfg(test)]
         if self.crash_before_rename.swap(false, Ordering::SeqCst) {
             return Err(StoreError::Other("crash before rename".into()));
         }
@@ -245,7 +240,6 @@ impl PackStore for DirStore {
             m.len += self.write_part(id, &name, segments)?;
             m.parts.push(name);
         }
-        #[cfg(test)]
         if self.crash_before_manifest.swap(false, Ordering::SeqCst) {
             return Err(StoreError::Other("crash before manifest".into()));
         }

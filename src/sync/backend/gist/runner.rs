@@ -151,7 +151,9 @@ impl Runner for ProcessRunner {
     }
 }
 
-fn spawn(
+/// Spawns `program` with piped output, for the runner tests only.
+#[doc(hidden)]
+pub fn spawn(
     program: &str,
     args: &[String],
     cwd: Option<&Path>,
@@ -176,7 +178,8 @@ fn spawn(
 /// Drain both pipes in threads that stamp every read, kill the child once nothing was read
 /// for `stall`. New stderr bytes go to `on_line` on every poll and once more after the exit.
 /// With a `sink` stdout is written into it as it arrives and the output text stays empty.
-fn watch_child(
+#[doc(hidden)]
+pub fn watch_child(
     mut child: Child,
     program: &str,
     stall: Duration,
@@ -344,9 +347,6 @@ mod lines_tests {
         assert_eq!(cut(&[&bytes[..1], &bytes[1..]]), ["ä"]);
     }
 }
-
-#[cfg(all(test, unix))]
-mod tests;
 
 #[cfg(test)]
 mod drain_tests {

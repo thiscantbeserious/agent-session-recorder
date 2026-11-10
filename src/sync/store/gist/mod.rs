@@ -24,6 +24,8 @@ use std::sync::{Arc, Mutex};
 
 use self::api::Seen;
 use self::append::Request;
+#[doc(hidden)]
+pub use self::cache::pack_dir;
 use super::{Listing, PackInfo, PackStore, Segment, StoreError};
 use crate::sync::backend::gist::pace::{Clock, Pacer, SystemClock};
 use crate::sync::backend::gist::runner::{ProcessRunner, Runner};
@@ -81,17 +83,23 @@ impl<R: Runner> GistStore<R> {
         self
     }
 
+    /// Where the index cache file lives, `None` means no cache.
+    #[doc(hidden)]
+    pub fn cache_file(&self) -> Option<&std::path::Path> {
+        self.cache_file.as_deref()
+    }
+
     /// Replace the clock, pacing and commit dates both follow it.
-    #[cfg(test)]
-    pub(super) fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
+    #[doc(hidden)]
+    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
         self.pacer = Mutex::new(Pacer::new(clock.clone()));
         self.clock = clock;
         self
     }
 
     /// Report the percent of the push of every append to `sink`.
-    #[cfg(test)]
-    pub(super) fn with_progress(mut self, sink: ProgressSink) -> Self {
+    #[doc(hidden)]
+    pub fn with_progress(mut self, sink: ProgressSink) -> Self {
         self.progress = Some(sink);
         self
     }

@@ -19,10 +19,15 @@ pub use engine::scan::Duplicate;
 /// Internals for the integration tests, not a stable API.
 #[doc(hidden)]
 pub mod testing {
+    pub use crate::sync::backend::gist::pace::{Clock, ClockError};
+    pub use crate::sync::backend::gist::runner::{
+        spawn, watch_child, Output, ProcessRunner, Runner,
+    };
     pub use crate::sync::backend::gist::GistBackend;
     pub use crate::sync::backend::memory::MemoryBackend;
     pub use crate::sync::backend::{pull_bytes, push_bytes};
     pub use crate::sync::crypto::blob::{open_stream, seal_stream, BlobError};
+    pub use crate::sync::crypto::CryptoError;
     pub use crate::sync::crypto::{open_meta, seal, seal_meta, sha256_hex, Meta};
     pub use crate::sync::engine::index;
     pub use crate::sync::engine::plan::{decide, resolve, Command, Remote};
@@ -31,14 +36,16 @@ pub mod testing {
     pub use crate::sync::pack::index::{
         new_pack_uuid, open_index, seal_index, Entry, Index, IndexError,
     };
+    pub use crate::sync::pack::merge::{merge, PackIn, Rejected, Top};
     pub use crate::sync::pack::repo::{
         read_pack, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo, RepoError,
     };
     pub use crate::sync::pack::rules::{
         pack_size, place, should_seal, should_seal_index, PackSizeError, Place,
     };
+    pub use crate::sync::pack::stream::{open_range, segment, RangeError};
     pub use crate::sync::store::dir::DirStore;
-    pub use crate::sync::store::gist::GistStore;
+    pub use crate::sync::store::gist::{pack_dir, GistStore};
     pub use crate::sync::store::memory::MemoryStore;
     pub use crate::sync::store::{Listing, PackInfo, PackStore, Segment, StoreError};
 }

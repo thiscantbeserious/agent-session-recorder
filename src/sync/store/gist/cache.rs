@@ -11,7 +11,7 @@ use crate::sync::backend::gist::runner::Runner;
 
 /// The clone dir of `id` under `root`. The gist id is the one outside input in the path, so it
 /// must be hex before it is joined.
-pub(super) fn pack_dir(root: &Path, id: &str) -> Result<PathBuf, StoreError> {
+pub fn pack_dir(root: &Path, id: &str) -> Result<PathBuf, StoreError> {
     if id.is_empty() || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(StoreError::Other("the pack id is not a gist id".into()));
     }

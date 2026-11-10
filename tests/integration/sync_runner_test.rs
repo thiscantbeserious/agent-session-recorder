@@ -1,9 +1,13 @@
-use super::{spawn, watch_child, ProcessRunner, Runner};
+//! Process runner against real `sh`, unix only
+
+#![cfg(unix)]
+
+use agr::sync::testing::{spawn, watch_child, Output, ProcessRunner, Runner};
 use std::io::ErrorKind;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-fn sh(stall_ms: u64, script: &str) -> (std::io::Result<super::Output>, Duration) {
+fn sh(stall_ms: u64, script: &str) -> (std::io::Result<Output>, Duration) {
     let runner = ProcessRunner {
         stall: Duration::from_millis(stall_ms),
     };
@@ -110,8 +114,8 @@ impl Runner for TextOnly {
         _: &[String],
         _: Option<&Path>,
         _: &[(&str, String)],
-    ) -> std::io::Result<super::Output> {
-        Ok(super::Output {
+    ) -> std::io::Result<Output> {
+        Ok(Output {
             code: Some(0),
             stdout: "lossy".into(),
             stderr: String::new(),
