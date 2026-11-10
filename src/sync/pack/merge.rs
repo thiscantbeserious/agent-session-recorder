@@ -185,7 +185,7 @@ fn duplicates(packs: &[&PackIn], view: &mut View) {
                 view.duplicates.push((a.to_string(), b.to_string()));
             }
         }
-        view.frozen.extend(ids.iter().map(|id| id.to_string()));
+        view.frozen.extend(ids.iter().map(ToString::to_string));
     }
 }
 
