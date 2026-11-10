@@ -105,6 +105,9 @@ impl<R: Runner> GistStore<R> {
         let dir = cache.dir();
         self.sync_clone(cache, id)?;
         let head = self.read_head(dir)?;
+        if head.len != req.expected_len {
+            return Err(StoreError::Moved(head.index));
+        }
         self.write_parts(dir, &head.parts, req)?;
         self.commit(dir)?;
         self.push(dir, id)
