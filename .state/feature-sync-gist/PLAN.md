@@ -1235,7 +1235,7 @@ PR: C
   - `auto_push_on_fresh_machine_with_v1_gists_does_nothing` [`assert_eq!(appends, 0)` and `assert_eq!(queue.len(), 1)` with no local index and one `agr:v1` gist of our key on the store, the stub drains and pushes gen 1]
 - [x] RED commit: `n_parallel_recordings_pushed_exactly_once` (P13): 8 threads finish a recording each while a drain runs on a `MemoryStore`, afterwards the merged view has all 8 paths, every path has exactly one entry at gen 1 and the queue is empty [`assert_eq!(view.len(), 8)`, the stub drain takes the queue once and drops what arrives during the round].
 - [x] GREEN commit.
-- [x] Pacing across processes: the drain already runs under `SyncLock` (`engine/queue.rs`), so only one auto push process appends at a time, and the persisted last push time of Stage 53 (`last_push.rs`) makes the next process wait the rest of the 10 s. No new code here, `pacing_holds_across_processes` (Stage 53) covers it.
+- [x] Pacing across processes: the drain already runs under `SyncLock` (`engine/queue.rs`), so only one auto push process appends at a time, and the persisted last push time of Stage 53 (`last_push.rs`) makes the next process wait the rest of the 10 s. No new code here, `pacing_is_shared_through_the_pace_file` (`tests/integration/sync_store_gist_append_test.rs`, Stage 53) covers the shared pace file, but within one process only (two stores, one pace file), the cross process part rests on `SyncLock`.
 - [x] Probe dependency: no code difference here. Cost per round is a fetch of the cached clone (branch C) plus the listing with index cache hits (Stage 52).
 
 Files: `src/sync/app/auto/mod.rs`, `src/sync/app/auto/child.rs`, `src/sync/engine/queue.rs`, `src/recording/auto_push.rs`, `tests/integration/sync_queue_test.rs`
@@ -1244,6 +1244,16 @@ Depends on: Stage 54
 Considerations: `child.rs` 317 and `auto/mod.rs` 330 lines today, new logic goes into the engine batch call, not into these files.
 
 **Done 2026-11-10, deviations**: Stage 54 already moved the drain onto `Engine` (`Held for Engine`, one `push_held` append per round), as such every RED passed on arrival and was committed as one `(guard)` commit, no GREEN and no code change in `queue.rs`, `auto/mod.rs`, `auto/child.rs` or `recording/auto_push.rs`. The tests sit in a `packs` module of `sync_queue_test.rs`. `n_parallel_recordings_pushed_exactly_once` loops 30 rounds, one round did not catch a drain that drops entries arriving mid-round.
+
+Guard flips, observed failure per test:
+- `ten_queued_sessions_are_one_append`: per-session drain, appends left 10 right 1.
+- `burst_during_drain_lands_in_the_next_round_together`: same flip, left 6 right 2. Queue cleared per round instead of per drain, left 1 right 2.
+- `single_recording_is_pushed_without_waiting`: `push_held` skipped, left 0 right 1.
+- `auto_push_on_v1_index_does_nothing_and_hints_migrate`: `load_v2` falls back to default, migrate-hint assert fails.
+- `auto_push_on_fresh_machine_with_v1_gists_does_nothing`: legacy check disabled, migrate-hint assert fails.
+- `n_parallel_recordings_pushed_exactly_once`: mid-round re-list removed, view count left 1 right 8.
+
+**Review fixes 2026-11-10**: the parallel test failed about 2 in 24 runs with a failed index rename. Cause: `SyncLock` `create` wrote its temp as `path.with_extension("tmp{pid}")`, one name for all threads of a process, and `holder_alive` returned false when the lock could not be read, so a live lock was removed as stale. Fix: temp name unique per call, an unreadable or empty lock counts as held, a lock that vanished between create and read is retried. RED `an_unreadable_lock_is_busy_and_stays`. Guard `a_failed_index_save_after_a_landed_append_does_not_push_twice` (append lands, index save fails, next run pushes zero appends), flip: attach of the remote view removed, appends left 2 right 1.
 
 ### Stage 56: Status and output
 
