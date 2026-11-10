@@ -234,3 +234,26 @@ mod contract {
         (store, rig)
     });
 }
+
+#[test]
+fn sealing_drops_the_clone_at_once() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &[]);
+    let store = rig.store();
+    append(&store, &id, (0, "i0"), (b"abc", "i1")).unwrap();
+    assert!(rig.clone_dir(&id).exists());
+    store.sealed(&id);
+    assert!(!rig.clone_dir(&id).exists());
+}
+
+#[test]
+fn big_session_pack_does_not_evict_the_open_clone() {
+    let rig = Rig::new();
+    let (open, big) = (rig.remote.seed("i0", &[]), rig.remote.seed("j0", &[]));
+    let store = rig.store();
+    append(&store, &open, (0, "i0"), (b"abc", "i1")).unwrap();
+    append(&store, &big, (0, "j0"), (b"xyz", "j1")).unwrap();
+    store.sealed(&big);
+    assert!(rig.clone_dir(&open).exists());
+    assert!(!rig.clone_dir(&big).exists());
+}

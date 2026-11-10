@@ -257,6 +257,10 @@ impl PackStore for MemoryStore {
         Ok(Box::new(head.chain(Dies)))
     }
 
+    fn sealed(&self, id: &str) {
+        self.lock().sealed.push(id.to_string());
+    }
+
     fn delete(&self, id: &str) -> Result<(), StoreError> {
         self.lock()
             .packs

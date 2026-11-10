@@ -120,6 +120,9 @@ pub trait PackStore {
     fn files_for(&self, lens: &[u64]) -> usize {
         lens.len()
     }
+    /// The pack layer sealed the pack, no append will follow. A store that keeps a working copy
+    /// of the open pack drops it here.
+    fn sealed(&self, _id: &str) {}
     /// Streams the logical range `offset..offset + len` of the pack.
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError>;
     fn delete(&self, id: &str) -> Result<(), StoreError>;

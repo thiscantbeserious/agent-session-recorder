@@ -39,3 +39,19 @@ fn no_file_slot_left_seals_with_zero_byte_append() {
     assert_eq!(old.len, before.len);
     assert!(index_of(&store, &key, &old).sealed);
 }
+
+#[test]
+fn every_sealing_append_signals_the_store() {
+    let (store, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let mut repo = repo(&store, &key, "w1");
+    repo.push_batch(&[item(dir.path(), "a", 1, b"x")]).unwrap();
+    assert!(store.sealed_ids().is_empty());
+    let big = vec![1u8; super::tests::TARGET as usize + 1];
+    repo.push_batch(&[item(dir.path(), "big", 1, &big)])
+        .unwrap();
+    assert_eq!(store.sealed_ids(), vec![packs_of(&store)[1].id.clone()]);
+}
