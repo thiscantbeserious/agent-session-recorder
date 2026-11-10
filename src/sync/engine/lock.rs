@@ -18,8 +18,10 @@ impl SyncLock {
         if create(&path)? {
             return Ok(Self(path));
         }
-        if holder_alive(&path) {
-            return Err(SyncError::Busy);
+        match holder(&path) {
+            Holder::Gone => return Self::acquire(storage_dir),
+            Holder::Alive => return Err(SyncError::Busy),
+            Holder::Dead => {}
         }
         // ponytail: two runs can both see a stale holder, one removes the other's fresh lock
         // between our check and our remove. Window is microseconds and needs a dead pid
@@ -54,7 +56,10 @@ fn create_with(
         started: chrono::Utc::now().to_rfc3339(),
     };
     let json = serde_json::to_string(&info).unwrap_or_default();
-    let tmp = path.with_extension(format!("tmp{}", info.pid));
+    // Unique per call, threads share the pid and a shared temp would share the lock's inode.
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_extension(format!("tmp{}-{n}", info.pid));
     std::fs::write(&tmp, &json).map_err(fail)?;
     let linked = link(&tmp, path);
     let _ = std::fs::remove_file(&tmp);
@@ -79,13 +84,25 @@ fn create_new(path: &Path, json: &str) -> std::io::Result<bool> {
     }
 }
 
-/// An empty file is a lock written by an older build that is still writing, so it counts.
-fn holder_alive(path: &Path) -> bool {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return false;
-    };
-    text.is_empty()
-        || serde_json::from_str::<LockInfo>(&text).is_ok_and(|info| is_pid_alive(info.pid))
+enum Holder {
+    Alive,
+    Dead,
+    /// Released between our failed create and our read, just try again.
+    Gone,
+}
+
+/// Only a readable lock of a dead pid is stale. Empty (still being written) or unreadable
+/// counts as held, so a lock is never removed under a live holder.
+fn holder(path: &Path) -> Holder {
+    match std::fs::read_to_string(path) {
+        Err(e) if e.kind() == ErrorKind::NotFound => Holder::Gone,
+        Err(_) => Holder::Alive,
+        Ok(text) if text.is_empty() => Holder::Alive,
+        Ok(text) => match serde_json::from_str::<LockInfo>(&text) {
+            Ok(info) if !is_pid_alive(info.pid) => Holder::Dead,
+            _ => Holder::Alive,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -98,7 +115,7 @@ mod tests {
         let path = dir.path().join(LOCK_FILE);
         let no_links = |_: &Path, _: &Path| Err(std::io::Error::from(ErrorKind::Unsupported));
         assert!(matches!(create_with(&path, no_links), Ok(true)));
-        assert!(holder_alive(&path));
+        assert!(matches!(holder(&path), Holder::Alive));
         assert!(matches!(create_with(&path, no_links), Ok(false)));
     }
 
@@ -120,7 +137,7 @@ mod tests {
         let path = dir.path().join(LOCK_FILE);
         std::fs::write(&path, r#"{"pid":4294967,"started":"x"}"#).unwrap();
         let lock = SyncLock::acquire(dir.path()).unwrap();
-        assert!(holder_alive(&path));
+        assert!(matches!(holder(&path), Holder::Alive));
         drop(lock);
         assert!(!path.exists());
     }
