@@ -37,6 +37,11 @@ sync_session() {
     printf '{"version":3,"term":{"cols":80,"rows":24}}\n[0.5,"o","%s"]\n' "$4" | gzip -n > "$1/sessions/$2/$3"
 }
 
+# synced_count: sessions of machine A that status reports as in sync with the remote
+synced_count() {
+    sync_agr "$HOME_A" status -v 2>/dev/null | grep -c "in sync" || true
+}
+
 sync_setup "$HOME_A"
 sync_setup "$HOME_B"
 sync_session "$HOME_A" claude one.cast.gz "hello from one"
@@ -44,7 +49,7 @@ sync_session "$HOME_A" claude one.cast.gz "hello from one"
 test_header "no TTY without --yes changes nothing"
 OUT=$(sync_agr "$HOME_A" push 2>&1) || true
 if echo "$OUT" | grep -q "No changes made" && [[ ! -f "$HOME_A/.config/agr/sync.key" ]] \
-   && ! ls "$SYNC_REMOTE"/*.blob >/dev/null 2>&1; then
+   && [[ -z "$(find "$SYNC_REMOTE" -type f 2>/dev/null)" ]]; then
     pass "push without --yes aborted, no key, nothing uploaded"
 else
     fail "push without --yes changed something: $OUT"
@@ -60,7 +65,7 @@ fi
 
 test_header "first push shows the privacy notice and uploads ciphertext"
 OUT=$(sync_agr "$HOME_A" push --yes 2>&1)
-BLOB=$(ls "$SYNC_REMOTE"/*.blob 2>/dev/null | head -1)
+BLOB=$(find "$SYNC_REMOTE" -name "part.000000" 2>/dev/null | head -1)
 if echo "$OUT" | grep -q "anyone with the link" && echo "$OUT" | grep -q "Pushed: 1" \
    && [[ -f "$HOME_A/.config/agr/sync.key" ]] && grep -q "sync_privacy_ack = true" "$HOME_A/.config/agr/state.toml" \
    && [[ -n "$BLOB" ]] && ! grep -aq "hello from one" "$BLOB"; then
@@ -109,8 +114,8 @@ fi
 
 test_header "delete removes the remote copy and keeps the local file"
 sync_agr "$HOME_A" delete --yes claude/one.cast.gz >/dev/null 2>&1
-if ! ls "$SYNC_REMOTE"/*.blob >/dev/null 2>&1 && [[ -f "$HOME_A/sessions/claude/one.cast.gz" ]]; then
-    pass "remote gone, local kept"
+if sync_agr "$HOME_A" status -v 2>&1 | grep -q "deleted on the remote" && [[ -f "$HOME_A/sessions/claude/one.cast.gz" ]]; then
+    pass "remote tombstoned, local kept"
 else
     fail "delete wrong"
 fi
@@ -119,11 +124,11 @@ test_header "auto push after a recording"
 sync_agr "$HOME_A" push --yes >/dev/null 2>&1
 mkdir -p "$SYNC_ROOT/fakebin"
 for tool in gh git; do printf '#!/bin/sh\nexit 0\n' > "$SYNC_ROOT/fakebin/$tool"; chmod +x "$SYNC_ROOT/fakebin/$tool"; done
-BEFORE=$(ls "$SYNC_REMOTE"/*.blob 2>/dev/null | wc -l | tr -d ' ')
+BEFORE=$(synced_count)
 HOME="$HOME_A" XDG_CONFIG_HOME="$HOME_A/.config" PATH="$SYNC_ROOT/fakebin:$PATH" \
     AGR_SYNC_TEST_BACKEND_DIR="$SYNC_REMOTE" "$AGR" record echo -- "auto push me" </dev/null >/dev/null 2>&1 && RC=0 || RC=$?
 for _ in $(seq 1 50); do
-    AFTER=$(ls "$SYNC_REMOTE"/*.blob 2>/dev/null | wc -l | tr -d ' ')
+    AFTER=$(synced_count)
     [[ "$AFTER" -gt "$BEFORE" ]] && break
     sleep 0.2
 done
@@ -134,7 +139,7 @@ else
 fi
 
 test_header "three recordings finishing at once are all pushed"
-BEFORE=$(ls "$SYNC_REMOTE"/*.blob 2>/dev/null | wc -l | tr -d ' ')
+BEFORE=$(synced_count)
 for n in 1 2 3; do
     HOME="$HOME_A" XDG_CONFIG_HOME="$HOME_A/.config" PATH="$SYNC_ROOT/fakebin:$PATH" \
         AGR_SYNC_TEST_BACKEND_DIR="$SYNC_REMOTE" "$AGR" record echo -- "burst $n" </dev/null >/dev/null 2>&1 &
@@ -142,7 +147,7 @@ done
 wait
 # polling with a timeout, 15 s at most
 for _ in $(seq 1 75); do
-    AFTER=$(ls "$SYNC_REMOTE"/*.blob 2>/dev/null | wc -l | tr -d ' ')
+    AFTER=$(synced_count)
     [[ "$AFTER" -ge $((BEFORE + 3)) ]] && break
     sleep 0.2
 done
@@ -154,11 +159,11 @@ fi
 
 test_header "auto push off keeps the session local"
 sed -i.bak 's/^auto_push = true/auto_push = false/' "$HOME_A/.config/agr/config.toml"
-BEFORE=$(ls "$SYNC_REMOTE"/*.blob | wc -l | tr -d ' ')
+BEFORE=$(synced_count)
 HOME="$HOME_A" XDG_CONFIG_HOME="$HOME_A/.config" PATH="$SYNC_ROOT/fakebin:$PATH" \
     AGR_SYNC_TEST_BACKEND_DIR="$SYNC_REMOTE" "$AGR" record echo -- "stay local" </dev/null >/dev/null 2>&1 || true
 sleep 1
-AFTER=$(ls "$SYNC_REMOTE"/*.blob | wc -l | tr -d ' ')
+AFTER=$(synced_count)
 if [[ "$AFTER" -eq "$BEFORE" ]]; then
     pass "no upload with auto_push = false"
 else
