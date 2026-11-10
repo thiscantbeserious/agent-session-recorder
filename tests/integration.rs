@@ -336,3 +336,6 @@ mod tui_list_app_render_test;
 
 #[path = "integration/tui_list_app_test.rs"]
 mod tui_list_app_test;
+
+#[path = "integration/sync_select_test.rs"]
+mod sync_select_test;

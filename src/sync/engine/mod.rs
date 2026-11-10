@@ -17,3 +17,4 @@ mod record;
 mod remote;
 pub(super) mod run;
 pub(super) mod scan;
+pub mod select;
