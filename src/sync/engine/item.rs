@@ -43,6 +43,7 @@ pub(super) fn passive(decision: Decision) -> Outcome {
         Decision::OtherKey => Outcome::Skipped("sealed with another key".into()),
         Decision::UnknownVersion => Outcome::Skipped("unknown remote version".into()),
         Decision::Duplicate => Outcome::Skipped("duplicate remote copies".into()),
+        Decision::Fork => Outcome::Skipped("fork, run `agr sync push --overwrite`".into()),
         _ => Outcome::Nothing,
     }
 }
@@ -96,6 +97,7 @@ pub(super) fn skip_text(reason: SkipReason) -> &'static str {
         SkipReason::OverCap => "over the 1 GiB limit",
         SkipReason::Unreadable => "cannot read the file",
         SkipReason::NotFound => "no such session",
+        SkipReason::DeletedOnRemote => "deleted on the remote",
     }
 }
 

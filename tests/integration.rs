@@ -205,6 +205,9 @@ mod cli_color_test;
 #[path = "integration/sync_engine_test.rs"]
 mod sync_engine_test;
 
+#[path = "integration/sync_plan_test.rs"]
+mod sync_plan_test;
+
 #[path = "integration/sync_index_fields_test.rs"]
 mod sync_index_fields_test;
 

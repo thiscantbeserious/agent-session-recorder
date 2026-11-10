@@ -40,7 +40,7 @@ pub fn label(item: &Item) -> &'static str {
         Decision::Pull if item.on_local => ORDER[3],
         Decision::Pull => ORDER[4],
         Decision::Conflict => ORDER[5],
-        Decision::Duplicate => ORDER[6],
+        Decision::Duplicate | Decision::Fork => ORDER[6],
         Decision::OtherKey | Decision::UnknownVersion | Decision::Skip(_) => ORDER[7],
     }
 }

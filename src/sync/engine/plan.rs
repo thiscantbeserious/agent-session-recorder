@@ -10,6 +10,8 @@ pub enum SkipReason {
     Unreadable,
     /// A requested session name matched nothing.
     NotFound,
+    /// The remote holds a tombstone, only `push --overwrite` restores it.
+    DeletedOnRemote,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +29,12 @@ pub enum Remote {
     UnknownVersion,
     /// Several remote entries for one path with different content.
     Duplicate,
+    /// A tombstone at the top gen of the merged view.
+    Deleted {
+        gen: u64,
+    },
+    /// Several hashes at the top gen of the merged view.
+    Fork,
 }
 
 /// Facts about one `agent/name.cast.gz` path.
@@ -47,6 +55,8 @@ pub enum Decision {
     Push,
     Pull,
     Conflict,
+    /// Several versions at the top gen, resolved only by `push --overwrite`.
+    Fork,
     OtherKey,
     UnknownVersion,
     /// Never acted on, also not with `--overwrite`.
@@ -68,11 +78,12 @@ pub fn decide(input: &Input) -> Decision {
         (_, Remote::OtherKey) => Decision::OtherKey,
         (_, Remote::UnknownVersion) => Decision::UnknownVersion,
         (_, Remote::Duplicate) => Decision::Duplicate,
-        (Local::Absent, Remote::Absent) => Decision::InSync {
+        (_, Remote::Fork) => Decision::Fork,
+        (Local::Absent, Remote::Absent | Remote::Deleted { .. }) => Decision::InSync {
             refresh_index: false,
         },
         (Local::Absent, Remote::Hash(_)) => Decision::Pull,
-        (Local::Hash(_), Remote::Absent) => Decision::Push,
+        (Local::Hash(_), Remote::Absent | Remote::Deleted { .. }) => Decision::Push,
         (Local::Hash(l), Remote::Hash(r)) => compare(l, r, input.last.as_deref()),
     }
 }
