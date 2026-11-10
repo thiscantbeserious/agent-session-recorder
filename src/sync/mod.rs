@@ -282,4 +282,19 @@ mod layer_check {
         let v = violations("store/x.rs", "use crate::sync::crypto::Key;");
         assert_eq!(v.len(), 1, "{v:?}");
     }
+
+    #[test]
+    fn violations_flags_pack_naming_backend() {
+        let v = violations("pack/x.rs", "use crate::sync::backend::BlobSource;");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
+
+    #[test]
+    fn violations_flags_pack_production_naming_testing() {
+        let src = "use crate::sync::testing::MemoryStore;";
+        assert_eq!(violations("pack/repo/push.rs", src).len(), 1);
+        assert!(violations("pack/repo/tests_dir.rs", src).is_empty());
+        assert!(violations("pack/merge_tests.rs", src).is_empty());
+        assert!(violations("pack/stream/tests.rs", src).is_empty());
+    }
 }
