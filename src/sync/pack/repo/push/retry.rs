@@ -59,9 +59,10 @@ impl Repo<'_> {
         if idle && (again.index.sealed || !seal) {
             return Ok(again);
         }
-        let base = match again.index.sealed {
-            true => self.new_pack()?,
-            false => again,
+        // the seal wish was for the old pack, a new pack decides it again from what it holds
+        let (base, seal) = match again.index.sealed {
+            true => (self.new_pack()?, false),
+            false => (again, seal),
         };
         let sum: u64 = staged.iter().map(|s| s.len).sum();
         let full = !staged.is_empty() && should_seal(self.target, base.index.len + sum);
