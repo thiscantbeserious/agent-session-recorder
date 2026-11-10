@@ -320,3 +320,25 @@ fn replanned_append_respects_the_index_cap() {
     let longest = store.index_texts().iter().map(String::len).max().unwrap();
     assert!(longest <= CAP, "{longest}");
 }
+
+#[test]
+fn replanned_append_respects_the_file_cap() {
+    let (store, key, dir) = (
+        MemoryStore::with_slots(2),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let open = || Repo::open(&store, &key, "w1", TARGET, None).unwrap();
+    open()
+        .push_batch(&[item(dir.path(), "s", 1, b"s")])
+        .unwrap();
+    let mut late = open();
+    // another tab of the writer takes the second slot while `late` plans against one file
+    open()
+        .push_batch(&[item(dir.path(), "t", 1, b"t")])
+        .unwrap();
+    late.push_batch(&[item(dir.path(), "u", 1, b"u")]).unwrap();
+    let old = packs_of(&store).remove(0);
+    let in_old = super::tests::index_of(&store, &key, &old).entries.len();
+    assert!(in_old <= 2, "{in_old} sessions in a pack of 2 slots");
+}
