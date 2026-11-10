@@ -1,0 +1,128 @@
+//! Key resolution, backend factory and error hints of `sync::setup`.
+
+use agr::config::SyncBackendKind;
+use agr::sync::key::{self, Imported, KeyError};
+use agr::sync::setup::{
+    explain, export_key, import_key, needs_privacy_ack, open_backend, resolve_key, ImportError,
+    KeyNeed, KeyState, SetupError,
+};
+use agr::sync::testing::{key_bytes, MemoryBackend};
+use agr::sync::{BackendError, Key};
+use std::path::PathBuf;
+
+#[test]
+fn privacy_ack_is_due_once_for_creating_pushes() {
+    assert!(needs_privacy_ack(false, 1));
+    assert!(!needs_privacy_ack(true, 1));
+    assert!(!needs_privacy_ack(false, 0));
+}
+
+#[test]
+fn backend_factory_follows_config_and_test_switch() {
+    assert!(open_backend(SyncBackendKind::Off, None, None).is_none());
+    assert!(open_backend(SyncBackendKind::Off, Some("/x".into()), None).is_none());
+    let gist = open_backend(
+        SyncBackendKind::Gist,
+        None,
+        Some(std::sync::Arc::new(|_| {})),
+    )
+    .unwrap();
+    assert_eq!(gist.name(), "gist");
+    let fake = open_backend(SyncBackendKind::Gist, Some("/x".into()), None).unwrap();
+    assert_eq!(fake.name(), "file");
+}
+
+#[test]
+fn export_then_import_round_trips_and_guards() {
+    let (_dir, path) = key_path();
+    assert_eq!(export_key(&path), Ok(None));
+    let key = Key::generate();
+    key::save_new(&path, &key).unwrap();
+    let phrase = export_key(&path).unwrap().unwrap();
+    assert!(phrase.starts_with("agr1-"));
+    assert_eq!(import_key(&path, &phrase, false), Ok(Imported::Same));
+    let (_d2, other) = key_path();
+    assert_eq!(import_key(&other, &phrase, false), Ok(Imported::Created));
+    let (_d3, third) = key_path();
+    key::save_new(&third, &Key::generate()).unwrap();
+    let different = export_key(&third).unwrap().unwrap();
+    assert_eq!(
+        import_key(&path, &different, false),
+        Err(ImportError::Key(KeyError::Differs))
+    );
+    assert_eq!(import_key(&path, &different, true), Ok(Imported::Replaced));
+    assert!(matches!(
+        import_key(&path, "agr1-AAAA", true),
+        Err(ImportError::Phrase(_))
+    ));
+}
+
+fn key_path() -> (tempfile::TempDir, PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sync.key");
+    (dir, path)
+}
+
+#[test]
+fn existing_key_is_used() {
+    let (_dir, path) = key_path();
+    let key = Key::generate();
+    key::save_new(&path, &key).unwrap();
+    let state = resolve_key(&path, &MemoryBackend::new(), KeyNeed::Existing).unwrap();
+    assert!(matches!(&state, KeyState::Have(k) if key_bytes(k) == key_bytes(&key)));
+}
+
+#[test]
+fn missing_key_aborts_when_it_must_exist() {
+    let (_dir, path) = key_path();
+    let got = resolve_key(&path, &MemoryBackend::new(), KeyNeed::Existing);
+    assert!(matches!(got, Err(SetupError::NoKey)));
+}
+
+#[test]
+fn missing_key_on_an_empty_remote_is_fresh_and_not_stored() {
+    let (_dir, path) = key_path();
+    let got = resolve_key(&path, &MemoryBackend::new(), KeyNeed::MayCreate).unwrap();
+    assert!(matches!(got, KeyState::Fresh(_)));
+    assert!(!path.exists());
+}
+
+#[test]
+fn missing_key_with_remote_sessions_never_creates_one() {
+    let (_dir, path) = key_path();
+    let backend = MemoryBackend::new();
+    backend.put(None, "token", b"blob");
+    let got = resolve_key(&path, &backend, KeyNeed::MayCreate);
+    assert!(matches!(got, Err(SetupError::KeyOnRemote)));
+}
+
+#[test]
+fn loose_key_permissions_are_an_error() {
+    let (_dir, path) = key_path();
+    std::fs::write(&path, "agr-sync-key v1 AAAA\n").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let got = resolve_key(&path, &MemoryBackend::new(), KeyNeed::Existing);
+        assert!(matches!(got, Err(SetupError::Key(KeyError::Insecure(_)))));
+    }
+}
+
+#[test]
+fn explain_gives_message_and_hint() {
+    let (msg, hint) = explain(&BackendError::NotInstalled("gh"));
+    assert!(msg.starts_with("gh not found"), "{msg}");
+    assert!(hint.unwrap().contains("https://cli.github.com"));
+    let (_, hint) = explain(&BackendError::NotLoggedIn);
+    assert!(hint.unwrap().contains("gh auth login"));
+    let (_, hint) = explain(&BackendError::MissingScope);
+    assert!(hint.unwrap().contains("gh auth refresh -s gist"));
+    let (msg, hint) = explain(&BackendError::RateLimited);
+    assert!(!msg.contains('\n') && msg.contains("rate limit"), "{msg}");
+    assert_eq!(hint.as_deref(), Some("Please run again later"));
+    assert_eq!(
+        explain(&BackendError::Other("x".into())),
+        ("x".into(), None)
+    );
+}
