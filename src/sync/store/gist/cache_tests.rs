@@ -13,7 +13,7 @@ fn cached_clone_is_reused_across_appends() {
     append(&store, &id, (3, "i1"), (b"def", "i2")).unwrap();
     assert_eq!(rig.count("clone"), 1);
     assert_eq!(rig.count("fetch"), 1);
-    assert_eq!(rig.count("merge --ff-only FETCH_HEAD"), 1);
+    assert_eq!(rig.count("reset --hard FETCH_HEAD"), 1);
 }
 
 #[test]

@@ -111,8 +111,10 @@ impl<R: Runner> GistStore<R> {
         let mut fetch = CRED.to_vec();
         fetch.extend(["fetch", "--progress"]);
         self.git(&fetch, Some(dir), &[])?;
-        self.git(&["merge", "--ff-only", "FETCH_HEAD"], Some(dir), &[])
-            .map(drop)
+        // The clone is a cache: it must equal the remote, a kill between commit and push
+        // leaves a local commit and a kill while writing parts leaves stray files.
+        self.git(&["reset", "--hard", "FETCH_HEAD"], Some(dir), &[])?;
+        self.git(&["clean", "-fdx"], Some(dir), &[]).map(drop)
     }
 
     fn read_head(&self, dir: &Path) -> Result<Head, StoreError> {
