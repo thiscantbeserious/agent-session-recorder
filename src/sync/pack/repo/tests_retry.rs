@@ -1,5 +1,5 @@
 use super::tests::{item, packs_of, repo, tamper, TARGET};
-use super::Repo;
+use super::{Outcome, Repo};
 use crate::sync::crypto::Key;
 use crate::sync::pack::index::Index;
 use crate::sync::store::{Listing, PackStore, Segment, StoreError};
@@ -154,6 +154,24 @@ fn tombstones_of_two_writers_on_one_id_both_land() {
     let view = repo(&mem, &key, "w1");
     let dead = |p: &str| view.view().get(p).unwrap().is_deleted();
     assert!(dead("s") && dead("t"));
+}
+
+#[test]
+fn tombstone_landed_after_retry_reports_its_real_outcome() {
+    let (mem, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (mut a, mut b) = two_on_one_id(&mem, &key);
+    a.push_batch(&[item(dir.path(), "s", 2, b"s2")]).unwrap();
+    let report = b.tombstone("s").unwrap();
+    let pack = packs_of(&mem)[0].id.clone();
+    // planned at gen 2, replanned to 3 behind the moved index, and it landed
+    assert_eq!(
+        report.items,
+        vec![("s".to_string(), 3, Outcome::Pushed { pack })]
+    );
 }
 
 #[test]
