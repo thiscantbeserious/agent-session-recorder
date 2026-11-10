@@ -2,6 +2,7 @@
 
 use crate::helpers::cli_sync::*;
 use std::fs;
+#[cfg(unix)]
 use std::process::Command;
 use tempfile::TempDir;
 

@@ -1263,8 +1263,8 @@ Goal: status shows forks with the next step, `OtherKey` per pack, the prune hint
 Owner: implementer
 PR: C
 
-- [ ] RED commit: `status_shows_fork_with_next_step` [`assert!(out.contains("agr sync push --overwrite"))`].
-- [ ] RED commit:
+- [x] RED commit: `status_shows_fork_with_next_step` [`assert!(out.contains("agr sync push --overwrite"))`].
+- [x] RED commit:
   - `status_shows_other_key_per_pack` [`assert!(out.contains("other key"))` once per such pack]
   - `status_shows_deleted_on_remote_with_restore_hint` [`assert!(out.contains("deleted on the remote"))`]
   - `prune_hint_at_21_percent_dead_not_at_19` [`assert!(out21.contains("agr sync prune"))` and `assert!(!out19.contains("agr sync prune"))`]
@@ -1272,16 +1272,29 @@ PR: C
   - `status_needs_no_clone` [`assert!(!calls.iter().any(|c| c.contains("clone")))`, one API call per pack on a cold cache, zero for sealed packs on a warm one]
   - `status_on_v1_index_hints_migrate` [`assert!(out.contains("agr sync migrate"))`]
   - `status_aborts_on_partial_index_view` [`assert!(!st.success())` and `assert!(out.contains("could not read"))`]
-- [ ] RED commit: `status_compact_and_full_list_with_v` (P12) in `cli_sync_test.rs`, 30 sessions on a `DirStore` [`assert!(lines(default) < 10)` and `assert_eq!(listed(verbose), 30)`, the stub always prints the full list].
-- [ ] RED commit: `push_and_pull_print_compact_summary_and_full_list_with_v` (P12) [`assert!(lines(default) < 10)` and `assert_eq!(listed(verbose), 30)`].
-- [ ] RED commit: `loading_and_live_line_only_on_a_tty` (P12) for push and pull through `format/live.rs` with a fake tty flag [`assert!(tty_out.starts_with(LOADING))` and `assert!(!plain_out.contains(LOADING))`, `NO_COLOR` gives `assert!(!out.contains('\x1b'))`, no `gh` token text in any line].
-- [ ] GREEN commit. `Duplicate` leaves the public exports, `Fork` replaces it.
-- [ ] Delete, migrate and prune print through this shared formatter, as such their commands get no output tests of their own in Stages 57, 58 and 62.
+- [x] RED commit: `status_compact_and_full_list_with_v` (P12) in `cli_sync_test.rs`, 30 sessions on a `DirStore` [`assert!(lines(default) < 10)` and `assert_eq!(listed(verbose), 30)`, the stub always prints the full list].
+- [x] RED commit: `push_and_pull_print_compact_summary_and_full_list_with_v` (P12) [`assert!(lines(default) < 10)` and `assert_eq!(listed(verbose), 30)`].
+- [x] RED commit: `loading_and_live_line_only_on_a_tty` (P12) for push and pull through `format/live.rs` with a fake tty flag [`assert!(tty_out.starts_with(LOADING))` and `assert!(!plain_out.contains(LOADING))`, `NO_COLOR` gives `assert!(!out.contains('\x1b'))`, no `gh` token text in any line].
+- [x] GREEN commit. `Duplicate` leaves the public exports, `Fork` replaces it.
+- [x] Delete, migrate and prune print through this shared formatter, as such their commands get no output tests of their own in Stages 57, 58 and 62.
 
 Files: `src/sync/mod.rs`, `src/sync/app/format/mod.rs`, `src/sync/app/format/status.rs`, `src/sync/app/format/packs.rs`, `src/sync/app/format/summary.rs`, `src/sync/app/format/live.rs`, `src/commands/sync/live.rs`, `tests/integration/cli_sync_test.rs`
 Depends on: Stage 55
 
 Considerations: `status.rs` is 338 lines, the per pack lines go into the new `format/packs.rs`.
+**Done 2026-11-10, deviations**: tests sit in `sync_status_format_test.rs` (per pack lines, prune hint, no clone), `sync_output_test.rs` (central output tests on the shared formatter) and `cli_sync_status_test.rs` (v1 hint), not in `cli_sync_test.rs`, which was first split by topic into `cli_sync_{test,push_pull,status,delete}_test.rs` plus `helpers/cli_sync.rs` (pure move, 29 test names identical). `Live` moved from `src/commands/sync/live.rs` into `format/live.rs` and takes the writer and the (tty, colour) flags, `Live::stderr` is the command entry, colour goes through `paint_if` and `colors_enabled`. The live line is one `Started` per append (`announce_batch`, `N sessions` for a batch), not one per session. `Report` gained `dead_bytes` and `pack_bytes`, the prune hint is above 20 percent. Labels `fork` and `deleted on the remote` are new in `ORDER`. `status_on_v1_index_hints_migrate` is a CLI test (the engine returns `NeedsMigrate`, the command prints it). `status_aborts_on_partial_index_view` is an engine test on `SyncError` text, no CLI exit code test. `agr sync status` of the pack view with a failing index read is not in the CLI.
+
+Guards, flipped by hand (flip not committed):
+- `status_aborts_on_partial_index_view`: error mapping rewritten, text lost "could not read".
+- `status_needs_no_clone`: index cache `get` always `None`, api calls left 1 right 0.
+- `status_on_v1_index_hints_migrate`: `load_v2` error swallowed, exit code 0.
+- `status_compact_and_full_list_with_v`: compact as full list, `short.len() < 10` fails with 32 lines.
+- `push_and_pull_print_compact_summary_and_full_list_with_v`: compact preview as full list, `len() < 10` fails.
+- `loading_and_live_line_only_on_a_tty`: tty check dropped, `!plain_out.contains(LOADING)` fails.
+- `no_color_gives_no_escape_and_no_token_text`: colour never applied, the colour flag assert fails.
+
+REDs: fork label (`contains("claude/x.cast.gz fork")`, printed duplicate), other key per pack, deleted on remote, prune hint 21 percent (each failed on its named assert), `live_line_per_append` (30 live lines for 1 append). Windows gate caught an unused `Command` import from the split, fixed in the last commit.
+
 
 ### Stage 57: agr sync delete with patterns
 
