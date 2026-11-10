@@ -58,3 +58,4 @@ rename_extra_args = []
 [sync]
 backend = "gist"
 auto_push = false
+pack_size_mib = 64

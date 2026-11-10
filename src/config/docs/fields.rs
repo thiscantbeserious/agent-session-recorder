@@ -144,6 +144,12 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
                 default_display: "false",
                 example: None,
             },
+            FieldDoc {
+                name: "pack_size_mib",
+                description: "Target size of one pack gist in MiB, 16 to 512",
+                default_display: "64",
+                example: None,
+            },
         ],
     },
 ];

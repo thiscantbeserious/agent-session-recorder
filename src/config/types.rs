@@ -75,7 +75,7 @@ pub fn default_auto_push() -> bool {
 }
 
 pub fn default_pack_size_mib() -> u64 {
-    0
+    64
 }
 
 impl Default for SyncConfig {
@@ -84,6 +84,18 @@ impl Default for SyncConfig {
             backend: default_backend(),
             auto_push: default_auto_push(),
             pack_size_mib: default_pack_size_mib(),
+        }
+    }
+}
+
+impl SyncConfig {
+    /// `pack_size_mib` has to stay in 16..=512, the same range as the pack seal rules.
+    pub fn validate(&self) -> Result<(), String> {
+        match self.pack_size_mib {
+            16..=512 => Ok(()),
+            got => Err(format!(
+                "pack_size_mib must be between 16 and 512, got {got}"
+            )),
         }
     }
 }
