@@ -7,6 +7,8 @@ mod append;
 mod append_tests;
 mod cache;
 #[cfg(test)]
+mod cache_tests;
+#[cfg(test)]
 mod fake_remote;
 mod index_cache;
 mod last_push;

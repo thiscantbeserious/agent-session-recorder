@@ -113,11 +113,9 @@ fn cache_dir_is_0700_on_unix() {
     let rig = Rig::new();
     let id = rig.remote.seed("i0", &[]);
     append(&rig.store(), &id, (0, "i0"), (b"abc", "i1")).unwrap();
-    for dir in ["agr", "agr/packs"] {
-        let mode = std::fs::metadata(rig.root.path().join(dir))
-            .unwrap()
-            .permissions()
-            .mode();
-        assert_eq!(mode & 0o777, 0o700, "{dir}");
+    let packs = rig.clone_dir(&id).parent().unwrap().to_path_buf();
+    for dir in [packs.parent().unwrap(), &packs] {
+        let mode = std::fs::metadata(dir).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700, "{dir:?}");
     }
 }

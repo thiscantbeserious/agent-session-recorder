@@ -6,6 +6,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use super::cache::pack_dir;
 use super::fake_remote::{FakeRemote, TickClock};
 use super::{GistStore, PackStore, Segment, StoreError};
 
@@ -36,7 +37,7 @@ impl Rig {
     }
 
     pub(super) fn clone_dir(&self, id: &str) -> PathBuf {
-        self.root.path().join("agr/packs").join(id)
+        pack_dir(self.root.path(), id).unwrap()
     }
 
     pub(super) fn count(&self, word: &str) -> usize {

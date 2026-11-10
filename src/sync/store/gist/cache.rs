@@ -8,7 +8,7 @@ use crate::sync::backend::gist::runner::Runner;
 /// The clone dir of `id` under `root`. The gist id is the one outside input in the path, so it
 /// must be hex before it is joined.
 pub(super) fn pack_dir(root: &Path, id: &str) -> Result<PathBuf, StoreError> {
-    Ok(root.join("packs").join(id))
+    Ok(root.join("agr-stub").join(id))
 }
 
 pub(super) struct PackCache {
