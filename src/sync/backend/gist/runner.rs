@@ -185,12 +185,19 @@ fn watch_child(
 ) -> std::io::Result<Output> {
     let last = Arc::new(Mutex::new(Instant::now()));
     let stdout = drain(child.stdout.take(), &last, sink);
+    let failed = Arc::clone(&stdout.failed);
     let stderr = drain(child.stderr.take(), &last, None);
     let mut watcher = Watcher::default();
     let status = loop {
         watcher.feed(&stderr.bytes, on_line);
         if let Some(status) = child.try_wait()? {
             break status;
+        }
+        // the drain stopped at a failed write, that is the cause, not the silence that follows
+        if let Some(e) = failed.lock().unwrap_or_else(PoisonError::into_inner).take() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(e);
         }
         let silent = last
             .lock()
@@ -206,7 +213,6 @@ fn watch_child(
         }
         std::thread::sleep(POLL);
     };
-    let failed = Arc::clone(&stdout.failed);
     let (stdout, stderr_text) = (
         finish(stdout),
         finish_watched(stderr, &mut watcher, on_line),
