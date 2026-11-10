@@ -73,9 +73,11 @@ fn open_pack_saved_after_push_and_cleared_after_seal() {
     n.engine(&store, &key, "w1").push(&opts()).unwrap();
     assert_eq!(index_of(&n).open_pack, Some("mem-1".to_string()));
     // a session that brings the open pack to the target seals it
-    let target = 16 * 1024 * 1024;
+    let target = 64 * 1024;
     let small = Engine::new(&store, &key, &n.storage, "w1", target);
-    n.session("claude", "fill.cast.gz", &"y".repeat(target as usize - 10));
+    let noise: Vec<u8> = (0..target as usize).map(|i| (i * 31 % 251) as u8).collect();
+    let file = n.dir().join("claude/fill.cast.gz");
+    std::fs::write(file, noise).unwrap();
     small.push(&opts()).unwrap();
     assert_eq!(index_of(&n).open_pack, None);
 }
