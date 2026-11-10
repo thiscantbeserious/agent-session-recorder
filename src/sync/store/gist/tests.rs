@@ -72,16 +72,6 @@ fn empty_tag_is_not_a_pack() {
     assert!(listing.packs.is_empty());
 }
 
-#[test]
-fn truncated_index_is_other_not_half_an_index() {
-    let body = serde_json::json!({ "id": "a", "updated_at": "t1", "files": {
-        "index": { "size": 9, "raw_url": "u", "truncated": true, "content": "half" } } });
-    let fake = Fake::with(vec![ok(&body.to_string())]);
-    let dir = tempfile::tempdir().unwrap();
-    let res = store(&fake, dir.path()).read_index("a");
-    assert!(matches!(res, Err(StoreError::Other(_))));
-}
-
 fn create_call(fake: &Fake) -> String {
     let calls = fake.calls();
     calls
@@ -274,23 +264,26 @@ fn cache_store<'a>(fake: &'a Fake, base: &Path) -> GistStore<&'a Fake> {
 
 fn api_calls_for(fake: &Fake, id: &str) -> usize {
     let want = format!("gh api gists/{id}");
-    fake.calls().iter().filter(|c| **c == want).count()
+    let raw = format!("gh api https://gist.githubusercontent.com/u/{id}/raw/sha/index");
+    fake.calls()
+        .iter()
+        .filter(|c| **c == want || **c == raw)
+        .count()
 }
 
-fn index_body(updated: &str, text: &str) -> String {
-    let file =
-        serde_json::json!({ "size": 3, "raw_url": "u", "truncated": false, "content": text });
-    let body = serde_json::json!({ "id": "a", "updated_at": updated, "files": { "index": file } });
-    body.to_string()
-}
-
-fn listed(updated: &str) -> String {
-    pages(&[vec![gist("a", "agr:v2 TAG", updated, &[("index", 3)])]])
+fn listed(updated: &str, size: usize) -> String {
+    pages(&[vec![gist(
+        "a",
+        "agr:v2 TAG",
+        updated,
+        &[("index", size as u64)],
+    )]])
 }
 
 /// Lists and reads the index once through a store of its own, as one `agr` run would.
 fn run_once(dir: &Path, updated: &str, text: &str) -> (Fake, String) {
-    let fake = Fake::with(vec![ok(&listed(updated)), ok(&index_body(updated, text))]);
+    let mut fake = Fake::with(vec![ok(&listed(updated, text.len()))]);
+    fake.remote = vec![("index".into(), text.as_bytes().to_vec())];
     let store = cache_store(&fake, dir);
     store.list().unwrap();
     let index = store.read_index("a").unwrap();
@@ -334,7 +327,7 @@ fn cache_survives_corrupt_file() {
 fn read_index_hits_the_cache_after_a_listing() {
     let dir = tempfile::tempdir().unwrap();
     run_once(dir.path(), "t1", "idx");
-    let fake = Fake::with(vec![ok(&listed("t1")), ok(&listed("t1"))]);
+    let fake = Fake::with(vec![ok(&listed("t1", 3)), ok(&listed("t1", 3))]);
     let store = cache_store(&fake, dir.path());
     store.list().unwrap();
     assert_eq!(store.read_index("a").unwrap(), "idx");

@@ -184,14 +184,14 @@ impl FakeRemote {
         let url = args.last().unwrap();
         let mut parts = url.rsplit('/');
         let (name, _raw, id) = (parts.next().unwrap(), parts.next(), parts.next().unwrap());
-        let range = args
-            .iter()
-            .find_map(|a| a.strip_prefix("Range: bytes="))
-            .unwrap();
-        let (from, to) = range.split_once('-').unwrap();
-        let (from, to): (usize, usize) = (from.parse().unwrap(), to.parse().unwrap());
+        let range = args.iter().find_map(|a| a.strip_prefix("Range: bytes="));
         let state = self.state.borrow();
         let body = &state.gists[id].history.last().unwrap()[name];
+        let Some((from, to)) = range.and_then(|r| r.split_once('-')) else {
+            std::fs::write(dest, body)?;
+            return out(0, "", "");
+        };
+        let (from, to): (usize, usize) = (from.parse().unwrap(), to.parse().unwrap());
         std::fs::write(dest, &body[from..=to])?;
         out(0, "", "")
     }

@@ -1,6 +1,7 @@
 //! `gh api` side of the gist store: listing, index and pack creation.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::PoisonError;
 
 use serde::Deserialize;
@@ -24,9 +25,6 @@ struct GFile {
     size: u64,
     #[serde(default)]
     raw_url: String,
-    #[serde(default)]
-    truncated: bool,
-    content: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -185,23 +183,43 @@ impl<R: Runner> GistStore<R> {
         seen.get(id).map(|s| s.updated_at.clone())
     }
 
-    pub(super) fn index_of(&self, id: &str) -> Result<String, StoreError> {
-        let cache = self.cache_file.as_deref().map(IndexCache::new);
-        let known = self.known_update(id);
-        if let (Some(cache), Some(at)) = (&cache, &known) {
-            if let Some(hit) = cache.get(id, at) {
-                return Ok(hit.index);
-            }
+    /// Downloads the whole file behind `url` into `file` with `gh api`, no `Range`.
+    fn fetch_whole(&self, url: &str, size: u64, file: &Path) -> Result<(), StoreError> {
+        let args = strings(&["api", url]);
+        let out = io_result("gh", self.runner.run_to_file("gh", &args, &[], file)).map_err(be)?;
+        if !out.success() {
+            return Err(be(map_failure("gh", &out.stderr, out.code)));
         }
-        let gist = self.fetch_gist(id)?;
-        let index = match gist.files.get(INDEX_FILE) {
-            Some(f) if !f.truncated => f.content.clone().unwrap_or_default(),
-            Some(_) => return Err(StoreError::Other("the index came back truncated".into())),
-            None => return Err(StoreError::Other("the pack has no index".into())),
+        let got = std::fs::metadata(file).map_err(|e| be(BackendError::Other(e.to_string())))?;
+        match got.len() == size {
+            true => Ok(()),
+            false => Err(StoreError::Other(format!(
+                "the index came back with {} bytes, the listing says {size}",
+                got.len()
+            ))),
+        }
+    }
+
+    /// The index over its `raw_url`, GitHub flags small files `truncated` beside big parts.
+    pub(super) fn index_of(&self, id: &str) -> Result<String, StoreError> {
+        let files = self.files_of(id)?;
+        let Some(file) = files.iter().find(|f| f.name == INDEX_FILE) else {
+            return Err(StoreError::Other("the pack has no index".into()));
         };
+        let cache = self.cache_file.as_deref().map(IndexCache::new);
+        let at = self.known_update(id).unwrap_or_default();
+        if let Some(hit) = cache.as_ref().and_then(|c| c.get(id, &at)) {
+            return Ok(hit.index);
+        }
+        let scratch = Scratch::create(&self.temp_base).map_err(be)?;
+        let path = scratch.join(INDEX_FILE);
+        self.fetch_whole(&file.raw_url, file.size, &path)?;
+        let bytes = std::fs::read(&path).map_err(|e| StoreError::Other(e.to_string()))?;
+        let index = String::from_utf8(bytes)
+            .map_err(|_| StoreError::Other("the index is not text".into()))?;
         if let Some(cache) = &cache {
             let entry = Entry {
-                updated_at: gist.updated_at.clone(),
+                updated_at: at,
                 index: index.clone(),
             };
             cache.put(id, entry);
