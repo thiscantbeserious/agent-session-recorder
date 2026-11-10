@@ -75,6 +75,17 @@ impl ReadError {
     }
 }
 
+/// A mismatch only says the place is damaged, an earlier error says why the read failed, so
+/// the first error that is not a mismatch stays and a mismatch fills an empty slot only.
+fn keep_first(slot: &mut Option<ReadError>, e: ReadError) {
+    let held = slot
+        .as_ref()
+        .is_some_and(|h| !matches!(h, ReadError::HashMismatch));
+    if !held {
+        *slot = Some(e);
+    }
+}
+
 impl Repo<'_> {
     /// Opens the session `path` of the merged view into `target`: a hidden temp file in its
     /// directory, renamed only after hash and size match the index, removed on any error.
@@ -90,9 +101,9 @@ impl Repo<'_> {
             };
             match self.read_place(&place.pack, &entry, target) {
                 Ok(()) => return Ok(()),
-                Err(e) if e.is_place_local() => last.insert(e),
+                Err(e) if e.is_place_local() => keep_first(&mut last, e),
                 Err(e) => return Err(e),
-            };
+            }
         }
         Err(last.unwrap_or_else(|| ReadError::Unknown(path.into())))
     }
