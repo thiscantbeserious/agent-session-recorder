@@ -1,6 +1,6 @@
 //! Sync engine on a `Repo`, push, pull, delete and status against the merged pack view.
 
-use super::item::{announce, build_item, passive};
+use super::item::{announce, announce_batch, build_item, passive};
 use super::lock::SyncLock;
 use super::observe::{counted, no_progress, Observer, Step};
 use super::pack_load::Loaded;
@@ -211,7 +211,6 @@ impl<'a> Engine<'a> {
             let outcome = match decision {
                 Decision::Push if opts.dry_run => Outcome::Planned,
                 Decision::Push => {
-                    announce(self.storage, &row, observer, false);
                     let known = loaded.index.entries.get(&row.path).map_or(0, |e| e.gen);
                     batch.push(self.push_item(&row, known));
                     Outcome::Nothing
@@ -226,6 +225,9 @@ impl<'a> Engine<'a> {
             .filter(|(_, d, _)| *d == Decision::Push && !opts.dry_run)
             .map(|(r, _, _)| r)
             .collect();
+        if !pushed.is_empty() {
+            announce_batch(self.storage, &pushed, observer);
+        }
         let landed = self.push_batch(&batch, &pushed, loaded)?;
         for (row, decision, planned) in outcomes {
             let outcome = landed.get(&row.path).cloned().unwrap_or(planned);

@@ -9,6 +9,7 @@ use super::plan::Command;
 use super::remote::attach_view;
 use super::run::{Report, SyncError};
 use super::scan::{local_rows, select, Row};
+use crate::sync::pack::merge::View;
 use crate::sync::pack::repo::{Repo, RepoError};
 
 /// Everything a run works on after the load.
@@ -25,6 +26,13 @@ fn open_error(e: RepoError) -> SyncError {
         RepoError::Store(s) => sync_error(s),
         other => SyncError::Failed(other.to_string()),
     }
+}
+
+/// Dead bytes and total bytes over the readable packs of the view.
+fn pack_bytes(view: &View) -> (u64, u64) {
+    let dead = view.dead_bytes();
+    let total = dead.keys().filter_map(|id| view.pack(id)).map(|p| p.len);
+    (dead.values().sum(), total.sum())
 }
 
 impl<'a> Engine<'a> {
@@ -51,8 +59,11 @@ impl<'a> Engine<'a> {
         let mut rows = local_rows(self.storage, &index, names, &mut progress)
             .map_err(|e| SyncError::Failed(e.to_string()))?;
         attach_view(&mut rows, repo.view(), &index);
+        let (dead_bytes, pack_bytes) = pack_bytes(repo.view());
         let mut report = Report {
             warning,
+            dead_bytes,
+            pack_bytes,
             ..Report::default()
         };
         let mut rows: Vec<Row> = rows.into_values().collect();

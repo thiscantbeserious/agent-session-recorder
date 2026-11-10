@@ -20,6 +20,7 @@ pub fn compact_status_lines(report: &Report, backend: &str) -> Vec<String> {
     }
     lines.extend(category_lines(report));
     lines.extend(action_lines(report));
+    lines.extend(super::packs::prune_hint(report));
     lines.push(HINT.into());
     lines
 }
@@ -123,15 +124,7 @@ fn skipped_lines(report: &Report) -> Vec<String> {
 fn action_lines(report: &Report) -> Vec<String> {
     let mut lines = detail("Conflicts", report.conflicts, report, conflict_line);
     lines.extend(detail("Failed", report.failed, report, failed_line));
-    let other: Vec<&Item> = report
-        .items
-        .iter()
-        .filter(|i| i.decision == Decision::OtherKey)
-        .collect();
-    if !other.is_empty() {
-        lines.push(format!("Other key: {}", other.len()));
-        lines.extend(other.iter().map(|i| format!("  {}", i.path)));
-    }
+    lines.extend(super::packs::other_key_lines(report));
     let dups = report
         .items
         .iter()

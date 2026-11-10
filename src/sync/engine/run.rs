@@ -92,6 +92,9 @@ pub struct Report {
     pub queued: usize,
     /// Sessions with a fork in the merged view that this run pushed to.
     pub forks: Vec<String>,
+    /// Bytes in packs that no session needs any more, and the bytes of all readable packs.
+    pub dead_bytes: u64,
+    pub pack_bytes: u64,
     /// Sessions whose merged gen is below the last synced one, never pulled.
     pub refused: Vec<String>,
 }

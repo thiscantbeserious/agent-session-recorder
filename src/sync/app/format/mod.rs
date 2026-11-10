@@ -2,11 +2,12 @@
 
 use humansize::{format_size, BINARY};
 
-use crate::sync::engine::plan::Decision;
+use crate::sync::engine::plan::{Decision, SkipReason};
 use crate::sync::engine::run::{Item, Outcome, Report};
 use crate::sync::engine::scan::Duplicate;
 
 mod live;
+mod packs;
 mod status;
 mod summary;
 
@@ -20,7 +21,7 @@ pub use summary::{
     rate_limit_lines, summary_lines,
 };
 
-const ORDER: [&str; 8] = [
+const ORDER: [&str; 10] = [
     "in sync",
     "local ahead (push)",
     "local only (push)",
@@ -28,6 +29,8 @@ const ORDER: [&str; 8] = [
     "remote only (pull)",
     "conflict",
     "duplicate",
+    "fork",
+    "deleted on the remote",
     "skipped",
 ];
 
@@ -40,8 +43,10 @@ pub fn label(item: &Item) -> &'static str {
         Decision::Pull if item.on_local => ORDER[3],
         Decision::Pull => ORDER[4],
         Decision::Conflict => ORDER[5],
-        Decision::Duplicate | Decision::Fork => ORDER[6],
-        Decision::OtherKey | Decision::UnknownVersion | Decision::Skip(_) => ORDER[7],
+        Decision::Duplicate => ORDER[6],
+        Decision::Fork => ORDER[7],
+        Decision::Skip(SkipReason::DeletedOnRemote) => ORDER[8],
+        Decision::OtherKey | Decision::UnknownVersion | Decision::Skip(_) => ORDER[9],
     }
 }
 
@@ -55,6 +60,7 @@ pub fn status_lines(report: &Report, backend: &str) -> Vec<String> {
     }
     lines.extend(report.items.iter().flat_map(status_block));
     lines.push(totals(report));
+    lines.extend(packs::prune_hint(report));
     lines
 }
 
