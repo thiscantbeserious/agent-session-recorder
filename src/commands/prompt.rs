@@ -41,3 +41,19 @@ pub fn should_proceed(message: &str, auto_confirm: bool) -> Result<bool> {
     let response = input.trim().to_lowercase();
     Ok(response == "y" || response == "yes")
 }
+
+/// Ask to type `count` back, `true` only on an exact match. Without a terminal it is `false`.
+pub fn typed_count(count: usize) -> Result<bool> {
+    if !stdin_is_tty() {
+        return Ok(false);
+    }
+    let theme = current_theme();
+    print!(
+        "{} ",
+        theme.primary_text(&format!("Type {count} to confirm:"))
+    );
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().lock().read_line(&mut input)?;
+    Ok(input.trim() == count.to_string())
+}

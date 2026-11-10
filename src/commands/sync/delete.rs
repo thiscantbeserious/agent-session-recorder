@@ -7,12 +7,14 @@ use agr::sync::setup::{keep_writer, KeyNeed};
 use agr::sync::{select_remote, Report};
 
 use super::run::{abort, engine_failed, finish, prepare, say};
-use crate::commands::prompt::should_proceed;
+use crate::commands::prompt::{should_proceed, stdin_is_tty, typed_count};
+
+/// Above this many matches the count has to be typed, or `--force` given.
+const BIG: usize = 10;
 
 pub struct Args {
     pub patterns: Vec<String>,
     pub all: bool,
-    #[allow(dead_code)] // read by the over 10 matches rule
     pub force: bool,
     pub dry_run: bool,
     pub yes: bool,
@@ -47,6 +49,22 @@ fn collect(plan: Report, args: &Args) -> Report {
     }
 }
 
+/// The prompts: yes or no, then above `BIG` matches the typed count unless `--force`.
+fn confirmed(count: usize, args: &Args) -> Result<bool> {
+    let big = count > BIG;
+    if big && !args.force && !stdin_is_tty() {
+        abort(
+            &format!("{count} sessions need --force without a terminal"),
+            None,
+        );
+    }
+    let question = "Delete these remote sessions? The local files stay.";
+    if !should_proceed(question, args.yes)? {
+        return Ok(false);
+    }
+    Ok(!big || args.force || typed_count(count)?)
+}
+
 pub fn delete(args: &Args) -> Result<()> {
     let ctx = prepare(KeyNeed::Existing)?;
     let load = Live::stderr("", "deleted");
@@ -64,8 +82,7 @@ pub fn delete(args: &Args) -> Result<()> {
     if args.dry_run {
         return Ok(());
     }
-    let question = "Delete these remote sessions? The local files stay.";
-    if !should_proceed(question, args.yes)? {
+    if !confirmed(matched.items.len(), args)? {
         say(&["No changes made.".to_string()]);
         return Ok(());
     }
