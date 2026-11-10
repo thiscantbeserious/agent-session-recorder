@@ -13,7 +13,7 @@ mod retry;
 mod stage;
 
 pub(super) use stage::Batch;
-use stage::{fill_count, grown, io_err, stage, writer, Staged};
+use stage::{fill_count, grown, io_err, now, stage, writer, Staged};
 
 /// One session file to push at `gen`.
 pub struct PushItem {
@@ -125,6 +125,7 @@ impl Repo<'_> {
     }
 
     fn push_into(&mut self, items: &[PushItem], report: &mut PushReport) -> Result<(), StoreError> {
+        let at = now();
         let staged = items.iter().map(stage).collect::<Result<Vec<_>, _>>()?;
         let (big, small): (Vec<_>, Vec<_>) = staged
             .into_iter()
@@ -132,10 +133,10 @@ impl Repo<'_> {
         for s in &big {
             let pack = self.new_pack()?;
             let one = std::slice::from_ref(s);
-            let next = self.try_append(&pack, &Batch::of(one, true))?;
+            let next = self.try_append(&pack, &Batch::of(one, true, &at))?;
             report.record(one, &next);
         }
-        self.push_small(&small, report)?;
+        self.push_small(&small, &at, report)?;
         report.open = self.open_ref();
         report.check_failed = self.reload().is_err();
         if !report.check_failed {
@@ -149,26 +150,27 @@ impl Repo<'_> {
     fn push_small(
         &mut self,
         mut rest: &[Staged],
+        at: &str,
         report: &mut PushReport,
     ) -> Result<(), StoreError> {
         while !rest.is_empty() {
             let len = self.open.as_ref().map_or(0, |o| o.index.len);
             let by_size = fill_count(rest, self.target, len);
             let pack = self.open_or_new()?;
-            let by_cap = cap::take_within(self.key, &pack.index, &cap::session_costs(rest))?;
+            let by_cap = cap::take_within(self.key, &pack.index, &cap::session_costs(rest, at))?;
             if by_cap == 0 && !pack.index.entries.is_empty() {
-                self.seal_open(&pack)?;
+                self.seal_open(&pack, at)?;
                 continue;
             }
             let n = by_size.min(by_cap.max(1));
             let (chunk, tail) = rest.split_at(n);
-            let Some(pack) = self.pack_with_room(chunk)? else {
+            let Some(pack) = self.pack_with_room(chunk, at)? else {
                 continue;
             };
             let sum: u64 = chunk.iter().map(|s| s.len).sum();
             let capped = n == by_cap.max(1) && !tail.is_empty();
             let seal = capped || should_seal(self.target, pack.index.len + sum);
-            let next = self.try_append(&pack, &Batch::of(chunk, seal))?;
+            let next = self.try_append(&pack, &Batch::of(chunk, seal, at))?;
             report.record(chunk, &next);
             self.open = open_of(next);
             rest = tail;
@@ -184,15 +186,19 @@ impl Repo<'_> {
     }
 
     /// Seals `pack` with a zero byte append, the next chunk starts a new pack.
-    fn seal_open(&mut self, pack: &OpenPack) -> Result<(), StoreError> {
-        self.try_append(pack, &Batch::of(&[], true))?;
+    fn seal_open(&mut self, pack: &OpenPack, at: &str) -> Result<(), StoreError> {
+        self.try_append(pack, &Batch::of(&[], true, at))?;
         self.open = None;
         Ok(())
     }
 
     /// The open pack (or a new one) when `chunk` fits it. A full open pack is sealed with a
     /// zero byte append and `None` comes back, the caller plans the chunk again for a new pack.
-    fn pack_with_room(&mut self, chunk: &[Staged]) -> Result<Option<OpenPack>, StoreError> {
+    fn pack_with_room(
+        &mut self,
+        chunk: &[Staged],
+        at: &str,
+    ) -> Result<Option<OpenPack>, StoreError> {
         let Some(open) = self.open.clone() else {
             return self.new_pack().map(Some);
         };
@@ -200,7 +206,7 @@ impl Repo<'_> {
         if self.store.fits(&open.info(), &lens) {
             return Ok(Some(open));
         }
-        self.seal_open(&open)?;
+        self.seal_open(&open, at)?;
         Ok(None)
     }
 
@@ -225,6 +231,7 @@ impl Repo<'_> {
     }
 
     fn tombs_into(&mut self, paths: &[String], report: &mut PushReport) -> Result<(), StoreError> {
+        let at = now();
         let mut tombs = Vec::new();
         for path in paths {
             let gen = self
@@ -234,7 +241,7 @@ impl Repo<'_> {
                 .gen;
             tombs.push((path.clone(), gen + 1));
         }
-        self.append_tombs(tombs, report)?;
+        self.append_tombs(tombs, &at, report)?;
         report.open = self.open_ref();
         report.check_failed = self.reload().is_err();
         Ok(())
@@ -244,13 +251,14 @@ impl Repo<'_> {
     fn append_tombs(
         &mut self,
         mut rest: Vec<(String, u64)>,
+        at: &str,
         report: &mut PushReport,
     ) -> Result<(), StoreError> {
         while !rest.is_empty() {
             let pack = self.open_or_new()?;
-            let by_cap = cap::take_within(self.key, &pack.index, &cap::tomb_costs(&rest))?;
+            let by_cap = cap::take_within(self.key, &pack.index, &cap::tomb_costs(&rest, at))?;
             if by_cap == 0 && !pack.index.entries.is_empty() {
-                self.seal_open(&pack)?;
+                self.seal_open(&pack, at)?;
                 continue;
             }
             let tail = rest.split_off(by_cap.max(1));
@@ -260,6 +268,7 @@ impl Repo<'_> {
                 staged: &[],
                 tombs: rest,
                 seal,
+                at: at.to_string(),
             };
             let next = self.try_append(&pack, &batch)?;
             report.record_tombs(&sent, &next);

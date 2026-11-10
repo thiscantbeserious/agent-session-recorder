@@ -11,12 +11,15 @@ fn cost(e: &Entry) -> usize {
     serde_json::to_vec(e).map_or(0, |j| j.len() + 1)
 }
 
-pub(super) fn session_costs(staged: &[Staged]) -> Vec<usize> {
-    staged.iter().map(|s| cost(&s.entry(u64::MAX))).collect()
+pub(super) fn session_costs(staged: &[Staged], at: &str) -> Vec<usize> {
+    staged
+        .iter()
+        .map(|s| cost(&s.entry(u64::MAX, at)))
+        .collect()
 }
 
-pub(super) fn tomb_costs(tombs: &[(String, u64)]) -> Vec<usize> {
-    let one = |(path, gen): &(String, u64)| cost(&tomb_entry(path, *gen, u64::MAX));
+pub(super) fn tomb_costs(tombs: &[(String, u64)], at: &str) -> Vec<usize> {
+    let one = |(path, gen): &(String, u64)| cost(&tomb_entry(path, *gen, u64::MAX, at));
     tombs.iter().map(one).collect()
 }
 
@@ -31,4 +34,39 @@ pub(super) fn take_within(key: &Key, idx: &Index, costs: &[usize]) -> Result<usi
         }
     }
     Ok(costs.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sync::pack::repo::push::stage::{grown, Batch};
+
+    #[test]
+    fn measured_entry_is_the_sealed_entry_up_to_its_offset_digits() {
+        let s = Staged {
+            path: "a".into(),
+            gen: 1,
+            file: "f".into(),
+            sha256: "00".repeat(32),
+            size: 1,
+            len: 29,
+        };
+        let at = "2026-01-01T00:00:00.123456789+00:00";
+        let batch = Batch::of(std::slice::from_ref(&s), false, at);
+        let idx = Index {
+            v: 3,
+            pack: "p".into(),
+            writer: "w".into(),
+            sealed: false,
+            len: 0,
+            entries: Vec::new(),
+        };
+        let real = &grown(&idx, &batch).entries[0];
+        assert_eq!(real.at, at);
+        let (measured, sealed) = (session_costs(&[s], at)[0], cost(real));
+        assert!(
+            measured >= sealed && measured - sealed <= 20,
+            "{measured} {sealed}"
+        );
+    }
 }

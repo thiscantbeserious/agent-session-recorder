@@ -1,6 +1,6 @@
 //! The retry of an append that found its pack moved: plan the batch again, then append once more.
 
-use super::{Batch, Staged};
+use super::{cap, Batch, Staged};
 use crate::sync::pack::index::{open_index, Index};
 use crate::sync::pack::merge::{merge, PackIn, View};
 use crate::sync::pack::repo::{OpenPack, Repo};
@@ -46,13 +46,19 @@ impl Repo<'_> {
             return Err(StoreError::Moved(current));
         }
         let (staged, tombs) = replan(&self.view_with(&pack.id, &moved), batch);
+        let planned = Batch {
+            staged: &staged,
+            tombs,
+            seal: batch.seal,
+            at: batch.at.clone(),
+        };
         let again = OpenPack {
             text: current,
             files: self.files_now(&pack.id)?.unwrap_or(pack.files),
             index: moved,
             ..pack.clone()
         };
-        self.append_replanned(again, (&staged, tombs), batch.seal)
+        self.append_replanned(again, planned)
     }
 
     /// The replanned batch on `again`, a new pack when that one got sealed meanwhile. Nothing
@@ -60,15 +66,20 @@ impl Repo<'_> {
     fn append_replanned(
         &self,
         again: OpenPack,
-        (staged, tombs): (&[Staged], Vec<(String, u64)>),
-        seal: bool,
+        Batch {
+            staged,
+            tombs,
+            seal,
+            at,
+        }: Batch,
     ) -> Result<OpenPack, StoreError> {
         let idle = staged.is_empty() && tombs.is_empty();
         if idle && (again.index.sealed || !seal) {
             return Ok(again);
         }
         // the seal wish was for the old pack, a new pack decides it again from what it holds
-        let (base, seal) = match again.index.sealed {
+        let fresh = again.index.sealed || !self.fits_cap(&again, (staged, &tombs, &at))?;
+        let (base, seal) = match fresh {
             true => (self.new_pack()?, false),
             false => (again, seal),
         };
@@ -78,8 +89,22 @@ impl Repo<'_> {
             staged,
             tombs,
             seal: seal || full,
+            at,
         };
         self.append_once(&base, &batch)
+    }
+
+    /// Whether the replanned entries still fit under the index cap behind the moved index, the
+    /// other tab of this writer may have filled it since the batch was planned.
+    fn fits_cap(
+        &self,
+        pack: &OpenPack,
+        (staged, tombs, at): (&[Staged], &[(String, u64)], &str),
+    ) -> Result<bool, StoreError> {
+        let mut costs = cap::session_costs(staged, at);
+        costs.extend(cap::tomb_costs(tombs, at));
+        let n = cap::take_within(self.key, &pack.index, &costs)?;
+        Ok(n == costs.len())
     }
 
     /// The view as `self.view` is, with the index of pack `id` replaced by the one that moved.

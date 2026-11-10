@@ -290,8 +290,8 @@ fn replanned_append_respects_the_index_cap() {
     tamper(&store, &key, &info, |i| {
         let mut e = i.entries[0].clone();
         let size = |i: &_| crate::sync::pack::index::seal_index(&key, i).unwrap().len();
-        while size(i) < CAP - 20_000 {
-            for _ in 0..100 {
+        while size(i) < CAP - 3000 {
+            for _ in 0..5 {
                 e.path = format!("filler-{:06}-{}", i.entries.len(), "x".repeat(60));
                 i.entries.push(e.clone());
             }
