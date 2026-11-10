@@ -83,23 +83,34 @@ impl Repo<'_> {
 
     /// Appends a tombstone at gen + 1 of the merged entry of `path` to the open pack.
     pub fn tombstone(&mut self, path: &str) -> Result<(), RepoError> {
-        let gen = self
-            .view
-            .get(path)
-            .ok_or_else(|| RepoError::Unknown(path.into()))?
-            .gen;
-        let pack = match self.open.clone() {
-            Some(p) => p,
-            None => self.new_pack()?,
-        };
-        let batch = Batch {
-            staged: &[],
-            tombs: vec![(path.to_string(), gen + 1)],
-            seal: false,
-        };
-        let next = self.try_append(&pack, &batch)?;
-        self.open = open_of(next);
-        self.reload()?;
+        self.tombstone_batch(&[path.to_string()])
+    }
+
+    /// One tombstone per path, each at gen + 1 of the merged entry.
+    pub fn tombstone_batch(&mut self, paths: &[String]) -> Result<(), RepoError> {
+        let mut tombs = Vec::new();
+        for path in paths {
+            let gen = self
+                .view
+                .get(path)
+                .ok_or_else(|| RepoError::Unknown(path.clone()))?
+                .gen;
+            tombs.push((path.clone(), gen + 1));
+        }
+        for tomb in tombs {
+            let pack = match self.open.clone() {
+                Some(p) => p,
+                None => self.new_pack()?,
+            };
+            let batch = Batch {
+                staged: &[],
+                tombs: vec![tomb],
+                seal: false,
+            };
+            let next = self.try_append(&pack, &batch)?;
+            self.open = open_of(next);
+            self.reload()?;
+        }
         Ok(())
     }
 
