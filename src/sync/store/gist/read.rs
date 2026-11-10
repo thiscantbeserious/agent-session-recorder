@@ -27,7 +27,7 @@ pub(super) fn covering(
     let (mut start, mut out) = (0u64, Vec::new());
     for part in parts {
         let stop = start.checked_add(part.size).ok_or_else(bad)?;
-        if start < end && stop > offset && stop > start {
+        if len > 0 && start < end && stop > offset && stop > start {
             let last = end.min(stop) - 1 - start;
             out.push((part, offset.max(start) - start, last));
         }
