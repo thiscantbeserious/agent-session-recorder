@@ -211,6 +211,9 @@ mod sync_engine_pack_test;
 #[path = "integration/sync_engine_multi_test.rs"]
 mod sync_engine_multi_test;
 
+#[path = "integration/sync_status_format_test.rs"]
+mod sync_status_format_test;
+
 #[path = "integration/sync_setup_test.rs"]
 mod sync_setup_test;
 
