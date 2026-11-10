@@ -40,7 +40,7 @@ impl Repo<'_> {
         let (staged, tombs) = replan(&self.view_with(&pack.id, &moved), batch);
         let again = OpenPack {
             text: current,
-            files: self.files_now(&pack.id).unwrap_or(pack.files),
+            files: self.files_now(&pack.id)?.unwrap_or(pack.files),
             index: moved,
             ..pack.clone()
         };
@@ -92,12 +92,12 @@ impl Repo<'_> {
     }
 
     /// Data files of pack `id` as listed now, the other writer added some.
-    fn files_now(&self, id: &str) -> Option<usize> {
-        let listing = self.store.list().ok()?;
-        listing
+    fn files_now(&self, id: &str) -> Result<Option<usize>, StoreError> {
+        let listing = self.store.list()?;
+        Ok(listing
             .packs
             .into_iter()
             .find(|p| p.id == id)
-            .map(|p| p.files)
+            .map(|p| p.files))
     }
 }
