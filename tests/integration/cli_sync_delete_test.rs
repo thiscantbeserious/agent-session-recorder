@@ -148,4 +148,21 @@ mod prompts {
         assert_eq!(fingerprint(remote.path()), before, "wrong count, no append");
         assert_eq!(writer_of(&b), None, "{}", b.state());
     }
+
+    #[test]
+    fn over_ten_without_tty_needs_force() {
+        let remote = remote();
+        let (_a, b) = pushed_pair(remote.path(), 11);
+        let before = fingerprint(remote.path());
+        let out = b.run(&["delete", "--yes", "claude/s*"]);
+        assert!(!out.success(), "{}", out.all());
+        assert!(out.stderr.contains("--force"), "{}", out.stderr);
+        assert_eq!(fingerprint(remote.path()), before, "no append");
+        assert_eq!(writer_of(&b), None, "{}", b.state());
+        let one = b.run(&["delete", "claude/s00*"]);
+        assert!(one.stdout.contains("--yes"), "{}", one.stdout);
+        assert_eq!(fingerprint(remote.path()), before, "one match needs --yes");
+        let forced = b.run(&["delete", "--yes", "--force", "claude/s*"]);
+        assert!(forced.stdout.contains("Deleted: 11"), "{}", forced.all());
+    }
 }
