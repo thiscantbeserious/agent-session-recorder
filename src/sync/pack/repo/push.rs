@@ -84,6 +84,23 @@ impl PushReport {
     }
 }
 
+impl PushReport {
+    /// Tombstones the append that wrote `next` carried, `Superseded` when the retry dropped one.
+    fn record_tombs(&mut self, tombs: &[(String, u64)], next: &OpenPack) {
+        for (path, gen) in tombs {
+            let hit =
+                (next.index.entries.iter()).any(|e| e.deleted && &e.path == path && e.gen == *gen);
+            let outcome = match hit {
+                true => Outcome::Pushed {
+                    pack: next.id.clone(),
+                },
+                false => Outcome::Superseded,
+            };
+            self.items.push((path.clone(), *gen, outcome));
+        }
+    }
+}
+
 impl Repo<'_> {
     pub fn push_batch(&mut self, items: &[PushItem]) -> Result<PushReport, PushError> {
         let mut report = PushReport::default();
@@ -207,7 +224,7 @@ impl Repo<'_> {
         }
     }
 
-    fn tombs_into(&mut self, paths: &[String], _report: &mut PushReport) -> Result<(), StoreError> {
+    fn tombs_into(&mut self, paths: &[String], report: &mut PushReport) -> Result<(), StoreError> {
         let mut tombs = Vec::new();
         for path in paths {
             let gen = self
@@ -217,12 +234,18 @@ impl Repo<'_> {
                 .gen;
             tombs.push((path.clone(), gen + 1));
         }
-        self.append_tombs(tombs)?;
-        self.reload()
+        self.append_tombs(tombs, report)?;
+        report.open = self.open_ref();
+        report.check_failed = self.reload().is_err();
+        Ok(())
     }
 
     /// The tombstones in as few appends as the index cap allows, the pack that fills up is sealed.
-    fn append_tombs(&mut self, mut rest: Vec<(String, u64)>) -> Result<(), StoreError> {
+    fn append_tombs(
+        &mut self,
+        mut rest: Vec<(String, u64)>,
+        report: &mut PushReport,
+    ) -> Result<(), StoreError> {
         while !rest.is_empty() {
             let pack = self.open_or_new()?;
             let by_cap = cap::take_within(self.key, &pack.index, &cap::tomb_costs(&rest))?;
@@ -232,12 +255,15 @@ impl Repo<'_> {
             }
             let tail = rest.split_off(by_cap.max(1));
             let seal = !tail.is_empty();
+            let sent = rest.clone();
             let batch = Batch {
                 staged: &[],
                 tombs: rest,
                 seal,
             };
-            self.open = open_of(self.try_append(&pack, &batch)?);
+            let next = self.try_append(&pack, &batch)?;
+            report.record_tombs(&sent, &next);
+            self.open = open_of(next);
             rest = tail;
         }
         Ok(())
