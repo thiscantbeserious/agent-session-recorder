@@ -253,6 +253,9 @@ impl PackStore for DirStore {
 
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError> {
         let m = self.manifest(id)?;
+        if offset.checked_add(len).is_none_or(|end| end > m.len) {
+            return Err(StoreError::NotFound);
+        }
         let (mut skip, mut left) = (offset, len);
         let mut reader: Box<dyn Read> = Box::new(io::empty());
         for name in &m.parts {
