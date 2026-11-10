@@ -1,7 +1,7 @@
 //! Tests for the analyze rename helpers.
 
-use super::{apply_rename, current_stem, target_path};
 use agr::files::backup::backup_path_for;
+use agr::files::filename::{apply_rename, current_stem, target_path};
 use std::path::Path;
 use tempfile::TempDir;
 

@@ -13,12 +13,12 @@ use super::widgets::FileItem;
 use crate::asciicast::TransformResult;
 use crate::config::Config;
 
-mod input;
+pub(in crate::tui) mod input;
 mod keys;
 mod modals;
 mod mouse;
-mod render;
-mod session_actions;
+pub(in crate::tui) mod render;
+pub(in crate::tui) mod session_actions;
 mod tui_app;
 
 /// UI mode for the list application
@@ -195,8 +195,3 @@ impl ListApp {
         }
     }
 }
-
-#[cfg(test)]
-mod tests;
-#[cfg(test)]
-mod tests_render;

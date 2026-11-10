@@ -1,33 +1,13 @@
 //! Rename suggestion after analysis, keeps the `.cast` or `.cast.gz` suffix.
 
 use std::io::{self, BufRead, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use anyhow::Result;
 
 use agr::analyzer::{AnalyzerService, ValidatedMarker};
-use agr::files::codec;
-use agr::files::filename::rename_file;
-
-/// Current file name without the session suffix, the input for the LLM suggestion.
-pub(super) fn current_stem(filepath: &Path) -> String {
-    let name = filepath
-        .file_name()
-        .and_then(std::ffi::OsStr::to_str)
-        .unwrap_or("");
-    codec::session_stem(name).to_string()
-}
-
-/// Path the suggested name would give, same directory and suffix.
-pub(super) fn target_path(filepath: &Path, suggested: &str) -> PathBuf {
-    filepath.with_file_name(format!("{suggested}{}", codec::session_suffix(filepath)))
-}
-
-/// Rename to the suggested stem, returns the new path.
-pub(super) fn apply_rename(filepath: &Path, suggested: &str) -> Result<PathBuf> {
-    Ok(rename_file(filepath, suggested)?)
-}
+use agr::files::filename::{apply_rename, current_stem, target_path};
 
 fn confirm(question: &str) -> Result<bool> {
     print!("\n{question} [y/N]: ");
@@ -71,7 +51,3 @@ pub(super) fn handle_rename_suggestion(
     }
     Ok(())
 }
-
-#[cfg(test)]
-#[path = "rename_tests.rs"]
-mod tests;

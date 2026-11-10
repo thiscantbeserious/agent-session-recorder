@@ -1,8 +1,10 @@
-use super::{
-    aad, open_blob, open_stream, seal_blob, seal_stream, seal_with_prefix, BlobError, CryptoError,
-    Digest, Key, FRAME, HEADER_LEN, PREFIX_LEN, TAG_LEN,
+use agr::sync::testing::blob::{
+    aad, open_blob, seal_blob, seal_with_prefix, Digest, FRAME, HEADER_LEN, PREFIX_LEN, TAG_LEN,
 };
-use crate::sync::crypto::sha256_hex;
+use agr::sync::testing::{
+    key_bytes, key_from_bytes, open_stream, seal_stream, sha256_hex, BlobError, CryptoError,
+};
+use agr::sync::Key;
 
 const PATH: &str = "claude/x.cast.gz";
 const FR: usize = FRAME + TAG_LEN;
@@ -20,7 +22,7 @@ const SIZES: [usize; 8] = [
 const FOUR: usize = 3 * 65536 + 5;
 
 fn key(b: u8) -> Key {
-    Key::from_bytes([b; 32])
+    key_from_bytes([b; 32])
 }
 
 fn plain(n: usize) -> Vec<u8> {
@@ -258,11 +260,11 @@ fn every_header_and_frame_bit_flip_is_rejected() {
 #[test]
 fn frame_nonce_is_prefix_counter_and_last_flag() {
     use chacha20poly1305::aead::{Aead, KeyInit, Payload};
-    let k = Key::from_bytes([5; 32]);
+    let k = key_from_bytes([5; 32]);
     let prefix = [9u8; PREFIX_LEN];
     let mut out = Vec::new();
     seal_with_prefix(&k, PATH, 1, &prefix, plain(FRAME + 1).as_slice(), &mut out).unwrap();
-    let cipher = chacha20poly1305::XChaCha20Poly1305::new(k.as_bytes().into());
+    let cipher = chacha20poly1305::XChaCha20Poly1305::new(key_bytes(&k).into());
     let nonce = |ctr: u32, flag: u8| [&prefix[..], &ctr.to_be_bytes(), &[flag]].concat();
     let (n0, n1) = (nonce(0, 0), nonce(1, 1));
     let aad = aad(PATH, 1);
@@ -292,7 +294,7 @@ fn raw_frame_aad(
 ) -> Vec<u8> {
     use chacha20poly1305::aead::{Aead, KeyInit, Payload};
     let nonce = [&prefix[..], &ctr.to_be_bytes(), &[flag]].concat();
-    let cipher = chacha20poly1305::XChaCha20Poly1305::new(k.as_bytes().into());
+    let cipher = chacha20poly1305::XChaCha20Poly1305::new(key_bytes(k).into());
     cipher
         .encrypt(nonce.as_slice().try_into().unwrap(), Payload { msg, aad })
         .unwrap()
@@ -339,7 +341,7 @@ fn only_the_final_frame_carries_the_last_flag() {
     let (head, frames) = split(&b);
     assert_eq!(frames.len(), 4);
     let prefix = &head[5..];
-    let cipher = chacha20poly1305::XChaCha20Poly1305::new(k.as_bytes().into());
+    let cipher = chacha20poly1305::XChaCha20Poly1305::new(key_bytes(&k).into());
     let aad = aad(PATH, 3);
     let opens = |i: usize, flag: u8| {
         let nonce = [prefix, &(i as u32).to_be_bytes(), &[flag]].concat();

@@ -1,12 +1,13 @@
-use super::{Opener, Sealer, Stream, PREFIX_LEN};
-use crate::sync::crypto::{CryptoError, Key};
+use agr::sync::testing::blob::{Opener, Sealer, Stream, PREFIX_LEN};
+use agr::sync::testing::{key_cipher, key_from_bytes, CryptoError};
+use agr::sync::Key;
 use chacha20poly1305::aead::{Aead, Payload};
 use chacha20poly1305::XNonce;
 
 const AAD: &[u8] = b"agr:test";
 
 fn key() -> Key {
-    Key::from_bytes([5; 32])
+    key_from_bytes([5; 32])
 }
 
 fn prefix() -> [u8; PREFIX_LEN] {
@@ -23,8 +24,7 @@ fn nonce(ctr: u32, flag: u8) -> [u8; 24] {
 /// Frame sealed by hand under a hand-built nonce, no stream layer involved.
 fn hand(ctr: u32, flag: u8, msg: &[u8]) -> Vec<u8> {
     let n = XNonce::from(nonce(ctr, flag));
-    key()
-        .cipher()
+    key_cipher(&key())
         .encrypt(&n, Payload { msg, aad: AAD })
         .unwrap()
 }
@@ -35,7 +35,7 @@ fn unhand(ctr: u32, flag: u8, frame: &[u8]) -> Option<Vec<u8>> {
         msg: frame,
         aad: AAD,
     };
-    key().cipher().decrypt(&n, pay).ok()
+    key_cipher(&key()).decrypt(&n, pay).ok()
 }
 
 #[test]

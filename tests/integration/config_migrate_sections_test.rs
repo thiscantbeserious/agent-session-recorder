@@ -1,6 +1,9 @@
-//! Unit tests for the private section-ordering helpers of the config migration.
+//! Tests for the section-ordering helpers of the config migration.
 
-use super::*;
+use agr::config::testing::{
+    collect_section_blocks, ensure_blank_line_separator, parse_section_header, reassemble_toml,
+    sort_blocks_by_order,
+};
 
 // -----------------------------------------------------------------------
 // collect_section_blocks

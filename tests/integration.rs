@@ -218,3 +218,42 @@ mod sync_multi_machine_test;
 
 #[path = "integration/sync_queue_test.rs"]
 mod sync_queue_test;
+
+#[path = "integration/analyze_options_test.rs"]
+mod analyze_options_test;
+
+#[path = "integration/analyze_rename_test.rs"]
+mod analyze_rename_test;
+
+#[path = "integration/config_migrate_sections_test.rs"]
+mod config_migrate_sections_test;
+
+#[path = "integration/sync_blob_kat_test.rs"]
+mod sync_blob_kat_test;
+
+#[path = "integration/sync_blob_stream_test.rs"]
+mod sync_blob_stream_test;
+
+#[path = "integration/sync_blob_test.rs"]
+mod sync_blob_test;
+
+#[path = "integration/sync_gist_backend_test.rs"]
+mod sync_gist_backend_test;
+
+#[path = "integration/sync_gist_pull_test.rs"]
+mod sync_gist_pull_test;
+
+#[path = "integration/sync_gist_push_test.rs"]
+mod sync_gist_push_test;
+
+#[path = "integration/sync_scan_path_test.rs"]
+mod sync_scan_path_test;
+
+#[path = "integration/tui_cleanup_app_test.rs"]
+mod tui_cleanup_app_test;
+
+#[path = "integration/tui_list_app_render_test.rs"]
+mod tui_list_app_render_test;
+
+#[path = "integration/tui_list_app_test.rs"]
+mod tui_list_app_test;

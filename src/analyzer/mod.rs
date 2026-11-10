@@ -31,6 +31,7 @@ pub mod chunk;
 mod config;
 pub mod error;
 mod extractor;
+pub mod options;
 pub mod progress;
 mod prompt;
 pub mod result;

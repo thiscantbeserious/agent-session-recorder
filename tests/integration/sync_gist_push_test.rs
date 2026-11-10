@@ -1,7 +1,6 @@
-use super::fake::{backend, fail, ok, remote_parts, scrub, source_of, Bytes, Fake};
-use super::pace::tests::FakeClock;
-use super::parts::part_name;
-use super::{BackendError, SyncBackend, MANIFEST_FILE};
+use crate::helpers::gist_fake::{backend, fail, ok, remote_parts, scrub, source_of, Bytes, Fake};
+use agr::sync::testing::gist::{part_name, FakeClock, MANIFEST_FILE};
+use agr::sync::{BackendError, SyncBackend};
 use std::sync::Arc;
 use std::time::Duration;
 

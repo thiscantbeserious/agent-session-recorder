@@ -221,7 +221,7 @@ fn opaque(rows: &mut BTreeMap<String, Row>, entry: &RemoteEntry, remote: Remote,
 }
 
 /// `agent/name.cast.gz`, nothing that can escape the storage dir or hit hidden files.
-pub(super) fn valid_path(path: &str) -> bool {
+pub fn valid_path(path: &str) -> bool {
     let parts: Vec<&str> = path.split('/').collect();
     parts.len() == 2
         && parts
@@ -278,6 +278,3 @@ fn slashed(path: &Path) -> String {
         .collect();
     parts.join("/")
 }
-
-#[cfg(test)]
-mod tests;

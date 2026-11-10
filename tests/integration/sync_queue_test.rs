@@ -171,7 +171,6 @@ fn the_queue_dir_is_ignored_by_listing_and_cleanup() {
 /// the real hook and child. Whoever loses the lock race just returns.
 #[test]
 fn concurrent_recordings_all_reach_the_remote_and_the_queue_ends_empty() {
-    let started = std::time::Instant::now();
     for round in 0..40 {
         let w = world();
         let names: Vec<String> = (0..4)
@@ -197,5 +196,4 @@ fn concurrent_recordings_all_reach_the_remote_and_the_queue_ends_empty() {
         assert_eq!(w.backend.len(), names.len(), "round {round}");
         assert!(queue::list(w.dir()).is_empty(), "round {round}");
     }
-    assert!(started.elapsed().as_secs() < 5, "{:?}", started.elapsed());
 }

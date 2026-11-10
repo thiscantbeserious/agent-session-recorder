@@ -1,7 +1,7 @@
 //! Unit tests for the cleanup app.
 
-use super::glob::{glob_match, matches_glob_pattern, parse_glob_pattern};
-use super::*;
+use agr::tui::cleanup_app::*;
+use agr::tui::testing::cleanup_app::*;
 
 #[test]
 fn mode_default_is_normal() {
@@ -220,7 +220,6 @@ fn glob_match_multibyte_utf8() {
 
 #[test]
 fn delete_paths_removes_gzip_session_with_hidden_backup() {
-    use super::actions::delete_paths;
     let dir = tempfile::tempdir().unwrap();
     let session = dir.path().join("x.cast.gz");
     let backup = dir.path().join(".x.cast.gz.bak");
@@ -237,7 +236,6 @@ fn delete_paths_removes_gzip_session_with_hidden_backup() {
 
 #[test]
 fn deletion_status_reports_on_disk_size_freed() {
-    use super::actions::deletion_status;
     assert_eq!(
         deletion_status(2, 2, 2048),
         "Deleted 2 sessions (freed 2 KiB)"
