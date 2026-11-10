@@ -52,3 +52,11 @@ fn without_a_terminal_one_match_still_needs_yes() {
     assert_eq!(got, Confirm::Declined);
     assert!(out.contains("--yes"), "{out}");
 }
+
+#[test]
+fn force_on_a_terminal_still_asks_the_typed_count() {
+    let (got, out) = run(11, true, true, true, "7\n");
+    assert!(out.contains("Type 11 to confirm"), "{out}");
+    assert_eq!(got, Confirm::Declined);
+    assert_eq!(run(11, true, true, true, "11\n").0, Confirm::Go);
+}
