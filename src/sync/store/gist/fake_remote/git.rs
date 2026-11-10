@@ -52,6 +52,13 @@ fn checkout(dir: &Path, files: &Files) {
     }
 }
 
+/// Writes the files of `files` and removes the tracked ones it lacks, untracked files stay.
+fn update(dir: &Path, files: &Files) {
+    for (name, body) in files {
+        std::fs::write(dir.join(name), body).unwrap();
+    }
+}
+
 impl FakeRemote {
     pub(super) fn git(&self, args: &[String], cwd: Option<&Path>) -> Result<Output> {
         let verb = git_verb(args);
@@ -63,6 +70,8 @@ impl FakeRemote {
             "merge" => self.merge(&mut state, &dir.unwrap()),
             "ls-tree" => self.ls_tree(&state, &dir.unwrap()),
             "show" => self.show(&state, &dir.unwrap(), args.last().unwrap()),
+            "reset" => self.reset(&mut state, &dir.unwrap()),
+            "clean" => self.clean(&state, &dir.unwrap()),
             "add" => out(0, "", ""),
             "commit" => self.commit(&mut state, &dir.unwrap()),
             "push" => self.push(&mut state, &dir.unwrap()),
@@ -79,11 +88,31 @@ impl FakeRemote {
         out(0, "", "")
     }
 
-    /// Fast-forward only: the worktree is replaced by `FETCH_HEAD`.
+    /// Fast-forward only: a no-op behind an unpushed local commit, untracked files stay.
     fn merge(&self, state: &mut State, dir: &Path) -> Result<Output> {
         let c = state.clones.get_mut(dir).unwrap();
-        c.base = c.fetched;
+        if c.local.is_empty() {
+            c.base = c.fetched;
+            update(dir, &state.gists[&c.id].history[c.base]);
+        }
+        out(0, "", "")
+    }
+
+    /// `reset --hard FETCH_HEAD`: local commits are gone, tracked files are the fetched ones.
+    fn reset(&self, state: &mut State, dir: &Path) -> Result<Output> {
+        let c = state.clones.get_mut(dir).unwrap();
+        (c.base, c.local) = (c.fetched, Vec::new());
         checkout(dir, &state.gists[&c.id].history[c.base]);
+        out(0, "", "")
+    }
+
+    /// `clean -fdx`: every file the head does not track goes.
+    fn clean(&self, state: &State, dir: &Path) -> Result<Output> {
+        let c = &state.clones[dir];
+        let tracked = &state.gists[&c.id].history[c.base];
+        for name in worktree(dir).keys().filter(|n| !tracked.contains_key(*n)) {
+            std::fs::remove_file(dir.join(name)).unwrap();
+        }
         out(0, "", "")
     }
 
@@ -113,7 +142,10 @@ impl FakeRemote {
 
     fn ls_tree(&self, state: &State, dir: &Path) -> Result<Output> {
         let c = &state.clones[dir];
-        let tree = &state.gists[&c.id].history[c.base];
+        let tree = c
+            .local
+            .last()
+            .unwrap_or(&state.gists[&c.id].history[c.base]);
         let row =
             |(n, b): (&String, &Vec<u8>)| format!("100644 blob {:040} {:>7}\t{n}\n", 0, b.len());
         out(0, &tree.iter().map(row).collect::<String>(), "")
@@ -122,7 +154,11 @@ impl FakeRemote {
     fn show(&self, state: &State, dir: &Path, spec: &str) -> Result<Output> {
         let c = &state.clones[dir];
         let at = [c.base, c.fetched][usize::from(spec.starts_with("FETCH_HEAD"))];
-        let body = &state.gists[&c.id].history[at][spec.rsplit(':').next().unwrap()];
+        let tree = match (spec.starts_with("FETCH_HEAD"), c.local.last()) {
+            (false, Some(local)) => local,
+            _ => &state.gists[&c.id].history[at],
+        };
+        let body = &tree[spec.rsplit(':').next().unwrap()];
         out(0, &String::from_utf8_lossy(body), "")
     }
 

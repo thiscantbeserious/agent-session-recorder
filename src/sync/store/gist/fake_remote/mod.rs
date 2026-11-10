@@ -111,6 +111,29 @@ impl FakeRemote {
         self.state.borrow_mut().race = Some(Box::new(edit));
     }
 
+    /// A commit in the clone at `dir` that never reached the remote, a kill between commit and push.
+    pub(crate) fn commit_unpushed(&self, dir: &Path, index: &str) {
+        let mut state = self.state.borrow_mut();
+        let c = state.clones.get_mut(dir).unwrap();
+        let mut files = c.local.last().cloned().unwrap_or_default();
+        if c.local.is_empty() {
+            files = std::fs::read_dir(dir)
+                .unwrap()
+                .flatten()
+                .filter(|e| e.path().is_file())
+                .map(|e| {
+                    (
+                        e.file_name().into_string().unwrap(),
+                        std::fs::read(e.path()).unwrap(),
+                    )
+                })
+                .collect();
+        }
+        files.insert("index".into(), index.as_bytes().to_vec());
+        std::fs::write(dir.join("index"), index).unwrap();
+        c.local.push(files);
+    }
+
     /// Names changed by every commit a clone made.
     pub(crate) fn commit_changes(&self) -> Vec<Vec<String>> {
         self.state.borrow().commits.clone()

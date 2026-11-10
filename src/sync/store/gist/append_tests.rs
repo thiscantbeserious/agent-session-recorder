@@ -147,6 +147,30 @@ fn rejected_push_with_a_failing_fetch_is_not_moved() {
 }
 
 #[test]
+fn clone_with_an_unpushed_commit_is_reset_to_the_remote() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &PARTS);
+    let store = rig.store();
+    append(&store, &id, (6, "i0"), (b"xyz", "i1")).unwrap();
+    // a kill between commit and push left a commit the remote never had
+    rig.remote.commit_unpushed(&rig.clone_dir(&id), "ghost");
+    let res = append(&store, &id, (9, "i1"), (b"uvw", "i2"));
+    assert_eq!(res, Ok(()));
+}
+
+#[test]
+fn stray_untracked_files_in_the_clone_are_removed() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &PARTS);
+    let store = rig.store();
+    append(&store, &id, (6, "i0"), (b"xyz", "i1")).unwrap();
+    let stray = rig.clone_dir(&id).join("data.009");
+    std::fs::write(&stray, b"half").unwrap();
+    append(&store, &id, (9, "i1"), (b"uvw", "i2")).unwrap();
+    assert!(!stray.exists());
+}
+
+#[test]
 fn append_is_one_commit_with_parts_and_index() {
     let rig = Rig::new();
     let id = rig.remote.seed("i0", &PARTS);
