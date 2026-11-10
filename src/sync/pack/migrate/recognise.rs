@@ -24,9 +24,19 @@ pub enum Kind {
     Ignored,
 }
 
-pub fn recognise(g: &LegacyGist, _key: &Key, _now: i64) -> Kind {
+const STUB_AFTER: i64 = 3600;
+
+/// Seconds since `created_at`, an unreadable time counts as brand new.
+fn age(g: &LegacyGist, now: i64) -> i64 {
+    chrono::DateTime::parse_from_rfc3339(&g.created_at).map_or(0, |t| now - t.timestamp())
+}
+
+pub fn recognise(g: &LegacyGist, _key: &Key, now: i64) -> Kind {
     if g.description == "agr:pending" {
-        return Kind::Stub;
+        return match age(g, now) > STUB_AFTER {
+            true => Kind::Stub,
+            false => Kind::Kept,
+        };
     }
-    Kind::Kept
+    Kind::Ignored
 }
