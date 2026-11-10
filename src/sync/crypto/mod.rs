@@ -81,6 +81,11 @@ pub(in crate::sync) fn random_id_base32(n: usize) -> String {
     BASE32_NOPAD.encode(&nonce[..n])
 }
 
+/// Random id of one machine for its packs, 96 bits as base32.
+pub fn new_writer_id() -> String {
+    random_id_base32(12)
+}
+
 pub fn sha256_hex(data: &[u8]) -> String {
     HEXLOWER.encode(&Sha256::digest(data))
 }

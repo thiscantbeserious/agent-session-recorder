@@ -53,8 +53,14 @@ impl State {
 
     /// The writer id stored in the file at `path`, created and saved on first use.
     pub fn writer_id(path: &Path) -> Result<String> {
-        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
-        Ok(format!("w{nanos}"))
+        let mut state = Self::load_from(path);
+        if let Some(id) = &state.writer_id {
+            return Ok(id.clone());
+        }
+        let id = crate::sync::new_writer_id();
+        state.writer_id = Some(id.clone());
+        state.save_to(path)?;
+        Ok(id)
     }
 
     /// Load from a path, default when the file is missing or malformed (warns on stderr).
