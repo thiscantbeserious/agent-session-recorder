@@ -5,12 +5,13 @@
 
 mod styles;
 mod subcommands;
+mod sync_commands;
 
 pub use styles::build_cli_styles;
 pub use subcommands::{
-    AgentCommands, ConfigCommands, MarkerCommands, NoWrapCommands, ShellCommands, SyncCommands,
-    SyncKeyCommands,
+    AgentCommands, ConfigCommands, MarkerCommands, NoWrapCommands, ShellCommands,
 };
+pub use sync_commands::{SyncCommands, SyncKeyCommands};
 
 use clap::{Parser, Subcommand};
 use clap_complete::Shell as CompletionShell;
