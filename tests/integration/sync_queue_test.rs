@@ -121,6 +121,26 @@ fn a_busy_auto_run_leaves_the_entry_and_stores_no_error() {
     assert_eq!(agr::sync::auto::error_line(&result), None);
 }
 
+/// A lock that cannot be read right now is not a dead one, the holder may be mid write.
+#[cfg(unix)]
+#[test]
+fn an_unreadable_lock_is_busy_and_stays() {
+    use std::os::unix::fs::PermissionsExt;
+    let w = world();
+    w.queued("claude/a.cast.gz");
+    let lock = w.dir().join(".agr-sync.lock");
+    let held = format!("{{\"pid\":{},\"started\":\"x\"}}", std::process::id());
+    std::fs::write(&lock, held).unwrap();
+    std::fs::set_permissions(&lock, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::read_to_string(&lock).is_ok() {
+        return; // running as root, permissions do not apply
+    }
+    let result = w.drain("claude/a.cast.gz");
+    assert_eq!(result.as_ref().err(), Some(&SyncError::Busy));
+    assert!(lock.exists());
+    assert_eq!(queue::list(w.dir()), ["claude/a.cast.gz"]);
+}
+
 #[test]
 fn a_manual_push_removes_the_entries_of_what_it_pushed() {
     let w = world();
