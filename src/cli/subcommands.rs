@@ -321,6 +321,12 @@ EXAMPLE:
         /// Sessions to delete from the remote
         #[arg(required = true, help = "Sessions to delete from the remote")]
         sessions: Vec<String>,
+        /// Delete every remote session
+        #[arg(long, help = "Delete every remote session")]
+        all: bool,
+        /// Allow more than 10 deletes without a terminal
+        #[arg(long, help = "Allow more than 10 deletes without a terminal")]
+        force: bool,
         /// Show what would happen, change nothing
         #[arg(long, help = "Show what would happen, change nothing")]
         dry_run: bool,

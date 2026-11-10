@@ -99,6 +99,8 @@ fn delete_needs_a_session() {
     assert!(Cli::try_parse_from(["agr", "sync", "delete"]).is_err());
     let SyncCommands::Delete {
         sessions,
+        all: _,
+        force: _,
         dry_run,
         yes,
         verbose,
@@ -139,4 +141,21 @@ fn auto_flag_is_hidden_from_help() {
         .unwrap();
     let auto = push.get_arguments().find(|a| a.get_id() == "auto").unwrap();
     assert!(auto.is_hide_set());
+}
+
+#[test]
+fn parses_delete_patterns_all_and_force() {
+    assert!(Cli::try_parse_from(["agr", "sync", "delete", "--all", "x"]).is_err());
+    assert!(Cli::try_parse_from(["agr", "sync", "delete", "--all"]).is_ok());
+    let SyncCommands::Delete {
+        sessions,
+        all,
+        force,
+        ..
+    } = sync(&["delete", "--force", "claude/*", "codex/a?"])
+    else {
+        panic!("Expected Delete");
+    };
+    assert_eq!((all, force), (false, true));
+    assert_eq!(sessions, ["claude/*", "codex/a?"]);
 }

@@ -44,6 +44,8 @@ pub fn handle(cmd: SyncCommands) -> Result<()> {
         }),
         SyncCommands::Delete {
             sessions,
+            all: _,
+            force: _,
             dry_run,
             yes,
             verbose,
