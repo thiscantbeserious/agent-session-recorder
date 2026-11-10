@@ -402,4 +402,23 @@ mod moving {
         assert_eq!(engine.push(&Options::default()).unwrap().items.len(), 1);
         assert!(rig.merged(A).is_some());
     }
+
+    fn three(rig: &Rig) -> Vec<String> {
+        let one = |n: u32| {
+            rig.legacy
+                .v1(&rig.key, (&format!("claude/s{n}.cast.gz"), 1), b"b", None)
+        };
+        (0..3).map(one).collect()
+    }
+
+    #[test]
+    fn a_hard_delete_error_still_returns_the_report_with_what_was_deleted() {
+        let rig = Rig::new();
+        three(&rig);
+        rig.legacy.fail_deletes_after(1);
+        let store = Listed(&rig.mem, &rig.legacy);
+        let report = migrate_run(&rig.env(&store));
+        let report = report.expect("the report with the first delete, not a bare error");
+        assert_eq!((report.moved, report.deleted), (3, 1));
+    }
 }

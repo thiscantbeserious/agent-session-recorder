@@ -18,6 +18,8 @@ pub struct LegacyFake {
     deletes: Mutex<Vec<String>>,
     /// Deletes allowed before `RateLimited`, `None` is no limit.
     delete_budget: Mutex<Option<usize>>,
+    /// Deletes allowed before a hard error, `None` is never.
+    delete_fail_after: Mutex<Option<usize>>,
 }
 
 pub const OLD: i64 = 5 * 3600;
@@ -126,6 +128,10 @@ impl LegacyFake {
         *self.delete_budget.lock().unwrap() = n;
     }
 
+    pub fn fail_deletes_after(&self, n: usize) {
+        *self.delete_fail_after.lock().unwrap() = Some(n);
+    }
+
     pub fn descriptions(&self) -> Vec<String> {
         let all = self.gists.lock().unwrap();
         all.iter().map(|g| g.info.description.clone()).collect()
@@ -161,6 +167,14 @@ impl LegacyRead for LegacyFake {
     }
 
     fn delete(&self, id: &str) -> Result<(), StoreError> {
+        if !self.gists.lock().unwrap().iter().any(|g| g.info.id == id) {
+            return Err(StoreError::NotFound);
+        }
+        let mut fail = self.delete_fail_after.lock().unwrap();
+        if *fail == Some(0) {
+            return Err(StoreError::Other("HTTP 500".into()));
+        }
+        *fail = fail.map(|n| n - 1);
         let mut budget = self.delete_budget.lock().unwrap();
         if *budget == Some(0) {
             return Err(StoreError::RateLimited);
