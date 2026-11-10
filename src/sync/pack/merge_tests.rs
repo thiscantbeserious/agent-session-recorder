@@ -220,3 +220,11 @@ fn sealed_index_wins_a_tie_in_any_order() {
     assert!(merge(&[open(), sealed()]).pack("a").unwrap().sealed);
     assert!(merge(&[sealed(), open()]).pack("a").unwrap().sealed);
 }
+
+#[test]
+fn lengths_that_overflow_do_not_panic_the_merge() {
+    let big = |path: &str| entry(path, 1, "x", u64::MAX, false);
+    let p = pack("p", "P", u64::MAX, vec![big("a"), big("b")]);
+    let view = merge(&[p]);
+    assert!(view.get("a").is_some());
+}
