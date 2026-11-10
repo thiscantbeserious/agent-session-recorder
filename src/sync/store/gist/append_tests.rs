@@ -86,3 +86,72 @@ fn zero_byte_append_on_stale_index_is_moved() {
     assert_eq!(res, Err(StoreError::Moved("i0".into())));
     assert!(!rig.remote.calls().iter().any(|c| c.contains("push")));
 }
+
+#[test]
+fn rejected_push_is_moved_with_the_fetched_index() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &PARTS);
+    rig.remote.race_on_push(|files| {
+        files.insert("index".into(), b"r1".to_vec());
+    });
+    let res = append(&rig.store(), &id, (6, "i0"), (b"xyz", "i1"));
+    assert_eq!(res, Err(StoreError::Moved("r1".into())));
+    assert!(!rig.remote.calls().iter().any(|c| c.contains("--force")));
+}
+
+#[test]
+fn rejected_push_with_a_failing_fetch_is_not_moved() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &PARTS);
+    rig.remote.race_on_push(|files| {
+        files.insert("index".into(), b"r1".to_vec());
+    });
+    rig.remote.fail_fetch(true);
+    let res = append(&rig.store(), &id, (6, "i0"), (b"xyz", "i1"));
+    assert!(matches!(res, Err(StoreError::Other(_))), "{res:?}");
+}
+
+#[test]
+fn append_is_one_commit_with_parts_and_index() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &PARTS);
+    append(&rig.store(), &id, (6, "i0"), (b"xyz", "i1")).unwrap();
+    assert_eq!(rig.remote.commit_changes().len(), 1);
+    assert_eq!(rig.remote.commit_changes()[0], vec!["data.002", "index"]);
+    assert_eq!(rig.remote.push_changes(), vec![vec!["data.002", "index"]]);
+}
+
+#[test]
+fn pushes_to_one_gist_are_paced_10s() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &[]);
+    let store = rig.store();
+    append(&store, &id, (0, "i0"), (b"abc", "i1")).unwrap();
+    append(&store, &id, (3, "i1"), (b"def", "i2")).unwrap();
+    assert_eq!(rig.clock.slept(), vec![Duration::from_secs(10)]);
+}
+
+#[test]
+fn pacing_holds_across_processes() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &[]);
+    append(&rig.store(), &id, (0, "i0"), (b"abc", "i1")).unwrap();
+    rig.clock.advance(Duration::from_secs(3));
+    append(&rig.store(), &id, (3, "i1"), (b"def", "i2")).unwrap();
+    assert_eq!(rig.clock.slept(), vec![Duration::from_secs(7)]);
+}
+
+#[test]
+fn progress_percent_belongs_to_the_append() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &[]);
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&seen);
+    let store = rig
+        .store()
+        .with_progress(Arc::new(move |p| sink.lock().unwrap().push(p)));
+    append(&store, &id, (0, "i0"), (b"abc", "i1")).unwrap();
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen.last(), Some(&100));
+    assert_eq!(seen, vec![50, 100], "the clone reports no percent");
+}
