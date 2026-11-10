@@ -207,3 +207,23 @@ fn auth_failure_at_first_place_reads_the_second() {
     reader.read_session("a", &target).unwrap();
     assert_eq!(std::fs::read(target).unwrap(), original);
 }
+
+#[test]
+fn first_real_error_is_reported_over_a_later_mismatch() {
+    let (store, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let (reader, _) = two_places(&store, &key, dir.path());
+    let places = &reader.view().get("a").unwrap().places;
+    let (first, second) = (places[0].pack.clone(), places[1].pack.clone());
+    let info = packs_of(&store).into_iter().find(|p| p.id == second);
+    tamper(&store, &key, &info.unwrap(), |i| {
+        i.entries[0].sha256 = "00".repeat(32)
+    });
+    store.fail_read_after(&first, 66_000);
+    let target = dir.path().join("out.cast");
+    let err = repo(&store, &key, "w3").read_session("a", &target).err();
+    assert!(matches!(err, Some(ReadError::Range(_))), "{err:?}");
+}
