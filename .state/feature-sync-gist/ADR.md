@@ -1363,6 +1363,7 @@ pub struct PackInfo {
     pub tag: String,     // short text the pack layer picked at create (the pack uuid), opaque to the store
     pub len: u64,        // logical pack length, sum of all parts
     pub updated_at: String,
+    pub files: usize,    // data files of the pack (the index not counted), what `fits` weighs against the file limit
 }
 
 /// One listing pass: the packs plus the descriptions of old per-session entries (`agr:v1 <token>`
@@ -1388,11 +1389,20 @@ pub trait PackStore {
         index: &str) -> Result<(), StoreError>;
     /// Whether one more append with these segment lengths fits the pack (file slots on gists).
     fn fits(&self, info: &PackInfo, lens: &[u64]) -> bool { true }
+    /// How many data files an append with these segment lengths adds, one per segment unless the
+    /// store packs segments together (gists cut parts of at most 8 MiB, a directory writes one part).
+    /// The pack layer adds it to `PackInfo.files` after an append, so `fits` stays right without a new listing.
+    fn files_for(&self, lens: &[u64]) -> usize { lens.len() }
+    /// The pack layer sealed the pack, no append will follow. The gist store drops its cached clone
+    /// here, other stores ignore it. The pack layer calls it after every sealing append, also for the
+    /// own pack of a big session, which therefore never evicts the clone of the open pack.
+    fn sealed(&self, id: &str) {}
     /// Streams the logical range `offset..offset + len` of the pack.
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError>;
     fn delete(&self, id: &str) -> Result<(), StoreError>;
 }
 ```
+- **Read contract**: a read that cannot be served (past the end, a part gone) is `NotFound` on every store, the contract tests run it per store. `StoreError` text is backend neutral, the `gh auth login` and rate limit hints belong to the app layer.
 - **Nothing GitHub specific**: the trait only knows a pack id, a logical byte stream, an index string and a length. A gist, a GitLab snippet or repo, a directory or an S3 prefix each map that onto their own files, the per-file limit and the part files stay inside the store.
 - **Guard on the old index, not only its length**: an append carries `expected_len` and `expected_index`, the sealed index text the pack layer opened and planned against. Every index is sealed with a fresh nonce, as such any other append in between (also a zero-byte one that only adds a tombstone) changes the text and the append is `Moved`. The store reads the current index for this check from where it writes (the cached clone on gists, the manifest in a directory), never from a separate API read, and a git store gets the race between that read and the write for free from a rejected non-fast-forward push. A stale API read can only cost a second `Moved`, never a lost write. `StoreError` keeps `NotInstalled`, `NotLoggedIn`, `MissingScope`, `Unreachable`, `RateLimited`, `NotFound` and `Other`, `Changed(Option<String>)` becomes `Moved(String)`, which carries the index text at the current remote head (see "Rejected push or `Moved`"), never a token.
 - **Legacy listing**: `legacy` exists only so `Repo::open` can refuse while old per-session gists are not migrated (see "Migration"). It costs nothing, the descriptions come with the one listing pass, and the store never opens them (`store/` must not name `crypto`).
@@ -1432,12 +1442,13 @@ Restic defaults to 16 MiB and allows 4 to 128 MiB. **Decision**: `[sync] pack_si
 #### Append and seal (one machine, its open pack)
 1. **Find the open pack**: the gist id sits in the local sync index as `open_pack`. When it is missing, the merged view is searched for an unsealed pack with our writer id, and when there is none `create` makes a new gist with an empty index (the index is non-blank text, as such `gh gist create` takes it, no `.keep` any more). The id is saved locally right after the create.
 2. **Cached clone**: the machine keeps one full clone of its own open pack in the cache dir, at most one pack size (64 MiB by default). The first append clones it, every later append does a `git fetch` plus fast-forward only, which downloads nothing new when only this machine writes. A missing cache is cloned again once. The index blob is read from that clone, so index and parts belong to the same commit. A partial clone does not work here, git fetches the existing parts during commit and push (second probe, 2026-11-09).
-   - **Cache path and cleanup**: `<user cache dir>/agr/packs/<gist id>` (`dirs::cache_dir()`), created with 0700 on unix, deleted when the pack is sealed, on `Moved` and when its writer id or length does not match.
+   - **Cache path and cleanup**: `<user cache dir>/agr/packs/<gist id>` (`dirs::cache_dir()`), created with 0700 on unix, deleted when the pack is sealed (the pack layer calls `PackStore::sealed(id)` right after the sealing append, no other append evicts it), on `Moved` and when its writer id or length does not match.
 3. **Check**: the pack layer opened the index it planned against (our key, our writer, not sealed) and passes its text as `expected_index`. The store, after the fast-forward, reads the `index` blob at `HEAD` of the cached clone and refuses with `Moved` unless it equals `expected_index` byte for byte and the part sizes in the tree sum to `expected_len`. A cache whose index differs is deleted with the `Moved`.
 4. **Write**: the sessions are sealed straight from their files into new part files behind the last one, never into an existing part.
-5. **Index**: the new index is the old entries plus the new ones, the new `len`, and `sealed: true` when a seal threshold is reached.
+5. **Index**: the new index is the old entries plus the new ones, the new `len`, and `sealed: true` when a seal threshold is reached. The size threshold is the target, the second one is the **index cap** of 768 KiB of sealed index text, every append rewrites the index and git keeps every version. It is enforced when a chunk is planned: the sealed text of the open index plus an upper bound per new entry must stay under the cap, a chunk that would pass it is cut, the pack is sealed with that append and the rest goes on in a new pack. This holds for pushes and for tombstones alike.
 6. **Commit and push**: one commit with the new parts and the new index, one plain `git push`, never forced. Only the new parts are uploaded, the old ones are already in the cached clone and on the remote.
-7. **Local index**: saved after the push returned, with sha256, gen and stamp per session and the new `open_pack` length. After a seal `open_pack` is cleared and the next append creates a new pack.
+7. **Report**: `push_batch` returns a `PushReport` with the outcome per item (`Pushed { pack }` or `Superseded`), `open` (id and length of the open pack after the push, `None` after a seal), `forks` and `check_failed` (pushed, but the listing for the fork check failed). When a chunk fails after earlier chunks were pushed the error is a `PushError { error, pushed }`, `pushed` is the report of everything that landed. The engine updates its local index from the report and never reaches into the pack layer. Deletes go through `tombstone_batch(paths)`, all paths in as few appends as the index cap allows, `tombstone(path)` is a wrapper for one.
+8. **Local index**: saved after the push returned, with sha256, gen and stamp per session and the new `open_pack` length. After a seal `open_pack` is cleared and the next append creates a new pack.
 
 **Why a crash leaves a consistent pack**: a git push moves the branch from the old commit to the new one in one step, as such a reader sees either the old index with the old parts or the new index with all new parts, never parts without their index or an index without its parts. A crash before the push changes nothing remote. A crash after the push but before the local save leaves remote entries whose hash equals the local file, the next run plans them `InSync` and refreshes the local index, which the plan already does today. Old bytes are never rewritten, as such no crash can damage data that was already pushed.
 
@@ -1447,7 +1458,7 @@ Restic defaults to 16 MiB and allows 4 to 128 MiB. **Decision**: `[sync] pack_si
 **Merge rules** (pure, `pack::merge`), over the indexes of all `agr:v2` packs:
 1. An index that does not authenticate makes its pack `OtherKey`, an unknown `v` makes it `UnknownVersion`, both are reported and never touched (same as today).
 2. Group all entries by path and keep the highest gen.
-3. Several entries at the highest gen with the same sha256 are one session with several places (after a prune or migrate copy), the reader tries the next place on `NotFound` and on a hash or size mismatch (a damaged place never blocks a good copy), and reports `HashMismatch` only when no place verifies.
+3. Several entries at the highest gen with the same sha256 are one session with several places (after a prune or migrate copy), the reader tries the next place on any failure that belongs to that place (not found, range, failed AEAD tag, hash or size mismatch, so a damaged place never blocks a good copy), only errors that hit every place (key, rate limit, local IO) stop the read, and reports `HashMismatch` only when no place verifies.
 4. Several entries at the highest gen with different sha256 are a **fork**, it replaces today's `Duplicate` and is reported per session, push and pull skip it. `push --overwrite` resolves it by appending gen + 1 from the local file. At a fork all top gen versions are live until it is resolved, as such prune keeps every one of them and never counts a fork loser as dead.
 5. A tombstone at the highest gen is `Remote::Deleted { gen }`, not absent, and a push that restores the path uses gen + 1 above it.
 6. **Duplicated pack** (two ids with the same tag, for example a gist copied by hand): both are merged, their identical entries are one session with two places (same AAD, same bytes, nothing to lose), and both ids are reported per pack as "copy of pack <id>, delete one by hand". Neither is ever appended to, sealed by `--seal-orphans`, repacked or deleted by prune. When the own open pack is one of them, the next push clears `open_pack` and creates a new pack. Rejecting both like `OtherKey` was weighed and dropped, a tombstone that only lives in the duplicated pack would vanish from the view and the deleted session would be pushed back.
