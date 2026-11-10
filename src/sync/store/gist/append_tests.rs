@@ -7,8 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::cache::pack_dir;
-use super::fake_remote::{FakeRemote, TickClock};
+use super::fake_remote::FakeRemote;
 use super::{GistStore, PackStore, Segment, StoreError};
+use crate::sync::backend::gist::pace::{Clock, ClockError};
 
 /// One store over its own fake remote, clock and cache dir.
 pub(super) struct Rig {
@@ -40,12 +41,12 @@ impl Rig {
         pack_dir(self.root.path(), id).unwrap()
     }
 
+    /// Calls that run git or gh with `word` as one of their arguments.
     pub(super) fn count(&self, word: &str) -> usize {
-        let word = format!(" {word} ");
-        self.remote
-            .calls()
+        let calls = self.remote.calls();
+        calls
             .iter()
-            .filter(|c| c.contains(&word))
+            .filter(|c| format!("{c} ").contains(&format!(" {word} ")))
             .count()
     }
 }
@@ -67,6 +68,39 @@ pub(super) fn append(
         write: &w,
     }];
     store.append(id, len, index, &segs, next)
+}
+
+/// Test clock where monotonic and unix time are one value, `sleep` moves it and is recorded.
+pub(super) struct TickClock(Mutex<(Duration, Vec<Duration>)>);
+
+impl TickClock {
+    fn new() -> Self {
+        Self(Mutex::new((Duration::from_secs(1_000), Vec::new())))
+    }
+
+    pub(super) fn advance(&self, by: Duration) {
+        self.0.lock().unwrap().0 += by;
+    }
+
+    pub(super) fn slept(&self) -> Vec<Duration> {
+        self.0.lock().unwrap().1.clone()
+    }
+}
+
+impl Clock for TickClock {
+    fn mono(&self) -> Duration {
+        self.0.lock().unwrap().0
+    }
+
+    fn unix_secs(&self) -> Result<u64, ClockError> {
+        Ok(self.mono().as_secs())
+    }
+
+    fn sleep(&self, time: Duration) {
+        let mut state = self.0.lock().unwrap();
+        state.0 += time;
+        state.1.push(time);
+    }
 }
 
 const PARTS: [(&str, &[u8]); 2] = [("data.000", b"abc"), ("data.001", b"def")];
@@ -107,7 +141,7 @@ fn rejected_push_with_a_failing_fetch_is_not_moved() {
     rig.remote.race_on_push(|files| {
         files.insert("index".into(), b"r1".to_vec());
     });
-    rig.remote.fail_fetch(true);
+    rig.remote.fail("fetch");
     let res = append(&rig.store(), &id, (6, "i0"), (b"xyz", "i1"));
     assert!(matches!(res, Err(StoreError::Other(_))), "{res:?}");
 }

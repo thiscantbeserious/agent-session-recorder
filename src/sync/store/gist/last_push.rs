@@ -4,12 +4,13 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::PoisonError;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
 use super::index_cache::write_atomic;
-use super::GistStore;
+use super::{GistStore, StoreError};
 use crate::sync::backend::gist::runner::Runner;
 
 /// GitHub recommends at most 6 pushes a minute per repository.
@@ -52,7 +53,28 @@ impl LastPush {
 }
 
 impl<R: Runner> GistStore<R> {
-    pub(super) fn last_push(&self) -> Option<LastPush> {
+    fn last_push(&self) -> Option<LastPush> {
         self.cache_root.as_deref().map(LastPush::new)
+    }
+
+    /// Waits out the 10 s per gist (persisted, other processes count) and the 1 s of the pacer.
+    pub(super) fn wait_turn(&self, id: &str) {
+        let last = self.last_push();
+        let wait = last
+            .as_ref()
+            .map(|l| l.wait_for(id, self.clock.unix_secs().unwrap_or(0)));
+        wait.filter(|w| !w.is_zero())
+            .iter()
+            .for_each(|w| self.clock.sleep(*w));
+        self.pacer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .wait();
+    }
+
+    pub(super) fn note_push(&self, id: &str) -> Result<(), StoreError> {
+        let now = self.clock.unix_secs()?;
+        self.last_push().iter().for_each(|l| l.put(id, now));
+        Ok(())
     }
 }

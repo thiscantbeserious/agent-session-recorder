@@ -40,7 +40,7 @@ fn missing_cached_clone_is_cloned_once() {
     append(&store, &id, (3, "i1"), (b"def", "i2")).unwrap();
     assert_eq!(rig.count("clone"), 1);
     std::fs::remove_dir_all(rig.clone_dir(&id)).unwrap();
-    rig.remote.fail_clone(true);
+    rig.remote.fail("clone");
     rig.remote.clear_calls();
     let res = append(&store, &id, (6, "i2"), (b"ghi", "i3"));
     assert_eq!(rig.count("clone"), 1, "no loop");

@@ -1,13 +1,13 @@
 //! Append to a pack gist through the cached clone of the own open pack, store side only.
 //! The store reports `Moved(current index)` and drops its clone, the one retry is the pack layer's.
 
-use std::fs::File;
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::Path;
 use std::sync::PoisonError;
 
 use super::api::{be, INDEX_FILE};
-use super::cache::PackCache;
+use super::cache::{parse_tree, Cut, PackCache};
+use super::index_cache::IndexCache;
 use super::layout::{cut_parts, next_names};
 use super::{GistStore, Segment, StoreError};
 use crate::sync::backend::gist::parse::map_failure;
@@ -39,62 +39,26 @@ struct Head {
     parts: Vec<String>,
 }
 
-/// Writes the planned parts one after the other, a segment may span or share parts.
-struct Cut<'a> {
-    dir: &'a Path,
-    todo: std::vec::IntoIter<(String, u64)>,
-    file: Option<File>,
-    room: u64,
-    written: u64,
-}
-
-impl Write for Cut<'_> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        if buf.is_empty() {
-            return Ok(0);
-        }
-        while self.room == 0 {
-            let (name, size) = self
-                .todo
-                .next()
-                .ok_or_else(|| io::Error::other("wrote past the planned parts"))?;
-            self.file = Some(File::create(self.dir.join(name))?);
-            self.room = size;
-        }
-        let take = buf.len().min(self.room as usize);
-        let n = self
-            .file
-            .as_mut()
-            .expect("opened above")
-            .write(&buf[..take])?;
-        (self.room, self.written) = (self.room - n as u64, self.written + n as u64);
-        Ok(n)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.file.as_mut().map_or(Ok(()), Write::flush)
-    }
-}
-
 fn other(e: impl std::fmt::Display) -> StoreError {
     StoreError::Other(e.to_string())
-}
-
-/// `data.*` names and sizes out of `git ls-tree -l`, one `mode blob sha size<TAB>name` line each.
-fn parse_tree(text: &str) -> Vec<(String, u64)> {
-    let rows = text
-        .lines()
-        .filter_map(|l| l.split_once('\t').map(|(a, name)| (a, name)));
-    let sized =
-        rows.filter_map(|(a, name)| Some((name, a.split_whitespace().nth(3)?.parse().ok()?)));
-    let data = sized.filter(|(name, _)| name.starts_with("data."));
-    data.map(|(name, size)| (name.to_string(), size)).collect()
 }
 
 impl<R: Runner> GistStore<R> {
     pub(super) fn append_pack(&self, id: &str, req: &Request) -> Result<(), StoreError> {
         let cache = self.pack_cache(id)?;
+        cache.remove_others();
         let res = self.append_in(&cache, id, req);
+        if res.is_err() {
+            // Any failure can leave the clone ahead of the remote or dirty, the next append clones again.
+            cache.remove();
+        }
+        if matches!(res, Err(StoreError::Moved(_))) {
+            self.cache_file
+                .as_deref()
+                .map(IndexCache::new)
+                .iter()
+                .for_each(|c| c.drop_entry(id));
+        }
         self.seen
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -127,18 +91,28 @@ impl<R: Runner> GistStore<R> {
         }
     }
 
-    /// Stub: a fresh clone every time, tried twice.
+    /// The cached clone when it is there and fast-forwards, a fresh clone once otherwise.
     fn sync_clone(&self, cache: &PackCache, id: &str) -> Result<(), StoreError> {
+        let dir = cache.dir();
+        if dir.exists() && self.fast_forward(dir).is_ok() {
+            return Ok(());
+        }
         cache.remove();
         cache.prepare()?;
         let (url, target) = (
             format!("https://gist.github.com/{id}.git"),
-            cache.dir().to_string_lossy(),
+            dir.to_string_lossy(),
         );
         let mut args = CRED.to_vec();
         args.extend(["clone", "--progress", &url, &target]);
-        self.git(&args, None, &[])
-            .or_else(|_| self.git(&args, None, &[]))
+        self.git(&args, None, &[]).map(drop)
+    }
+
+    fn fast_forward(&self, dir: &Path) -> Result<(), StoreError> {
+        let mut fetch = CRED.to_vec();
+        fetch.extend(["fetch", "--progress"]);
+        self.git(&fetch, Some(dir), &[])?;
+        self.git(&["merge", "--ff-only", "FETCH_HEAD"], Some(dir), &[])
             .map(drop)
     }
 
@@ -210,7 +184,7 @@ impl<R: Runner> GistStore<R> {
 
     /// Plain `git push`, never forced. A rejection is `Moved` with the index the remote has now.
     fn push(&self, dir: &Path, id: &str) -> Result<(), StoreError> {
-        self.wait_turn(id)?;
+        self.wait_turn(id);
         let mut args = CRED.to_vec();
         args.extend(["push", "--no-verify", "--progress"]);
         let sink = self.progress.as_ref();
@@ -246,41 +220,5 @@ impl<R: Runner> GistStore<R> {
             Ok(out) => StoreError::Moved(out.stdout),
             Err(e) => e,
         }
-    }
-
-    /// Waits out the 10 s per gist (persisted, other processes count) and the 1 s of the pacer.
-    fn wait_turn(&self, id: &str) -> Result<(), StoreError> {
-        let last = self.last_push();
-        let wait = last
-            .as_ref()
-            .map(|l| l.wait_for(id, self.clock.unix_secs().unwrap_or(0)));
-        wait.filter(|w| !w.is_zero())
-            .iter()
-            .for_each(|w| self.clock.sleep(*w));
-        self.pacer
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .wait();
-        Ok(())
-    }
-
-    fn note_push(&self, id: &str) -> Result<(), StoreError> {
-        let now = self.clock.unix_secs()?;
-        self.last_push().iter().for_each(|l| l.put(id, now));
-        Ok(())
-    }
-
-    pub(super) fn delete_pack(&self, id: &str) -> Result<(), StoreError> {
-        self.forget_clone(id);
-        self.seen
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(id);
-        self.pacer
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .wait();
-        self.run_ok("gh", &["gist", "delete", id, "--yes"])
-            .map(drop)
     }
 }
