@@ -56,4 +56,43 @@ mod table {
         let kind = recognise(&stub(HOUR - 1), &key, NOW);
         assert_eq!(kind, Kind::Kept);
     }
+
+    #[test]
+    fn stub_over_one_hour_is_a_stub() {
+        let key = Key::generate();
+        assert_eq!(recognise(&stub(HOUR + 1), &key, NOW), Kind::Stub);
+    }
+
+    #[test]
+    fn ours_v1_is_expected() {
+        let key = Key::generate();
+        let g = v1(format!("agr:v1 {}", seal_meta(&key, &meta())), &[]);
+        assert_eq!(recognise(&g, &key, NOW), Kind::Ours(meta()));
+    }
+
+    #[test]
+    fn other_key_unknown_version_and_extra_files_are_kept() {
+        let key = Key::generate();
+        let token = seal_meta(&key, &meta());
+        let other = v1(
+            format!("agr:v1 {}", seal_meta(&Key::generate(), &meta())),
+            &[],
+        );
+        let newer = v1(format!("agr:v2 {token}"), &[]);
+        let extra = v1(format!("agr:v1 {token}"), &["notes.txt"]);
+        for g in [other, newer, extra] {
+            assert_eq!(recognise(&g, &key, NOW), Kind::Kept, "{g:?}");
+        }
+    }
+
+    #[test]
+    fn a_stub_with_a_foreign_file_and_a_foreign_gist() {
+        let key = Key::generate();
+        let mut s = stub(2 * HOUR);
+        s.files.push(("x.txt".into(), 1));
+        assert_eq!(recognise(&s, &key, NOW), Kind::Kept);
+        let mut plain = stub(2 * HOUR);
+        plain.description = "my notes".into();
+        assert_eq!(recognise(&plain, &key, NOW), Kind::Ignored);
+    }
 }
