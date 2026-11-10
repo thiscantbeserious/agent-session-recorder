@@ -108,7 +108,8 @@ impl<R: Runner> GistStore<R> {
     pub(super) fn pack_cache(&self, id: &str) -> Result<PackCache, StoreError> {
         let Some(root) = &self.cache_root else {
             return Err(StoreError::Other(
-                "no user cache dir for the pack clone".into(),
+                "no user cache dir found, set XDG_CACHE_HOME or HOME (LOCALAPPDATA on Windows)"
+                    .into(),
             ));
         };
         Ok(PackCache {

@@ -81,14 +81,16 @@ impl<R: Runner> GistStore<R> {
     }
 
     /// Replace the clock, pacing and commit dates both follow it.
-    pub fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
+    #[cfg(test)]
+    pub(super) fn with_clock(mut self, clock: Arc<dyn Clock>) -> Self {
         self.pacer = Mutex::new(Pacer::new(clock.clone()));
         self.clock = clock;
         self
     }
 
     /// Report the percent of the push of every append to `sink`.
-    pub fn with_progress(mut self, sink: ProgressSink) -> Self {
+    #[cfg(test)]
+    pub(super) fn with_progress(mut self, sink: ProgressSink) -> Self {
         self.progress = Some(sink);
         self
     }

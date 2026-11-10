@@ -4,7 +4,8 @@
 use agr::sync::testing::{GistStore, PackStore, Segment};
 use std::io::Read;
 
-/// Deletes the gist on drop, also when an assertion panics.
+/// Fallback delete on drop, also when an assertion panics. The test deletes the gist itself
+/// and asserts it, so a failed delete is visible.
 struct Cleanup<'a>(&'a GistStore, String);
 
 impl Drop for Cleanup<'_> {
@@ -23,7 +24,8 @@ fn read(store: &GistStore, id: &str, offset: u64, len: u64) -> Vec<u8> {
 #[test]
 #[ignore = "talks to GitHub, run by hand"]
 fn create_append_twice_zero_byte_read_delete() {
-    let store = GistStore::new();
+    let cache = tempfile::tempdir().expect("temp cache dir");
+    let store = GistStore::new().with_cache_dir(cache.path().to_path_buf());
     store.check().expect("gh and git ready");
     let id = store.create("agr-live-test", "i0").expect("create");
     let _cleanup = Cleanup(&store, id.clone());
@@ -51,4 +53,5 @@ fn create_append_twice_zero_byte_read_delete() {
     assert_eq!(store.read_index(&id).expect("index"), "i3");
     assert_eq!(read(&store, &id, 0, a.len() as u64), a);
     assert_eq!(read(&store, &id, a.len() as u64, b.len() as u64), b);
+    store.delete(&id).expect("delete the live gist");
 }
