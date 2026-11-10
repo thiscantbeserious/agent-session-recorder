@@ -34,13 +34,23 @@ pub fn convert_index(text: &str) -> Result<Option<String>, String> {
 const INDEX_FILE: &str = ".agr-sync.json";
 
 /// Converts `<dir>/.agr-sync.json` in place when it is v1, true when it was written.
-/// A missing or unreadable file is left alone, the engine starts an empty v2 from it.
+/// A missing file is left alone, the engine starts an empty v2 from it. A file that exists
+/// but cannot be read or parsed aborts, the engine would rebuild it empty and plan unsynced
+/// local edits as new.
 pub fn convert_file(dir: &std::path::Path) -> Result<bool, String> {
     let path = dir.join(INDEX_FILE);
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return Ok(false);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(format!("could not read {}: {e}", path.display())),
     };
-    let Ok(Some(v2)) = convert_index(&text) else {
+    let converted = convert_index(&text).map_err(|e| {
+        format!(
+            "{} is not valid ({e}), fix or remove it first",
+            path.display()
+        )
+    })?;
+    let Some(v2) = converted else {
         return Ok(false);
     };
     crate::files::codec::atomic_write(&path, |w| Ok(w.write_all(v2.as_bytes())?))
