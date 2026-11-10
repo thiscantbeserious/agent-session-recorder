@@ -27,6 +27,7 @@ pub use read::{read_pack, ReadError};
 use crate::sync::crypto::{open_meta, Key};
 use crate::sync::pack::index::{open_index, Index};
 use crate::sync::pack::merge::{merge, PackIn, View};
+use crate::sync::pack::rules::MAX_TARGET;
 use crate::sync::store::{PackInfo, PackStore, StoreError};
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -41,6 +42,8 @@ pub enum RepoError {
     NeedsMigrate,
     #[error("could not read every pack index: {0}")]
     PartialView(StoreError),
+    #[error("pack target of {0} bytes is above the {max} byte limit", max = MAX_TARGET)]
+    Target(u64),
     #[error("could not list the packs: {0}")]
     List(StoreError),
 }
@@ -150,6 +153,9 @@ impl<'a> Repo<'a> {
         (writer, target, hint): (&str, u64, Option<&str>),
         listed: Vec<PackInfo>,
     ) -> Result<Self, RepoError> {
+        if target > MAX_TARGET {
+            return Err(RepoError::Target(target));
+        }
         let (view, packs, files) = load(store, key, listed).map_err(RepoError::PartialView)?;
         let mut repo = Self {
             store,

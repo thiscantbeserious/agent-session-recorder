@@ -5,6 +5,8 @@ use thiserror::Error;
 const MIB: u64 = 1024 * 1024;
 const MIN_MIB: u64 = 16;
 const MAX_MIB: u64 = 512;
+/// The largest target a repo accepts.
+pub const MAX_TARGET: u64 = MAX_MIB * MIB;
 /// Every append rewrites the index and git keeps every version, so one index stays small.
 const INDEX_CAP: usize = 768 * 1024;
 

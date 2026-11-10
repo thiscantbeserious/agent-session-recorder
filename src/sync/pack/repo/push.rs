@@ -162,11 +162,12 @@ impl Repo<'_> {
                 self.seal_open(&pack, at)?;
                 continue;
             }
-            let n = by_size.min(by_cap.max(1));
-            let (chunk, tail) = rest.split_at(n);
-            let Some(pack) = self.pack_with_room(chunk, at)? else {
+            let n = self.chunk_len(&pack, rest, by_size.min(by_cap.max(1)))?;
+            if n == 0 {
+                self.seal_open(&pack, at)?;
                 continue;
-            };
+            }
+            let (chunk, tail) = rest.split_at(n);
             let sum: u64 = chunk.iter().map(|s| s.len).sum();
             let capped = n == by_cap.max(1) && !tail.is_empty();
             let seal = capped || should_seal(self.target, pack.index.len + sum);
@@ -192,22 +193,22 @@ impl Repo<'_> {
         Ok(())
     }
 
-    /// The open pack (or a new one) when `chunk` fits it. A full open pack is sealed with a
-    /// zero byte append and `None` comes back, the caller plans the chunk again for a new pack.
-    fn pack_with_room(
-        &mut self,
-        chunk: &[Staged],
-        at: &str,
-    ) -> Result<Option<OpenPack>, StoreError> {
-        let Some(open) = self.open.clone() else {
-            return self.new_pack().map(Some);
+    /// How many of the first `n` sessions `pack` takes, 0 when a non-empty pack is full and
+    /// has to be sealed. The chunk shrinks until it fits, one that does not
+    /// fit even alone is an error, a pack is never created for it again.
+    fn chunk_len(&self, pack: &OpenPack, rest: &[Staged], n: usize) -> Result<usize, StoreError> {
+        let fits = |k: usize| {
+            let lens: Vec<u64> = rest[..k].iter().map(|s| s.len).collect();
+            self.store.fits(&pack.info(), &lens)
         };
-        let lens: Vec<u64> = chunk.iter().map(|s| s.len).collect();
-        if self.store.fits(&open.info(), &lens) {
-            return Ok(Some(open));
+        match (1..=n).rev().find(|&k| fits(k)) {
+            Some(k) => Ok(k),
+            None if !pack.index.entries.is_empty() => Ok(0),
+            None => Err(StoreError::Other(format!(
+                "session {} does not fit a fresh pack of this store",
+                rest[0].path
+            ))),
         }
-        self.seal_open(&open, at)?;
-        Ok(None)
     }
 
     /// Appends a tombstone at gen + 1 of the merged entry of `path` to the open pack.
