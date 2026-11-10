@@ -226,6 +226,15 @@ mod sync_index_fields_test;
 #[path = "integration/cli_sync_parse_test.rs"]
 mod cli_sync_parse_test;
 
+#[path = "integration/cli_sync_delete_test.rs"]
+mod cli_sync_delete_test;
+
+#[path = "integration/cli_sync_push_pull_test.rs"]
+mod cli_sync_push_pull_test;
+
+#[path = "integration/cli_sync_status_test.rs"]
+mod cli_sync_status_test;
+
 #[path = "integration/cli_sync_test.rs"]
 mod cli_sync_test;
 
