@@ -248,3 +248,12 @@ mod sync_gist_push_test;
 
 #[path = "integration/sync_scan_path_test.rs"]
 mod sync_scan_path_test;
+
+#[path = "integration/tui_cleanup_app_test.rs"]
+mod tui_cleanup_app_test;
+
+#[path = "integration/tui_list_app_render_test.rs"]
+mod tui_list_app_render_test;
+
+#[path = "integration/tui_list_app_test.rs"]
+mod tui_list_app_test;

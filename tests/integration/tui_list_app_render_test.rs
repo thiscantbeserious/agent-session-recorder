@@ -1,9 +1,9 @@
 //! Unit tests for the list app rendering helpers.
 
-use super::render::{
+use agr::tui::list_app::ContextMenuItem;
+use agr::tui::testing::list_app::{
     build_menu_item_label, build_rename_status_spans, format_duration, menu_item_style,
 };
-use super::ContextMenuItem;
 use ratatui::style::{Modifier, Style};
 // ── build_menu_item_label ─────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ fn menu_item_label_copy_item() {
 
 #[test]
 fn menu_item_style_selected_uses_highlight() {
-    let theme = crate::theme::Theme::claude_code();
+    let theme = agr::theme::Theme::claude_code();
     let style = menu_item_style(true, false, &theme);
     let expected = theme.highlight_style();
     assert_eq!(style, expected);
@@ -49,14 +49,14 @@ fn menu_item_style_selected_uses_highlight() {
 
 #[test]
 fn menu_item_style_disabled_uses_secondary_color() {
-    let theme = crate::theme::Theme::claude_code();
+    let theme = agr::theme::Theme::claude_code();
     let style = menu_item_style(false, true, &theme);
     assert_eq!(style.fg, Some(theme.text_secondary));
 }
 
 #[test]
 fn menu_item_style_normal_uses_primary_color() {
-    let theme = crate::theme::Theme::claude_code();
+    let theme = agr::theme::Theme::claude_code();
     let style = menu_item_style(false, false, &theme);
     assert_eq!(style.fg, Some(theme.text_primary));
 }
@@ -64,7 +64,7 @@ fn menu_item_style_normal_uses_primary_color() {
 #[test]
 fn menu_item_style_selected_takes_precedence_over_disabled() {
     // selected=true, disabled=true → still highlight (selected wins)
-    let theme = crate::theme::Theme::claude_code();
+    let theme = agr::theme::Theme::claude_code();
     let style = menu_item_style(true, true, &theme);
     let expected = theme.highlight_style();
     assert_eq!(style, expected);
@@ -146,7 +146,7 @@ fn format_duration_nan_clamps_to_zero() {
 
 #[test]
 fn rename_spans_multibyte_cursor_at_char_boundary() {
-    let theme = crate::theme::Theme::claude_code();
+    let theme = agr::theme::Theme::claude_code();
     let hl = theme.highlight_style();
     let blink = Style::default().add_modifier(Modifier::SLOW_BLINK);
     let mut spans = vec![];

@@ -4,7 +4,7 @@
 ///
 /// Returns `(Some(agent_pattern), file_pattern)` when a `/` separator is present,
 /// or `(None, pattern)` for a bare file pattern.
-pub(super) fn parse_glob_pattern(pattern: &str) -> (Option<&str>, &str) {
+pub fn parse_glob_pattern(pattern: &str) -> (Option<&str>, &str) {
     if let Some(slash_pos) = pattern.find('/') {
         (Some(&pattern[..slash_pos]), &pattern[slash_pos + 1..])
     } else {
@@ -17,7 +17,7 @@ pub(super) fn parse_glob_pattern(pattern: &str) -> (Option<&str>, &str) {
 /// When `agent_filter` is `Some`, both the agent and name must match their
 /// respective patterns. When `None`, only the name is matched against
 /// `file_pattern`.
-pub(super) fn matches_glob_pattern(
+pub fn matches_glob_pattern(
     agent: &str,
     name: &str,
     agent_filter: Option<&str>,
@@ -32,7 +32,7 @@ pub(super) fn matches_glob_pattern(
 
 /// Simple glob pattern matching.
 /// Supports * (match any) and ? (match single char).
-pub(super) fn glob_match(text: &str, pattern: &str) -> bool {
+pub fn glob_match(text: &str, pattern: &str) -> bool {
     let text = text.to_lowercase();
     let pattern = pattern.to_lowercase();
 

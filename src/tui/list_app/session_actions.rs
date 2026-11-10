@@ -188,7 +188,7 @@ fn display_stem(path: &Path) -> &str {
 }
 
 /// Newest `.cast` / `.cast.gz` session in `dir` by modification time.
-pub(super) fn newest_session_in(dir: Option<&Path>) -> Option<std::path::PathBuf> {
+pub fn newest_session_in(dir: Option<&Path>) -> Option<std::path::PathBuf> {
     let mtime = |e: &std::fs::DirEntry| {
         e.metadata()
             .and_then(|m| m.modified())
