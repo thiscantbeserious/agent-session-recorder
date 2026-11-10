@@ -48,6 +48,11 @@ pub mod testing {
     pub use crate::sync::store::gist::{pack_dir, GistStore};
     pub use crate::sync::store::memory::MemoryStore;
     pub use crate::sync::store::{Listing, PackInfo, PackStore, Segment, StoreError};
+
+    /// A second handle on the same key bytes, as another machine of the same account holds it.
+    pub fn copy_key(key: &crate::sync::Key) -> crate::sync::Key {
+        crate::sync::Key::from_bytes(*key.as_bytes())
+    }
 }
 
 #[cfg(test)]
