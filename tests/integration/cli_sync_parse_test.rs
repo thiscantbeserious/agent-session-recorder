@@ -159,3 +159,10 @@ fn parses_delete_patterns_all_and_force() {
     assert_eq!((all, force), (false, true));
     assert_eq!(sessions, ["claude/*", "codex/a?"]);
 }
+
+#[test]
+fn parses_migrate_yes() {
+    assert!(Cli::try_parse_from(["agr", "sync", "migrate", "--yes"]).is_ok());
+    assert!(Cli::try_parse_from(["agr", "sync", "migrate"]).is_ok());
+    assert!(Cli::try_parse_from(["agr", "sync", "migrate", "x"]).is_err());
+}
