@@ -120,3 +120,15 @@ fn no_color_gives_no_escape_and_no_token_text() {
         "the colour flag must reach the final lines"
     );
 }
+
+#[test]
+fn live_line_per_append() {
+    let (n, store, key) = (thirty(), MemoryStore::new(), Key::generate());
+    let sink = Sink::default();
+    let live = Live::with("uploading", "pushed", (true, false), Box::new(sink.clone()));
+    n.engine(&store, &key, "w1")
+        .push_with(&opts(), 30, &mut live.observer())
+        .unwrap();
+    let live_lines = sink.text().matches(", uploading 0%").count();
+    assert_eq!(live_lines, store.appends(), "{:?}", sink.text());
+}
