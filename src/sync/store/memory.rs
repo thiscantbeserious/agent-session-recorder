@@ -26,6 +26,8 @@ struct Inner {
     indexes: Vec<String>,
     /// Pack ids the pack layer called `sealed` for, in order.
     sealed: Vec<String>,
+    /// The `open` argument of every `keep_only` call, in order.
+    kept: Vec<Option<String>>,
     /// Successful appends so far.
     appends: usize,
 }
@@ -74,6 +76,11 @@ impl MemoryStore {
     /// How many appends went through.
     pub fn appends(&self) -> usize {
         self.lock().appends
+    }
+
+    /// What `keep_only` was called with, in order.
+    pub fn kept(&self) -> Vec<Option<String>> {
+        self.lock().kept.clone()
     }
 
     /// The ids `sealed` was called for, in order.
@@ -259,6 +266,10 @@ impl PackStore for MemoryStore {
 
     fn sealed(&self, id: &str) {
         self.lock().sealed.push(id.to_string());
+    }
+
+    fn keep_only(&self, open: Option<&str>) {
+        self.lock().kept.push(open.map(str::to_string));
     }
 
     fn delete(&self, id: &str) -> Result<(), StoreError> {

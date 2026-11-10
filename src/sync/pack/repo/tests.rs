@@ -218,3 +218,19 @@ fn a_failed_listing_is_no_partial_view() {
     let err = Repo::open(&store, &key, "w1", TARGET, None).err().unwrap();
     assert!(!err.to_string().contains("every pack index"), "{err}");
 }
+
+#[test]
+fn open_tells_the_store_which_pack_is_the_open_one() {
+    let (store, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    drop(repo(&store, &key, "w1"));
+    repo(&store, &key, "w1")
+        .push_batch(&[item(dir.path(), "a", 1, b"x")])
+        .unwrap();
+    let id = store.list().unwrap().packs[0].id.clone();
+    drop(repo(&store, &key, "w1"));
+    assert_eq!(store.kept(), vec![None, None, Some(id)]);
+}

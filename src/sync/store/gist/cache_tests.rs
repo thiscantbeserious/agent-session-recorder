@@ -131,3 +131,20 @@ fn with_cache_dir_moves_every_cache_file() {
         Some(root.join("agr").join("index-cache.json").as_path())
     );
 }
+
+#[test]
+fn open_sweeps_clones_of_packs_that_are_not_the_open_one() {
+    let rig = Rig::new();
+    let (stale, open) = (rig.clone_dir("abc123"), rig.clone_dir("def456"));
+    let foreign = rig.clone_dir("abc123").with_file_name("notes");
+    for dir in [&stale, &open, &foreign] {
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+    }
+    let no_git = rig.clone_dir("0a0b0c");
+    std::fs::create_dir_all(&no_git).unwrap();
+    rig.store().keep_only(Some("def456"));
+    assert!(!stale.exists());
+    assert!(open.exists());
+    assert!(foreign.exists());
+    assert!(no_git.exists());
+}

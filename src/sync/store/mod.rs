@@ -123,6 +123,9 @@ pub trait PackStore {
     /// The pack layer sealed the pack, no append will follow. A store that keeps a working copy
     /// of the open pack drops it here.
     fn sealed(&self, _id: &str) {}
+    /// A repo was opened and `open` is its own open pack, if any. A store that keeps working
+    /// copies drops every one that is not `open`, so a crash before `sealed` leaks nothing.
+    fn keep_only(&self, _open: Option<&str>) {}
     /// Streams the logical range `offset..offset + len` of the pack.
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError>;
     fn delete(&self, id: &str) -> Result<(), StoreError>;
