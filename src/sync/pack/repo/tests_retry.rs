@@ -1,6 +1,7 @@
 use super::tests::{item, packs_of, repo, tamper, TARGET};
 use super::Repo;
 use crate::sync::crypto::Key;
+use crate::sync::pack::index::Index;
 use crate::sync::store::{Listing, PackStore, Segment, StoreError};
 use crate::sync::testing::MemoryStore;
 use std::cell::RefCell;
@@ -290,11 +291,19 @@ fn replanned_append_respects_the_index_cap() {
     tamper(&store, &key, &info, |i| {
         let mut e = i.entries[0].clone();
         let size = |i: &_| crate::sync::pack::index::seal_index(&key, i).unwrap().len();
-        while size(i) < CAP - 3000 {
-            for _ in 0..5 {
+        let mut add = |i: &mut Index, n: usize| {
+            for _ in 0..n {
                 e.path = format!("filler-{:06}-{}", i.entries.len(), "x".repeat(60));
                 i.entries.push(e.clone());
             }
+        };
+        // Measure one entry, jump close to the cap, then refine: a few seals, not thousands.
+        let base = size(i);
+        add(i, 1);
+        let per = size(i).saturating_sub(base).max(1);
+        add(i, (CAP - 3000).saturating_sub(size(i)) / per);
+        while size(i) < CAP - 3000 {
+            add(i, 1);
         }
     });
     let more: Vec<_> = (0..60)
