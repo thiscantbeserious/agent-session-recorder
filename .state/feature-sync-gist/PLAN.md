@@ -1302,26 +1302,35 @@ Goal: P10, `agr sync delete <pattern>...` and `--all` on the pack layer, collect
 Owner: implementer
 PR: C
 
-- [ ] RED commit: `star_and_question_mark_match_remote_sessions_only` in the pure `engine/select.rs`, patterns `claude/*` and `codex/a?.cast.gz` against `<agent>/<name>` of the merged view, a session that exists only locally never matches [`assert_eq!(hits, vec!["claude/a.cast.gz", "claude/b.cast.gz"])`, the stub returns an empty vec].
-- [ ] RED commit:
+- [x] RED commit: `star_and_question_mark_match_remote_sessions_only` in the pure `engine/select.rs`, patterns `claude/*` and `codex/a?.cast.gz` against `<agent>/<name>` of the merged view, a session that exists only locally never matches [`assert_eq!(hits, vec!["claude/a.cast.gz", "claude/b.cast.gz"])`, the stub returns an empty vec].
+- [x] RED commit:
   - `all_selects_every_live_remote_session` [`assert_eq!(hits.len(), 3)`, tombstoned sessions excluded]
   - `pattern_without_match_is_an_error` [`assert_eq!(err, SelectError::NoMatch("x*".into()))`, one per pattern]
-- [ ] GREEN commit: `select.rs`, a small hand written matcher for `*` and `?` (no new dependency), under 120 lines with tests.
-- [ ] RED commit: `parses_delete_patterns_all_and_force` in `cli_sync_parse_test.rs` [`assert!(parse(["delete", "--all", "x"]).is_err())`, `assert!(parse(["delete", "--all"]).is_ok())`, `--force` exists].
-- [ ] RED commit: `preview_is_collected_before_any_prompt` in `cli_sync_test.rs` [`assert!(out.find("2 sessions").unwrap() < out.find("Delete").unwrap())`, `-v` lists every session, `--dry-run` gives `assert_eq!(appends, 0)`].
-- [ ] RED commit: `one_prompt_up_to_ten_matches` [`assert!(!out.contains("Type"))`, a no gives `assert!(out.contains("No changes made."))` and zero appends].
-- [ ] RED commit: `over_ten_matches_asks_to_type_the_count` [`assert!(out.contains("Type 11 to confirm"))`, a wrong number gives `assert_eq!(appends, 0)`].
-- [ ] RED commit: `yes_skips_only_the_first_prompt` [`assert!(out.contains("Type 11 to confirm"))` with `--yes`].
-- [ ] RED commit: `over_ten_without_tty_needs_force` [`assert!(!st.success())` and `assert!(err.contains("--force"))` and zero appends, `--yes --force` gives 11 tombstones, one match without a TTY still needs `--yes` as today].
-- [ ] RED commit: `no_remote_match_says_so_and_exits_non_zero` [`assert!(!st.success())` and `assert!(err.contains("no remote session matches"))`, local files untouched].
-- [ ] RED commit: `pattern_delete_is_one_tombstone_append` [`assert_eq!(appends, 1)` and `assert_eq!(deleted_entries, 11)` at gen + 1 in the open pack, the local files stay, the dead bytes show up in `merge` so prune (Stage 61) frees them].
-- [ ] Output of `agr sync delete` goes through the shared formatter in `src/sync/app/format/`, tested once in Stage 56 (no per command output tests).
-- [ ] GREEN commit per RED commit above. Each stub in the RED commits deletes without asking or returns `Ok(())` early, never `todo!()`.
+- [x] GREEN commit: `select.rs`, a small hand written matcher for `*` and `?` (no new dependency), under 120 lines with tests.
+- [x] RED commit: `parses_delete_patterns_all_and_force` in `cli_sync_parse_test.rs` [`assert!(parse(["delete", "--all", "x"]).is_err())`, `assert!(parse(["delete", "--all"]).is_ok())`, `--force` exists].
+- [x] RED commit: `preview_is_collected_before_any_prompt` in `cli_sync_test.rs` [`assert!(out.find("2 sessions").unwrap() < out.find("Delete").unwrap())`, `-v` lists every session, `--dry-run` gives `assert_eq!(appends, 0)`].
+- [x] RED commit: `one_prompt_up_to_ten_matches` [`assert!(!out.contains("Type"))`, a no gives `assert!(out.contains("No changes made."))` and zero appends].
+- [x] RED commit: `over_ten_matches_asks_to_type_the_count` [`assert!(out.contains("Type 11 to confirm"))`, a wrong number gives `assert_eq!(appends, 0)`].
+- [x] RED commit: `yes_skips_only_the_first_prompt` [`assert!(out.contains("Type 11 to confirm"))` with `--yes`].
+- [x] RED commit: `over_ten_without_tty_needs_force` [`assert!(!st.success())` and `assert!(err.contains("--force"))` and zero appends, `--yes --force` gives 11 tombstones, one match without a TTY still needs `--yes` as today].
+- [x] RED commit: `no_remote_match_says_so_and_exits_non_zero` [`assert!(!st.success())` and `assert!(err.contains("no remote session matches"))`, local files untouched].
+- [x] RED commit: `pattern_delete_is_one_tombstone_append` [`assert_eq!(appends, 1)` and `assert_eq!(deleted_entries, 11)` at gen + 1 in the open pack, the local files stay, the dead bytes show up in `merge` so prune (Stage 61) frees them].
+- [x] Output of `agr sync delete` goes through the shared formatter in `src/sync/app/format/`, tested once in Stage 56 (no per command output tests).
+- [x] GREEN commit per RED commit above. Each stub in the RED commits deletes without asking or returns `Ok(())` early, never `todo!()`.
 
 Files: `src/sync/mod.rs`, `src/sync/engine/mod.rs`, `src/sync/engine/select.rs`, `src/sync/engine/run.rs`, `src/cli/subcommands.rs`, `src/commands/sync/mod.rs`, `src/commands/sync/run.rs`, `src/commands/sync/delete.rs`, `src/sync/app/format/summary.rs`, `tests/integration/cli_sync_parse_test.rs`, `tests/integration/cli_sync_test.rs`
 Depends on: Stage 56
 
 Considerations: `commands/sync/run.rs` is 350 lines, as such the delete command moves into its own `commands/sync/delete.rs` (prompts and the typed count, under 200 lines). The threshold 10 is a constant, not config. The prompt reads go through the existing `should_proceed` plus one new `typed_count` helper so tests can feed stdin.
+
+**Done 2026-11-10, deviations**: tests sit in `sync_select_test.rs` (matcher), `cli_sync_parse_test.rs`, `cli_sync_delete_test.rs` (modules `patterns` and `prompts`, `cli_sync_test.rs` has no delete tests since the Stage 56 split) and `sync_engine_pack_test.rs` (the one append, engine level). `select.rs` is `select_remote(patterns, all, remote_paths)` plus `matches`, `SelectError::NoMatch`, the engine itself is unchanged (`delete_with` already does one `tombstone_batch`, so no change in `run.rs`). The command collects through `status_with(&[])` and filters `on_remote` items, a literal `x.cast` pattern gets `.gz` added. A TTY is simulated by `AGR_ASSUME_TTY` read in `commands/prompt.rs` (`stdin_is_tty`), the CLI tests cannot allocate a pty. The preview text is now "Would delete N sessions from the remote". The prompts are `should_proceed` then `typed_count` (`Type N to confirm:`), the over 10 without TTY abort names `--force`. `--all` conflicts with patterns, patterns required unless `--all`. Output goes through the existing `format` delete preview, no output test of its own.
+
+Guards (passed on arrival, flipped by hand, flip not committed):
+- `one_prompt_up_to_ten_matches`: `should_proceed` called with auto confirm true, the "No changes made." assert fails.
+- `no_remote_match_says_so_and_exits_non_zero`: `select_remote` skips a pattern without match (`continue`), the exit code assert fails.
+- `pattern_delete_is_one_tombstone_append` (engine, `MemoryStore`): one `tombstone_batch` per path, `appends` left 11 right 1.
+
+REDs: select table (left `[]` right the two paths), `all` (left 0 right 5), no match (`unwrap_err` on `Ok`), parse (`--all x` `is_err`), preview (`unwrap` of `find("2 sessions")`), `over_ten_matches_asks_to_type_the_count`, `yes_skips_only_the_first_prompt`, `over_ten_without_tty_needs_force` (each failed on its first named assert, the old stub deleted without asking). Data safety asserts (fingerprint of the remote dir unchanged and `writer_of == None`) sit in every no, wrong count, dry run and missing `--force` test, local files are checked in the tombstone test. Left open: `commands/sync/run.rs` is 318 lines.
 
 ### Stage 58: agr sync migrate
 
