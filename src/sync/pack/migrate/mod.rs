@@ -64,6 +64,8 @@ pub struct Report {
     pub kept: Vec<String>,
     /// Steps not done because GitHub asked to wait.
     pub left: usize,
+    /// A hard error that ended the run, the lines and counts above are what happened before it.
+    pub failed: Option<String>,
 }
 
 #[derive(Debug)]
@@ -139,6 +141,11 @@ fn kept_line(id: &str, why: &str) -> String {
     format!("{id} kept, {why}, delete it by hand with `gh gist delete {id}`")
 }
 
+/// The view holds the session at this gen or higher with other content, a re-read never fixes it.
+fn differs(view: &View, m: &Meta) -> bool {
+    view.get(&m.path).is_some_and(|e| e.gen >= m.gen) && !moved(view, m)
+}
+
 /// Reads every session the view does not hold yet and appends it with its own gen.
 /// Returns true when GitHub asked to wait.
 fn move_all(
@@ -200,20 +207,28 @@ fn flush(repo: &mut Repo, batch: &mut Vec<PushItem>, out: &mut Report) -> Result
     Ok(())
 }
 
-/// Deletes in order, pacing each, a rate limit ends the list and counts what is left.
-fn delete_all(env: &Env, ids: &[String], out: &mut Report) -> Result<(), MigrateError> {
+/// Deletes in order, pacing each, a rate limit ends the list and counts what is left. A hard
+/// error ends it too and lands in `out.failed`, so the lines of what was deleted are not lost.
+fn delete_all(env: &Env, ids: &[String], out: &mut Report) {
     for (i, id) in ids.iter().enumerate() {
         (env.pace)();
         match env.legacy.delete(id) {
-            Ok(()) | Err(StoreError::NotFound) => out.deleted += 1,
+            Ok(()) => out.deleted += 1,
+            Err(StoreError::NotFound) => out.lines.push(format!("{id} already gone")),
             Err(StoreError::RateLimited) => {
                 out.left += ids.len() - i;
-                return Ok(());
+                return;
             }
-            Err(e) => return Err(MigrateError::Store(e)),
+            Err(e) => {
+                out.failed = Some(format!("deleting {id} failed: {e}"));
+                return;
+            }
         }
     }
-    Ok(())
+}
+
+fn lag_line(id: &str) -> String {
+    format!("{id} kept, its session is not in the pack index yet, run `agr sync migrate` again")
 }
 
 /// Moves, verifies and deletes. Every delete waits for a fresh read of the indexes that shows
@@ -237,8 +252,12 @@ pub fn run(env: &Env) -> Result<Report, MigrateError> {
         } else if limited {
             out.left += 1;
         } else {
-            out.lines
-                .push(kept_line(&g.id, "its session is not in the pack index"));
+            let line = if differs(after.view(), meta) {
+                kept_line(&g.id, "the pack index holds other content for its session")
+            } else {
+                lag_line(&g.id)
+            };
+            out.lines.push(line);
             out.kept.push(g.id.clone());
         }
     }
@@ -247,7 +266,7 @@ pub fn run(env: &Env) -> Result<Report, MigrateError> {
     } else {
         out.left += plan.stubs.len();
     }
-    delete_all(env, &ids, &mut out)?;
+    delete_all(env, &ids, &mut out);
     if out.left > 0 {
         out.lines
             .push(format!("{} left, run again later", out.left));

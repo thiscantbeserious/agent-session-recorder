@@ -70,5 +70,8 @@ pub fn migrate(yes: bool, tty: bool) -> Result<()> {
     keep_writer(&ctx.writer)?;
     let report = agr::sync::migrate_run(&env).unwrap_or_else(|e| failed(e));
     say(&migrate_lines(&report));
-    Ok(())
+    match &report.failed {
+        Some(why) => abort(why, None),
+        None => Ok(()),
+    }
 }

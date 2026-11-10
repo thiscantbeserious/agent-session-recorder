@@ -420,6 +420,7 @@ mod moving {
         let report = migrate_run(&rig.env(&store));
         let report = report.expect("the report with the first delete, not a bare error");
         assert_eq!((report.moved, report.deleted), (3, 1));
+        assert!(report.failed.is_some(), "{report:?}");
     }
 
     #[test]
