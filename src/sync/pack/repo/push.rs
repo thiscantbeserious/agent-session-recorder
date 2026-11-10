@@ -85,18 +85,25 @@ impl PushReport {
 }
 
 impl PushReport {
-    /// Tombstones the append that wrote `next` carried, `Superseded` when the retry dropped one.
+    /// Tombstones the append that wrote `next` carried. A retry replans each one to a higher gen,
+    /// so the landed one is the newest tombstone of the path at or above the planned gen.
+    /// `Superseded` when the retry dropped it.
     fn record_tombs(&mut self, tombs: &[(String, u64)], next: &OpenPack) {
-        for (path, gen) in tombs {
-            let hit =
-                (next.index.entries.iter()).any(|e| e.deleted && &e.path == path && e.gen == *gen);
-            let outcome = match hit {
-                true => Outcome::Pushed {
-                    pack: next.id.clone(),
-                },
-                false => Outcome::Superseded,
+        for (path, planned) in tombs {
+            let landed = (next.index.entries.iter())
+                .filter(|e| e.deleted && &e.path == path && e.gen >= *planned)
+                .map(|e| e.gen)
+                .max();
+            let (gen, outcome) = match landed {
+                Some(gen) => (
+                    gen,
+                    Outcome::Pushed {
+                        pack: next.id.clone(),
+                    },
+                ),
+                None => (*planned, Outcome::Superseded),
             };
-            self.items.push((path.clone(), *gen, outcome));
+            self.items.push((path.clone(), gen, outcome));
         }
     }
 }
