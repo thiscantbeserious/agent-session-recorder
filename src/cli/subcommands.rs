@@ -313,16 +313,26 @@ EXAMPLES:
     /// Remove sessions from the remote (the local file stays)
     #[command(long_about = "Remove the remote copy of a session and its index entry.
 
-The local file is never touched.
+The local file is never touched. Patterns use * (any run) and ? (one character) against
+<agent>/<name> of the remote sessions. More than 10 matches ask to type the count.
 
 EXAMPLE:
-    agr sync delete claude/a.cast.gz")]
+    agr sync delete claude/a.cast.gz
+    agr sync delete 'claude/2024-*'
+    agr sync delete --all --dry-run")]
     Delete {
         /// Sessions to delete from the remote
-        #[arg(required = true, help = "Sessions to delete from the remote")]
+        #[arg(
+            required_unless_present = "all",
+            help = "Patterns with * and ?, e.g. claude/*"
+        )]
         sessions: Vec<String>,
         /// Delete every remote session
-        #[arg(long, help = "Delete every remote session")]
+        #[arg(
+            long,
+            conflicts_with = "sessions",
+            help = "Delete every remote session"
+        )]
         all: bool,
         /// Allow more than 10 deletes without a terminal
         #[arg(long, help = "Allow more than 10 deletes without a terminal")]
