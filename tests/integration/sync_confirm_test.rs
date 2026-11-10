@@ -60,3 +60,33 @@ fn force_on_a_terminal_still_asks_the_typed_count() {
     assert_eq!(got, Confirm::Declined);
     assert_eq!(run(11, true, true, true, "11\n").0, Confirm::Go);
 }
+
+mod migrate {
+    use agr::sync::confirm::{confirm_migrate, Confirm, Flags};
+
+    fn ask(yes: bool, tty: bool, input: &str) -> (Confirm, String) {
+        let mut out = Vec::new();
+        let flags = Flags {
+            yes,
+            force: false,
+            tty,
+        };
+        let got = confirm_migrate(&flags, &mut input.as_bytes(), &mut out).unwrap();
+        (got, String::from_utf8(out).unwrap())
+    }
+
+    #[test]
+    fn a_no_and_a_missing_terminal_never_go() {
+        assert_eq!(ask(false, true, "n\n").0, Confirm::Declined);
+        assert_eq!(ask(false, true, "\n").0, Confirm::Declined);
+        let (got, out) = ask(false, false, "y\n");
+        assert_eq!(got, Confirm::Declined);
+        assert!(out.contains("--yes"), "{out}");
+    }
+
+    #[test]
+    fn yes_on_a_terminal_and_the_flag_go() {
+        assert_eq!(ask(false, true, "y\n").0, Confirm::Go);
+        assert_eq!(ask(true, false, "").0, Confirm::Go);
+    }
+}

@@ -205,3 +205,37 @@ mod env_var {
         assert_eq!(fingerprint(remote.path()), before, "no append");
     }
 }
+
+mod migrate {
+    use crate::helpers::cli_sync::*;
+
+    #[test]
+    fn without_yes_and_without_a_terminal_nothing_is_written() {
+        let remote = remote();
+        let m = Machine::gist(remote.path());
+        m.session("claude", "a.cast.gz", "one");
+        m.run(&["push", "--yes"]);
+        let before = fingerprint(remote.path());
+        let out = m.run(&["migrate"]);
+        assert!(out.success(), "{}", out.all());
+        assert!(out.stdout.contains("No changes made."), "{}", out.stdout);
+        assert!(out.stdout.contains("0 sessions to move"), "{}", out.stdout);
+        assert_eq!(
+            fingerprint(remote.path()),
+            before,
+            "zero appends, zero deletes"
+        );
+    }
+
+    #[test]
+    fn yes_on_a_pack_remote_without_old_gists_changes_nothing() {
+        let remote = remote();
+        let m = Machine::gist(remote.path());
+        m.session("claude", "a.cast.gz", "one");
+        m.run(&["push", "--yes"]);
+        let before = fingerprint(remote.path());
+        let out = m.run(&["migrate", "--yes"]);
+        assert!(out.success(), "{}", out.all());
+        assert_eq!(fingerprint(remote.path()), before);
+    }
+}
