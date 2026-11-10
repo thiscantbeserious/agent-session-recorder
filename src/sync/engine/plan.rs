@@ -79,12 +79,21 @@ pub fn decide(input: &Input) -> Decision {
         (_, Remote::UnknownVersion) => Decision::UnknownVersion,
         (_, Remote::Duplicate) => Decision::Duplicate,
         (_, Remote::Fork) => Decision::Fork,
+        (Local::Hash(l), Remote::Deleted { .. }) => deleted(l, input.last.as_deref()),
         (Local::Absent, Remote::Absent | Remote::Deleted { .. }) => Decision::InSync {
             refresh_index: false,
         },
         (Local::Absent, Remote::Hash(_)) => Decision::Pull,
-        (Local::Hash(_), Remote::Absent | Remote::Deleted { .. }) => Decision::Push,
+        (Local::Hash(_), Remote::Absent) => Decision::Push,
         (Local::Hash(l), Remote::Hash(r)) => compare(l, r, input.last.as_deref()),
+    }
+}
+
+/// A tombstone on top: an edit after the last sync is a fork, anything else waits for `--overwrite`.
+fn deleted(local: &str, last: Option<&str>) -> Decision {
+    match last {
+        Some(last) if last != local => Decision::Fork,
+        _ => Decision::Skip(SkipReason::DeletedOnRemote),
     }
 }
 
@@ -105,6 +114,9 @@ fn compare(local: &str, remote: &str, last: Option<&str>) -> Decision {
 /// Apply `--overwrite`, a conflict becomes the command's direction, nothing else changes.
 pub fn resolve(decision: Decision, command: Command, overwrite: bool) -> Decision {
     match (decision, overwrite, command) {
+        (Decision::Fork | Decision::Skip(SkipReason::DeletedOnRemote), true, Command::Push) => {
+            Decision::Push
+        }
         (Decision::Conflict, true, Command::Push) => Decision::Push,
         (Decision::Conflict, true, Command::Pull) => Decision::Pull,
         _ => decision,

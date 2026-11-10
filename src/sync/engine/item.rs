@@ -97,7 +97,9 @@ pub(super) fn skip_text(reason: SkipReason) -> &'static str {
         SkipReason::OverCap => "over the 1 GiB limit",
         SkipReason::Unreadable => "cannot read the file",
         SkipReason::NotFound => "no such session",
-        SkipReason::DeletedOnRemote => "deleted on the remote",
+        SkipReason::DeletedOnRemote => {
+            "deleted on the remote, run `agr sync push --overwrite` to restore"
+        }
     }
 }
 
