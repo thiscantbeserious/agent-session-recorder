@@ -353,4 +353,10 @@ mod layer_check {
         assert!(violations("pack/merge_tests.rs", src).is_empty());
         assert!(violations("pack/stream/tests.rs", src).is_empty());
     }
+
+    #[test]
+    fn violations_flags_engine_naming_gist_store() {
+        let v = violations("engine/x.rs", "use crate::sync::store::gist::GistStore;");
+        assert_eq!(v.len(), 1, "{v:?}");
+    }
 }
