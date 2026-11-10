@@ -77,3 +77,12 @@ fn tree_len_not_expected_is_moved() {
     let res = append(&rig.store(), &id, (10, "i0"), (b"xyz", "i1"));
     assert_eq!(res, Err(StoreError::Moved("i0".into())));
 }
+
+#[test]
+fn zero_byte_append_on_stale_index_is_moved() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &PARTS);
+    let res = rig.store().append(&id, 6, "stale", &[], "i2");
+    assert_eq!(res, Err(StoreError::Moved("i0".into())));
+    assert!(!rig.remote.calls().iter().any(|c| c.contains("push")));
+}
