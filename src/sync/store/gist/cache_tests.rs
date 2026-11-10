@@ -2,7 +2,7 @@
 
 use super::append_tests::{append, Rig};
 use super::cache::pack_dir;
-use super::StoreError;
+use super::{PackStore, StoreError};
 
 #[test]
 fn cached_clone_is_reused_across_appends() {
