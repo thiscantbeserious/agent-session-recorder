@@ -313,6 +313,39 @@ mod packs {
         assert_eq!(queue::list(n.dir()).len(), 1);
     }
 
+    /// The append lands, the index save fails, the entry stays queued. The next run must
+    /// recognise its own landed entry from the merged view and push nothing.
+    #[cfg(unix)]
+    #[test]
+    fn a_failed_index_save_after_a_landed_append_does_not_push_twice() {
+        let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+        let one = queued(&n, "one");
+        let index = n.dir().join(".agr-sync.json.tmp");
+        std::fs::create_dir(&index).unwrap();
+        let first = n
+            .engine(&store, &key, "w1")
+            .drain_auto(&one, &mut |_: &Event<'_>| {});
+        assert!(first.is_err(), "{first:?}");
+        assert_eq!(store.appends(), 1);
+        assert_eq!(queue::list(n.dir()), [one.clone()]);
+        std::fs::remove_dir(&index).unwrap();
+        let second = n
+            .engine(&store, &key, "w1")
+            .drain_auto(&one, &mut |_: &Event<'_>| {})
+            .unwrap();
+        assert_eq!(store.appends(), 1, "{:?}", second.items);
+        assert!(queue::list(n.dir()).is_empty());
+        let repo = Repo::open(
+            &store,
+            &key,
+            "reader",
+            crate::helpers::pack_engine::TARGET,
+            None,
+        )
+        .unwrap();
+        assert_eq!(repo.view().get(&one).map(|m| m.gen), Some(1));
+    }
+
     /// Eight recordings finish at once, each enqueues first and then runs the auto path.
     #[test]
     fn n_parallel_recordings_pushed_exactly_once() {
