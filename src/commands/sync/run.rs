@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use agr::config::state::State;
 use agr::sync::auto;
-use agr::sync::format;
+use agr::sync::format::{self, Live};
 use agr::sync::key;
 use agr::sync::setup::{
     default_key_path, explain, keep_writer, needs_privacy_ack, open_store, pack_target,
@@ -15,7 +15,6 @@ use agr::sync::{BackendError, Engine, Item, Options, Outcome, ProgressSink, Repo
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
 
-use super::live::Live;
 use crate::commands::prompt::should_proceed;
 
 pub struct Args {
@@ -172,7 +171,7 @@ fn show_auto_error() {
 
 pub fn status(verbose: bool) -> Result<()> {
     let ctx = prepare(KeyNeed::MayCreate)?;
-    let live = Live::new("", "");
+    let live = Live::stderr("", "");
     let report = ctx
         .engine()
         .status_with(&[], &mut live.loader())
@@ -227,7 +226,7 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
     if auto {
         return push_auto(&args);
     }
-    let live = Live::new("uploading", "pushed");
+    let live = Live::stderr("uploading", "pushed");
     let ctx = prepare_with(KeyNeed::MayCreate, live.sink())?;
     let plan = ctx
         .engine()
@@ -257,7 +256,7 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
 }
 
 pub fn pull(args: Args) -> Result<()> {
-    let live = Live::new("downloading", "pulled");
+    let live = Live::stderr("downloading", "pulled");
     let ctx = prepare_with(KeyNeed::Existing, live.sink())?;
     let plan = ctx
         .engine()
@@ -277,7 +276,7 @@ pub fn pull(args: Args) -> Result<()> {
 
 pub fn delete(args: Args) -> Result<()> {
     let ctx = prepare(KeyNeed::Existing)?;
-    let load = Live::new("", "deleted");
+    let load = Live::stderr("", "deleted");
     let plan = ctx
         .engine()
         .status_with(&args.sessions, &mut load.loader())
@@ -304,7 +303,7 @@ pub fn delete(args: Args) -> Result<()> {
         .iter()
         .filter(|i| i.outcome != Outcome::Failed("no such session".into()))
         .count();
-    let live = Live::new("", "deleted");
+    let live = Live::stderr("", "deleted");
     let mut observer = live.observer();
     let result = ctx
         .engine()
