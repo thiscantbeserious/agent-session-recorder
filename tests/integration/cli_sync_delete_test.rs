@@ -165,4 +165,42 @@ mod prompts {
         let forced = b.run(&["delete", "--yes", "--force", "claude/s*"]);
         assert!(forced.stdout.contains("Deleted: 11"), "{}", forced.all());
     }
+
+    #[test]
+    fn no_remote_match_says_so_and_exits_non_zero() {
+        let remote = remote();
+        let (_a, b) = pushed_pair(remote.path(), 2);
+        let before = fingerprint(remote.path());
+        let out = b.run(&["delete", "--yes", "x*", "claude/zz-local.cast.gz"]);
+        assert!(!out.success(), "{}", out.all());
+        assert!(
+            out.stderr.contains("no remote session matches"),
+            "{}",
+            out.stderr
+        );
+        assert_eq!(fingerprint(remote.path()), before, "no append");
+        assert!(b.storage.join("claude/zz-local.cast.gz").exists());
+        assert_eq!(writer_of(&b), None, "{}", b.state());
+    }
+
+    #[test]
+    fn pattern_delete_is_one_tombstone_append() {
+        let remote = remote();
+        let (a, b) = pushed_pair(remote.path(), 11);
+        let before = fingerprint(remote.path());
+        let out = b.run(&["delete", "--yes", "--force", "claude/s*"]);
+        assert_eq!(out.code, 0, "{}", out.all());
+        let after = fingerprint(remote.path());
+        let moved = after.iter().filter(|f| !before.contains(f)).count();
+        assert_eq!(moved, 1, "one append rewrites only the manifest");
+        let status = a.run(&["status", "-v"]);
+        let dead = status
+            .stdout
+            .lines()
+            .filter(|l| l.contains("claude/s"))
+            .count();
+        assert_eq!(dead, 11, "{}", status.stdout);
+        assert!(a.storage.join("claude/s00.cast.gz").exists());
+        assert!(b.storage.join("claude/zz-local.cast.gz").exists());
+    }
 }

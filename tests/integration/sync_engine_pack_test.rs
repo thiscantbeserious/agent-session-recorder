@@ -193,3 +193,21 @@ fn failed_append_mid_batch_keeps_the_index_entries_of_the_earlier_appends() {
         "the landed append is indexed"
     );
 }
+
+#[test]
+fn pattern_delete_is_one_tombstone_append() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    let all: Vec<String> = (0..11).map(|i| format!("claude/s{i:02}.cast.gz")).collect();
+    for p in &all {
+        n.session("claude", p.trim_start_matches("claude/"), p);
+    }
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    let before = store.appends();
+    let report = n.engine(&store, &key, "w1").delete(&all).unwrap();
+    assert_eq!(store.appends() - before, 1, "one append for 11 tombstones");
+    assert_eq!(report.deleted, 11);
+    for p in &all {
+        assert_eq!(merged(&store, &key, p).0, Some((2, true)), "{p}");
+        assert!(n.bytes(p).is_some(), "the local file stays");
+    }
+}
