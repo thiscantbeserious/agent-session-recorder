@@ -362,3 +362,17 @@ mod pack_size {
         assert_eq!(load_with(512).unwrap().sync.pack_size_mib, 512);
     }
 }
+
+mod writer_id {
+    use agr::config::state::State;
+
+    #[test]
+    fn writer_id_created_once_in_state_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        let first = State::writer_id(&path).unwrap();
+        let second = State::writer_id(&path).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(State::load_from(&path).writer_id, Some(first));
+    }
+}

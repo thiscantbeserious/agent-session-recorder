@@ -22,6 +22,9 @@ pub struct State {
     /// Last failed automatic push, shown by `agr sync status`
     #[serde(default)]
     pub last_auto_push_error: Option<String>,
+    /// Random id of this machine for sync packs, created once
+    #[serde(default)]
+    pub writer_id: Option<String>,
 }
 
 impl State {
@@ -46,6 +49,12 @@ impl State {
     /// that ran meanwhile is not overwritten.
     pub fn store_auto_error_default(line: String) -> Result<()> {
         Self::store_auto_error(&Config::config_dir()?.join(FILE), line)
+    }
+
+    /// The writer id stored in the file at `path`, created and saved on first use.
+    pub fn writer_id(path: &Path) -> Result<String> {
+        let nanos = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+        Ok(format!("w{nanos}"))
     }
 
     /// Load from a path, default when the file is missing or malformed (warns on stderr).
@@ -111,6 +120,7 @@ mod tests {
             compress_offer_version: None,
             sync_privacy_ack: true,
             last_auto_push_error: Some("offline".into()),
+            writer_id: None,
         };
         state.save_to(&path).unwrap();
         assert_eq!(State::load_checked(&path), (state, None));
