@@ -103,3 +103,15 @@ fn prune_hint_at_21_percent_dead_not_at_19() {
     assert!(out21.contains("agr sync prune"), "{out21}");
     assert!(!out19.contains("agr sync prune"), "{out19}");
 }
+
+#[test]
+fn status_aborts_on_partial_index_view() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    raw_push(&store, &key, "w1", (X, 1), "one");
+    raw_push(&store, &key, "w2", ("claude/y.cast.gz", 1), "two");
+    let id = store.list().unwrap().packs[0].id.clone();
+    store.fail_read_index(&id);
+    let err = n.engine(&store, &key, "w9").status(&[]).err();
+    let text = err.map(|e| e.to_string()).unwrap_or_default();
+    assert!(text.contains("could not read"), "{text:?}");
+}
