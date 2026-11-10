@@ -89,10 +89,13 @@ impl Repo<'_> {
         let mut report = PushReport::default();
         match self.push_into(items, &mut report) {
             Ok(()) => Ok(report),
-            Err(error) => Err(PushError {
-                error,
-                pushed: report,
-            }),
+            Err(error) => {
+                report.open = self.open_ref();
+                Err(PushError {
+                    error,
+                    pushed: report,
+                })
+            }
         }
     }
 
@@ -113,11 +116,12 @@ impl Repo<'_> {
             let pack = self.new_pack()?;
             let one = std::slice::from_ref(s);
             let next = self.try_append(&pack, &Batch::of(one, true))?;
-            let _ = next;
+            report.record(one, &next);
         }
         self.push_small(&small, report)?;
-        self.reload()?;
-        {
+        report.open = self.open_ref();
+        report.check_failed = self.reload().is_err();
+        if !report.check_failed {
             let ours = |p: &&String| items.iter().any(|i| &i.path == *p);
             report.forks = self.view.forks().iter().filter(ours).cloned().collect();
         }
@@ -148,6 +152,7 @@ impl Repo<'_> {
             let capped = n == by_cap.max(1) && !tail.is_empty();
             let seal = capped || should_seal(self.target, pack.index.len + sum);
             let next = self.try_append(&pack, &Batch::of(chunk, seal))?;
+            report.record(chunk, &next);
             self.open = open_of(next);
             rest = tail;
         }
