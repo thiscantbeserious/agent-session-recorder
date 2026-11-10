@@ -327,7 +327,7 @@ mod packs {
             .drain_auto(&one, &mut |_: &Event<'_>| {});
         assert!(first.is_err(), "{first:?}");
         assert_eq!(store.appends(), 1);
-        assert_eq!(queue::list(n.dir()), [one.clone()]);
+        assert_eq!(queue::list(n.dir()), std::slice::from_ref(&one));
         std::fs::remove_dir(&index).unwrap();
         let second = n
             .engine(&store, &key, "w1")
