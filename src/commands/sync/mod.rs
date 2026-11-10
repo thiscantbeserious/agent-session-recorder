@@ -50,14 +50,17 @@ pub fn handle(cmd: SyncCommands) -> Result<()> {
             dry_run,
             yes,
             verbose,
-        } => delete::delete(&delete::Args {
-            patterns: sessions,
-            all,
-            force,
-            dry_run,
-            yes,
-            verbose,
-        }),
+        } => delete::delete(
+            &delete::Args {
+                patterns: sessions,
+                all,
+                force,
+                dry_run,
+                yes,
+                verbose,
+            },
+            super::prompt::stdin_is_tty(),
+        ),
         SyncCommands::Key(cmd) => key::handle(cmd),
     }
 }

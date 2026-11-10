@@ -6,9 +6,9 @@ use anyhow::Result;
 
 use agr::theme::current_theme;
 
-/// Stdin is a terminal. `AGR_ASSUME_TTY` makes the prompts read piped stdin, for the CLI tests.
+/// Stdin is a terminal.
 pub fn stdin_is_tty() -> bool {
-    io::IsTerminal::is_terminal(&io::stdin()) || std::env::var_os("AGR_ASSUME_TTY").is_some()
+    io::IsTerminal::is_terminal(&io::stdin())
 }
 
 /// Determine whether to proceed with the operation.
@@ -40,20 +40,4 @@ pub fn should_proceed(message: &str, auto_confirm: bool) -> Result<bool> {
 
     let response = input.trim().to_lowercase();
     Ok(response == "y" || response == "yes")
-}
-
-/// Ask to type `count` back, `true` only on an exact match. Without a terminal it is `false`.
-pub fn typed_count(count: usize) -> Result<bool> {
-    if !stdin_is_tty() {
-        return Ok(false);
-    }
-    let theme = current_theme();
-    print!(
-        "{} ",
-        theme.primary_text(&format!("Type {count} to confirm:"))
-    );
-    io::stdout().flush()?;
-    let mut input = String::new();
-    io::stdin().lock().read_line(&mut input)?;
-    Ok(input.trim() == count.to_string())
 }

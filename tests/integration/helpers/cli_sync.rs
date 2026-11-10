@@ -75,13 +75,6 @@ impl Machine {
         self.exec(self.base(args), Some(input))
     }
 
-    /// Like `run_stdin`, but the command treats stdin as a terminal (`AGR_ASSUME_TTY`).
-    pub fn run_tty(&self, args: &[&str], input: &str) -> Out {
-        let mut cmd = self.base(args);
-        cmd.env("AGR_ASSUME_TTY", "1");
-        self.exec(cmd, Some(input))
-    }
-
     pub fn exec(&self, mut cmd: Command, input: Option<&str>) -> Out {
         cmd.stdin(if input.is_some() {
             Stdio::piped()

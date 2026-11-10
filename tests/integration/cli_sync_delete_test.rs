@@ -92,8 +92,8 @@ mod patterns {
         let remote = remote();
         let (_a, b) = pushed_pair(remote.path(), 2);
         let before = fingerprint(remote.path());
-        let out = b.run_tty(&["delete", "claude/s*"], "n\n");
-        let (count, ask) = (out.stdout.find("2 sessions"), out.stdout.find("Delete"));
+        let out = b.run(&["delete", "claude/s*"]);
+        let (count, ask) = (out.stdout.find("2 sessions"), out.stdout.find("--yes"));
         assert!(
             count.unwrap() < ask.unwrap(),
             "preview first: {}",
@@ -111,43 +111,6 @@ mod patterns {
 
 mod prompts {
     use super::*;
-
-    #[test]
-    fn one_prompt_up_to_ten_matches() {
-        let remote = remote();
-        let (_a, b) = pushed_pair(remote.path(), 10);
-        let before = fingerprint(remote.path());
-        let out = b.run_tty(&["delete", "claude/s*"], "n\n");
-        assert!(!out.stdout.contains("Type"), "{}", out.stdout);
-        assert!(out.stdout.contains("No changes made."), "{}", out.stdout);
-        assert_eq!(fingerprint(remote.path()), before, "no append");
-        assert_eq!(writer_of(&b), None, "{}", b.state());
-    }
-
-    #[test]
-    fn over_ten_matches_asks_to_type_the_count() {
-        let remote = remote();
-        let (_a, b) = pushed_pair(remote.path(), 11);
-        let before = fingerprint(remote.path());
-        let out = b.run_tty(&["delete", "claude/s*"], "y\n7\n");
-        assert!(out.stdout.contains("Type 11 to confirm"), "{}", out.stdout);
-        assert!(out.stdout.contains("No changes made."), "{}", out.stdout);
-        assert_eq!(fingerprint(remote.path()), before, "wrong count, no append");
-        assert_eq!(writer_of(&b), None, "{}", b.state());
-        let right = b.run_tty(&["delete", "claude/s*"], "y\n11\n");
-        assert!(right.stdout.contains("Deleted: 11"), "{}", right.all());
-    }
-
-    #[test]
-    fn yes_skips_only_the_first_prompt() {
-        let remote = remote();
-        let (_a, b) = pushed_pair(remote.path(), 11);
-        let before = fingerprint(remote.path());
-        let out = b.run_tty(&["delete", "--yes", "claude/s*"], "3\n");
-        assert!(out.stdout.contains("Type 11 to confirm"), "{}", out.stdout);
-        assert_eq!(fingerprint(remote.path()), before, "wrong count, no append");
-        assert_eq!(writer_of(&b), None, "{}", b.state());
-    }
 
     #[test]
     fn over_ten_without_tty_needs_force() {
