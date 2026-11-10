@@ -1179,6 +1179,10 @@ Depends on: Stage 46, Stage 51, Stage 52
 
 Considerations: the one retry lives in `Repo` (Stage 51), the store only reports `Moved`. `append.rs` under 250 lines, the cache handling goes into `cache.rs`, the persisted pace into `last_push.rs` (under 80 lines, read and written only while the caller holds the local sync lock, see Stage 55), the in-memory gist remote of the contract run into `fake_remote.rs`.
 
+**Test location (2026-11-10, user rule)**: every new test in PR C goes into `tests/integration/<area>_test.rs` registered in `tests/integration.rs`, fakes into `tests/integration/helpers/`, internals through `sync::testing`. No test files under `src/`. Where a stage below names a test "in `config/types.rs`", "in `engine/select.rs`" or a "pure table test", it means the matching `tests/integration/` file, an inline `#[cfg(test)]` module only for a private unit the facade cannot reach, named with its reason. `src/sync/backend/gist/{fake,pull_tests,push_tests}.rs` no longer exist.
+
+**PR C branch**: `feature/sync-pack-engine` off `feature/sync-gist` at `8619c3d`.
+
 ### Stage 54: Engine and app on the Repo, local index v2
 
 Goal: the engine plans against the merged view and writes through `Repo`, the app builds `Repo` over the gist store, the engine no longer calls `SyncBackend`.
@@ -1315,7 +1319,7 @@ PR: C
 - [ ] RED commit: `parses_migrate_yes` in `cli_sync_parse_test.rs` [`assert!(parse(["migrate", "--yes"]).is_ok())`], GREEN adds `agr sync migrate [--yes]`.
 - [ ] RED commit: `migrate_prints_compact_summary_and_full_list_with_v` [`assert!(lines(default) < 10)`] and `migrate_loading_and_live_line_only_on_a_tty` [`assert!(!plain_out.contains(LOADING))`] (P12, as in Stage 56).
 
-Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/migrate/mod.rs`, `src/sync/pack/migrate/recognise.rs`, `src/sync/pack/migrate/local.rs`, `src/sync/pack/migrate/tests.rs`, `src/sync/engine/index.rs`, `src/sync/backend/gist/mod.rs`, `src/cli/subcommands.rs`, `src/commands/sync/mod.rs`, `src/commands/sync/migrate.rs`, `src/dispatch.rs`, `tests/integration/cli_sync_parse_test.rs`, `tests/integration/cli_sync_test.rs`
+Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/migrate/mod.rs`, `src/sync/pack/migrate/recognise.rs`, `src/sync/pack/migrate/local.rs`, `tests/integration/sync_pack_migrate_test.rs`, `src/sync/engine/index.rs`, `src/sync/backend/gist/mod.rs`, `src/cli/subcommands.rs`, `src/commands/sync/mod.rs`, `src/commands/sync/migrate.rs`, `src/dispatch.rs`, `tests/integration/cli_sync_parse_test.rs`, `tests/integration/cli_sync_test.rs`
 Depends on: Stage 57
 
 Considerations: migrate reads old gists through `&dyn SyncBackend` (not a concrete store, so the `pack/` rules hold) and tests run on `MemoryBackend`. `recognise.rs` pure under 150 lines, the v1 to v2 conversion in `local.rs` under 100, the move loop in `mod.rs` under 300. Migrate is run by hand, never automatically (ADR "Migration"), because it deletes remote gists and the user wants a dry-run first.
@@ -1327,7 +1331,7 @@ Owner: implementer
 PR: C
 
 - [ ] RED commit: `violations_flags_any_backend_path` [`assert_eq!(violations("engine/x.rs", "use crate::sync::backend::X;").len(), 1)`, gives 0].
-- [ ] GREEN commit: `backend/` rows replaced by `crate::sync::backend` for every layer, `runner.rs`, `pace.rs`, `progress.rs`, `scratch.rs`, `fake.rs` moved with `git mv` into `store/gist/`, `SPAWNERS` points at `store/gist/runner.rs`.
+- [ ] GREEN commit: `backend/` rows replaced by `crate::sync::backend` for every layer, `runner.rs`, `pace.rs`, `progress.rs`, `scratch.rs` moved with `git mv` into `store/gist/` (the gist fake already lives in `tests/integration/helpers/gist_fake.rs` since #189, the old pull and push tests in `tests/integration/sync_gist_{pull,push}_test.rs`), `SPAWNERS` points at `store/gist/runner.rs`.
 - [ ] RED commit (layer rows after the switch, ADR "Layers"):
   - `violations_flags_engine_naming_crypto_or_store` [`assert_eq!(violations("engine/x.rs", "use crate::sync::crypto::Key;").len(), 1)` and the same for `crate::sync::store::PackStore`, gives 0]
   - `violations_flags_legacy_outside_pack_migrate` [`assert_eq!(violations("app/x.rs", "use crate::sync::store::legacy::X;").len(), 1)` and `assert!(violations("pack/migrate/x.rs", ..).is_empty())`, gives 0]
