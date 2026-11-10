@@ -281,6 +281,16 @@ mod tests {
         (DirStore::new(dir.path()), dir)
     });
 
+    /// `exists` follows the link and says no, `create_dir` says AlreadyExists, as a racing writer would.
+    #[cfg(unix)]
+    #[test]
+    fn create_never_reuses_an_existing_pack_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::os::unix::fs::symlink(dir.path().join("nowhere"), dir.path().join("pack-1")).unwrap();
+        let store = DirStore::new(dir.path());
+        assert_eq!(store.create("t", "i0").unwrap(), "pack-2");
+    }
+
     #[test]
     fn dir_store_crash_after_parts_before_manifest_recovers() {
         let dir = tempfile::tempdir().expect("tempdir");
