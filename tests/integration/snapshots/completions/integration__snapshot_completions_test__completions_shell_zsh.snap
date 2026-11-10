@@ -574,6 +574,14 @@ _arguments "${_arguments_options[@]}" : \
 '*::sessions -- Patterns with * and ?, e.g. claude/*:_default' \
 && ret=0
 ;;
+(migrate)
+_arguments "${_arguments_options[@]}" : \
+'-y[Skip the confirmation prompt]' \
+'--yes[Skip the confirmation prompt]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
 (key)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help (see more with '\''--help'\'')]' \
@@ -659,6 +667,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(migrate)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -933,6 +945,10 @@ _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
 (delete)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
+(migrate)
 _arguments "${_arguments_options[@]}" : \
 && ret=0
 ;;
@@ -1459,6 +1475,7 @@ _agr__help__sync_commands() {
 'push:Upload new and changed sessions (encrypted)' \
 'pull:Download new and changed sessions' \
 'delete:Remove sessions from the remote (the local file stays)' \
+'migrate:Move the per-session gists of the old layout into packs' \
 'key:Export or import the sync key' \
     )
     _describe -t commands 'agr help sync commands' commands "$@"
@@ -1485,6 +1502,11 @@ _agr__help__sync__key__export_commands() {
 _agr__help__sync__key__import_commands() {
     local commands; commands=()
     _describe -t commands 'agr help sync key import commands' commands "$@"
+}
+(( $+functions[_agr__help__sync__migrate_commands] )) ||
+_agr__help__sync__migrate_commands() {
+    local commands; commands=()
+    _describe -t commands 'agr help sync migrate commands' commands "$@"
 }
 (( $+functions[_agr__help__sync__pull_commands] )) ||
 _agr__help__sync__pull_commands() {
@@ -1631,6 +1653,7 @@ _agr__sync_commands() {
 'push:Upload new and changed sessions (encrypted)' \
 'pull:Download new and changed sessions' \
 'delete:Remove sessions from the remote (the local file stays)' \
+'migrate:Move the per-session gists of the old layout into packs' \
 'key:Export or import the sync key' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -1648,6 +1671,7 @@ _agr__sync__help_commands() {
 'push:Upload new and changed sessions (encrypted)' \
 'pull:Download new and changed sessions' \
 'delete:Remove sessions from the remote (the local file stays)' \
+'migrate:Move the per-session gists of the old layout into packs' \
 'key:Export or import the sync key' \
 'help:Print this message or the help of the given subcommand(s)' \
     )
@@ -1680,6 +1704,11 @@ _agr__sync__help__key__export_commands() {
 _agr__sync__help__key__import_commands() {
     local commands; commands=()
     _describe -t commands 'agr sync help key import commands' commands "$@"
+}
+(( $+functions[_agr__sync__help__migrate_commands] )) ||
+_agr__sync__help__migrate_commands() {
+    local commands; commands=()
+    _describe -t commands 'agr sync help migrate commands' commands "$@"
 }
 (( $+functions[_agr__sync__help__pull_commands] )) ||
 _agr__sync__help__pull_commands() {
@@ -1738,6 +1767,11 @@ _agr__sync__key__help__import_commands() {
 _agr__sync__key__import_commands() {
     local commands; commands=()
     _describe -t commands 'agr sync key import commands' commands "$@"
+}
+(( $+functions[_agr__sync__migrate_commands] )) ||
+_agr__sync__migrate_commands() {
+    local commands; commands=()
+    _describe -t commands 'agr sync migrate commands' commands "$@"
 }
 (( $+functions[_agr__sync__pull_commands] )) ||
 _agr__sync__pull_commands() {

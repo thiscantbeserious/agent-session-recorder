@@ -279,6 +279,9 @@ _agr() {
             agr__help__sync,key)
                 cmd="agr__help__sync__key"
                 ;;
+            agr__help__sync,migrate)
+                cmd="agr__help__sync__migrate"
+                ;;
             agr__help__sync,pull)
                 cmd="agr__help__sync__pull"
                 ;;
@@ -345,6 +348,9 @@ _agr() {
             agr__sync,key)
                 cmd="agr__sync__key"
                 ;;
+            agr__sync,migrate)
+                cmd="agr__sync__migrate"
+                ;;
             agr__sync,pull)
                 cmd="agr__sync__pull"
                 ;;
@@ -362,6 +368,9 @@ _agr() {
                 ;;
             agr__sync__help,key)
                 cmd="agr__sync__help__key"
+                ;;
+            agr__sync__help,migrate)
+                cmd="agr__sync__help__migrate"
                 ;;
             agr__sync__help,pull)
                 cmd="agr__sync__help__pull"
@@ -1495,7 +1504,7 @@ _agr() {
             return 0
             ;;
         agr__help__sync)
-            opts="status push pull delete key"
+            opts="status push pull delete migrate key"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1553,6 +1562,20 @@ _agr() {
         agr__help__sync__key__import)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        agr__help__sync__migrate)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -1921,7 +1944,7 @@ _agr() {
             return 0
             ;;
         agr__sync)
-            opts="-h --help status push pull delete key help"
+            opts="-h --help status push pull delete migrate key help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -1949,7 +1972,7 @@ _agr() {
             return 0
             ;;
         agr__sync__help)
-            opts="status push pull delete key help"
+            opts="status push pull delete migrate key help"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -2021,6 +2044,20 @@ _agr() {
         agr__sync__help__key__import)
             opts=""
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 5 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        agr__sync__help__migrate)
+            opts=""
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
@@ -2161,6 +2198,20 @@ _agr() {
         agr__sync__key__import)
             opts="-h --force --help [PHRASE]"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 4 ]] ; then
+                COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+                return 0
+            fi
+            case "${prev}" in
+                *)
+                    COMPREPLY=()
+                    ;;
+            esac
+            COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
+            return 0
+            ;;
+        agr__sync__migrate)
+            opts="-y -h --yes --help"
+            if [[ ${cur} == -* || ${COMP_CWORD} -eq 3 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
             fi
