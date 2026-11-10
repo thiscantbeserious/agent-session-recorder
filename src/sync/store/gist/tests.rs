@@ -363,3 +363,18 @@ fn index_is_read_over_raw_url_even_when_the_api_says_truncated() {
     let res = store.read_index("a");
     assert_eq!(res.as_deref().ok(), Some("i4"));
 }
+
+#[test]
+fn index_length_mismatch_is_an_error() {
+    // The API content looks fine, only the raw url body differs from the listed size.
+    let mut fake = truncated_api_fake(b"i4i4i4", 2);
+    let index = serde_json::json!({ "size": 2, "truncated": false, "content": "i4" });
+    let body = serde_json::json!({ "id": "a", "updated_at": "t1", "files": { "index": index } });
+    fake.replies.get_mut().pop_back();
+    fake.replies.get_mut().push_back(ok(&body.to_string()));
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(&fake, dir.path());
+    store.list().unwrap();
+    let res = store.read_index("a");
+    assert!(res.is_err());
+}
