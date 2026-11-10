@@ -1340,14 +1340,14 @@ Goal: ADR "Migration from per-session gists", the local index v1 becomes v2 with
 Owner: implementer
 PR: C
 
-- [ ] RED commit: `stub_younger_than_one_hour_is_kept` in the pure `recognise` table test [`assert_eq!(kind, Kept)`, the stub calls every `agr:pending` a `Stub`].
-- [ ] RED commit: the rest of the table [`assert_eq!(kind, Expected)` per row]: ours v1, stub over 1 hour, other key, unknown version, extra files.
-- [ ] RED commit, local index:
+- [x] RED commit: `stub_younger_than_one_hour_is_kept` in the pure `recognise` table test [`assert_eq!(kind, Kept)`, the stub calls every `agr:pending` a `Stub`].
+- [x] RED commit: the rest of the table [`assert_eq!(kind, Expected)` per row]: ours v1, stub over 1 hour, other key, unknown version, extra files.
+- [x] RED commit, local index:
   - `index_v1_gens_carry_into_v2` [`assert_eq!((e.sha256.as_str(), e.gen), ("h", 3))` per entry after the conversion, the stub starts every gen at 1]
   - `unsynced_local_edit_survives_migrate` [`assert_eq!(read(local), edited)` after migrate, and the next push plans it as `Push` at gen 4, the migrated gen 3 content never overwrites it]
-- [ ] RED commit: `unreadable_v1_is_kept_and_named` [`assert!(report.lines.iter().any(|l| l.contains("gh gist delete") && l.contains("cannot be read")))` and `assert_eq!(deletes, 0)` for a v1 gist of our key whose part is missing, the stub keeps it silently].
-- [ ] RED commit: `dry_run_counts_and_writes_nothing` [`assert_eq!(line, "2 sessions to move (3 KiB), 1 already moved, 4 empty stubs to delete, 1 not ours (kept)")` and `assert_eq!((appends, deletes), (0, 0))`, the local index stays v1].
-- [ ] RED commit:
+- [x] RED commit: `unreadable_v1_is_kept_and_named` [`assert!(report.lines.iter().any(|l| l.contains("gh gist delete") && l.contains("cannot be read")))` and `assert_eq!(deletes, 0)` for a v1 gist of our key whose part is missing, the stub keeps it silently].
+- [x] RED commit: `dry_run_counts_and_writes_nothing` [`assert_eq!(line, "2 sessions to move (3 KiB), 1 already moved, 4 empty stubs to delete, 1 not ours (kept)")` and `assert_eq!((appends, deletes), (0, 0))`, the local index stays v1].
+- [x] RED commit:
   - `moved_session_keeps_gen_and_sha` [`assert_eq!((e.gen, e.sha256), (3, sha))`]
   - `already_moved_is_skipped` [`assert_eq!(appends, 0)`]
   - `old_gist_deleted_only_after_the_index_shows_it` [`assert_eq!(deletes, 0)` when the re-read fails]
@@ -1356,14 +1356,26 @@ PR: C
   - `listing_past_3000_does_not_abort` [`assert!(report.is_ok())`]
   - `migrate_aborts_on_partial_index_view` [`assert_eq!((appends, deletes), (0, 0))`]
   - `migrate_opens_without_the_v1_guard_and_unblocks` [`assert!(Repo::open(..).is_ok())` once migrate deleted the last `agr:v1` gist of our key, and a gist kept for a hash mismatch is named with `gh gist delete <id>` in the report]
-- [ ] GREEN commit per RED commit above.
-- [ ] RED commit: `parses_migrate_yes` in `cli_sync_parse_test.rs` [`assert!(parse(["migrate", "--yes"]).is_ok())`], GREEN adds `agr sync migrate [--yes]`.
-- [ ] Output of `agr sync migrate` goes through the shared formatter in `src/sync/app/format/`, tested once in Stage 56 (no per command output tests).
+- [x] GREEN commit per RED commit above.
+- [x] RED commit: `parses_migrate_yes` in `cli_sync_parse_test.rs` [`assert!(parse(["migrate", "--yes"]).is_ok())`], GREEN adds `agr sync migrate [--yes]`.
+- [x] Output of `agr sync migrate` goes through the shared formatter in `src/sync/app/format/`, tested once in Stage 56 (no per command output tests).
 
 Files: `src/sync/mod.rs`, `src/sync/pack/mod.rs`, `src/sync/pack/migrate/mod.rs`, `src/sync/pack/migrate/recognise.rs`, `src/sync/pack/migrate/local.rs`, `tests/integration/sync_pack_migrate_test.rs`, `src/sync/engine/index.rs`, `src/sync/backend/gist/mod.rs`, `src/cli/subcommands.rs`, `src/commands/sync/mod.rs`, `src/commands/sync/migrate.rs`, `src/dispatch.rs`, `tests/integration/cli_sync_parse_test.rs`, `tests/integration/cli_sync_test.rs`
 Depends on: Stage 57
 
 Considerations: migrate reads old gists through `&dyn SyncBackend` (not a concrete store, so the `pack/` rules hold) and tests run on `MemoryBackend`. `recognise.rs` pure under 150 lines, the v1 to v2 conversion in `local.rs` under 100, the move loop in `mod.rs` under 300. Migrate is run by hand, never automatically (ADR "Migration"), because it deletes remote gists and the user wants a dry-run first.
+
+**Done 2026-11-10, deviations**: migrate reads old gists through a new `LegacyRead` trait (`list_all`, `pull`, `delete`, in `pack/migrate/mod.rs`), implemented by `GistBackend` in `backend/gist/legacy.rs` (moves with the backend in Stage 59), not `&dyn SyncBackend`, because the listing needs every file name and no 3000 cap. `NoLegacy` is used when `AGR_SYNC_TEST_BACKEND_DIR` is set so a test run never reaches `gh`. The clock is injected as `Env.now` (unix seconds). `pack/migrate/` holds `recognise.rs` (71 lines), `local.rs` (49), `fetch.rs` (47), `mod.rs` (256). `local.rs` converts the index as plain JSON (`convert_index`, `convert_file`) so `pack/` does not name `engine/`, a pending v1 entry is dropped (it never synced) and the file stamp is carried. Fake and rig live in `tests/integration/helpers/legacy_fake.rs`, tests in `sync_pack_migrate_test.rs`. The gens carry into v2 before any pack write, and a gist is deleted only when a second `open_for_migrate` shows its path with a gen at least as high and the same sha256. Stubs are deleted directly, after the sessions, never on a rate limited run. Output goes through `format::migrate_lines`, the prompt is `confirm_migrate` with the tty flag passed in, the command reads no env var for a TTY. Real runs pace deletes through the `GistBackend` pacer (1 s), the injected `pace` hook is a no-op there. Per-line parts of `gh` output are not tested (no live calls). Left open: `migrate_aborts_on_partial_index_view` covers the failed index read only through `fail_read_index`, a partial listing page is the gist store's own test.
+
+REDs and failing asserts: `stub_younger_than_one_hour_is_kept` (left Stub right Kept), the table rest (left Ignored right Kept/Stub/Ours), `index_v1_gens_carry_into_v2` (left [("h",1),("k",1)] right [("h",3),("k",5)]), the batch `unsynced_local_edit_survives_migrate`, `unreadable_v1_is_kept_and_named`, `dry_run_counts_and_writes_nothing` (left [] right the dry-run line), `parses_migrate_yes` (is_ok false).
+
+Guards (passed on arrival, flipped by hand, flip not committed):
+- `old_gist_deleted_only_after_the_index_shows_it`: the re-read replaced by the first repo, test fails.
+- `already_moved_is_skipped`, `rate_limit_stops_with_n_left_and_rerun_finishes`: the skip filter removed, appends left 1 right 0 and left 2 right 1.
+- `a_session_the_view_holds_at_a_higher_gen_with_other_content_is_not_deleted`: the `moved` check replaced by `true`, deletes left 1 right 0 (the first flip of that check survived, this guard was added for it).
+- `moved_session_keeps_gen_and_sha`, `sha_mismatch_is_kept_and_reported`, `listing_past_3000_does_not_abort`, `migrate_aborts_on_partial_index_view`, `migrate_opens_without_the_v1_guard_and_unblocks`: pass on the first implementation, the verify and fetch paths they cover were flipped through the tests above, no separate flip.
+- `without_yes_and_without_a_terminal_nothing_is_written` (CLI): fingerprint of the remote dir unchanged.
+
 
 ### Stage 59: Drop the per-session code
 
