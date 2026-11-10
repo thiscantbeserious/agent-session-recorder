@@ -61,3 +61,24 @@ pub fn confirm_delete(
     }
     Ok(Confirm::Go)
 }
+
+/// One yes or no before migrate deletes remote gists, `--yes` skips it, no terminal never asks.
+pub fn confirm_migrate(
+    flags: &Flags,
+    input: &mut impl BufRead,
+    out: &mut impl Write,
+) -> io::Result<Confirm> {
+    if flags.yes {
+        return Ok(Confirm::Go);
+    }
+    if !flags.tty {
+        let hint = "Non-interactive mode: use --yes to apply changes automatically";
+        writeln!(out, "{}", current_theme().secondary_text(hint))?;
+        return Ok(Confirm::Declined);
+    }
+    let question =
+        "Move these sessions into packs and delete the old gists? Local files stay. [y/N]";
+    let answer = ask(out, input, question)?;
+    let go = answer == "y" || answer == "yes";
+    Ok(if go { Confirm::Go } else { Confirm::Declined })
+}

@@ -16,6 +16,9 @@ pub use engine::pack_run::Engine;
 pub use engine::plan::{Decision, SkipReason};
 pub use engine::run::{BackendEngine, Item, Options, Outcome, Report, SyncError};
 pub use engine::select::{select_remote, SelectError};
+pub use pack::migrate::{
+    preview as migrate_preview, run as migrate_run, Env as MigrateEnv, MigrateError,
+};
 
 /// Internals for the integration tests, not a stable API.
 #[doc(hidden)]

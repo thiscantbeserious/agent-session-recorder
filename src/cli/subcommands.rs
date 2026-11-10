@@ -350,6 +350,21 @@ EXAMPLE:
         #[arg(long, short = 'v', help = "List every session, not only the summary")]
         verbose: bool,
     },
+    /// Move the per-session gists of the old layout into packs
+    #[command(long_about = "Move the per-session gists of the old layout into packs.
+
+Shows what would move first and asks. Old gists are deleted only after the pack index
+shows their session. Local session files are never touched. Run it by hand, sync refuses
+to run until it has finished.
+
+EXAMPLE:
+    agr sync migrate
+    agr sync migrate --yes")]
+    Migrate {
+        /// Skip the confirmation prompt
+        #[arg(long, short = 'y', help = "Skip the confirmation prompt")]
+        yes: bool,
+    },
     /// Export or import the sync key
     #[command(
         subcommand,

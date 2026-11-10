@@ -12,6 +12,7 @@ mod status;
 mod summary;
 
 pub use live::{live_head, Live, LiveLine, LoadLine};
+pub use packs::migrate_lines;
 pub use status::{
     compact_delete_preview_lines, compact_preview_lines, compact_status_lines,
     compact_summary_lines,

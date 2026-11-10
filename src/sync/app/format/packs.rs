@@ -30,3 +30,13 @@ pub(super) fn prune_hint(report: &Report) -> Option<String> {
         format!("{percent}% of the remote is dead data, run `agr sync prune` to reclaim it.")
     })
 }
+
+/// Result lines of `agr sync migrate`, the engine already worded the kept gists.
+pub fn migrate_lines(report: &crate::sync::pack::migrate::Report) -> Vec<String> {
+    let mut lines = vec![format!(
+        "Moved {} sessions, deleted {} old gists.",
+        report.moved, report.deleted
+    )];
+    lines.extend(report.lines.iter().cloned());
+    lines
+}

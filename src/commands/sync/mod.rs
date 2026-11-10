@@ -6,6 +6,7 @@ use agr::cli::SyncCommands;
 
 mod delete;
 mod key;
+mod migrate;
 mod run;
 
 /// Route one `agr sync ...` command.
@@ -61,6 +62,7 @@ pub fn handle(cmd: SyncCommands) -> Result<()> {
             },
             super::prompt::stdin_is_tty(),
         ),
+        SyncCommands::Migrate { yes } => migrate::migrate(yes, super::prompt::stdin_is_tty()),
         SyncCommands::Key(cmd) => key::handle(cmd),
     }
 }

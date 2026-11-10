@@ -23,6 +23,21 @@ pub trait LegacyRead {
     fn delete(&self, id: &str) -> Result<(), StoreError>;
 }
 
+/// No old gists at all.
+pub struct NoLegacy;
+
+impl LegacyRead for NoLegacy {
+    fn list_all(&self) -> Result<Vec<LegacyGist>, StoreError> {
+        Ok(Vec::new())
+    }
+    fn pull(&self, _id: &str) -> Result<(Option<String>, Box<dyn Read>), StoreError> {
+        Err(StoreError::NotFound)
+    }
+    fn delete(&self, _id: &str) -> Result<(), StoreError> {
+        Err(StoreError::NotFound)
+    }
+}
+
 pub struct Env<'a> {
     pub legacy: &'a dyn LegacyRead,
     pub store: &'a dyn PackStore,

@@ -130,6 +130,15 @@ pub fn open_store(
     })
 }
 
+/// The old per-session gists, read by `agr sync migrate` only. With a test store dir there are
+/// none, so a test run never reaches `gh`.
+pub fn legacy_reader(test_dir: Option<&Path>) -> Box<dyn crate::sync::pack::migrate::LegacyRead> {
+    match test_dir {
+        Some(_) => Box::new(crate::sync::pack::migrate::NoLegacy),
+        None => Box::new(crate::sync::backend::gist::GistBackend::new()),
+    }
+}
+
 /// The writer id of this machine, a fresh one until `keep_writer` stores it.
 pub fn writer_id() -> String {
     crate::config::state::State::stored_writer_id().unwrap_or_else(crate::sync::new_writer_id)
