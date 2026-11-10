@@ -147,4 +147,20 @@ mod tests {
         let shown = format!("{:?}", StoreError::Moved("secret".into()));
         assert!(!shown.contains("secret"), "{shown}");
     }
+
+    #[test]
+    fn store_error_display_is_backend_neutral() {
+        let all = [
+            StoreError::NotInstalled("tool"),
+            StoreError::NotLoggedIn,
+            StoreError::MissingScope,
+            StoreError::Unreachable("why".into()),
+            StoreError::RateLimited,
+            StoreError::NotFound,
+        ];
+        for e in all {
+            let text = e.to_string();
+            assert!(!text.contains("gh ") && !text.contains("GitHub"), "{text}");
+        }
+    }
 }
