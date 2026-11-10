@@ -3,7 +3,7 @@
 mod local;
 mod recognise;
 
-pub use local::convert_index;
+pub use local::{convert_file, convert_index};
 pub use recognise::{recognise, Kind, LegacyGist};
 
 use crate::sync::crypto::Key;

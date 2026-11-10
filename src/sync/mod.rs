@@ -41,7 +41,7 @@ pub mod testing {
     };
     pub use crate::sync::pack::merge::{merge, PackIn, Rejected, Top};
     pub use crate::sync::pack::migrate::{
-        convert_index, preview as migrate_preview, recognise, run as migrate_run,
+        convert_file, convert_index, preview as migrate_preview, recognise, run as migrate_run,
         Env as MigrateEnv, Kind, LegacyGist, LegacyRead, MigrateError, Report as MigrateReport,
     };
     pub use crate::sync::pack::repo::{

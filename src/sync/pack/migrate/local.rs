@@ -29,3 +29,21 @@ pub fn convert_index(text: &str) -> Result<Option<String>, String> {
     let v2 = json!({ "version": 2, "entries": entries, "open_pack": null });
     Ok(Some(v2.to_string()))
 }
+
+/// Same name as the engine's index file, the pack layer must not name the engine.
+const INDEX_FILE: &str = ".agr-sync.json";
+
+/// Converts `<dir>/.agr-sync.json` in place when it is v1, true when it was written.
+/// A missing or unreadable file is left alone, the engine starts an empty v2 from it.
+pub fn convert_file(dir: &std::path::Path) -> Result<bool, String> {
+    let path = dir.join(INDEX_FILE);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(false);
+    };
+    let Ok(Some(v2)) = convert_index(&text) else {
+        return Ok(false);
+    };
+    crate::files::codec::atomic_write(&path, |w| Ok(w.write_all(v2.as_bytes())?))
+        .map_err(|e| format!("could not write {}: {e}", path.display()))?;
+    Ok(true)
+}
