@@ -53,15 +53,7 @@ pub(super) struct Seen {
 }
 
 pub(super) fn be(e: BackendError) -> StoreError {
-    match e {
-        BackendError::NotInstalled(t) => StoreError::NotInstalled(t),
-        BackendError::NotLoggedIn => StoreError::NotLoggedIn,
-        BackendError::MissingScope => StoreError::MissingScope,
-        BackendError::Unreachable(w) => StoreError::Unreachable(w),
-        BackendError::RateLimited => StoreError::RateLimited,
-        BackendError::NotFound => StoreError::NotFound,
-        BackendError::Changed(_) | BackendError::Other(_) => StoreError::Other(e.to_string()),
-    }
+    StoreError::from(e)
 }
 
 fn seen_of(gist: &Gist) -> Seen {

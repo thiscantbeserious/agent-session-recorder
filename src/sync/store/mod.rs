@@ -63,6 +63,21 @@ impl From<crate::sync::backend::gist::pace::ClockError> for StoreError {
     }
 }
 
+impl From<crate::sync::backend::BackendError> for StoreError {
+    fn from(e: crate::sync::backend::BackendError) -> Self {
+        use crate::sync::backend::BackendError as B;
+        match e {
+            B::NotInstalled(t) => Self::NotInstalled(t),
+            B::NotLoggedIn => Self::NotLoggedIn,
+            B::MissingScope => Self::MissingScope,
+            B::Unreachable(w) => Self::Unreachable(w),
+            B::RateLimited => Self::RateLimited,
+            B::NotFound => Self::NotFound,
+            B::Changed(_) | B::Other(_) => Self::Other(e.to_string()),
+        }
+    }
+}
+
 /// One pack as listed, `id` and `tag` are opaque to the pack layer and the store respectively.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackInfo {

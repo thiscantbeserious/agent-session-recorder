@@ -121,6 +121,42 @@ pub(crate) fn check_auth(output: &str) -> Result<(), BackendError> {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct AnyGist {
+    id: String,
+    description: Option<String>,
+    #[serde(default)]
+    created_at: Option<String>,
+    #[serde(default)]
+    files: std::collections::BTreeMap<String, AnyFile>,
+}
+
+#[derive(serde::Deserialize)]
+struct AnyFile {
+    #[serde(default)]
+    size: u64,
+}
+
+/// Every gist of the listing with its files, for `agr sync migrate`. Unlike `parse_list` there
+/// is no cap, migrate acts on what it saw and is run again.
+pub fn parse_all(json: &str) -> Result<Vec<crate::sync::pack::migrate::LegacyGist>, BackendError> {
+    let pages = serde_json::Deserializer::from_str(json).into_iter::<Vec<AnyGist>>();
+    let mut out = Vec::new();
+    for page in pages {
+        let page = page.map_err(|_| BackendError::Other("unexpected gist list output".into()))?;
+        out.extend(
+            page.into_iter()
+                .map(|g| crate::sync::pack::migrate::LegacyGist {
+                    id: g.id,
+                    description: g.description.unwrap_or_default(),
+                    files: g.files.into_iter().map(|(n, f)| (n, f.size)).collect(),
+                    created_at: g.created_at.unwrap_or_default(),
+                }),
+        );
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
