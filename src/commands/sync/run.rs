@@ -1,4 +1,4 @@
-//! status, push, pull and delete, thin layer over `agr::sync::BackendEngine`.
+//! status, push, pull and delete, thin layer over `agr::sync::Engine`.
 
 use anyhow::Result;
 
@@ -7,13 +7,11 @@ use agr::sync::auto;
 use agr::sync::format;
 use agr::sync::key;
 use agr::sync::setup::{
-    default_key_path, explain, needs_privacy_ack, open_backend, resolve_key, KeyNeed, KeyState,
-    SetupError, IMPORT_HINT,
+    default_key_path, explain, keep_writer, needs_privacy_ack, open_store, pack_target,
+    resolve_key, writer_id, KeyNeed, KeyState, SetupError, IMPORT_HINT,
 };
-use agr::sync::{
-    BackendEngine, BackendError, Item, Options, Outcome, ProgressSink, Report, SyncBackend,
-    SyncError,
-};
+use agr::sync::testing::{backend_error, PackStore};
+use agr::sync::{BackendError, Engine, Item, Options, Outcome, ProgressSink, Report, SyncError};
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
 
@@ -30,18 +28,17 @@ pub struct Args {
 
 /// Everything a command needs after the preconditions passed.
 struct Ctx {
-    backend: Box<dyn SyncBackend>,
+    store: Box<dyn PackStore>,
     storage: StorageManager,
     key: KeyState,
+    writer: String,
+    target: u64,
 }
 
 impl Ctx {
-    fn engine(&self) -> BackendEngine<'_> {
-        BackendEngine {
-            backend: self.backend.as_ref(),
-            key: self.key.key(),
-            storage: &self.storage,
-        }
+    fn engine(&self) -> Engine<'_> {
+        let (store, key) = (self.store.as_ref(), self.key.key());
+        Engine::new(store, key, &self.storage, &self.writer, self.target)
     }
 }
 
@@ -111,20 +108,23 @@ fn try_prepare(
     if let (Some(dir), true) = (&test_dir, announce) {
         eprintln!("Using test sync backend at {}", dir.display());
     }
-    let Some(backend) = open_backend(config.sync.backend, test_dir, progress) else {
+    let Some(store) = open_store(config.sync.backend, test_dir, progress) else {
         return Err(Failure(
             "Sync is off.".into(),
             Some("Set `[sync] backend = \"gist\"` (or remove `backend = \"off\"`) in ~/.config/agr/config.toml.".into()),
         ));
     };
-    backend.check()?;
-    let key = resolve_key(&default_key_path()?, backend.as_ref(), need)?;
+    store.check().map_err(backend_error)?;
+    let key = resolve_key(&default_key_path()?, store.as_ref(), need)?;
+    let target = pack_target(config.sync.pack_size_mib).map_err(anyhow::Error::msg)?;
     let storage = StorageManager::new(config);
     storage.ensure_storage_dir()?;
     Ok(Ctx {
-        backend,
+        store,
         storage,
         key,
+        writer: writer_id(),
+        target,
     })
 }
 
@@ -178,7 +178,7 @@ pub fn status(verbose: bool) -> Result<()> {
         .status_with(&[], &mut live.loader())
         .unwrap_or_else(|e| engine_failed(e));
     live.end();
-    let name = ctx.backend.name();
+    let name = ctx.store.name();
     say(&if verbose {
         format::status_lines(&report, name)
     } else {
@@ -247,6 +247,7 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
         state.sync_privacy_ack = true;
         state.save()?;
     }
+    keep_writer(&ctx.writer)?;
     let mut observer = live.observer();
     let result = ctx
         .engine()
@@ -330,7 +331,10 @@ fn push_auto(args: &Args) -> Result<()> {
     let session = args.sessions.first().map_or("", String::as_str);
     let result = try_prepare(KeyNeed::Existing, false, None)
         .map_err(|Failure(message, _)| SyncError::Failed(message))
-        .and_then(|ctx| auto::run(&ctx.engine(), session));
+        .and_then(|ctx| {
+            keep_writer(&ctx.writer).map_err(|e| SyncError::Failed(e.to_string()))?;
+            auto::run(&ctx.engine(), session)
+        });
     if let Some(line) = auto::error_line(&result) {
         State::store_auto_error_default(line)?;
     }

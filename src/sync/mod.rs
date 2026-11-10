@@ -20,6 +20,7 @@ pub use engine::scan::Duplicate;
 /// Internals for the integration tests, not a stable API.
 #[doc(hidden)]
 pub mod testing {
+    pub use crate::sync::backend::file::FileBackend;
     pub use crate::sync::backend::gist::pace::{Clock, ClockError};
     pub use crate::sync::backend::gist::runner::{
         spawn, watch_child, Output, ProcessRunner, Runner,
@@ -30,6 +31,7 @@ pub mod testing {
     pub use crate::sync::crypto::blob::{open_stream, seal_stream, BlobError};
     pub use crate::sync::crypto::CryptoError;
     pub use crate::sync::crypto::{open_meta, seal, seal_meta, sha256_hex, Meta};
+    pub use crate::sync::engine::fail::backend_error;
     pub use crate::sync::engine::index;
     pub use crate::sync::engine::plan::{decide, resolve, Command, Input, Local, Remote};
     pub use crate::sync::engine::queue;

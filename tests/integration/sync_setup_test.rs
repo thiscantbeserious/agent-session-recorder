@@ -3,10 +3,10 @@
 use agr::config::SyncBackendKind;
 use agr::sync::key::{self, Imported, KeyError};
 use agr::sync::setup::{
-    explain, export_key, import_key, needs_privacy_ack, open_backend, resolve_key, ImportError,
+    explain, export_key, import_key, needs_privacy_ack, open_store, resolve_key, ImportError,
     KeyNeed, KeyState, SetupError,
 };
-use agr::sync::testing::{key_bytes, MemoryBackend};
+use agr::sync::testing::{key_bytes, MemoryStore, PackStore};
 use agr::sync::{BackendError, Key};
 use std::path::PathBuf;
 
@@ -19,17 +19,17 @@ fn privacy_ack_is_due_once_for_creating_pushes() {
 
 #[test]
 fn backend_factory_follows_config_and_test_switch() {
-    assert!(open_backend(SyncBackendKind::Off, None, None).is_none());
-    assert!(open_backend(SyncBackendKind::Off, Some("/x".into()), None).is_none());
-    let gist = open_backend(
+    assert!(open_store(SyncBackendKind::Off, None, None).is_none());
+    assert!(open_store(SyncBackendKind::Off, Some("/x".into()), None).is_none());
+    let gist = open_store(
         SyncBackendKind::Gist,
         None,
         Some(std::sync::Arc::new(|_| {})),
     )
     .unwrap();
     assert_eq!(gist.name(), "gist");
-    let fake = open_backend(SyncBackendKind::Gist, Some("/x".into()), None).unwrap();
-    assert_eq!(fake.name(), "file");
+    let fake = open_store(SyncBackendKind::Gist, Some("/x".into()), None).unwrap();
+    assert_eq!(fake.name(), "directory");
 }
 
 #[test]
@@ -68,21 +68,21 @@ fn existing_key_is_used() {
     let (_dir, path) = key_path();
     let key = Key::generate();
     key::save_new(&path, &key).unwrap();
-    let state = resolve_key(&path, &MemoryBackend::new(), KeyNeed::Existing).unwrap();
+    let state = resolve_key(&path, &MemoryStore::new(), KeyNeed::Existing).unwrap();
     assert!(matches!(&state, KeyState::Have(k) if key_bytes(k) == key_bytes(&key)));
 }
 
 #[test]
 fn missing_key_aborts_when_it_must_exist() {
     let (_dir, path) = key_path();
-    let got = resolve_key(&path, &MemoryBackend::new(), KeyNeed::Existing);
+    let got = resolve_key(&path, &MemoryStore::new(), KeyNeed::Existing);
     assert!(matches!(got, Err(SetupError::NoKey)));
 }
 
 #[test]
 fn missing_key_on_an_empty_remote_is_fresh_and_not_stored() {
     let (_dir, path) = key_path();
-    let got = resolve_key(&path, &MemoryBackend::new(), KeyNeed::MayCreate).unwrap();
+    let got = resolve_key(&path, &MemoryStore::new(), KeyNeed::MayCreate).unwrap();
     assert!(matches!(got, KeyState::Fresh(_)));
     assert!(!path.exists());
 }
@@ -90,9 +90,9 @@ fn missing_key_on_an_empty_remote_is_fresh_and_not_stored() {
 #[test]
 fn missing_key_with_remote_sessions_never_creates_one() {
     let (_dir, path) = key_path();
-    let backend = MemoryBackend::new();
-    backend.put(None, "token", b"blob");
-    let got = resolve_key(&path, &backend, KeyNeed::MayCreate);
+    let store = MemoryStore::new();
+    store.create("tag", "index").unwrap();
+    let got = resolve_key(&path, &store, KeyNeed::MayCreate);
     assert!(matches!(got, Err(SetupError::KeyOnRemote)));
 }
 
@@ -104,7 +104,7 @@ fn loose_key_permissions_are_an_error() {
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-        let got = resolve_key(&path, &MemoryBackend::new(), KeyNeed::Existing);
+        let got = resolve_key(&path, &MemoryStore::new(), KeyNeed::Existing);
         assert!(matches!(got, Err(SetupError::Key(KeyError::Insecure(_)))));
     }
 }

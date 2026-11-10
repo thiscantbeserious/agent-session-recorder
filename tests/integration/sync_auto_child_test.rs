@@ -2,15 +2,13 @@
 
 use agr::config::state::State;
 use agr::sync::auto::{error_line, run, take_error_line};
-use agr::sync::testing::{seal_meta, sha256_hex, MemoryBackend, Meta};
-use agr::sync::{
-    BackendEngine, Decision, Item, Key, Options, Outcome, Report, SyncBackend, SyncError,
-};
+use agr::sync::testing::{MemoryStore, PackStore};
+use agr::sync::{Decision, Engine, Item, Key, Options, Outcome, Report, SyncError};
 use agr::{Config, StorageManager};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::helpers::sync_net::seal_blob;
+use crate::helpers::pack_engine::{raw_push, TARGET};
 
 /// A gzip session `claude/s.cast.gz` under `dir`.
 fn session(dir: &Path) -> PathBuf {
@@ -53,50 +51,21 @@ fn auto_run_pushes_only_the_session_never_pulls_and_skips_conflicts() {
     let mut cfg = Config::default();
     cfg.storage.directory = dir.path().to_string_lossy().into_owned();
     let storage = StorageManager::new(cfg);
-    let key = Key::generate();
-    let backend = MemoryBackend::new();
-    let remote_only = Meta {
-        v: 2,
-        path: "claude/other.cast.gz".into(),
-        sha256: sha256_hex(b"other"),
-        size: 5,
-        gen: 1,
-    };
-    backend.put(
-        None,
-        &seal_meta(&key, &remote_only),
-        &seal_blob(&key, &remote_only.path, 1, b"other"),
-    );
+    let (key, store) = (Key::generate(), MemoryStore::new());
+    raw_push(&store, &key, "w0", ("claude/other.cast.gz", 1), "other");
     let path = session(dir.path());
-    let engine = BackendEngine {
-        backend: &backend,
-        key: &key,
-        storage: &storage,
-    };
+    let engine = Engine::new(&store, &key, &storage, "w1", TARGET);
     let report = run(&engine, "claude/s.cast.gz").unwrap();
     assert_eq!((report.pushed, report.pulled, report.deleted), (1, 0, 0));
     assert!(!dir.path().join("claude/other.cast.gz").exists());
-    assert_eq!(backend.len(), 2);
     // changed on both sides is a conflict, skipped, nothing overwritten
     fs::write(&path, b"changed locally").unwrap();
-    let moved = Meta {
-        v: 2,
-        path: "claude/s.cast.gz".into(),
-        sha256: sha256_hex(b"changed remotely"),
-        size: 16,
-        gen: 1,
-    };
-    let id = backend
-        .list()
-        .unwrap()
-        .into_iter()
-        .find(|e| e.id != "mem-1")
-        .unwrap()
-        .id;
-    backend.put(
-        Some(&id),
-        &seal_meta(&key, &moved),
-        &seal_blob(&key, &moved.path, 1, b"changed remotely"),
+    raw_push(
+        &store,
+        &key,
+        "w0",
+        ("claude/s.cast.gz", 2),
+        "changed remotely",
     );
     let report = run(&engine, "claude/s.cast.gz").unwrap();
     assert_eq!((report.pushed, report.conflicts), (0, 1));
@@ -107,7 +76,7 @@ fn auto_run_pushes_only_the_session_never_pulls_and_skips_conflicts() {
 /// Storage with `claude/<name>.cast.gz` files, all pushed once by a manual push.
 struct World {
     dir: tempfile::TempDir,
-    backend: MemoryBackend,
+    store: MemoryStore,
     key: Key,
     storage: StorageManager,
 }
@@ -119,18 +88,14 @@ impl World {
         cfg.storage.directory = dir.path().to_string_lossy().into_owned();
         Self {
             storage: StorageManager::new(cfg),
-            backend: MemoryBackend::new(),
+            store: MemoryStore::new(),
             key: Key::generate(),
             dir,
         }
     }
 
-    fn engine(&self) -> BackendEngine<'_> {
-        BackendEngine {
-            backend: &self.backend,
-            key: &self.key,
-            storage: &self.storage,
-        }
+    fn engine(&self) -> Engine<'_> {
+        Engine::new(&self.store, &self.key, &self.storage, "w1", TARGET)
     }
 
     fn write(&self, name: &str, body: &[u8]) {
@@ -168,7 +133,7 @@ fn auto_run_leaves_never_synced_older_sessions_alone() {
     w.write("never", b"old");
     w.write("new", b"fresh");
     assert_eq!(w.auto("new").pushed, 1);
-    assert_eq!(w.backend.len(), 1);
+    assert_eq!(w.store.list().unwrap().packs.len(), 1);
 }
 
 #[test]

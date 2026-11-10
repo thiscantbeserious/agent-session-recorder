@@ -63,6 +63,22 @@ impl State {
         Ok(id)
     }
 
+    /// The stored writer id, `None` before the first push of this machine.
+    pub fn stored_writer_id() -> Option<String> {
+        Self::load().writer_id
+    }
+
+    /// Stores `id` as the writer id of this machine unless one is stored already.
+    pub fn keep_writer_id(id: &str) -> Result<()> {
+        let path = Config::config_dir()?.join(FILE);
+        let mut state = Self::load_from(&path);
+        if state.writer_id.is_none() {
+            state.writer_id = Some(id.to_string());
+            state.save_to(&path)?;
+        }
+        Ok(())
+    }
+
     /// Load from a path, default when the file is missing or malformed (warns on stderr).
     pub fn load_from(path: &Path) -> Self {
         let (state, warning) = Self::load_checked(path);

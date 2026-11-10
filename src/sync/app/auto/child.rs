@@ -1,7 +1,8 @@
 //! The `--auto` child run and the error line it leaves in the state file.
 
 use crate::config::state::State;
-use crate::sync::engine::run::{BackendEngine, Outcome, Report, SyncError};
+use crate::sync::engine::pack_run::Engine;
+use crate::sync::engine::run::{Outcome, Report, SyncError};
 
 /// One line for the state file after an `--auto` run for `session`, `None` when it
 /// went fine. A busy lock is not an error, the session is queued and the holder takes it.
@@ -35,6 +36,6 @@ pub fn take_error_line(state: &mut State) -> Option<String> {
 // path with no index entry and its old path is gone, so a rename is left to a manual
 // `agr sync push` (pushing it here would upload a second copy). Selection is size and mtime from
 // the index, so only those files get hashed, a touched but identical file is hashed each time.
-pub fn run(engine: &BackendEngine<'_>, session: &str) -> Result<Report, SyncError> {
+pub fn run(engine: &Engine<'_>, session: &str) -> Result<Report, SyncError> {
     engine.drain_auto(session, &mut |_: &crate::sync::Event<'_>| {})
 }

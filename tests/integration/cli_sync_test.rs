@@ -110,11 +110,17 @@ impl Machine {
     }
 }
 
+/// Files of every pack directory of the directory store whose name ends with `suffix`.
 fn remote_files(remote: &Path, suffix: &str) -> Vec<PathBuf> {
-    let mut files: Vec<PathBuf> = fs::read_dir(remote)
+    let packs: Vec<PathBuf> = fs::read_dir(remote)
         .map(|rd| rd.map(|e| e.unwrap().path()).collect())
         .unwrap_or_default();
-    files.retain(|p| p.to_string_lossy().ends_with(suffix));
+    let mut files: Vec<PathBuf> = packs
+        .iter()
+        .flat_map(|p| fs::read_dir(p).into_iter().flatten().flatten())
+        .map(|e| e.path())
+        .filter(|p| p.to_string_lossy().ends_with(suffix))
+        .collect();
     files.sort();
     files
 }
@@ -262,7 +268,7 @@ fn no_tty_without_yes_aborts_push_and_pull_but_dry_run_and_status_work() {
     assert_eq!(out.code, 0, "{}", out.all());
     assert!(out.stdout.contains("--yes"), "{}", out.stdout);
     assert!(out.stdout.contains("No changes made."), "{}", out.stdout);
-    assert!(remote_files(remote.path(), ".blob").is_empty());
+    assert!(remote_files(remote.path(), "manifest").is_empty());
     assert!(!m.key_path().exists());
     assert_eq!(m.state(), "");
     let dry = m.run(&["push", "--dry-run"]);
@@ -280,7 +286,7 @@ fn no_tty_without_yes_aborts_push_and_pull_but_dry_run_and_status_work() {
         full.stdout
     );
     assert!(!m.key_path().exists());
-    assert!(remote_files(remote.path(), ".blob").is_empty());
+    assert!(remote_files(remote.path(), "manifest").is_empty());
     let status = m.run(&["status"]);
     assert_eq!(status.code, 0, "{}", status.all());
     assert!(status.stdout.contains("1 to push"), "{}", status.stdout);
@@ -307,9 +313,10 @@ fn first_push_warns_stores_ack_makes_a_key_and_uploads_ciphertext() {
         m.state()
     );
     assert!(m.key_path().exists());
-    let blobs = remote_files(remote.path(), ".blob");
-    assert_eq!(blobs.len(), 1);
-    let blob = fs::read(&blobs[0]).unwrap();
+    assert_eq!(remote_files(remote.path(), "manifest").len(), 1);
+    let parts = remote_files(remote.path(), "part.000000");
+    assert_eq!(parts.len(), 1);
+    let blob = fs::read(&parts[0]).unwrap();
     assert!(!blob.starts_with(&[0x1f, 0x8b]));
     assert!(!String::from_utf8_lossy(&blob).contains("secret session text"));
     let again = m.run(&["push", "--yes"]);
@@ -337,7 +344,7 @@ fn push_aborts_with_import_hint_when_remote_has_sessions_and_no_key() {
     assert_ne!(out.code, 0);
     assert!(out.all().contains("agr sync key import"), "{}", out.all());
     assert!(!b.key_path().exists());
-    assert_eq!(remote_files(remote.path(), ".blob").len(), 1);
+    assert_eq!(remote_files(remote.path(), "manifest").len(), 1);
 }
 
 #[test]
@@ -433,7 +440,8 @@ fn status_lists_states_totals_without_colour_and_shows_the_auto_push_error() {
     assert_eq!(out.code, 0, "{}", out.all());
     assert!(!out.all().contains('\u{1b}'));
     assert!(
-        out.stdout.contains("Backend: file, 1 remote session(s)"),
+        out.stdout
+            .contains("Backend: directory, 1 remote session(s)"),
         "{}",
         out.stdout
     );
@@ -528,18 +536,25 @@ fn delete_removes_the_remote_and_keeps_the_local_file() {
     m.run(&["push", "--yes"]);
     let dry = m.run(&["delete", "--dry-run", "claude/a.cast.gz"]);
     assert_eq!(dry.code, 0, "{}", dry.all());
-    assert_eq!(remote_files(remote.path(), ".blob").len(), 1);
+    assert_eq!(remote_files(remote.path(), "manifest").len(), 1);
     let no_yes = m.run(&["delete", "claude/a.cast.gz"]);
     assert!(
         no_yes.stdout.contains("No changes made."),
         "{}",
         no_yes.stdout
     );
-    assert_eq!(remote_files(remote.path(), ".blob").len(), 1);
+    assert_eq!(remote_files(remote.path(), "manifest").len(), 1);
     let out = m.run(&["delete", "--yes", "claude/a.cast.gz"]);
     assert_eq!(out.code, 0, "{}", out.all());
     assert!(out.stdout.contains("Deleted: 1"), "{}", out.stdout);
-    assert!(remote_files(remote.path(), ".blob").is_empty());
+    // a tombstone adds no bytes, the data part stays until prune
+    assert_eq!(remote_files(remote.path(), "part.000000").len(), 1);
+    let status = m.run(&["status", "-v"]);
+    assert!(
+        status.stdout.contains("deleted on the remote"),
+        "{}",
+        status.stdout
+    );
     assert!(local.exists());
 }
 
@@ -553,7 +568,7 @@ fn auto_push_pushes_one_session_quietly_without_prompt_or_privacy_notice() {
     let out = m.run(&["push", "--auto", "claude/b.cast.gz"]);
     assert_eq!(out.code, 0, "{}", out.all());
     assert_eq!(out.all(), "", "auto push prints nothing");
-    assert_eq!(remote_files(remote.path(), ".blob").len(), 2);
+    assert_eq!(remote_files(remote.path(), "part.000001").len(), 1);
     assert!(!m.state().contains("last_auto_push_error"), "{}", m.state());
 }
 
@@ -564,7 +579,7 @@ fn auto_push_without_privacy_ack_pushes_nothing_and_stays_quiet() {
     m.session("claude", "a.cast.gz", "one");
     let out = m.run(&["push", "--auto", "claude/a.cast.gz"]);
     assert_eq!(out.code, 0, "{}", out.all());
-    assert!(remote_files(remote.path(), ".blob").is_empty());
+    assert!(remote_files(remote.path(), "manifest").is_empty());
     assert!(!m.key_path().exists());
     assert_eq!(out.all(), "");
     assert_eq!(m.state(), "");

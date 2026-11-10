@@ -6,10 +6,14 @@ use thiserror::Error;
 
 use super::key::{self, Imported, KeyError};
 use crate::config::SyncBackendKind;
-use crate::sync::backend::file::FileBackend;
-use crate::sync::backend::gist::{GistBackend, ProgressSink};
-use crate::sync::backend::{BackendError, SyncBackend};
+use crate::sync::backend::gist::ProgressSink;
+use crate::sync::backend::BackendError;
 use crate::sync::crypto::{export_phrase, import_phrase, Key, PhraseError};
+use crate::sync::engine::fail::backend_error;
+use crate::sync::pack::rules::pack_size;
+use crate::sync::store::dir::DirStore;
+use crate::sync::store::gist::GistStore;
+use crate::sync::store::PackStore;
 use crate::Config;
 
 /// Whether a missing key may be created.
@@ -59,7 +63,7 @@ pub fn default_key_path() -> anyhow::Result<PathBuf> {
 /// Load the key, or decide what to do when there is none (ADR "Key file").
 pub fn resolve_key(
     path: &Path,
-    backend: &dyn SyncBackend,
+    store: &dyn PackStore,
     need: KeyNeed,
 ) -> Result<KeyState, SetupError> {
     if let Some(key) = key::load(path)? {
@@ -68,7 +72,10 @@ pub fn resolve_key(
     if need == KeyNeed::Existing {
         return Err(SetupError::NoKey);
     }
-    if !backend.list()?.is_empty() {
+    let listing = store
+        .list()
+        .map_err(|e| SetupError::Backend(backend_error(e)))?;
+    if !listing.packs.is_empty() || !listing.legacy.is_empty() {
         return Err(SetupError::KeyOnRemote);
     }
     Ok(KeyState::Fresh(Key::generate()))
@@ -103,24 +110,39 @@ pub fn explain(error: &BackendError) -> (String, Option<String>) {
     }
 }
 
-/// The configured backend, `None` when `backend = "off"`. `test_dir` (the binary reads it from
-/// `AGR_SYNC_TEST_BACKEND_DIR`) swaps the gist backend for a directory fake, tests only.
-/// `progress` gets the percent of a running git transfer, the fake never reports one.
-pub fn open_backend(
+/// The configured pack store, `None` when `backend = "off"`. `test_dir` (the binary reads it from
+/// `AGR_SYNC_TEST_BACKEND_DIR`) swaps the gist store for a directory store, tests only.
+/// `progress` gets the percent of a running git transfer, the directory store never reports one.
+pub fn open_store(
     kind: SyncBackendKind,
     test_dir: Option<PathBuf>,
     progress: Option<ProgressSink>,
-) -> Option<Box<dyn SyncBackend>> {
+) -> Option<Box<dyn PackStore>> {
     if kind == SyncBackendKind::Off {
         return None;
     }
     Some(match test_dir {
-        Some(dir) => Box::new(FileBackend::new(dir)),
+        Some(dir) => Box::new(DirStore::new(&dir)),
         None => Box::new(match progress {
-            Some(sink) => GistBackend::new().with_progress(sink),
-            None => GistBackend::new(),
+            Some(sink) => GistStore::new().with_progress(sink),
+            None => GistStore::new(),
         }),
     })
+}
+
+/// The writer id of this machine, a fresh one until `keep_writer` stores it.
+pub fn writer_id() -> String {
+    crate::config::state::State::stored_writer_id().unwrap_or_else(crate::sync::new_writer_id)
+}
+
+/// Stores the writer id once this machine really pushes, dry runs and refusals leave no trace.
+pub fn keep_writer(id: &str) -> anyhow::Result<()> {
+    crate::config::state::State::keep_writer_id(id)
+}
+
+/// Target pack size in bytes from `[sync] pack_size_mib`.
+pub fn pack_target(mib: u64) -> Result<u64, String> {
+    pack_size(mib).map_err(|e| e.to_string())
 }
 
 /// The privacy notice is due before a push that would create the first remote entry
