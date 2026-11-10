@@ -125,7 +125,7 @@ fn index_of_other_writer_or_sealed_is_moved() {
     let err = repo
         .push_batch(&[item(dir.path(), "b", 1, b"y")])
         .unwrap_err();
-    assert!(matches!(err, StoreError::Moved(_)), "{err:?}");
+    assert!(matches!(err.error, StoreError::Moved(_)), "{err:?}");
 }
 
 #[test]

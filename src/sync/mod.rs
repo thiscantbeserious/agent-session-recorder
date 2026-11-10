@@ -32,7 +32,7 @@ pub mod testing {
         new_pack_uuid, open_index, seal_index, Entry, Index, IndexError,
     };
     pub use crate::sync::pack::repo::{
-        read_pack, PushItem, PushReport, ReadError, Repo, RepoError,
+        read_pack, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo, RepoError,
     };
     pub use crate::sync::pack::rules::{
         pack_size, place, should_seal, should_seal_index, PackSizeError, Place,

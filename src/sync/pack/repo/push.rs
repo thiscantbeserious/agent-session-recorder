@@ -22,36 +22,114 @@ pub struct PushItem {
     pub file: PathBuf,
 }
 
+/// What became of one item of a push.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
+    /// Written to pack `pack`.
+    Pushed { pack: String },
+    /// The merged view was ahead of this gen when the append was planned, nothing was written.
+    Superseded,
+}
+
+/// The open pack after a push: its id and its length, what the engine saves locally.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenRef {
+    pub id: String,
+    pub len: u64,
+}
+
 #[derive(Debug, Default)]
 pub struct PushReport {
     pub forks: Vec<String>,
+    /// Outcome per item, `(path, gen)` in push order, only items that were reached.
+    pub items: Vec<(String, u64, Outcome)>,
+    /// The open pack behind the push, `None` when the last append sealed it.
+    pub open: Option<OpenRef>,
+    /// Pushed, but the listing for the fork check failed, forks are unknown.
+    pub check_failed: bool,
+}
+
+/// A push that stopped: the error and what was pushed before it.
+#[derive(Debug)]
+pub struct PushError {
+    pub error: StoreError,
+    pub pushed: PushReport,
+}
+
+impl std::fmt::Display for PushError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(f)
+    }
+}
+
+impl std::error::Error for PushError {}
+
+impl PushReport {
+    /// Items of `chunk` as the append that wrote `next` left them.
+    fn record(&mut self, chunk: &[Staged], next: &OpenPack) {
+        for s in chunk {
+            let hit = next
+                .index
+                .entries
+                .iter()
+                .any(|e| e.path == s.path && e.gen == s.gen && e.sha256 == s.sha256);
+            let outcome = match hit {
+                true => Outcome::Pushed {
+                    pack: next.id.clone(),
+                },
+                false => Outcome::Superseded,
+            };
+            self.items.push((s.path.clone(), s.gen, outcome));
+        }
+    }
 }
 
 impl Repo<'_> {
-    pub fn push_batch(&mut self, items: &[PushItem]) -> Result<PushReport, StoreError> {
+    pub fn push_batch(&mut self, items: &[PushItem]) -> Result<PushReport, PushError> {
+        let mut report = PushReport::default();
+        match self.push_into(items, &mut report) {
+            Ok(()) => Ok(report),
+            Err(error) => Err(PushError {
+                error,
+                pushed: report,
+            }),
+        }
+    }
+
+    fn open_ref(&self) -> Option<OpenRef> {
+        let o = self.open.as_ref()?;
+        Some(OpenRef {
+            id: o.id.clone(),
+            len: o.index.len,
+        })
+    }
+
+    fn push_into(&mut self, items: &[PushItem], report: &mut PushReport) -> Result<(), StoreError> {
         let staged = items.iter().map(stage).collect::<Result<Vec<_>, _>>()?;
         let (big, small): (Vec<_>, Vec<_>) = staged
             .into_iter()
             .partition(|s| place(self.target, s.size) == Place::OwnPack);
         for s in &big {
             let pack = self.new_pack()?;
-            self.try_append(&pack, &Batch::of(std::slice::from_ref(s), true))?;
+            let one = std::slice::from_ref(s);
+            let next = self.try_append(&pack, &Batch::of(one, true))?;
+            let _ = next;
         }
-        self.push_small(&small)?;
+        self.push_small(&small, report)?;
         self.reload()?;
-        let ours = |p: &String| items.iter().any(|i| &i.path == p);
-        let forks = self
-            .view
-            .forks()
-            .iter()
-            .filter(|p| ours(p))
-            .cloned()
-            .collect();
-        Ok(PushReport { forks })
+        {
+            let ours = |p: &&String| items.iter().any(|i| &i.path == *p);
+            report.forks = self.view.forks().iter().filter(ours).cloned().collect();
+        }
+        Ok(())
     }
 
     /// Fills the open pack up to the target or the index cap, seals it and goes on in a new one.
-    fn push_small(&mut self, mut rest: &[Staged]) -> Result<(), StoreError> {
+    fn push_small(
+        &mut self,
+        mut rest: &[Staged],
+        report: &mut PushReport,
+    ) -> Result<(), StoreError> {
         while !rest.is_empty() {
             let len = self.open.as_ref().map_or(0, |o| o.index.len);
             let by_size = fill_count(rest, self.target, len);
