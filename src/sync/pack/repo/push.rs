@@ -1,6 +1,6 @@
 //! Writes of one machine: append to the own open pack, seal, retry.
 
-use super::{OpenPack, Repo, RepoError};
+use super::{OpenPack, Repo};
 use crate::sync::pack::index::{new_pack_uuid, seal_index, Index};
 use crate::sync::pack::rules::{place, should_seal, Place};
 use crate::sync::pack::stream::segment;
@@ -188,24 +188,37 @@ impl Repo<'_> {
     }
 
     /// Appends a tombstone at gen + 1 of the merged entry of `path` to the open pack.
-    pub fn tombstone(&mut self, path: &str) -> Result<(), RepoError> {
+    pub fn tombstone(&mut self, path: &str) -> Result<PushReport, PushError> {
         self.tombstone_batch(&[path.to_string()])
     }
 
     /// One tombstone per path, each at gen + 1 of the merged entry.
-    pub fn tombstone_batch(&mut self, paths: &[String]) -> Result<(), RepoError> {
+    pub fn tombstone_batch(&mut self, paths: &[String]) -> Result<PushReport, PushError> {
+        let mut report = PushReport::default();
+        match self.tombs_into(paths, &mut report) {
+            Ok(()) => Ok(report),
+            Err(error) => {
+                report.open = self.open_ref();
+                Err(PushError {
+                    error,
+                    pushed: report,
+                })
+            }
+        }
+    }
+
+    fn tombs_into(&mut self, paths: &[String], _report: &mut PushReport) -> Result<(), StoreError> {
         let mut tombs = Vec::new();
         for path in paths {
             let gen = self
                 .view
                 .get(path)
-                .ok_or_else(|| RepoError::Unknown(path.clone()))?
+                .ok_or_else(|| StoreError::Other(format!("no such session: {path}")))?
                 .gen;
             tombs.push((path.clone(), gen + 1));
         }
         self.append_tombs(tombs)?;
-        self.reload()?;
-        Ok(())
+        self.reload()
     }
 
     /// The tombstones in as few appends as the index cap allows, the pack that fills up is sealed.
