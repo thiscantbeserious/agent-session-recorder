@@ -136,3 +136,14 @@ fn remove_others_keeps_foreign_dirs() {
     assert!(no_git.exists());
     assert!(!other_clone.exists());
 }
+
+#[test]
+fn with_cache_dir_moves_every_cache_file() {
+    // A run with a temp cache dir must not read or write the user's real cache.
+    let root = std::path::PathBuf::from("tmp-root");
+    let store = super::GistStore::new().with_cache_dir(root.clone());
+    assert_eq!(
+        store.cache_file.as_deref(),
+        Some(root.join("agr").join("index-cache.json").as_path())
+    );
+}
