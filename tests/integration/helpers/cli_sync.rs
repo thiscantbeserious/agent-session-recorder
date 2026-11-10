@@ -14,7 +14,6 @@ pub struct Out {
 }
 
 impl Out {
-    #[cfg(unix)]
     pub fn success(&self) -> bool {
         self.code == 0
     }
