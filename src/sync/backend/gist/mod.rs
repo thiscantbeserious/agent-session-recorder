@@ -3,7 +3,7 @@
 pub(crate) mod pace;
 pub(crate) mod parse;
 pub(crate) mod parts;
-mod progress;
+pub(crate) mod progress;
 pub(crate) mod runner;
 pub(crate) mod scratch;
 
