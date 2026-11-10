@@ -1227,21 +1227,23 @@ Goal: one drain round is one append, queue and drain stay as they are.
 Owner: implementer
 PR: C
 
-- [ ] RED commit: `ten_queued_sessions_are_one_append` in `sync_queue_test.rs` [`assert_eq!(appends, 1)`, the per session drain gives 10].
-- [ ] RED commit:
+- [x] RED commit: `ten_queued_sessions_are_one_append` in `sync_queue_test.rs` [`assert_eq!(appends, 1)`, the per session drain gives 10].
+- [x] RED commit:
   - `burst_during_drain_lands_in_the_next_round_together` [`assert_eq!(appends, 2)`]
   - `single_recording_is_pushed_without_waiting` [`assert_eq!(appends, 1)` right after one recording, no local buffering]
   - `auto_push_on_v1_index_does_nothing_and_hints_migrate` [`assert_eq!(appends, 0)` and the queue entry stays]
   - `auto_push_on_fresh_machine_with_v1_gists_does_nothing` [`assert_eq!(appends, 0)` and `assert_eq!(queue.len(), 1)` with no local index and one `agr:v1` gist of our key on the store, the stub drains and pushes gen 1]
-- [ ] RED commit: `n_parallel_recordings_pushed_exactly_once` (P13): 8 threads finish a recording each while a drain runs on a `MemoryStore`, afterwards the merged view has all 8 paths, every path has exactly one entry at gen 1 and the queue is empty [`assert_eq!(view.len(), 8)`, the stub drain takes the queue once and drops what arrives during the round].
-- [ ] GREEN commit.
-- [ ] Pacing across processes: the drain already runs under `SyncLock` (`engine/queue.rs`), so only one auto push process appends at a time, and the persisted last push time of Stage 53 (`last_push.rs`) makes the next process wait the rest of the 10 s. No new code here, `pacing_holds_across_processes` (Stage 53) covers it.
-- [ ] Probe dependency: no code difference here. Cost per round is a fetch of the cached clone (branch C) plus the listing with index cache hits (Stage 52).
+- [x] RED commit: `n_parallel_recordings_pushed_exactly_once` (P13): 8 threads finish a recording each while a drain runs on a `MemoryStore`, afterwards the merged view has all 8 paths, every path has exactly one entry at gen 1 and the queue is empty [`assert_eq!(view.len(), 8)`, the stub drain takes the queue once and drops what arrives during the round].
+- [x] GREEN commit.
+- [x] Pacing across processes: the drain already runs under `SyncLock` (`engine/queue.rs`), so only one auto push process appends at a time, and the persisted last push time of Stage 53 (`last_push.rs`) makes the next process wait the rest of the 10 s. No new code here, `pacing_holds_across_processes` (Stage 53) covers it.
+- [x] Probe dependency: no code difference here. Cost per round is a fetch of the cached clone (branch C) plus the listing with index cache hits (Stage 52).
 
 Files: `src/sync/app/auto/mod.rs`, `src/sync/app/auto/child.rs`, `src/sync/engine/queue.rs`, `src/recording/auto_push.rs`, `tests/integration/sync_queue_test.rs`
 Depends on: Stage 54
 
 Considerations: `child.rs` 317 and `auto/mod.rs` 330 lines today, new logic goes into the engine batch call, not into these files.
+
+**Done 2026-11-10, deviations**: Stage 54 already moved the drain onto `Engine` (`Held for Engine`, one `push_held` append per round), as such every RED passed on arrival and was committed as one `(guard)` commit, no GREEN and no code change in `queue.rs`, `auto/mod.rs`, `auto/child.rs` or `recording/auto_push.rs`. The tests sit in a `packs` module of `sync_queue_test.rs`. `n_parallel_recordings_pushed_exactly_once` loops 30 rounds, one round did not catch a drain that drops entries arriving mid-round.
 
 ### Stage 56: Status and output
 
