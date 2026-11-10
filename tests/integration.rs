@@ -245,3 +245,6 @@ mod sync_gist_pull_test;
 
 #[path = "integration/sync_gist_push_test.rs"]
 mod sync_gist_push_test;
+
+#[path = "integration/sync_scan_path_test.rs"]
+mod sync_scan_path_test;
