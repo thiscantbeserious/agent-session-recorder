@@ -407,7 +407,7 @@ Sessions only live on one machine. We want to sync them between machines, with G
 
 **P6. Index per pack, readable without a clone**
 - [ ] Each pack carries one sealed index with path, gen, sha256, size, offset, length, deleted and time per entry.
-- [ ] `agr sync status` makes no `git clone`, only the listing plus one API call per pack that is not in the local index cache (same `updated_at`), a corrupt cache file is rebuilt. The `updated_at` key is pending the probe `updated_at_moves_on_git_push`, if it does not move sealed indexes are cached forever by id and open packs are read on every open (ADR "Index cache (pending probe)").
+- [ ] `agr sync status` makes no `git clone`, only the listing plus one `gh api` read of the index `raw_url` per pack that is not in the local index cache (same `updated_at`), never the API content, a corrupt cache file is rebuilt. The `updated_at` key is pending the probe `updated_at_moves_on_git_push`, if it does not move sealed indexes are cached forever by id and open packs are read on every open (ADR "Index cache (pending probe)").
 - [ ] An index copied into another pack does not open (the index AAD binds the pack uuid).
 - [ ] Push, pull, delete, migrate and prune abort before planning when any pack index read fails, never act on a partial view.
 - [ ] An index that would pass 768 KiB seals the pack early, a truncated index is reported as unreadable, never half read.
