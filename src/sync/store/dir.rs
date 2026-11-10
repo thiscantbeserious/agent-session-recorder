@@ -185,6 +185,10 @@ impl PackStore for DirStore {
     fn list(&self) -> Result<Listing, StoreError> {
         let mut packs = Vec::new();
         for e in fs::read_dir(&self.root).map_err(io_err)?.flatten() {
+            // a stray file such as .DS_Store is no pack
+            if !e.path().is_dir() {
+                continue;
+            }
             let id = e.file_name().to_string_lossy().into_owned();
             let m = match self.manifest(&id) {
                 Ok(m) => m,
