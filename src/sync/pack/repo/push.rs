@@ -1,17 +1,18 @@
 //! Writes of one machine: append to the own open pack, seal, retry.
 
 use super::{OpenPack, Repo, RepoError};
-use crate::sync::crypto::blob::sealed_len;
-use crate::sync::crypto::sha256_reader;
-use crate::sync::pack::index::{new_pack_uuid, seal_index, Entry, Index};
+use crate::sync::pack::index::{new_pack_uuid, seal_index, Index};
 use crate::sync::pack::rules::{place, should_seal, Place};
-use crate::sync::pack::stream::{digest_is, segment, FileSegment};
+use crate::sync::pack::stream::segment;
 use crate::sync::store::{Segment, StoreError};
-use std::fs::File;
-use std::io::{self, Write};
+use std::io;
 use std::path::PathBuf;
 
 mod retry;
+mod stage;
+
+pub(super) use stage::Batch;
+use stage::{fill_count, grown, io_err, stage, writer, Staged};
 
 /// One session file to push at `gen`.
 pub struct PushItem {
@@ -23,52 +24,6 @@ pub struct PushItem {
 #[derive(Debug, Default)]
 pub struct PushReport {
     pub forks: Vec<String>,
-}
-
-/// What one append writes: sessions, tombstones as (path, gen) and the seal flag.
-pub(super) struct Batch<'b> {
-    staged: &'b [Staged],
-    tombs: Vec<(String, u64)>,
-    seal: bool,
-}
-
-impl<'b> Batch<'b> {
-    pub(super) fn of(staged: &'b [Staged], seal: bool) -> Self {
-        Self {
-            staged,
-            tombs: Vec::new(),
-            seal,
-        }
-    }
-}
-
-/// A session with its hash read up front, the sealed write must reproduce it.
-#[derive(Clone)]
-pub(super) struct Staged {
-    path: String,
-    gen: u64,
-    file: PathBuf,
-    sha256: String,
-    size: u64,
-    len: u64,
-}
-
-fn io_err(e: io::Error) -> StoreError {
-    StoreError::Other(e.to_string())
-}
-
-fn stage(item: &PushItem) -> Result<Staged, StoreError> {
-    let (sha256, size) = File::open(&item.file)
-        .and_then(sha256_reader)
-        .map_err(io_err)?;
-    Ok(Staged {
-        path: item.path.clone(),
-        gen: item.gen,
-        file: item.file.clone(),
-        sha256,
-        size,
-        len: sealed_len(size),
-    })
 }
 
 impl Repo<'_> {
@@ -205,61 +160,4 @@ impl Repo<'_> {
 /// The pack stays open for the next chunk while it is not sealed.
 fn open_of(next: OpenPack) -> Option<OpenPack> {
     (!next.index.sealed).then_some(next)
-}
-
-/// The old index plus one entry per session, ranges laid out behind the old end.
-fn grown(old: &Index, batch: &Batch) -> Index {
-    let mut next = old.clone();
-    next.sealed = batch.seal;
-    for (path, gen) in &batch.tombs {
-        next.entries.push(Entry {
-            path: path.clone(),
-            gen: *gen,
-            sha256: String::new(),
-            size: 0,
-            offset: next.len,
-            length: 0,
-            deleted: true,
-            at: chrono::Utc::now().to_rfc3339(),
-        });
-    }
-    for s in batch.staged {
-        next.entries.push(Entry {
-            path: s.path.clone(),
-            gen: s.gen,
-            sha256: s.sha256.clone(),
-            size: s.size,
-            offset: next.len,
-            length: s.len,
-            deleted: false,
-            at: chrono::Utc::now().to_rfc3339(),
-        });
-        next.len += s.len;
-    }
-    next
-}
-
-/// Seals the file and fails when what was sealed is not what the index says.
-fn writer<'a>(
-    seg: &'a FileSegment<'a>,
-    s: &'a Staged,
-) -> impl Fn(&mut dyn Write) -> io::Result<()> + 'a {
-    move |w| {
-        if !digest_is(&seg.write(w)?, &s.sha256, s.size) {
-            return Err(io::Error::other("session changed while pushing"));
-        }
-        Ok(())
-    }
-}
-
-/// How many sessions bring a pack of length `len` to the target, the last one included.
-fn fill_count(rest: &[Staged], target: u64, len: u64) -> usize {
-    let mut sum = len;
-    for (i, s) in rest.iter().enumerate() {
-        sum += s.len;
-        if sum >= target {
-            return i + 1;
-        }
-    }
-    rest.len()
 }
