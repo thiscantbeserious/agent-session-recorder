@@ -10,7 +10,7 @@ pub(super) const PART_SIZE: usize = 45 * 1024 * 1024;
 /// Prefix of every part file, the name is `data.NNN`.
 pub(super) const PART_PREFIX: &str = "data.";
 
-pub(super) fn part_name(index: usize) -> String {
+pub fn part_name(index: usize) -> String {
     format!("{PART_PREFIX}{index:03}")
 }
 
@@ -38,7 +38,7 @@ pub(super) fn stale(existing: &[String], count: usize) -> Vec<String> {
 }
 
 /// Sorted names of the `data.*` files in `dir`.
-pub(super) fn part_names(dir: &Path) -> io::Result<Vec<String>> {
+pub fn part_names(dir: &Path) -> io::Result<Vec<String>> {
     let mut names: Vec<String> = fs::read_dir(dir)?
         .filter_map(Result::ok)
         .filter_map(|e| e.file_name().into_string().ok())

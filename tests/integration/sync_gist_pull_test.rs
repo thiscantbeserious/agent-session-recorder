@@ -1,6 +1,6 @@
-use super::fake::{backend, remote_parts, scrub, Bytes, Fake};
-use super::parts::part_name;
-use super::{BackendError, SyncBackend};
+use crate::helpers::gist_fake::{backend, remote_parts, scrub, Bytes, Fake};
+use agr::sync::testing::gist::part_name;
+use agr::sync::{BackendError, SyncBackend};
 use std::io::Read;
 
 #[test]

@@ -2,6 +2,7 @@
 
 #![allow(dead_code)]
 
+pub mod gist_fake;
 pub mod storage;
 pub mod sync_net;
 pub mod tui_snapshot;

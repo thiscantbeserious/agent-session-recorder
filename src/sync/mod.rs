@@ -28,6 +28,16 @@ pub mod testing {
     pub use crate::sync::engine::queue;
     pub use crate::sync::engine::scan::{scan, Row};
 
+    /// Gist backend internals for the fake runner tests.
+    pub mod gist {
+        pub use crate::sync::backend::gist::pace::{Clock, FakeClock};
+        pub use crate::sync::backend::gist::parse::{parse_list, NO_CREATED_AT};
+        pub use crate::sync::backend::gist::parts::{part_name, part_names};
+        pub use crate::sync::backend::gist::runner::{Output, Runner};
+        pub use crate::sync::backend::gist::scratch::Scratch;
+        pub use crate::sync::backend::gist::{MANIFEST_FILE, STUB_BODY, STUB_FILE};
+    }
+
     /// Blob internals for the framing, nonce and known-answer tests.
     pub mod blob {
         pub use crate::sync::crypto::blob::{

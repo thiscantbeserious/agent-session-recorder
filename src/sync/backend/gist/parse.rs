@@ -14,13 +14,13 @@ struct Gist {
 }
 
 /// Sorts after every real timestamp, a gist without `created_at` never wins the pick (D7).
-pub(super) const NO_CREATED_AT: &str = "9999-12-31T23:59:59Z";
+pub const NO_CREATED_AT: &str = "9999-12-31T23:59:59Z";
 
 /// GitHub stops listing after this many gists, see https://docs.github.com/en/rest/gists/gists.
 pub(super) const LIST_LIMIT: usize = 3000;
 
 /// Parse `gh api gists --paginate`, which prints one JSON array per page back to back.
-pub(super) fn parse_list(json: &str) -> Result<Vec<RemoteEntry>, BackendError> {
+pub fn parse_list(json: &str) -> Result<Vec<RemoteEntry>, BackendError> {
     let pages = serde_json::Deserializer::from_str(json).into_iter::<Vec<Gist>>();
     let mut entries = Vec::new();
     let mut total = 0;

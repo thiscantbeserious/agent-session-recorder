@@ -236,3 +236,12 @@ mod sync_blob_stream_test;
 
 #[path = "integration/sync_blob_test.rs"]
 mod sync_blob_test;
+
+#[path = "integration/sync_gist_backend_test.rs"]
+mod sync_gist_backend_test;
+
+#[path = "integration/sync_gist_pull_test.rs"]
+mod sync_gist_pull_test;
+
+#[path = "integration/sync_gist_push_test.rs"]
+mod sync_gist_push_test;
