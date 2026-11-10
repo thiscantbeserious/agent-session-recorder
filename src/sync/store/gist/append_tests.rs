@@ -166,8 +166,9 @@ fn pushes_to_one_gist_are_paced_10s() {
     assert_eq!(rig.clock.slept(), vec![Duration::from_secs(10)]);
 }
 
+/// Two stores in one process with one clock, so only the shared `pace.toml` carries the push time.
 #[test]
-fn pacing_holds_across_processes() {
+fn pacing_is_shared_through_the_pace_file() {
     let rig = Rig::new();
     let id = rig.remote.seed("i0", &[]);
     append(&rig.store(), &id, (0, "i0"), (b"abc", "i1")).unwrap();
@@ -189,6 +190,39 @@ fn progress_percent_belongs_to_the_append() {
     let seen = seen.lock().unwrap().clone();
     assert_eq!(seen.last(), Some(&100));
     assert_eq!(seen, vec![50, 100], "the clone reports no percent");
+}
+
+/// Fails `unix_secs` from the `n`th call on, the way a clock that breaks after the push does.
+struct FailingClock(TickClock, std::sync::atomic::AtomicUsize, usize);
+
+impl Clock for FailingClock {
+    fn mono(&self) -> Duration {
+        self.0.mono()
+    }
+
+    fn unix_secs(&self) -> Result<u64, ClockError> {
+        let n = self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if n >= self.2 {
+            return Err(ClockError);
+        }
+        self.0.unix_secs()
+    }
+
+    fn sleep(&self, time: Duration) {
+        self.0.sleep(time);
+    }
+}
+
+#[test]
+fn pace_write_failure_after_push_is_not_an_append_error() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &[]);
+    // Reads of the clock before the push: commit date and the wait. The next one is `note_push`.
+    let clock = FailingClock(TickClock::new(), 0.into(), 2);
+    let store = rig.store().with_clock(Arc::new(clock));
+    let res = append(&store, &id, (0, "i0"), (b"abc", "i1"));
+    assert!(res.is_ok(), "{res:?}");
+    assert_eq!(rig.remote.push_changes().len(), 1);
 }
 
 mod contract {
