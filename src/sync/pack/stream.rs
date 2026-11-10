@@ -90,6 +90,3 @@ pub fn open_range(
         dst,
     )?)
 }
-
-#[cfg(test)]
-mod tests;

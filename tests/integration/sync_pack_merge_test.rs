@@ -1,7 +1,6 @@
-use crate::sync::pack::index::{Entry, Index, IndexError};
-use crate::sync::pack::merge::{merge, PackIn, Rejected, Top};
+use agr::sync::testing::{merge, Entry, Index, IndexError, PackIn, Rejected, Top};
 
-pub(super) fn entry(path: &str, gen: u64, sha: &str, length: u64, deleted: bool) -> Entry {
+fn entry(path: &str, gen: u64, sha: &str, length: u64, deleted: bool) -> Entry {
     Entry {
         path: path.to_string(),
         gen,
@@ -14,7 +13,7 @@ pub(super) fn entry(path: &str, gen: u64, sha: &str, length: u64, deleted: bool)
     }
 }
 
-pub(super) fn pack(id: &str, tag: &str, len: u64, entries: Vec<Entry>) -> PackIn {
+fn pack(id: &str, tag: &str, len: u64, entries: Vec<Entry>) -> PackIn {
     let index = Index {
         v: 3,
         pack: tag.to_string(),

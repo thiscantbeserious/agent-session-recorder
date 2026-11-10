@@ -1,10 +1,8 @@
-use crate::sync::crypto::blob::BlobError;
-use crate::sync::crypto::{sha256_hex, CryptoError, Key};
-use crate::sync::pack::index::Entry;
-use crate::sync::pack::stream::RangeError;
-use crate::sync::pack::stream::{open_range, segment};
-use crate::sync::store::{PackStore, Segment};
-use crate::sync::testing::MemoryStore;
+use agr::sync::testing::{
+    open_range, segment, sha256_hex, BlobError, CryptoError, Entry, MemoryStore, PackStore,
+    RangeError, Segment,
+};
+use agr::sync::Key;
 use std::io::{self, Write};
 
 /// Records the size of every `write` call.

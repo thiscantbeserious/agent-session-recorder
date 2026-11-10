@@ -219,5 +219,11 @@ mod sync_multi_machine_test;
 #[path = "integration/sync_queue_test.rs"]
 mod sync_queue_test;
 
+#[path = "integration/sync_pack_merge_test.rs"]
+mod sync_pack_merge_test;
+
+#[path = "integration/sync_pack_stream_test.rs"]
+mod sync_pack_stream_test;
+
 #[path = "integration/sync_runner_test.rs"]
 mod sync_runner_test;
