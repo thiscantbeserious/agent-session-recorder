@@ -211,3 +211,23 @@ fn pattern_delete_is_one_tombstone_append() {
         assert!(n.bytes(p).is_some(), "the local file stays");
     }
 }
+
+#[test]
+fn all_selects_only_live_remote_sessions_not_tombstoned_ones() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    n.engine(&store, &key, "w1")
+        .delete(&[A.to_string()])
+        .unwrap();
+    let plan = n.engine(&store, &key, "w1").status(&[]).unwrap();
+    let live: Vec<String> = plan
+        .items
+        .iter()
+        .filter(|i| i.on_remote)
+        .map(|i| i.path.clone())
+        .collect();
+    let hits = agr::sync::select_remote(&[], true, &live).unwrap();
+    assert_eq!(hits.len(), 2, "{hits:?}");
+    assert!(!hits.iter().any(|p| p == A), "{hits:?}");
+}

@@ -9,9 +9,11 @@ fn delete_removes_the_remote_and_keeps_the_local_file() {
     let m = Machine::gist(remote.path());
     let local = m.session("claude", "a.cast.gz", "one");
     m.run(&["push", "--yes"]);
+    let before = fingerprint(remote.path());
     let dry = m.run(&["delete", "--dry-run", "claude/a.cast.gz"]);
     assert_eq!(dry.code, 0, "{}", dry.all());
     assert_eq!(remote_files(remote.path(), "manifest").len(), 1);
+    assert_eq!(fingerprint(remote.path()), before, "dry run, no append");
     let no_yes = m.run(&["delete", "claude/a.cast.gz"]);
     assert!(
         no_yes.stdout.contains("No changes made."),
@@ -19,6 +21,7 @@ fn delete_removes_the_remote_and_keeps_the_local_file() {
         no_yes.stdout
     );
     assert_eq!(remote_files(remote.path(), "manifest").len(), 1);
+    assert_eq!(fingerprint(remote.path()), before, "no yes, no append");
     let out = m.run(&["delete", "--yes", "claude/a.cast.gz"]);
     assert_eq!(out.code, 0, "{}", out.all());
     assert!(out.stdout.contains("Deleted: 1"), "{}", out.stdout);
@@ -79,9 +82,11 @@ fn delete_dry_run_and_declined_prompt_store_no_writer_id() {
     assert_eq!(a.run(&["push", "--yes"]).code, 0);
     let b = Machine::gist(remote.path());
     assert_eq!(b.run(&["key", "import", &phrase_of(&a)]).code, 0);
+    let before = fingerprint(remote.path());
     assert_eq!(b.run(&["delete", "--dry-run", "claude/a.cast.gz"]).code, 0);
     assert_eq!(b.run(&["delete", "claude/a.cast.gz"]).code, 0);
     assert_eq!(writer_of(&b), None, "{}", b.state());
+    assert_eq!(fingerprint(remote.path()), before, "no append");
 }
 
 mod patterns {
@@ -144,6 +149,23 @@ mod prompts {
         assert_eq!(fingerprint(remote.path()), before, "no append");
         assert!(b.storage.join("claude/zz-local.cast.gz").exists());
         assert_eq!(writer_of(&b), None, "{}", b.state());
+    }
+
+    #[test]
+    fn deleting_the_same_pattern_twice_fails_the_second_time_without_an_append() {
+        let remote = remote();
+        let (_a, b) = pushed_pair(remote.path(), 2);
+        let first = b.run(&["delete", "--yes", "claude/s*"]);
+        assert_eq!(first.code, 0, "{}", first.all());
+        let before = fingerprint(remote.path());
+        let again = b.run(&["delete", "--yes", "claude/s*"]);
+        assert!(!again.success(), "{}", again.all());
+        assert!(
+            again.stderr.contains("no remote session matches"),
+            "{}",
+            again.stderr
+        );
+        assert_eq!(fingerprint(remote.path()), before, "no append");
     }
 
     #[test]
