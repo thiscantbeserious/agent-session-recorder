@@ -162,6 +162,8 @@ impl<'a> Repo<'a> {
             open: None,
         };
         repo.open = repo.pick_open(hint);
+        // once per open: a crash before `sealed` or a frozen pack leaves clones nobody drops
+        store.keep_only(repo.open_pack());
         Ok(repo)
     }
 

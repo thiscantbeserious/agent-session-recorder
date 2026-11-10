@@ -147,6 +147,10 @@ impl<R: Runner> PackStore for GistStore<R> {
         self.forget_clone(id);
     }
 
+    fn keep_only(&self, open: Option<&str>) {
+        self.sweep_clones(open);
+    }
+
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError> {
         self.read_range(id, offset, len)
     }

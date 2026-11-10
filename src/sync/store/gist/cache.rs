@@ -102,6 +102,22 @@ impl<R: Runner> GistStore<R> {
         self.pack_cache(id).iter().for_each(PackCache::remove);
     }
 
+    /// Removes every clone dir under the cache that is a hex gist id with a `.git` in it and not
+    /// `open`, anything else in the dir is not ours and stays.
+    pub(super) fn sweep_clones(&self, open: Option<&str>) {
+        let Some(root) = &self.cache_root else { return };
+        let Ok(dirs) = std::fs::read_dir(root.join("agr").join("packs")) else {
+            return;
+        };
+        for entry in dirs.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let stale = Some(name.as_str()) != open && entry.path().join(".git").exists();
+            if stale && pack_dir(root, &name).is_ok() {
+                self.forget_clone(&name);
+            }
+        }
+    }
+
     pub(super) fn delete_pack(&self, id: &str) -> Result<(), StoreError> {
         self.forget_clone(id);
         self.seen
