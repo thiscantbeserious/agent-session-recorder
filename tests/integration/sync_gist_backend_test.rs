@@ -1,7 +1,7 @@
 //! Gist backend behaviour against a fake `gh` and `git` runner.
 
 use crate::helpers::gist_fake::{backend, fail, ok, scrub, Bytes, Fake};
-use agr::sync::testing::gist::{parse_list, FakeClock, Scratch, NO_CREATED_AT, STUB_BODY};
+use agr::sync::testing::gist::{parse_list, FakeClock, NO_CREATED_AT, STUB_BODY};
 use agr::sync::{BackendError, RemoteEntry, SyncBackend};
 use std::sync::Arc;
 use std::time::Duration;
@@ -145,6 +145,7 @@ fn a_pending_gist_is_not_listed_and_no_call_carries_the_token() {
 #[cfg(unix)]
 #[test]
 fn scratch_dir_is_private() {
+    use agr::sync::testing::gist::Scratch;
     use std::os::unix::fs::PermissionsExt;
     let base = tempfile::tempdir().unwrap();
     let scratch = Scratch::create(base.path()).unwrap();
