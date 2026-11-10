@@ -99,6 +99,7 @@ impl FakeRemote {
         };
         let at = gist.history.len() - 1;
         checkout(&target, &gist.history[at]);
+        std::fs::create_dir_all(target.join(".git")).unwrap();
         let (id, local) = (id.to_string(), Vec::new());
         let clone = Checkout {
             id,

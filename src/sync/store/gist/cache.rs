@@ -18,6 +18,12 @@ pub(super) fn pack_dir(root: &Path, id: &str) -> Result<PathBuf, StoreError> {
     Ok(root.join("agr").join("packs").join(id))
 }
 
+/// A hex named dir with a `.git` dir in it, what `git clone` of a pack leaves.
+fn is_clone(path: &Path) -> bool {
+    let hex = path.file_name().and_then(|n| n.to_str());
+    hex.is_some_and(|n| pack_dir(Path::new(""), n).is_ok()) && path.join(".git").is_dir()
+}
+
 /// Writes the planned parts one after the other, a segment may span or share parts.
 pub(super) struct Cut<'a> {
     pub(super) dir: &'a Path,
@@ -84,14 +90,16 @@ impl PackCache {
     }
 
     /// The cache holds the clone of one open pack only, a clone of any other pack is a sealed
-    /// or abandoned one and goes.
+    /// or abandoned one and goes. Only a hex named dir with a `.git` in it counts as a clone,
+    /// anything else under `packs` is not ours and stays.
     pub(super) fn remove_others(&self) {
         let Some(parent) = self.dir.parent() else {
             return;
         };
         let others = std::fs::read_dir(parent).into_iter().flatten().flatten();
-        for entry in others.filter(|e| e.path() != self.dir) {
-            let _ = std::fs::remove_dir_all(entry.path());
+        let clones = others.filter(|e| e.path() != self.dir).map(|e| e.path());
+        for path in clones.filter(|p| is_clone(p)) {
+            let _ = std::fs::remove_dir_all(path);
         }
     }
 }
@@ -109,7 +117,7 @@ impl<R: Runner> GistStore<R> {
     }
 
     /// Deletes the cached clone of `id`, the pack layer calls it when the pack is sealed.
-    pub fn forget_clone(&self, id: &str) {
+    pub(super) fn forget_clone(&self, id: &str) {
         self.pack_cache(id).iter().for_each(PackCache::remove);
     }
 
