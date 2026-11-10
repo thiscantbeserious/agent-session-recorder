@@ -16,7 +16,7 @@ pub(super) struct Entry {
 
 /// The cache holds secret gist `raw_url`s, so the dir is 0700 and the file 0600.
 // Windows: the user profile dir is private by its ACL, no mode to set.
-fn make_private_dir(dir: &Path) -> std::io::Result<()> {
+pub(super) fn make_private_dir(dir: &Path) -> std::io::Result<()> {
     let mut builder = std::fs::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
@@ -24,12 +24,31 @@ fn make_private_dir(dir: &Path) -> std::io::Result<()> {
     builder.create(dir)
 }
 
-fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
+pub(super) fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     options.open(path)?.write_all(text.as_bytes())
+}
+
+/// A temp name of its own per call (pid plus counter) in the same dir, so writers never share an inode.
+pub(super) fn temp_path(path: &Path) -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    path.with_extension(format!("{}.{n}.tmp", std::process::id()))
+}
+
+/// Writes `text` to a temp file (0600) next to `path`, then renames it over `path`.
+pub(super) fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
+    let tmp = temp_path(path);
+    if let Some(dir) = path.parent() {
+        make_private_dir(dir)?;
+    }
+    write_private(&tmp, text)?;
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
 }
 
 pub(super) struct IndexCache {
@@ -48,25 +67,9 @@ impl IndexCache {
         serde_json::from_str(&text).unwrap_or_default()
     }
 
-    /// A temp name of its own per call (pid plus counter) in the same dir, so writers never share an inode.
-    fn temp_path(&self) -> PathBuf {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        self.path
-            .with_extension(format!("{}.{n}.tmp", std::process::id()))
-    }
-
     fn save(&self, all: &BTreeMap<String, Entry>) {
-        let Ok(text) = serde_json::to_string(all) else {
-            return;
-        };
-        let tmp = self.temp_path();
-        let dir = self.path.parent().map(make_private_dir);
-        if dir.is_some_and(|r| r.is_err()) || write_private(&tmp, &text).is_err() {
-            return;
-        }
-        if std::fs::rename(&tmp, &self.path).is_err() {
-            let _ = std::fs::remove_file(&tmp);
+        if let Ok(text) = serde_json::to_string(all) {
+            let _ = write_atomic(&self.path, &text);
         }
     }
 
@@ -84,7 +87,6 @@ impl IndexCache {
     }
 
     /// Forgets `id`, called when an append came back `Moved`.
-    #[allow(dead_code)] // `append` of Stage 53 calls it
     pub(super) fn drop_entry(&self, id: &str) {
         let mut all = self.load();
         if all.remove(id).is_some() {
@@ -95,12 +97,12 @@ impl IndexCache {
 
 #[cfg(test)]
 mod tests {
-    use super::{Entry, IndexCache};
+    use super::{temp_path, Entry, IndexCache};
 
     #[test]
     fn cache_temp_names_are_unique() {
-        let cache = IndexCache::new(&std::env::temp_dir().join("index-cache.json"));
-        assert_ne!(cache.temp_path(), cache.temp_path());
+        let path = std::env::temp_dir().join("index-cache.json");
+        assert_ne!(temp_path(&path), temp_path(&path));
     }
 
     #[cfg(unix)]

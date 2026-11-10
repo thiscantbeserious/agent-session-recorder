@@ -103,6 +103,7 @@ pub trait PackStore {
     /// Appends `segments` behind the current end and replaces the index, all or nothing.
     /// Refused with `Moved(current)` when the pack length is not `expected_len` or the current
     /// index text is not `expected_index` byte for byte, nothing is written. Zero segments is valid.
+    /// Callers hold the local sync lock, the store does not enforce it.
     fn append(
         &self,
         id: &str,

@@ -1152,15 +1152,15 @@ Goal: `append` per ADR "Append and seal" steps 2, 3 (store side), 4 and 6 (steps
 Owner: implementer
 PR: B
 
-- [ ] RED commit: `tree_len_not_expected_is_moved` [`assert_eq!(err, StoreError::Moved(head_index))` with `head_index` the `index` blob at `HEAD` of the fast-forwarded clone, when the sum of the part sizes in the tree differs from `expected_len`, the stub pushes anyway].
-- [ ] RED commit: `zero_byte_append_on_stale_index_is_moved` [`assert_eq!(err, StoreError::Moved(head_index))` and `assert!(!calls.iter().any(|c| c.contains("push")))`: the `index` blob at `HEAD` of the cached clone after the fast-forward differs from `expected_index`, the length is equal and there are no segments, the stub checks the length only]. The index for the check is read from the clone, never from the API or the index cache.
-- [ ] RED commit:
+- [x] RED commit: `tree_len_not_expected_is_moved` [`assert_eq!(err, StoreError::Moved(head_index))` with `head_index` the `index` blob at `HEAD` of the fast-forwarded clone, when the sum of the part sizes in the tree differs from `expected_len`, the stub pushes anyway].
+- [x] RED commit: `zero_byte_append_on_stale_index_is_moved` [`assert_eq!(err, StoreError::Moved(head_index))` and `assert!(!calls.iter().any(|c| c.contains("push")))`: the `index` blob at `HEAD` of the cached clone after the fast-forward differs from `expected_index`, the length is equal and there are no segments, the stub checks the length only]. The index for the check is read from the clone, never from the API or the index cache.
+- [x] RED commit:
   - `rejected_push_is_moved_with_the_fetched_index` [`assert_eq!(err, StoreError::Moved(remote_index))` on non-fast-forward stderr, read from `FETCH_HEAD:index` after one `git fetch`, `assert!(!args.contains("--force"))`, a failing fetch gives its own error and no `Moved`]
   - `append_is_one_commit_with_parts_and_index` [`assert_eq!(commits, 1)` and `assert_eq!(changed, vec!["data.002", "index"])`]
   - `pushes_to_one_gist_are_paced_10s` [`assert_eq!(clock.slept(), vec![Duration::from_secs(10)])` for a second append on the same id, other mutating calls keep 1 s]
   - `pacing_holds_across_processes` [`assert_eq!(clock.slept(), vec![Duration::from_secs(7)])`: two `GistStore` values with fresh in-process pacers share one `pace.toml`, the second appends 3 s after the first and waits the rest, the stub keeps the time in memory only]
   - `progress_percent_belongs_to_the_append` [`assert_eq!(sink.last(), Some(100))` for the append, no percent from the fetch]
-- [ ] RED commit (branch C, cached clone of the own open pack, Stage 46 second probe ruled out partial clone appends):
+- [x] RED commit (branch C, cached clone of the own open pack, Stage 46 second probe ruled out partial clone appends):
   - `cached_clone_is_reused_across_appends` [`assert_eq!(count(&calls, "clone"), 1)`, second append runs `git fetch` plus `merge --ff-only`]
   - `cached_clone_removed_on_seal` [`assert!(!cache_dir.join(id).exists())`]
   - `missing_cached_clone_is_cloned_once` [`assert_eq!(count(&calls, "clone"), 1)` and a second failure `assert!(matches!(err, StoreError::Other(_)))`, no loop]
@@ -1169,10 +1169,10 @@ PR: B
   - `cached_clone_dropped_on_moved` [`assert!(!cache_dir.join(id).exists())`]
   - `cache_path_is_inside_user_cache_dir` [`assert_eq!(path, cache_dir.join("agr/packs").join(id))`]
   - `cache_dir_is_0700_on_unix` (`#[cfg(unix)]`) [`assert_eq!(mode & 0o777, 0o700)`]
-- [ ] RED commit: `gist_store_passes_the_contract` (P2), the Stage 47 `contract` run against `GistStore` over a `Fake` runner that keeps a small in-memory gist remote [`contract` panics on `append_refuses_other_expected_index` with the stub].
-- [ ] GREEN commit: full clone into `<cache dir>/agr/packs/<id>` on first use, `git fetch` plus fast-forward only after that, the `expected_index` and length check on the clone, the push uploads only the new parts, the last push time per gist in `<cache dir>/agr/pace.toml`.
-- [ ] `tests/pack_gist_live.rs` (ignored): create, two appends, one zero-byte append, read both ranges, delete. The user runs it once.
-- [ ] PR B gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo +1.88 check --all-targets --locked`, `cargo check --target x86_64-pc-windows-msvc`, `git diff --stat origin/feature/sync-gist...HEAD` under 100 files, `wc -l` of every new file under 400.
+- [x] RED commit: `gist_store_passes_the_contract` (P2), the Stage 47 `contract` run against `GistStore` over a `Fake` runner that keeps a small in-memory gist remote [`contract` panics on `append_refuses_other_expected_index` with the stub].
+- [x] GREEN commit: full clone into `<cache dir>/agr/packs/<id>` on first use, `git fetch` plus fast-forward only after that, the `expected_index` and length check on the clone, the push uploads only the new parts, the last push time per gist in `<cache dir>/agr/pace.toml`.
+- [x] `tests/pack_gist_live.rs` (ignored): create, two appends, one zero-byte append, read both ranges, delete. The user runs it once.
+- [x] PR B gates: `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo test`, `cargo +1.88 check --all-targets --locked`, `cargo check --target x86_64-pc-windows-msvc`, `git diff --stat origin/feature/sync-gist...HEAD` under 100 files, `wc -l` of every new file under 400.
 
 Files: `src/sync/store/gist/mod.rs`, `src/sync/store/gist/append.rs`, `src/sync/store/gist/cache.rs`, `src/sync/store/gist/last_push.rs`, `src/sync/store/gist/fake_remote.rs`, `src/sync/store/gist/tests.rs`, `src/sync/store/contract.rs`, `tests/pack_gist_live.rs`
 Depends on: Stage 46, Stage 51, Stage 52

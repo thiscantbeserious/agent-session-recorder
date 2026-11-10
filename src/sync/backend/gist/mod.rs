@@ -3,7 +3,7 @@
 pub(crate) mod pace;
 pub(crate) mod parse;
 pub(crate) mod parts;
-mod progress;
+pub(crate) mod progress;
 pub(crate) mod runner;
 pub(crate) mod scratch;
 
@@ -28,7 +28,7 @@ const MANIFEST_FILE: &str = "manifest";
 /// Placeholder until the blob is pushed, no `agr:v1 ` prefix so `parse_list` skips it.
 const PENDING_DESC: &str = "agr:pending";
 const LIST_ENDPOINT: &str = "gists?per_page=100";
-const GIT_IDENTITY: [&str; 6] = [
+pub(crate) const GIT_IDENTITY: [&str; 6] = [
     "-c",
     "user.name=agr",
     "-c",
@@ -37,7 +37,7 @@ const GIT_IDENTITY: [&str; 6] = [
     "commit.gpgsign=false",
 ];
 /// Env beats `-c user.*`, so a user's exported `GIT_AUTHOR_*` would leak without these.
-const IDENTITY_ENV: [(&str, &str); 4] = [
+pub(crate) const IDENTITY_ENV: [(&str, &str); 4] = [
     ("GIT_AUTHOR_NAME", "agr"),
     ("GIT_AUTHOR_EMAIL", "agr@localhost"),
     ("GIT_COMMITTER_NAME", "agr"),
