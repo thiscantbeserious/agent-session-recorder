@@ -204,3 +204,19 @@ mod prompts {
         assert!(b.storage.join("claude/zz-local.cast.gz").exists());
     }
 }
+
+mod env_var {
+    use super::*;
+
+    #[test]
+    fn assume_tty_env_does_not_turn_a_piped_run_interactive() {
+        let remote = remote();
+        let (_a, b) = pushed_pair(remote.path(), 11);
+        let before = fingerprint(remote.path());
+        let mut cmd = b.base(&["delete", "claude/s*"]);
+        cmd.env("AGR_ASSUME_TTY", "1");
+        let out = b.exec(cmd, Some("y\n11\n"));
+        assert!(!out.success(), "{}", out.all());
+        assert_eq!(fingerprint(remote.path()), before, "no append");
+    }
+}
