@@ -298,6 +298,7 @@ pub fn delete(args: Args) -> Result<()> {
         say(&["No changes made.".to_string()]);
         return Ok(());
     }
+    keep_writer(&ctx.writer)?;
     let total = plan
         .items
         .iter()
