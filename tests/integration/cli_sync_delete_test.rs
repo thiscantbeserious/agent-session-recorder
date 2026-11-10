@@ -123,4 +123,18 @@ mod prompts {
         assert_eq!(fingerprint(remote.path()), before, "no append");
         assert_eq!(writer_of(&b), None, "{}", b.state());
     }
+
+    #[test]
+    fn over_ten_matches_asks_to_type_the_count() {
+        let remote = remote();
+        let (_a, b) = pushed_pair(remote.path(), 11);
+        let before = fingerprint(remote.path());
+        let out = b.run_tty(&["delete", "claude/s*"], "y\n7\n");
+        assert!(out.stdout.contains("Type 11 to confirm"), "{}", out.stdout);
+        assert!(out.stdout.contains("No changes made."), "{}", out.stdout);
+        assert_eq!(fingerprint(remote.path()), before, "wrong count, no append");
+        assert_eq!(writer_of(&b), None, "{}", b.state());
+        let right = b.run_tty(&["delete", "claude/s*"], "y\n11\n");
+        assert!(right.stdout.contains("Deleted: 11"), "{}", right.all());
+    }
 }
