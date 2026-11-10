@@ -1,6 +1,10 @@
-//! Live end to end check of the gist store against one real secret gist with the logged in `gh`.
-//! Run by hand, it takes a few minutes because pushes to one gist are paced 10 s apart:
-//! `cargo test --test pack_gist_live -- --ignored --nocapture`.
+//! Live checks of the gist store, one test per feature, each on its own short-lived secret gist
+//! with the logged in `gh`. Run by hand:
+//! `cargo test --test pack_gist_live -- --ignored --nocapture --test-threads=1`.
+//!
+//! One thread, because pushes to one gist are paced 10 s apart and parallel tests would run
+//! into the GitHub rate limits. Expect about 60 to 90 s in total. The run creates and deletes
+//! 5 secret gists, a test that fails midway still deletes its gist through the guard.
 
 use agr::sync::testing::{sha256_hex, GistStore, PackStore, Segment, StoreError};
 use std::io::{Read, Write};
@@ -9,21 +13,22 @@ use std::time::Instant;
 
 const MIB: usize = 1024 * 1024;
 
-/// Fallback delete on drop, also when an assertion panics. The test deletes the gist itself
-/// and asserts it, so a failed delete is visible.
-struct Cleanup<'a>(&'a GistStore, String);
+/// Fallback delete on drop, also when an assertion panics. Each test deletes its gist itself
+/// and asserts it, so a failed delete is visible. The guard ignores the result, so a gist that
+/// is already deleted is fine.
+struct Cleanup(GistStore, String);
 
-impl Drop for Cleanup<'_> {
+impl Drop for Cleanup {
     fn drop(&mut self) {
         let _ = self.0.delete(&self.1);
     }
 }
 
 /// Runs one step and prints how long it took.
-fn step<T>(name: &str, f: impl FnOnce() -> T) -> T {
+fn step<T>(test: &str, name: &str, f: impl FnOnce() -> T) -> T {
     let t = Instant::now();
     let out = f();
-    eprintln!("LIVE: {name} {} ms", t.elapsed().as_millis());
+    eprintln!("LIVE: {test} {name} {} ms", t.elapsed().as_millis());
     out
 }
 
@@ -67,99 +72,144 @@ fn clones(cache: &Path) -> Vec<std::path::PathBuf> {
     all.filter(|p| p.join(".git").is_dir()).collect()
 }
 
-#[test]
-#[ignore = "talks to GitHub, run by hand"]
-fn live_end_to_end_one_gist() {
-    let total = Instant::now();
-    let (cache_a, cache_b) = (
-        tempfile::tempdir().expect("cache a"),
-        tempfile::tempdir().expect("cache b"),
-    );
-    let store = GistStore::new().with_cache_dir(cache_a.path().to_path_buf());
-    let other = GistStore::new().with_cache_dir(cache_b.path().to_path_buf());
+/// A store with its own temp cache, one fresh gist and the guard that deletes it.
+fn setup(test: &str) -> (GistStore, tempfile::TempDir, String, Cleanup) {
+    let cache = tempfile::tempdir().expect("cache");
+    let store = GistStore::new().with_cache_dir(cache.path().to_path_buf());
     store.check().expect("gh and git ready");
-
-    let id = step("create", || {
+    let id = step(test, "create", || {
         store.create("agr-live-test", "i0").expect("create")
     });
-    let _cleanup = Cleanup(&store, id.clone());
+    let guard = Cleanup(
+        GistStore::new().with_cache_dir(cache.path().to_path_buf()),
+        id.clone(),
+    );
+    (store, cache, id, guard)
+}
 
+fn delete(test: &str, store: &GistStore, id: &str) {
+    step(test, "delete", || {
+        store.delete(id).expect("delete the live gist")
+    });
+}
+
+#[test]
+#[ignore = "talks to GitHub, run by hand"]
+fn live_multi_part_session_round_trip() {
+    let t = "multi_part";
+    let (store, _cache, id, _guard) = setup(t);
     let small = b"first segment".to_vec();
-    step("append small", || {
+    step(t, "append small", || {
         append(&store, &id, 0, "i0", &small, "i1").expect("append small")
     });
-    let small_len = small.len() as u64;
-
-    // The cached clone is reused: a marker inside `.git` only survives while the clone does.
-    let dirs = clones(cache_a.path());
-    assert_eq!(dirs.len(), 1, "one clone after the first append");
-    let marker = dirs[0].join(".git").join("agr-live-marker");
-    std::fs::write(&marker, "x").expect("marker");
-
+    let at = small.len() as u64;
     let big = big_bytes(18 * MIB);
-    step("append 18 MiB", || {
-        append(&store, &id, small_len, "i1", &big, "i2").expect("append big")
+    step(t, "append 18 MiB", || {
+        append(&store, &id, at, "i1", &big, "i2").expect("append big")
     });
-    assert_eq!(clones(cache_a.path()), dirs, "still the one clone");
-    assert!(marker.exists(), "second append reused the cached clone");
-    let listing = step("list", || store.list().expect("list"));
-    let info = listing
-        .packs
-        .iter()
-        .find(|p| p.id == id)
-        .expect("pack listed");
+
+    let listing = step(t, "list", || store.list().expect("list"));
+    let info = listing.packs.iter().find(|p| p.id == id).expect("listed");
     assert_eq!(
         info.files, 4,
-        "data.000 for the small one, three parts for the big one"
+        "data.000 for the small one, three for the big"
     );
-    assert_eq!(info.len, small_len + big.len() as u64);
+    assert_eq!(info.len, at + big.len() as u64);
 
-    let at = small_len;
-    let got = step("read big", || read(&store, &id, at, big.len() as u64));
+    let got = step(t, "read big", || read(&store, &id, at, big.len() as u64));
     assert_eq!(sha256_hex(&got), sha256_hex(&big), "big segment sha256");
-    let edge = (at + 8 * MIB as u64 - 512, 1024);
-    let part = step("read across part", || read(&store, &id, edge.0, edge.1));
-    let from = (edge.0 - at) as usize;
+    let edge = at + 8 * MIB as u64 - 512;
+    let part = step(t, "read across part", || read(&store, &id, edge, 1024));
+    let from = (edge - at) as usize;
     assert_eq!(
         part,
         big[from..from + 1024],
-        "range across the 8 MiB part boundary"
+        "range across the 8 MiB boundary"
     );
+    delete(t, &store, &id);
+}
 
-    // Instance B has its own cache and a stale view, A moves the gist on first.
-    let len2 = small_len + big.len() as u64;
-    let tail = b"third segment".to_vec();
-    step("append via A", || {
-        append(&store, &id, len2, "i2", &tail, "i3").expect("append A")
+#[test]
+#[ignore = "talks to GitHub, run by hand"]
+fn live_cached_clone_is_reused() {
+    let t = "cached_clone";
+    let (store, cache, id, _guard) = setup(t);
+    step(t, "append 1", || {
+        append(&store, &id, 0, "i0", b"one", "i1").expect("append 1")
     });
-    let len3 = len2 + tail.len() as u64;
-    let res = step("stale append via B", || {
-        append(&other, &id, len2, "i2", b"late", "bx")
+    // A marker inside `.git` only survives while the clone does.
+    let dirs = clones(cache.path());
+    assert_eq!(dirs.len(), 1, "one clone after the first append");
+    let marker = dirs[0].join(".git").join("agr-live-marker");
+    std::fs::write(&marker, "x").expect("marker");
+    step(t, "append 2", || {
+        append(&store, &id, 3, "i1", b"two", "i2").expect("append 2")
     });
-    assert_eq!(
-        res,
-        Err(StoreError::Moved("i3".into())),
-        "stale B is refused with A's index"
-    );
-    step("retry via B", || {
-        append(&other, &id, len3, "i3", b"late", "i4").expect("retry B")
-    });
-    assert_eq!(store.read_index(&id).expect("index"), "i4");
-    assert_eq!(read(&other, &id, len3, 4), b"late");
+    assert_eq!(clones(cache.path()), dirs, "still the one clone");
+    assert!(marker.exists(), "second append reused the cached clone");
+    delete(t, &store, &id);
+}
 
-    // A is stale now too, so this also fast-forwards the cached clone.
-    let len4 = len3 + 4;
-    step("zero byte append", || {
-        store.append(&id, len4, "i4", &[], "i5").expect("zero byte")
+#[test]
+#[ignore = "talks to GitHub, run by hand"]
+fn live_stale_writer_gets_moved_and_retries() {
+    let t = "stale_writer";
+    let (a, _cache_a, id, _guard) = setup(t);
+    let cache_b = tempfile::tempdir().expect("cache b");
+    let b = GistStore::new().with_cache_dir(cache_b.path().to_path_buf());
+    step(t, "append A1", || {
+        append(&a, &id, 0, "i0", b"first", "i1").expect("append A1")
     });
-    assert_eq!(store.read_index(&id).expect("index"), "i5");
-    assert_eq!(read(&store, &id, 0, small_len), small);
-    assert_eq!(clones(cache_a.path()).len(), 1, "still one clone in A");
+    step(t, "append B", || {
+        append(&b, &id, 5, "i1", b"second", "i2").expect("append B")
+    });
+    step(t, "append A2", || {
+        append(&a, &id, 11, "i2", b"third", "i3").expect("append A2")
+    });
+    // B still thinks the gist is at i2.
+    let res = step(t, "stale append B", || {
+        append(&b, &id, 11, "i2", b"late", "bx")
+    });
+    assert_eq!(res, Err(StoreError::Moved("i3".into())), "A's index");
+    step(t, "retry B", || {
+        append(&b, &id, 16, "i3", b"late", "i4").expect("retry B")
+    });
+    assert_eq!(a.read_index(&id).expect("index a"), "i4");
+    assert_eq!(b.read_index(&id).expect("index b"), "i4");
+    assert_eq!(read(&a, &id, 16, 4), b"late");
+    assert_eq!(read(&b, &id, 16, 4), b"late");
+    delete(t, &a, &id);
+}
 
-    eprintln!("LIVE: seal skipped, pack layer decides");
-    step("delete", || {
-        store.delete(&id).expect("delete the live gist")
+#[test]
+#[ignore = "talks to GitHub, run by hand"]
+fn live_zero_byte_append_replaces_the_index() {
+    let t = "zero_byte";
+    let (store, _cache, id, _guard) = setup(t);
+    let data = b"some bytes".to_vec();
+    step(t, "append data", || {
+        append(&store, &id, 0, "i0", &data, "i1").expect("append data")
     });
+    step(t, "zero byte append", || {
+        store
+            .append(&id, data.len() as u64, "i1", &[], "i2")
+            .expect("zero byte")
+    });
+    assert_eq!(store.read_index(&id).expect("index"), "i2");
+    assert_eq!(read(&store, &id, 0, data.len() as u64), data);
+    delete(t, &store, &id);
+}
+
+#[test]
+#[ignore = "talks to GitHub, run by hand"]
+fn live_delete_removes_the_pack() {
+    let t = "delete";
+    let (store, _cache, id, _guard) = setup(t);
+    step(t, "append", || {
+        append(&store, &id, 0, "i0", b"bytes", "i1").expect("append")
+    });
+    delete(t, &store, &id);
     assert_eq!(store.read_index(&id), Err(StoreError::NotFound));
-    eprintln!("LIVE: total {} ms", total.elapsed().as_millis());
+    let listing = store.list().expect("list");
+    assert!(listing.packs.iter().all(|p| p.id != id), "gone from list");
 }
