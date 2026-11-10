@@ -304,6 +304,14 @@ mod tests {
     }
 
     #[test]
+    fn dir_list_ignores_a_stray_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::write(dir.path().join(".DS_Store"), b"x").unwrap();
+        let store = DirStore::new(dir.path());
+        assert!(store.list().is_ok());
+    }
+
+    #[test]
     fn dir_store_crash_after_parts_before_manifest_recovers() {
         let dir = tempfile::tempdir().expect("tempdir");
         let store = DirStore::new(dir.path());
