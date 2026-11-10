@@ -3,8 +3,8 @@
 use agr::files::{codec, lock};
 use agr::sync::testing::index::{self, Index};
 use agr::sync::testing::{seal, seal_meta, sha256_hex, MemoryBackend, Meta};
+use agr::sync::{BackendEngine, Decision, Event, Key, Options, Outcome, SkipReason, SyncError};
 use agr::sync::{BackendError, BlobSource, RemoteEntry, SyncBackend};
-use agr::sync::{Decision, Engine, Event, Key, Options, Outcome, SkipReason, SyncError};
 use agr::{Config, StorageManager};
 
 use crate::helpers::sync_net::{open_blob, seal_blob};
@@ -43,8 +43,8 @@ impl Machine {
         path
     }
 
-    fn engine<'a>(&'a self, backend: &'a dyn SyncBackend, key: &'a Key) -> Engine<'a> {
-        Engine {
+    fn engine<'a>(&'a self, backend: &'a dyn SyncBackend, key: &'a Key) -> BackendEngine<'a> {
+        BackendEngine {
             backend,
             key,
             storage: &self.storage,

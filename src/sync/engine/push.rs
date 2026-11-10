@@ -7,7 +7,7 @@ use super::fail::{msg, Fail};
 use super::index::Index;
 use super::plan::Remote;
 use super::record::{record, record_pending, save_index, Synced};
-use super::run::Engine;
+use super::run::BackendEngine;
 use super::scan::Row;
 use crate::sync::backend::BackendError;
 use crate::sync::crypto::blob::seal_stream;
@@ -21,7 +21,7 @@ const CHANGED_WHILE: &str = "session changed while pushing, run again";
 
 /// Everything one push needs, the blob is sealed from the file while it is sent.
 struct Push<'a> {
-    engine: &'a Engine<'a>,
+    engine: &'a BackendEngine<'a>,
     row: &'a Row,
     sha256: String,
     size: u64,
@@ -34,7 +34,7 @@ struct Push<'a> {
 /// Create when new and store the pending id, compare-and-swap push with the planned token,
 /// record gen and token, then the listing hint. A gist deleted on GitHub needs `overwrite`.
 pub(super) fn push_one(
-    engine: &Engine<'_>,
+    engine: &BackendEngine<'_>,
     row: &Row,
     index: &mut Index,
     overwrite: bool,
@@ -67,7 +67,7 @@ pub(super) fn push_one(
 /// or the listing misses the gist), copy the index token into it and plan against the index,
 /// as if the listing had healed. Never moves the description to a lower gen.
 pub(super) fn heal(
-    engine: &Engine<'_>,
+    engine: &BackendEngine<'_>,
     row: &mut Row,
     index: &Index,
     overwrite: bool,
@@ -96,7 +96,7 @@ pub(super) fn heal(
 
 /// Reports a failed description, unlike the best effort one of a pull, the push is only
 /// finished once the listing knows it.
-fn describe(engine: &Engine<'_>, id: &str, token: &str) -> Result<(), Fail> {
+fn describe(engine: &BackendEngine<'_>, id: &str, token: &str) -> Result<(), Fail> {
     engine
         .backend
         .describe(id, token)

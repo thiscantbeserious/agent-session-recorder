@@ -4,7 +4,7 @@ use std::path::Path;
 use super::fail::{msg, Fail};
 use super::index::Index;
 use super::record::{record, save_index, Synced};
-use super::run::Engine;
+use super::run::BackendEngine;
 use super::scan::Row;
 use crate::files::{backup, codec};
 use crate::sync::backend::BackendError;
@@ -18,7 +18,11 @@ const OLDER: &str = "remote version is older than the last sync, not pulling";
 /// in this order, nothing replaces the local file before all pass: every frame opens with the
 /// manifest gen, hash and size equal the manifest, the `.bak` is rotated, the temp is renamed.
 /// The manifest wins over a lagging description, the description is repaired afterwards.
-pub(super) fn pull_one(engine: &Engine<'_>, row: &Row, index: &mut Index) -> Result<u64, Fail> {
+pub(super) fn pull_one(
+    engine: &BackendEngine<'_>,
+    row: &Row,
+    index: &mut Index,
+) -> Result<u64, Fail> {
     let Some(id) = &row.remote_id else {
         return Err(String::from("remote entry is missing").into());
     };
@@ -42,7 +46,12 @@ pub(super) fn pull_one(engine: &Engine<'_>, row: &Row, index: &mut Index) -> Res
 }
 
 /// The manifest checks that need no blob.
-fn checked_meta(engine: &Engine<'_>, row: &Row, index: &Index, token: &str) -> Result<Meta, Fail> {
+fn checked_meta(
+    engine: &BackendEngine<'_>,
+    row: &Row,
+    index: &Index,
+    token: &str,
+) -> Result<Meta, Fail> {
     let meta = open_meta(engine.key, token).map_err(msg)?;
     let synced = index.entries.get(&row.path).map_or(0, |e| e.gen);
     if meta.path != row.path {
@@ -55,7 +64,7 @@ fn checked_meta(engine: &Engine<'_>, row: &Row, index: &Index, token: &str) -> R
 }
 
 /// Best effort unlike the push one, the pull is recorded already, only a rate limit stops the run.
-fn repair(engine: &Engine<'_>, id: &str, token: &str) -> Result<(), Fail> {
+fn repair(engine: &BackendEngine<'_>, id: &str, token: &str) -> Result<(), Fail> {
     match engine.backend.describe(id, token) {
         Err(BackendError::RateLimited) => Err(Fail::RateLimited),
         _ => Ok(()),

@@ -1,7 +1,7 @@
 //! The `--auto` child run and the error line it leaves in the state file.
 
 use crate::config::state::State;
-use crate::sync::engine::run::{Engine, Outcome, Report, SyncError};
+use crate::sync::engine::run::{BackendEngine, Outcome, Report, SyncError};
 
 /// One line for the state file after an `--auto` run for `session`, `None` when it
 /// went fine. A busy lock is not an error, the session is queued and the holder takes it.
@@ -35,13 +35,15 @@ pub fn take_error_line(state: &mut State) -> Option<String> {
 // path with no index entry and its old path is gone, so a rename is left to a manual
 // `agr sync push` (pushing it here would upload a second copy). Selection is size and mtime from
 // the index, so only those files get hashed, a touched but identical file is hashed each time.
-pub fn run(engine: &Engine<'_>, session: &str) -> Result<Report, SyncError> {
+pub fn run(engine: &BackendEngine<'_>, session: &str) -> Result<Report, SyncError> {
     engine.drain_auto(session, &mut |_: &crate::sync::Event<'_>| {})
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{error_line, run, take_error_line, Engine, Outcome, Report, State, SyncError};
+    use super::{
+        error_line, run, take_error_line, BackendEngine, Outcome, Report, State, SyncError,
+    };
     use crate::config::Config;
     use crate::sync::app::auto::tests::session;
     use crate::sync::engine::plan::Decision;
@@ -100,7 +102,7 @@ mod tests {
             &seal_blob(&key, &remote_only.path, 1, b"other"),
         );
         let path = session(dir.path());
-        let engine = Engine {
+        let engine = BackendEngine {
             backend: &backend,
             key: &key,
             storage: &storage,
@@ -157,8 +159,8 @@ mod tests {
             }
         }
 
-        fn engine(&self) -> Engine<'_> {
-            Engine {
+        fn engine(&self) -> BackendEngine<'_> {
+            BackendEngine {
                 backend: &self.backend,
                 key: &self.key,
                 storage: &self.storage,

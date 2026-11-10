@@ -11,7 +11,7 @@ use super::index;
 use super::lock::SyncLock;
 use super::observe::{counted, Observer, Step};
 use super::plan::{Command, Decision, SkipReason};
-use super::run::{Engine, Item, Options, Outcome, Report, SyncError};
+use super::run::{BackendEngine, Item, Options, Outcome, Report, SyncError};
 use super::scan::valid_path;
 
 pub const QUEUE_DIR: &str = ".agr-sync-queue";
@@ -80,7 +80,7 @@ pub(super) fn settle(storage_dir: &Path, item: &Item) {
     }
 }
 
-impl Engine<'_> {
+impl BackendEngine<'_> {
     /// The `--auto` run, pushes the queue plus the changed synced sessions, never pulls or
     /// deletes. `Busy` when another sync holds the lock, the entry stays queued for the holder.
     // No lost wakeup: a recording enqueues BEFORE it spawns its child. A child that finds the

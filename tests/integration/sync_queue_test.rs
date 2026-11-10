@@ -3,7 +3,7 @@
 use agr::files::codec;
 use agr::sync::testing::queue;
 use agr::sync::testing::MemoryBackend;
-use agr::sync::{format, Engine, Event, Key, Options, SyncError};
+use agr::sync::{format, BackendEngine, Event, Key, Options, SyncError};
 use agr::{Config, StorageManager};
 use std::path::Path;
 use tempfile::TempDir;
@@ -38,8 +38,8 @@ impl World {
         self.temp.path()
     }
 
-    fn engine(&self) -> Engine<'_> {
-        Engine {
+    fn engine(&self) -> BackendEngine<'_> {
+        BackendEngine {
             backend: &self.backend,
             key: &self.key,
             storage: &self.storage,
@@ -183,7 +183,7 @@ fn concurrent_recordings_all_reach_the_remote_and_the_queue_ends_empty() {
             for n in &names {
                 s.spawn(|| {
                     queue::enqueue(w.dir(), n).unwrap();
-                    let engine = Engine {
+                    let engine = BackendEngine {
                         backend: &w.backend,
                         key: &w.key,
                         storage: &w.storage,

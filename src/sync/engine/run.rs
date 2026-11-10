@@ -90,8 +90,8 @@ pub struct Report {
     pub queued: usize,
 }
 
-/// Engine over any backend, the key and the storage dir.
-pub struct Engine<'a> {
+/// BackendEngine over any backend, the key and the storage dir.
+pub struct BackendEngine<'a> {
     pub backend: &'a dyn SyncBackend,
     pub key: &'a Key,
     pub storage: &'a StorageManager,
@@ -103,7 +103,7 @@ struct Loaded {
     report: Report,
 }
 
-impl Engine<'_> {
+impl BackendEngine<'_> {
     /// Decisions only, never changes anything.
     pub fn status(&self, sessions: &[String]) -> Result<Report, SyncError> {
         self.status_with(sessions, &mut no_progress)

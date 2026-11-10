@@ -4,8 +4,8 @@ use agr::files::{backup, codec};
 use agr::sync::testing::{
     index, open_meta, open_stream, seal_stream, sha256_hex, BlobError, MemoryBackend,
 };
+use agr::sync::{BackendEngine, Key, Options, Report};
 use agr::sync::{BackendError, BlobSource, RemoteEntry, SyncBackend};
-use agr::sync::{Engine, Key, Options, Report};
 use agr::{Config, StorageManager};
 use std::cell::{Cell, RefCell};
 use std::fs;
@@ -72,8 +72,8 @@ impl Mach {
         fs::read(backup::backup_path_for(&self.file())).ok()
     }
 
-    fn engine<'a>(&'a self, backend: &'a dyn SyncBackend, key: &'a Key) -> Engine<'a> {
-        Engine {
+    fn engine<'a>(&'a self, backend: &'a dyn SyncBackend, key: &'a Key) -> BackendEngine<'a> {
+        BackendEngine {
             backend,
             key,
             storage: &self.storage,

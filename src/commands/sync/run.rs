@@ -1,4 +1,4 @@
-//! status, push, pull and delete, thin layer over `agr::sync::Engine`.
+//! status, push, pull and delete, thin layer over `agr::sync::BackendEngine`.
 
 use anyhow::Result;
 
@@ -11,7 +11,8 @@ use agr::sync::setup::{
     SetupError, IMPORT_HINT,
 };
 use agr::sync::{
-    BackendError, Engine, Item, Options, Outcome, ProgressSink, Report, SyncBackend, SyncError,
+    BackendEngine, BackendError, Item, Options, Outcome, ProgressSink, Report, SyncBackend,
+    SyncError,
 };
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
@@ -35,8 +36,8 @@ struct Ctx {
 }
 
 impl Ctx {
-    fn engine(&self) -> Engine<'_> {
-        Engine {
+    fn engine(&self) -> BackendEngine<'_> {
+        BackendEngine {
             backend: self.backend.as_ref(),
             key: self.key.key(),
             storage: &self.storage,

@@ -13,7 +13,7 @@ pub use backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 pub use crypto::{new_writer_id, Key, PhraseError};
 pub use engine::observe::{Event, Observer};
 pub use engine::plan::{Decision, SkipReason};
-pub use engine::run::{Engine, Item, Options, Outcome, Report, SyncError};
+pub use engine::run::{BackendEngine, Item, Options, Outcome, Report, SyncError};
 pub use engine::scan::Duplicate;
 
 /// Internals for the integration tests, not a stable API.

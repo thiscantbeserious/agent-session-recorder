@@ -2,7 +2,7 @@
 
 use super::observe::Step;
 use super::plan::{Command, Decision, Local, Remote, SkipReason};
-use super::run::{Engine, Item, Outcome, Report};
+use super::run::{BackendEngine, Item, Outcome, Report};
 use super::scan::Row;
 
 impl Report {
@@ -103,7 +103,7 @@ pub(super) fn skip_text(reason: SkipReason) -> &'static str {
     }
 }
 
-impl Engine<'_> {
+impl BackendEngine<'_> {
     /// Tells the observer which session is about to move and how big it is.
     pub(super) fn started(&self, row: &Row, observer: &mut dyn FnMut(Step<'_>), pull: bool) {
         let remote = row.meta.as_ref().map(|m| m.size);
