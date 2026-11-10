@@ -119,3 +119,20 @@ fn cache_dir_is_0700_on_unix() {
         assert_eq!(mode & 0o777, 0o700, "{dir:?}");
     }
 }
+
+#[test]
+fn remove_others_keeps_foreign_dirs() {
+    let rig = Rig::new();
+    let cache = rig.store().pack_cache("abc1").unwrap();
+    let packs = cache.dir().parent().unwrap().to_path_buf();
+    let foreign = packs.join("notes");
+    let no_git = packs.join("beef");
+    let other_clone = packs.join("cafe");
+    for dir in [&foreign, &no_git, &other_clone.join(".git")] {
+        std::fs::create_dir_all(dir).unwrap();
+    }
+    cache.remove_others();
+    assert!(foreign.exists());
+    assert!(no_git.exists());
+    assert!(!other_clone.exists());
+}
