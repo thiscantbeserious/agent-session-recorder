@@ -88,6 +88,14 @@ impl LegacyFake {
         self.push(info, None, Vec::new())
     }
 
+    /// A gist a crashed push left, the blob and manifest are in, the description still says pending.
+    pub fn pending_with_content(&self, key: &Key, path: &str, plain: &[u8]) -> String {
+        let id = self.v1(key, (path, 1), plain, None);
+        let mut all = self.gists.lock().unwrap();
+        all.last_mut().unwrap().info.description = "agr:pending".into();
+        id
+    }
+
     /// A gist of somebody else's key.
     pub fn foreign(&self, path: &str) -> String {
         self.v1(&Key::generate(), (path, 1), b"x", None)

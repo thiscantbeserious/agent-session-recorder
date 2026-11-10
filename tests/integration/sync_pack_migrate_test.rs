@@ -85,6 +85,16 @@ mod table {
         }
     }
 
+    /// A push that sent the blob and died before its description update leaves this gist.
+    #[test]
+    fn pending_gist_with_content_is_kept_never_a_stub() {
+        let key = Key::generate();
+        let mut g = stub(5 * HOUR);
+        g.files
+            .extend([("manifest".into(), 9), ("data.000".into(), 9)]);
+        assert_eq!(recognise(&g, &key, NOW), Kind::Kept);
+    }
+
     #[test]
     fn a_stub_with_a_foreign_file_and_a_foreign_gist() {
         let key = Key::generate();
@@ -372,5 +382,24 @@ mod moving {
         assert!(matches!(result, Err(MigrateError::Local(_))), "{result:?}");
         assert_eq!(counts(&rig), (0, 0));
         assert_eq!(rig.index_text(), before);
+    }
+
+    #[test]
+    fn pending_index_entry_with_a_content_gist_deletes_nothing_and_the_file_pushes_again() {
+        let rig = Rig::new();
+        let local = rig.dir.path().join(A);
+        std::fs::create_dir_all(local.parent().unwrap()).unwrap();
+        std::fs::write(&local, b"local body").unwrap();
+        let id = rig.legacy.pending_with_content(&rig.key, A, b"local body");
+        let text = r#"{"version":1,"entries":{"claude/a.cast.gz":{"sha256":"","remote_id":"g1","synced_at":"t","gen":0,"token":null,"pending":true,"size":0,"mtime_ns":0}}}"#;
+        std::fs::write(rig.index_path(), text).unwrap();
+        let store = Listed(&rig.mem, &rig.legacy);
+        migrate_run(&rig.env(&store)).unwrap();
+        assert_eq!(rig.legacy.deletes().len(), 0, "{id}");
+        assert!(!index::load(rig.dir.path()).0.entries.contains_key(A));
+        let storage = engine_dir(rig.dir.path());
+        let engine = Engine::new(&store, &rig.key, &storage, "w1", 64 * 1024 * 1024);
+        assert_eq!(engine.push(&Options::default()).unwrap().items.len(), 1);
+        assert!(rig.merged(A).is_some());
     }
 }
