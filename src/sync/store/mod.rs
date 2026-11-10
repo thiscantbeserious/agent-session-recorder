@@ -12,7 +12,8 @@ pub(super) mod memory;
 
 pub use crate::sync::backend::BlobSource;
 
-/// Store failures, one clear case each so commands print one line.
+/// Store failures, one clear case each so commands print one line. The text is backend neutral,
+/// the app layer adds the hint of the backend (`gh auth login`, rate limit page).
 #[derive(Clone, PartialEq, Eq)]
 pub enum StoreError {
     NotInstalled(&'static str),
@@ -30,12 +31,10 @@ impl fmt::Display for StoreError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NotInstalled(tool) => write!(f, "{tool} is not installed or not on PATH"),
-            Self::NotLoggedIn => f.write_str("not logged in, run `gh auth login`"),
-            Self::MissingScope => {
-                f.write_str("the gh token has no `gist` scope, run `gh auth refresh -s gist`")
-            }
+            Self::NotLoggedIn => f.write_str("not logged in"),
+            Self::MissingScope => f.write_str("the login lacks the permission to write packs"),
             Self::Unreachable(why) => write!(f, "remote not reachable: {why}"),
-            Self::RateLimited => f.write_str("GitHub rate limit reached, run again later"),
+            Self::RateLimited => f.write_str("rate limit reached, run again later"),
             Self::NotFound => f.write_str("remote pack not found"),
             Self::Moved(_) => f.write_str("changed on the remote, run again"),
             Self::Other(msg) => f.write_str(msg),
