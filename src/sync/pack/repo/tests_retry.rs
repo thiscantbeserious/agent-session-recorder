@@ -1,4 +1,4 @@
-use super::tests::{item, packs_of, repo, TARGET};
+use super::tests::{item, packs_of, repo, tamper, TARGET};
 use super::Repo;
 use crate::sync::crypto::Key;
 use crate::sync::store::{Listing, PackStore, Segment, StoreError};
@@ -270,4 +270,44 @@ fn replanned_chunk_in_a_new_pack_does_not_seal_it_early() {
         .unwrap();
     let newest = packs_of(&mem).pop().unwrap();
     assert!(!super::tests::index_of(&mem, &key, &newest).sealed);
+}
+
+#[test]
+fn replanned_append_respects_the_index_cap() {
+    const CAP: usize = 768 * 1024;
+    let (store, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let open = || Repo::open(&store, &key, "w1", 512 * 1024 * 1024, None).unwrap();
+    open()
+        .push_batch(&[item(dir.path(), "s", 1, b"s")])
+        .unwrap();
+    let mut late = open();
+    // the same writer fills the index up to just below the cap, `late` plans against the old one
+    let info = packs_of(&store).remove(0);
+    tamper(&store, &key, &info, |i| {
+        let mut e = i.entries[0].clone();
+        let size = |i: &_| crate::sync::pack::index::seal_index(&key, i).unwrap().len();
+        while size(i) < CAP - 20_000 {
+            for _ in 0..100 {
+                e.path = format!("filler-{:06}-{}", i.entries.len(), "x".repeat(60));
+                i.entries.push(e.clone());
+            }
+        }
+    });
+    let more: Vec<_> = (0..60)
+        .map(|k| {
+            item(
+                dir.path(),
+                &format!("late-session-recording-{k:05}"),
+                1,
+                b"x",
+            )
+        })
+        .collect();
+    late.push_batch(&more).unwrap();
+    let longest = store.index_texts().iter().map(String::len).max().unwrap();
+    assert!(longest <= CAP, "{longest}");
 }
