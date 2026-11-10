@@ -40,6 +40,7 @@ pub mod testing {
         new_pack_uuid, open_index, seal_index, Entry, Index, IndexError,
     };
     pub use crate::sync::pack::merge::{merge, PackIn, Rejected, Top};
+    pub use crate::sync::pack::migrate::{recognise, Kind, LegacyGist};
     pub use crate::sync::pack::repo::{
         read_pack, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo, RepoError,
     };
