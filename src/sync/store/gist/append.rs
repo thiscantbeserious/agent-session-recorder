@@ -197,7 +197,8 @@ impl<R: Runner> GistStore<R> {
             .run_watched("git", &strings(&args), Some(dir), &[], &mut on_line);
         let out = io_result("git", run).map_err(be)?;
         if out.success() {
-            return self.note_push(id);
+            self.note_push(id);
+            return Ok(());
         }
         match map_failure("git", &out.stderr, out.code) {
             BackendError::Changed(_) => Err(self.fetched_index(dir)),

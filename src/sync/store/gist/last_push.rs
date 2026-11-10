@@ -10,7 +10,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::index_cache::write_atomic;
-use super::{GistStore, StoreError};
+use super::GistStore;
 use crate::sync::backend::gist::runner::Runner;
 
 /// GitHub recommends at most 6 pushes a minute per repository.
@@ -72,9 +72,10 @@ impl<R: Runner> GistStore<R> {
             .wait();
     }
 
-    pub(super) fn note_push(&self, id: &str) -> Result<(), StoreError> {
-        let now = self.clock.unix_secs()?;
-        self.last_push().iter().for_each(|l| l.put(id, now));
-        Ok(())
+    /// Best effort after a push that went through, a broken clock only costs a missed wait.
+    pub(super) fn note_push(&self, id: &str) {
+        let now = self.clock.unix_secs();
+        now.iter()
+            .for_each(|n| self.last_push().iter().for_each(|l| l.put(id, *n)));
     }
 }
