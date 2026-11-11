@@ -375,3 +375,9 @@ mod sync_format_label_test;
 
 #[path = "integration/sync_format_live_test.rs"]
 mod sync_format_live_test;
+
+#[path = "integration/sync_queue_files_test.rs"]
+mod sync_queue_files_test;
+
+#[path = "integration/sync_key_file_test.rs"]
+mod sync_key_file_test;
