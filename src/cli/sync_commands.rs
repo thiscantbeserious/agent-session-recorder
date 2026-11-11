@@ -87,7 +87,8 @@ EXAMPLES:
     /// Remove sessions from the remote (the local file stays)
     #[command(long_about = "Remove the remote copy of a session and its index entry.
 
-The local file is never touched. Patterns use * (any run) and ? (one character) against
+The local file is never touched. The delete applies to the newest version of the session at the
+time it runs, a version another machine pushed since the preview is deleted too. Patterns use * (any run) and ? (one character) against
 <agent>/<name> of the remote sessions. More than 10 matches ask to type the count.
 
 EXAMPLE:

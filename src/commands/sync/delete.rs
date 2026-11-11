@@ -38,7 +38,12 @@ fn collect(plan: Report, args: &Args) -> Report {
         .filter(|i| i.on_remote && !i.path.starts_with("remote:"))
         .map(|i| i.path.clone())
         .collect();
-    let patterns: Vec<String> = args.patterns.iter().map(|p| normalise(p)).collect();
+    let patterns: Vec<String> = args
+        .patterns
+        .iter()
+        .map(String::as_str)
+        .map(normalise)
+        .collect();
     let hits =
         select_remote(&patterns, args.all, &remote).unwrap_or_else(|e| abort(&e.to_string(), None));
     let items = plan.items.into_iter().filter(|i| hits.contains(&i.path));
@@ -80,7 +85,7 @@ pub fn delete(args: &Args, tty: bool) -> Result<()> {
     } else {
         format::compact_delete_preview_lines(&matched)
     });
-    if args.dry_run {
+    if args.dry_run || matched.items.is_empty() {
         return Ok(());
     }
     if !confirmed(matched.items.len(), args, tty)? {

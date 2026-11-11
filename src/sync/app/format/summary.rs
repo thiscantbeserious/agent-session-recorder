@@ -70,7 +70,11 @@ pub fn delete_preview_lines(report: &Report) -> Vec<String> {
         "Would delete {} from the remote",
         sessions(remote.len())
     )];
-    lines.extend(remote.iter().map(|i| format!("  {}", i.path)));
+    let line = |i: &&Item| match i.decision {
+        Decision::Fork => format!("  {} (fork, every version is deleted)", i.path),
+        _ => format!("  {}", i.path),
+    };
+    lines.extend(remote.iter().map(line));
     lines.push("A later `agr sync push` uploads the session again.".into());
     lines
 }
