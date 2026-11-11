@@ -290,3 +290,16 @@ fn no_loading_line_and_no_carriage_return_when_stderr_is_not_a_terminal() {
         assert!(!out.all().contains('\r'), "{args:?} {:?}", out.all());
     }
 }
+
+#[test]
+fn push_dry_run_and_declined_prompt_store_no_writer_id() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "text");
+    assert_eq!(m.run(&["push", "--dry-run"]).code, 0);
+    assert_eq!(writer_of(&m), None, "{}", m.state());
+    assert_eq!(m.run(&["push"]).code, 0);
+    assert_eq!(writer_of(&m), None, "{}", m.state());
+    assert_eq!(m.run(&["push", "--yes"]).code, 0);
+    assert!(writer_of(&m).is_some(), "{}", m.state());
+}
