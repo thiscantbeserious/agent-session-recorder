@@ -366,3 +366,6 @@ mod sync_format_summary_test;
 
 #[path = "integration/sync_store_dir_test.rs"]
 mod sync_store_dir_test;
+
+#[path = "integration/sync_engine_index_test.rs"]
+mod sync_engine_index_test;

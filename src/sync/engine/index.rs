@@ -143,7 +143,7 @@ pub(super) fn save(storage_dir: &Path, index: &Index) -> Result<()> {
     )
 }
 
-// inline: stamp and maybe_changed are private to the engine and read the index file directly
+// inline: save and INDEX_FILE are private to the engine, the tests write and read the index file directly
 #[cfg(test)]
 mod tests {
     use super::{load, path_for, save, Index, IndexEntry, Path, PathBuf, INDEX_FILE, LOCK_FILE};
@@ -154,32 +154,6 @@ mod tests {
             synced_at: "2026-11-06T10:00:00+00:00".into(),
             ..IndexEntry::default()
         }
-    }
-
-    #[test]
-    fn old_entries_load_without_a_stamp_and_changed_files_are_found() {
-        let json = r#"{"version":1,"entries":{"a/x.cast.gz":{"sha256":"h","synced_at":"t"}}}"#;
-        let mut index: Index = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            (
-                index.entries["a/x.cast.gz"].size,
-                index.entries["a/x.cast.gz"].mtime_ns
-            ),
-            (0, 0)
-        );
-        let dir = tempfile::tempdir().unwrap();
-        assert!(
-            super::maybe_changed(dir.path(), &index).is_empty(),
-            "missing file"
-        );
-        std::fs::create_dir_all(dir.path().join("a")).unwrap();
-        let file = dir.path().join("a/x.cast.gz");
-        std::fs::write(&file, "abc").unwrap();
-        assert_eq!(super::maybe_changed(dir.path(), &index), ["a/x.cast.gz"]);
-        let (size, mtime_ns) = super::stamp(&file);
-        let entry = index.entries.get_mut("a/x.cast.gz").unwrap();
-        (entry.size, entry.mtime_ns) = (size, mtime_ns);
-        assert!(super::maybe_changed(dir.path(), &index).is_empty());
     }
 
     #[test]
