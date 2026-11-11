@@ -149,3 +149,50 @@ fn delete_preview_says_when_a_session_is_a_fork() {
     assert!(fork.contains("fork"), "{lines:?}");
     assert!(!plain.contains("fork"), "{lines:?}");
 }
+
+#[test]
+fn delete_preview_names_the_overwrite_push_that_restores() {
+    use agr::sync::format::delete_preview_lines;
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "b.cast.gz", CAST);
+    crate::helpers::pack_engine::raw_push(&store, &key, "w2", ("claude/b.cast.gz", 1), "plain");
+    let plan = n.engine(&store, &key, "w1").status(&[]).unwrap();
+    let text = delete_preview_lines(&plan).join("\n");
+    assert!(text.contains("push --overwrite"), "{text}");
+}
+
+fn pushed_with_fork() -> Report {
+    use agr::sync::{Decision, Item, Outcome};
+    let item = Item {
+        path: "a".into(),
+        decision: Decision::Push,
+        outcome: Outcome::Done(1),
+        size: 0,
+        on_remote: true,
+        on_local: true,
+        local_hash: None,
+        remote_hash: None,
+        remote_size: 0,
+        remote_id: None,
+        pending: false,
+        duplicates: Vec::new(),
+    };
+    Report {
+        items: vec![item],
+        pushed: 1,
+        forks: vec!["a".into()],
+        ..Report::default()
+    }
+}
+
+#[test]
+fn summaries_show_forks_a_push_left_and_the_overwrite_hint() {
+    let r = pushed_with_fork();
+    for out in [
+        agr::sync::format::summary_lines(&r).join("\n"),
+        compact_summary_lines(&r, "push").join("\n"),
+    ] {
+        assert!(out.contains("Fork after push: a"), "{out}");
+        assert!(out.contains("agr sync push --overwrite"), "{out}");
+    }
+}
