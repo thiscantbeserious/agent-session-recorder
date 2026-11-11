@@ -24,6 +24,8 @@ pub struct Row {
     pub meta: Option<Meta>,
     /// Generation of the last sync, from the index.
     pub gen: u64,
+    /// Size and mtime taken before the local file was hashed, `(0, 0)` without a local file.
+    pub stamp: (u64, u64),
 }
 
 pub(super) fn row(path: &str, local: Local, index: &Index) -> Row {
@@ -36,6 +38,7 @@ pub(super) fn row(path: &str, local: Local, index: &Index) -> Row {
         },
         meta: None,
         gen: 0,
+        stamp: (0, 0),
     }
 }
 

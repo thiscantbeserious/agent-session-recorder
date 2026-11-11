@@ -173,9 +173,6 @@ fn pushed_with_fork() -> Report {
         local_hash: None,
         remote_hash: None,
         remote_size: 0,
-        remote_id: None,
-        pending: false,
-        duplicates: Vec::new(),
     };
     Report {
         items: vec![item],
@@ -208,9 +205,6 @@ fn delete_item(path: &str, decision: agr::sync::Decision, on_local: bool) -> agr
         local_hash: None,
         remote_hash: None,
         remote_size: 1,
-        remote_id: None,
-        pending: false,
-        duplicates: Vec::new(),
     }
 }
 
