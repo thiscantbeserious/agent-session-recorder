@@ -274,3 +274,9 @@ fn violations_flags_engine_naming_gist_store() {
     let v = violations("engine/x.rs", "use crate::sync::store::gist::GistStore;");
     assert_eq!(v.len(), 1, "{v:?}");
 }
+
+#[test]
+fn violations_flags_any_backend_path() {
+    let v = violations("engine/x.rs", "use crate::sync::backend::X;");
+    assert_eq!(v.len(), 1, "{v:?}");
+}
