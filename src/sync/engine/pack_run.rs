@@ -104,12 +104,20 @@ impl<'a> Engine<'a> {
         opts: &Options,
         observer: &mut dyn FnMut(Step<'_>),
     ) -> Result<Report, SyncError> {
-        let _lock = if opts.dry_run {
+        let lock = if opts.dry_run {
             None
         } else {
             Some(SyncLock::acquire(&self.storage.storage_dir())?)
         };
-        self.sync_held(command, opts, observer)
+        let report = self.sync_held(command, opts, observer);
+        drop(lock);
+        // an auto child that found the lock held exited, its queued session is ours to push
+        let queued = queue::list(&self.storage.storage_dir());
+        if !opts.dry_run && !queued.is_empty() {
+            // ponytail: a failed drain keeps its entries queued for the next trigger
+            let _ = queue::drain(self, &queued[0], &mut no_progress);
+        }
+        report
     }
 
     /// `sync` for a caller that already holds the lock (or runs dry).
