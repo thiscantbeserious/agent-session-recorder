@@ -329,4 +329,16 @@ mod moving {
         assert!(result.is_err(), "{result:?}");
         assert_eq!(rig.legacy.deletes().len(), 0);
     }
+
+    #[test]
+    fn a_v1_gist_of_our_key_with_an_extra_file_is_named_and_never_deleted() {
+        let rig = Rig::new();
+        let id = rig.legacy.v1_with_extra(&rig.key, (A, 3), b"body");
+        let store = Listed(&rig.mem, &rig.legacy);
+        let report = migrate_run(&rig.env(&store)).unwrap();
+        let named = |l: &String| l.contains(&format!("gh gist delete {id}"));
+        assert!(report.lines.iter().any(named), "{:?}", report.lines);
+        assert_eq!((report.deleted, rig.legacy.deletes().len()), (0, 0));
+        assert!(report.kept.contains(&id), "{report:?}");
+    }
 }

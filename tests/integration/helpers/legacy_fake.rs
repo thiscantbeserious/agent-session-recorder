@@ -73,6 +73,18 @@ impl LegacyFake {
         self.push(info, Some(token), seal_blob(key, path, gen, plain))
     }
 
+    /// A v1 session of `key` with one more file in the gist, nothing agr wrote.
+    pub fn v1_with_extra(&self, key: &Key, (path, gen): (&str, u64), plain: &[u8]) -> String {
+        let id = self.v1(key, (path, gen), plain, None);
+        let mut all = self.gists.lock().unwrap();
+        all.last_mut()
+            .unwrap()
+            .info
+            .files
+            .push(("notes.txt".into(), 1));
+        id
+    }
+
     /// A v1 gist whose part is missing.
     pub fn v1_without_part(&self, key: &Key, path: &str) -> String {
         let id = self.v1(key, (path, 1), b"x", None);
