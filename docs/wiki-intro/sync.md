@@ -2,7 +2,7 @@
 
 **Purpose**: copy your compressed sessions to a second place so another machine can pull them. We need `gh` and `git` on the PATH and `gh auth login` with the `gist` scope. Sessions are encrypted on your machine, how it works inside is in [docs/architecture/sync.md](https://github.com/thiscantbeserious/agent-session-recorder/blob/main/docs/architecture/sync.md).
 
-**1.1 Migrate first**: if you synced with an older version (one gist per session), run `agr sync migrate` before anything else. Push, pull, delete and the auto push child refuse with "Run `agr sync migrate` first." until it has finished, and status prints the same hint.
+**1.1 Migrate first**: if you synced with an older version (one gist per session), run `agr sync migrate` before anything else. On a machine without a sync key import it first with `agr sync key import`, migrate refuses without an existing key (the phrase comes from `agr sync key export` on your other machine, see section 2). Push, pull, delete and the auto push child refuse with "Run `agr sync migrate` first." until it has finished, and status prints the same hint.
 
 ```bash
 agr sync migrate          # shows what would move, asks, then moves the sessions into packs

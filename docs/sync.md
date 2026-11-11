@@ -23,7 +23,7 @@ pack_size_mib = 64    # target size of one pack gist, 16 to 512
 
 ## 3. Migrate first
 
-If you synced with an older version (one gist per session), run `agr sync migrate` before anything else. Push, pull and delete refuse with "Run `agr sync migrate` first." until it has finished, and status prints the same hint.
+If you synced with an older version (one gist per session), run `agr sync migrate` before anything else. On a machine without a sync key run `agr sync key import` first (see section 8), migrate refuses without an existing key. Push, pull and delete refuse with "Run `agr sync migrate` first." until it has finished, and status prints the same hint.
 
 ```bash
 agr sync migrate          # shows what would move, asks, then moves the sessions into packs
@@ -91,7 +91,15 @@ agr sync key import             # paste the phrase on stdin, an argument also wo
 agr sync pull
 ```
 
-`key import` refuses to replace a different existing key unless you pass `--force`. A gist keeps its git history, as such deleting the packs does not protect ciphertext that someone already copied. If the key is compromised, keep your local sessions, delete the old gists on GitHub yourself, move `~/.config/agr/sync.key` away and push again, the empty remote makes agr create a new key and encrypt the sessions anew. Back up the new key and import it on your other machines. Ciphertext copied earlier stays readable with the old key.
+`key import` refuses to replace a different existing key unless you pass `--force`. A gist keeps its git history, as such deleting the packs does not protect ciphertext that someone already copied. If the key is compromised, rotate it in this order:
+
+1. Run `agr sync pull` on every machine and check `agr sync status`, so every remote session exists locally. Keeping local files alone does not save a session that only lives on the remote, and resolve any fork first.
+2. Remove local files of sessions you deleted from the remote earlier. Deleting the old gists also deletes their tombstones, as such a leftover local file is pushed again as new.
+3. Delete the old gists on GitHub yourself.
+4. On every machine move `~/.config/agr/sync.key` and `.agr-sync.json` (in the storage directory) away. With the old key in place the next push would encrypt with it, and an old index with higher gens makes the rebuilt remote look like a rollback and is refused.
+5. Push from one machine, the empty remote makes agr create a new key. Back it up with `agr sync key export`, import it on the other machines and pull there.
+
+Ciphertext copied earlier stays readable with the old key.
 
 ## 9. Auto push
 
