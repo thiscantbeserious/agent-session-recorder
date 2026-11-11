@@ -222,6 +222,9 @@ mod sync_output_test;
 #[path = "integration/sync_setup_test.rs"]
 mod sync_setup_test;
 
+#[path = "integration/state_update_test.rs"]
+mod state_update_test;
+
 #[path = "integration/sync_auto_child_test.rs"]
 mod sync_auto_child_test;
 
