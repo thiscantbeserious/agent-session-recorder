@@ -10,6 +10,7 @@ use super::queue;
 use super::run::{Options, Outcome, Report, SyncError};
 use super::scan::Row;
 use crate::sync::crypto::Key;
+use crate::sync::pack::repo::PushItem;
 use crate::sync::store::PackStore;
 use crate::StorageManager;
 
@@ -205,21 +206,7 @@ impl<'a> Engine<'a> {
         loaded: &mut Loaded<'_>,
         observer: &mut dyn FnMut(Step<'_>),
     ) -> Result<(), SyncError> {
-        let (mut batch, mut outcomes) = (Vec::new(), Vec::new());
-        for row in rows {
-            let decision = self.decide_row(&row, Command::Push, opts);
-            let outcome = match decision {
-                Decision::Push if opts.dry_run => Outcome::Planned,
-                Decision::Push => {
-                    let known = loaded.index.entries.get(&row.path).map_or(0, |e| e.gen);
-                    batch.push(self.push_item(&row, known));
-                    Outcome::Nothing
-                }
-                Decision::InSync { .. } if !opts.dry_run => self.refresh_row(&row, loaded),
-                other => passive(other),
-            };
-            outcomes.push((row, decision, outcome));
-        }
+        let (batch, outcomes) = self.plan_push(rows, opts, loaded);
         let pushed: Vec<&Row> = outcomes
             .iter()
             .filter(|(_, d, _)| *d == Decision::Push && !opts.dry_run)
@@ -236,5 +223,30 @@ impl<'a> Engine<'a> {
             loaded.report.add(Command::Push, item);
         }
         Ok(())
+    }
+
+    /// The items to append and the planned outcome of every row, in-sync rows refresh their entry.
+    fn plan_push(
+        &self,
+        rows: Vec<Row>,
+        opts: &Options,
+        loaded: &mut Loaded<'_>,
+    ) -> (Vec<PushItem>, Vec<(Row, Decision, Outcome)>) {
+        let (mut batch, mut outcomes) = (Vec::new(), Vec::new());
+        for row in rows {
+            let decision = self.decide_row(&row, Command::Push, opts);
+            let outcome = match decision {
+                Decision::Push if opts.dry_run => Outcome::Planned,
+                Decision::Push => {
+                    let known = loaded.index.entries.get(&row.path).map_or(0, |e| e.gen);
+                    batch.push(self.push_item(&row, known));
+                    Outcome::Nothing
+                }
+                Decision::InSync { .. } if !opts.dry_run => self.refresh_row(&row, loaded),
+                other => passive(other),
+            };
+            outcomes.push((row, decision, outcome));
+        }
+        (batch, outcomes)
     }
 }

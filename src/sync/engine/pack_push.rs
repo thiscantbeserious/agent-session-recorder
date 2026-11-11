@@ -116,8 +116,9 @@ impl Engine<'_> {
         let _lock = SyncLock::acquire(&self.storage.storage_dir())?;
         let mut loaded = self.load(sessions, &mut observer)?;
         let rows = std::mem::take(&mut loaded.rows);
-        let live: Vec<&Row> = rows.iter().filter(|r| on_remote(r)).collect();
-        let paths: Vec<String> = live.iter().map(|r| r.path.clone()).collect();
+        let paths: Vec<String> = (rows.iter().filter(|r| on_remote(r)))
+            .map(|r| r.path.clone())
+            .collect();
         let done = self.tombstones(&paths, &mut loaded)?;
         for row in &rows {
             let outcome = match done.get(&row.path) {
@@ -141,30 +142,46 @@ impl Engine<'_> {
             Ok(report) => (report, None),
             Err(PushError { error, pushed }) => (pushed, Some(error)),
         };
-        let mut out = Landings::new();
-        for (path, _, outcome) in &landed.items {
-            let verdict = match outcome {
-                Landed::Pushed { .. } => {
-                    loaded.index.entries.remove(path);
-                    Outcome::Done(0)
-                }
-                Landed::Superseded => Outcome::Failed(CHANGED.into()),
-            };
-            out.insert(path.clone(), verdict);
-        }
-        loaded.index.open_pack = landed.open.as_ref().map(|o| o.id.clone());
+        let mut out = landed_tombstones(&landed, loaded);
         self.save(&loaded.index)?;
-        let Some(error) = failure else { return Ok(out) };
-        let left = paths.iter().filter(|p| !out.contains_key(*p)).count();
-        if error == StoreError::RateLimited {
-            return Err(SyncError::RateLimited { left });
+        match failure {
+            Some(error) => stop_rest(error, paths, &mut out),
+            None => Ok(out),
         }
-        let open: Vec<&String> = paths.iter().filter(|p| !out.contains_key(*p)).collect();
-        for path in open {
-            out.insert(path.clone(), Outcome::Failed(error.to_string()));
-        }
-        Ok(out)
     }
+}
+
+/// Outcome per tombstone that was reached, the index entry of a landed one is dropped.
+fn landed_tombstones(landed: &PushReport, loaded: &mut Loaded<'_>) -> Landings {
+    let mut out = Landings::new();
+    for (path, _, outcome) in &landed.items {
+        let verdict = match outcome {
+            Landed::Pushed { .. } => {
+                loaded.index.entries.remove(path);
+                Outcome::Done(0)
+            }
+            Landed::Superseded => Outcome::Failed(CHANGED.into()),
+        };
+        out.insert(path.clone(), verdict);
+    }
+    loaded.index.open_pack = landed.open.as_ref().map(|o| o.id.clone());
+    out
+}
+
+/// A delete that stopped halfway: a rate limit ends the run, any other error fails the rest.
+fn stop_rest(
+    error: StoreError,
+    paths: &[String],
+    out: &mut Landings,
+) -> Result<Landings, SyncError> {
+    let open: Vec<&String> = paths.iter().filter(|p| !out.contains_key(*p)).collect();
+    if error == StoreError::RateLimited {
+        return Err(SyncError::RateLimited { left: open.len() });
+    }
+    for path in open {
+        out.insert(path.clone(), Outcome::Failed(error.to_string()));
+    }
+    Ok(std::mem::take(out))
 }
 
 /// The remote holds a live copy (or a fork) of the row's session.
