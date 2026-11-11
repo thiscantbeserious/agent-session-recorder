@@ -306,4 +306,27 @@ mod migrate {
         let left: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().flatten().collect();
         assert!(left.is_empty(), "scratch left behind: {left:?}");
     }
+
+    #[test]
+    fn a_held_sync_lock_is_busy_with_zero_appends_and_deletes() {
+        let remote = remote();
+        let m = Machine::gist(remote.path());
+        m.session("claude", "a.cast.gz", "one");
+        m.run(&["push", "--yes"]);
+        let before = fingerprint(remote.path());
+        let lock = format!(r#"{{"pid":{},"started":"x"}}"#, std::process::id());
+        std::fs::write(m.storage.join(".agr-sync.lock"), lock).unwrap();
+        let out = m.run(&["migrate", "--yes"]);
+        assert!(!out.success(), "{}", out.all());
+        assert!(
+            out.stderr.contains("Another sync is running"),
+            "{}",
+            out.all()
+        );
+        assert_eq!(
+            fingerprint(remote.path()),
+            before,
+            "zero appends, zero deletes"
+        );
+    }
 }
