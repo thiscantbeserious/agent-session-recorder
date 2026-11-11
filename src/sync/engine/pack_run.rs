@@ -193,14 +193,16 @@ impl<'a> Engine<'a> {
                     Err(other) => Outcome::Failed(other.text()),
                 }
             }
-            Decision::InSync { .. } if !opts.dry_run => self.refresh_row(row, loaded),
+            Decision::InSync { refresh_index } if !opts.dry_run => {
+                self.refresh_row(row, refresh_index, loaded)
+            }
             other => passive(other),
         })
     }
 
     /// Writes or drops the index entry of an in-sync row.
-    fn refresh_row(&self, row: &Row, loaded: &mut Loaded<'_>) -> Outcome {
-        if needs_refresh(self.storage, row, &loaded.index) {
+    fn refresh_row(&self, row: &Row, refresh_index: bool, loaded: &mut Loaded<'_>) -> Outcome {
+        if refresh_index || needs_refresh(self.storage, row, &loaded.index) {
             refresh(self.storage, row, &mut loaded.index);
         }
         Outcome::Nothing
@@ -249,7 +251,9 @@ impl<'a> Engine<'a> {
                     batch.push(self.push_item(&row, known));
                     Outcome::Nothing
                 }
-                Decision::InSync { .. } if !opts.dry_run => self.refresh_row(&row, loaded),
+                Decision::InSync { refresh_index } if !opts.dry_run => {
+                    self.refresh_row(&row, refresh_index, loaded)
+                }
                 other => passive(other),
             };
             outcomes.push((row, decision, outcome));
