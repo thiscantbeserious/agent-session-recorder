@@ -480,3 +480,29 @@ fn a_file_edited_while_it_uploads_is_uploaded_again_by_the_next_auto_push() {
     assert_eq!(report.pushed, 1, "{:?}", report.items);
     assert_eq!(merged(&store, &key, A).0.map(|m| m.0), Some(2));
 }
+
+/// Moves the mtime of a session file, the content stays, so its index stamp goes stale.
+fn age_file(n: &crate::helpers::pack_engine::Node, path: &str) {
+    let file = std::fs::File::options()
+        .write(true)
+        .open(n.dir().join(path))
+        .unwrap();
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+    file.set_modified(later).unwrap();
+}
+
+#[test]
+fn a_rolled_back_remote_with_the_same_content_never_lowers_the_indexed_gen() {
+    let (n, key) = (node(), Key::generate());
+    let (high, low, newer) = (MemoryStore::new(), MemoryStore::new(), MemoryStore::new());
+    raw_push(&high, &key, "w2", (A, 5), CAST);
+    n.engine(&high, &key, "w1").pull(&opts()).unwrap();
+    assert_eq!(index_of(&n).entries[A].gen, 5);
+    raw_push(&low, &key, "w2", (A, 3), CAST);
+    age_file(&n, A);
+    n.engine(&low, &key, "w1").pull(&opts()).unwrap();
+    assert_eq!(index_of(&n).entries[A].gen, 5);
+    raw_push(&newer, &key, "w2", (A, 4), "different content");
+    let report = n.engine(&newer, &key, "w1").pull(&opts()).unwrap();
+    assert_eq!(report.refused, [A], "{:?}", report.items);
+}
