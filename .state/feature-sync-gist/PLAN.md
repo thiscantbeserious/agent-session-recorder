@@ -1379,6 +1379,30 @@ Guards (passed on arrival, flipped by hand, flip not committed):
 - `without_yes_and_without_a_terminal_nothing_is_written` (CLI): fingerprint of the remote dir unchanged.
 
 
+**C1 internal review fixes 2026-11-11**: every behaviour fix has its RED commit first, the failing assertion is named. Flips were done by hand and not committed.
+
+- B1 migrate scratch dir: `Scratch::at` (0700, `create` not `create_all`, an existing dir is refused) is used by `agr sync migrate`, the dir is dropped before `abort` runs. RED: `scratch_at_is_private` (left 493 right 448), `scratch_at_refuses_an_existing_dir` (is_err), `a_failed_run_leaves_no_scratch_dir` (scratch left behind in TMPDIR).
+- M1 kept v1 gist of our key: migrate names every kept `agr:v1` gist of our key with `kept_line`. RED: `a_v1_gist_of_our_key_with_an_extra_file_is_named_and_never_deleted` (report lines are `[]`).
+- M2 pushed hash: the view hash counts only when `merged.gen` is the pushed gen and the top is Live, else the staged local hash. `MemoryStore::after_append` is the hook. RED: `a_rival_append_between_our_append_and_our_reload_is_never_pushed_over` (`silent push over gen 3`, left 1 right 0).
+- M3 migrate lock: `SyncLock` is public, migrate holds it for the whole run and answers Busy. RED: `a_held_sync_lock_is_busy_with_zero_appends_and_deletes` (`assert!(!out.success())`).
+- Minor 1 writer id race: `keep_writer` returns the stored id and the commands use it. RED: `keep_writer_id_returns_the_id_that_was_stored_first` (left `w-second` right `w-first`).
+- Minor 2 corrupt index: the engine refuses an index that does not parse (`Refused::Corrupt`), same text as migrate. RED: `an_unparseable_index_refuses_every_command_and_is_never_saved_over` (no error).
+- Minor 3 `valid_path` moved to `pack/rules.rs`, `recognise` keeps a gist with an invalid path. RED: `a_v1_gist_with_an_invalid_path_is_kept_named_and_not_moved` (report lines are `[]`).
+- Minor 4 append error keeps the report (`Report.failed`, kept lines stay). RED: `an_append_error_still_returns_the_report_with_the_kept_lines` (`Store(Other("HTTP 500"))` instead of a report).
+- Minor 5 and 6 delete: nothing to delete prints `Nothing to delete.` and returns, the preview marks a fork, the help names the newest version. RED: `all_with_nothing_on_the_remote_says_so_and_never_prompts` (Non-interactive hint printed), `delete_preview_says_when_a_session_is_a_fork` (no fork in the line), `help_says_the_delete_applies_to_the_newest_version_at_run_time`.
+- Minor 7 lock: the recursion is a loop with five tries, then Busy. No RED, a vanishing holder cannot be forced from outside, the three lock tests stay green.
+- Minor 8 Sonar: `delete.rs` uses `String::as_str` and `normalise`, `engine_failed<T>` is a method reference in the five `unwrap_or_else` calls. The two `failed(e)` calls in `migrate.rs` are gone, errors are returned and `abort` runs once after the scratch dir and lock are dropped.
+- Minor 9 size: `src/cli/sync_commands.rs` split from `subcommands.rs` (408 to 229 lines), `sync_pack_migrate_moving_test.rs` and `sync_pack_migrate_report_test.rs` split from `sync_pack_migrate_test.rs` (pure moves, same test names). `migrate::run`, `move_all`, `push_rows`, `delete_with` and `tombstones` split into helpers.
+- Minor 10 guards, flipped by hand:
+  - `push_dry_run_and_declined_prompt_store_no_writer_id`: `keep_writer` called before the prompt, fails (left Some(writer id) right None).
+  - `a_duplicated_own_pack_is_never_appended_to_and_the_next_push_opens_a_new_pack` (merge rule 6): `usable` without `!is_frozen`, fails (neither copy grew, left `[275, 138]` right `[138, 138]`). The merge level rule 6 tests (`duplicated_pack_is_merged_and_reported`, `both_ids_of_a_duplicate_are_frozen`) already existed.
+  - `moved_session_keeps_gen_and_sha`: append at gen 1, fails (left `(1, sha)` right `(3, sha)`).
+  - `sha_mismatch_is_kept_and_reported`: hash check removed in `fetch`, fails (appends and deletes left `(1, 0)` right `(0, 0)`).
+  - `listing_past_3000_does_not_abort`: `truncate(3000)` in `classify`, fails (deletes left 0 right 1).
+  - `migrate_aborts_on_partial_index_view`: a failed `read_index` skipped in `load`, fails (`assert!(migrate_run(..).is_err())`).
+  - `migrate_opens_without_the_v1_guard_and_unblocks`: migrate opens with `Repo::open`, fails (the `unwrap` of `migrate_run` panics on NeedsMigrate).
+
+
 ### Stage 59: Drop the per-session code
 
 Goal: ADR "Kept and dropped" applied. `SyncBackend` shrinks to the read side migrate needs (`list`, `pull`, `delete`) under `store/legacy/`, the rest of `backend/` is gone.
