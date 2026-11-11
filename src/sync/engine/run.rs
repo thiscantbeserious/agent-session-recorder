@@ -20,8 +20,9 @@ use crate::StorageManager;
 /// Whole-run failures, per-session failures live in the report.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SyncError {
-    #[error("another sync is running")]
-    Busy,
+    /// Holds the lock file, a stale one that is empty or garbage is removed by hand.
+    #[error("another sync is running, if none is, remove {}", .0.display())]
+    Busy(std::path::PathBuf),
     #[error(transparent)]
     Backend(#[from] BackendError),
     #[error("run `agr sync migrate` first")]

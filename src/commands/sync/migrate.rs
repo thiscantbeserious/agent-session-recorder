@@ -8,7 +8,7 @@ use agr::sync::format::migrate_lines;
 use agr::sync::setup::{keep_writer, legacy_reader, KeyNeed};
 use agr::sync::{MigrateEnv, MigrateError, Scratch, SyncError, SyncLock};
 
-use super::run::{abort, prepare, say, Ctx};
+use super::run::{abort, busy_text, prepare, say, Ctx};
 
 fn describe(e: MigrateError) -> String {
     match e {
@@ -23,7 +23,7 @@ fn describe(e: MigrateError) -> String {
 fn attempt(ctx: &Ctx, yes: bool, tty: bool) -> Result<(), String> {
     let dir = ctx.storage.storage_dir();
     let _lock = SyncLock::acquire(&dir).map_err(|e| match e {
-        SyncError::Busy => "Another sync is running, try again in a moment.".to_string(),
+        SyncError::Busy(lock) => busy_text(&lock),
         other => other.to_string(),
     })?;
     let test_dir = std::env::var_os("AGR_SYNC_TEST_BACKEND_DIR").map(PathBuf::from);

@@ -116,7 +116,7 @@ fn a_busy_auto_run_leaves_the_entry_and_stores_no_error() {
     let held = format!("{{\"pid\":{},\"started\":\"x\"}}", std::process::id());
     std::fs::write(w.dir().join(".agr-sync.lock"), held).unwrap();
     let result = w.drain("claude/a.cast.gz");
-    assert_eq!(result.as_ref().err(), Some(&SyncError::Busy));
+    assert!(matches!(result.as_ref().err(), Some(SyncError::Busy(_))));
     assert_eq!(queue::list(w.dir()), ["claude/a.cast.gz"]);
     assert_eq!(agr::sync::auto::error_line(&result), None);
 }
@@ -136,7 +136,7 @@ fn an_unreadable_lock_is_busy_and_stays() {
         return; // running as root, permissions do not apply
     }
     let result = w.drain("claude/a.cast.gz");
-    assert_eq!(result.as_ref().err(), Some(&SyncError::Busy));
+    assert!(matches!(result.as_ref().err(), Some(SyncError::Busy(_))));
     assert!(lock.exists());
     assert_eq!(queue::list(w.dir()), ["claude/a.cast.gz"]);
 }
@@ -209,7 +209,10 @@ fn concurrent_recordings_all_reach_the_remote_and_the_queue_ends_empty() {
                         storage: &w.storage,
                     };
                     let result = engine.drain_auto(n, &mut |_: &Event<'_>| {});
-                    assert!(matches!(result, Ok(_) | Err(SyncError::Busy)), "{result:?}");
+                    assert!(
+                        matches!(result, Ok(_) | Err(SyncError::Busy(_))),
+                        "{result:?}"
+                    );
                 });
             }
         });
@@ -369,7 +372,10 @@ mod packs {
                         let result = n
                             .engine(&store, &key, "w1")
                             .drain_auto(name, &mut |_: &Event<'_>| {});
-                        assert!(matches!(result, Ok(_) | Err(SyncError::Busy)), "{result:?}");
+                        assert!(
+                            matches!(result, Ok(_) | Err(SyncError::Busy(_))),
+                            "{result:?}"
+                        );
                     });
                 }
             });

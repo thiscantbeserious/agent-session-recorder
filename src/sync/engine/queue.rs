@@ -137,7 +137,7 @@ pub(super) fn drain<E: Held + ?Sized>(
     next.extend(index::maybe_changed(&dir, &index::load(&dir).0));
     loop {
         let lock = match SyncLock::acquire(&dir) {
-            Err(SyncError::Busy) if !tried.is_empty() => return Ok(total),
+            Err(SyncError::Busy(_)) if !tried.is_empty() => return Ok(total),
             held => held?,
         };
         drain_held(engine, &mut next, &mut tried, (&mut total, &mut observer))?;

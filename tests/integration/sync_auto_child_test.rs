@@ -207,7 +207,7 @@ fn error_line_is_none_for_success() {
 
 #[test]
 fn error_line_is_none_when_busy_because_the_entry_is_queued() {
-    assert_eq!(error_line(&Err(SyncError::Busy)), None);
+    assert_eq!(error_line(&Err(SyncError::Busy(Default::default()))), None);
 }
 
 #[test]

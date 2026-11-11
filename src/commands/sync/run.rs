@@ -136,10 +136,18 @@ fn prepare_with(need: KeyNeed, progress: Option<ProgressSink>) -> Result<Ctx> {
         .unwrap_or_else(|Failure(message, hint)| abort(&message, hint.as_deref())))
 }
 
+/// The lock file is named so a stale one (empty or garbage, counted as held) can be removed.
+pub(super) fn busy_text(lock: &std::path::Path) -> String {
+    format!(
+        "Another sync is running, try again in a moment. If none is, remove {}",
+        lock.display()
+    )
+}
+
 /// Prints the error and exits, generic so it fits `unwrap_or_else` as a plain function.
 pub(super) fn engine_failed<T>(e: SyncError) -> T {
     match e {
-        SyncError::Busy => abort("Another sync is running, try again in a moment.", None),
+        SyncError::Busy(lock) => abort(&busy_text(&lock), None),
         SyncError::Backend(e) => {
             let (message, hint) = explain(&e);
             abort(&message, hint.as_deref())

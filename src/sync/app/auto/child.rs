@@ -8,7 +8,7 @@ use crate::sync::engine::run::{Outcome, Report, SyncError};
 /// went fine. A busy lock is not an error, the session is queued and the holder takes it.
 pub fn error_line(result: &Result<Report, SyncError>) -> Option<String> {
     let report = match result {
-        Err(SyncError::Busy) => return None,
+        Err(SyncError::Busy(_)) => return None,
         Err(e) => return Some(format!("auto push failed: {e}")),
         Ok(report) => report,
     };

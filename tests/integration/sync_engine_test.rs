@@ -347,7 +347,7 @@ fn held_lock_is_busy() {
     let held = format!("{{\"pid\":{},\"started\":\"x\"}}", std::process::id());
     fs::write(m.dir().join(index::LOCK_FILE), held).unwrap();
     let result = m.engine(&backend, &key).push(&opts());
-    assert_eq!(result.err(), Some(agr::sync::SyncError::Busy));
+    assert!(matches!(result.err(), Some(agr::sync::SyncError::Busy(_))));
     assert!(backend.is_empty());
 }
 

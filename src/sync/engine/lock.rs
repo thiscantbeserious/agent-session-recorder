@@ -25,7 +25,7 @@ impl SyncLock {
         if create(&path)? {
             return Ok(Self(path));
         }
-        Err(SyncError::Busy)
+        Err(SyncError::Busy(path))
     }
 }
 
@@ -43,7 +43,7 @@ fn wait_for_holder(path: &Path) -> Result<bool, SyncError> {
             Holder::Dead => return Ok(true),
         }
     }
-    Err(SyncError::Busy)
+    Err(SyncError::Busy(path.to_path_buf()))
 }
 
 /// Create attempts while the holder keeps vanishing.
@@ -141,7 +141,7 @@ mod tests {
         std::fs::write(&path, "").unwrap();
         assert!(matches!(
             SyncLock::acquire(dir.path()),
-            Err(SyncError::Busy)
+            Err(SyncError::Busy(_))
         ));
         assert!(path.exists());
     }
