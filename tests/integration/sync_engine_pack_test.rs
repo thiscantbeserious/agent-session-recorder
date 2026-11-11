@@ -366,3 +366,41 @@ fn push_that_could_not_check_for_forks_fails_the_run() {
     assert!(report.warning.is_some(), "the warning is shown");
     assert!(report.run_failed(), "and the exit code is non-zero");
 }
+
+fn pushed_a() -> (crate::helpers::pack_engine::Node, MemoryStore, Key) {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    (n, store, key)
+}
+
+#[test]
+fn a_delete_with_a_rival_live_copy_at_the_same_gen_is_not_deleted() {
+    let (n, store, key) = pushed_a();
+    let rival_key = agr::sync::testing::copy_key(&key);
+    let once = std::sync::atomic::AtomicBool::new(true);
+    store.after_append(move |s, _| {
+        if once.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            raw_push(s, &rival_key, "w2", (A, 2), "the rival live copy");
+        }
+    });
+    let report = n
+        .engine(&store, &key, "w1")
+        .delete_with(&[A.to_string()], 0, &mut |_: &agr::sync::Event<'_>| {})
+        .unwrap();
+    assert_eq!(report.deleted, 0, "{:?}", report.items);
+    assert_eq!(report.failed, 1, "{:?}", report.items);
+    assert!(index_of(&n).entries.contains_key(A));
+}
+
+#[test]
+fn a_delete_whose_fork_check_fails_is_unchecked_and_fails_the_run() {
+    let (n, store, key) = pushed_a();
+    store.after_append(|s, _| s.fail_next_list());
+    let report = n
+        .engine(&store, &key, "w1")
+        .delete_with(&[A.to_string()], 0, &mut |_: &agr::sync::Event<'_>| {})
+        .unwrap();
+    assert!(report.unchecked, "{report:?}");
+    assert!(report.run_failed());
+}
