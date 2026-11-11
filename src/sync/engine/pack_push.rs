@@ -126,7 +126,7 @@ impl Engine<'_> {
             return Ok(Report::default());
         }
         let _lock = SyncLock::acquire(&self.storage.storage_dir())?;
-        let mut loaded = self.load(sessions, &mut observer)?;
+        let mut loaded = self.load(sessions, false, &mut observer)?;
         let rows = std::mem::take(&mut loaded.rows);
         let paths: Vec<String> = (rows.iter().filter(|r| on_remote(r)))
             .map(|r| r.path.clone())

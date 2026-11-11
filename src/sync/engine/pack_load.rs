@@ -41,6 +41,7 @@ impl<'a> Engine<'a> {
     pub(super) fn load(
         &self,
         sessions: &[String],
+        dry_run: bool,
         observer: &mut dyn FnMut(Step<'_>),
     ) -> Result<Loaded<'a>, SyncError> {
         let dir = self.storage.storage_dir();
@@ -50,8 +51,14 @@ impl<'a> Engine<'a> {
         })?;
         observer(Step::Listing);
         let hint = index.open_pack.as_deref();
-        let repo = Repo::open(self.store, self.key, &self.writer, self.target, hint)
-            .map_err(open_error)?;
+        let sweep = !dry_run;
+        let repo = Repo::open_with(
+            self.store,
+            self.key,
+            (&self.writer, self.target, hint),
+            sweep,
+        )
+        .map_err(open_error)?;
         index.open_pack = repo.open_pack().map(String::from);
         let names = (!sessions.is_empty()).then_some(sessions);
         let mut progress = |done, total| {

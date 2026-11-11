@@ -119,7 +119,7 @@ impl<'a> Engine<'a> {
         opts: &Options,
         observer: &mut dyn FnMut(Step<'_>),
     ) -> Result<Report, SyncError> {
-        let mut loaded = self.load(&opts.sessions, observer)?;
+        let mut loaded = self.load(&opts.sessions, opts.dry_run, observer)?;
         let rows = std::mem::take(&mut loaded.rows);
         let run = match command {
             Command::Push => self.push_rows(rows, opts, &mut loaded, observer),
