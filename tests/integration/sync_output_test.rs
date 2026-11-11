@@ -132,3 +132,20 @@ fn live_line_per_append() {
     let live_lines = sink.text().matches(", uploading 0%").count();
     assert_eq!(live_lines, store.appends(), "{:?}", sink.text());
 }
+
+#[test]
+fn delete_preview_says_when_a_session_is_a_fork() {
+    use crate::helpers::pack_engine::{raw_push, A};
+    use agr::sync::format::delete_preview_lines;
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    raw_push(&store, &key, "w2", (A, 1), "one version");
+    raw_push(&store, &key, "w3", (A, 1), "another version");
+    n.session("claude", "b.cast.gz", CAST);
+    raw_push(&store, &key, "w2", ("claude/b.cast.gz", 1), "plain");
+    let plan = n.engine(&store, &key, "w1").status(&[]).unwrap();
+    let lines = delete_preview_lines(&plan);
+    let fork = lines.iter().find(|l| l.contains(A)).unwrap();
+    let plain = lines.iter().find(|l| l.contains("b.cast.gz")).unwrap();
+    assert!(fork.contains("fork"), "{lines:?}");
+    assert!(!plain.contains("fork"), "{lines:?}");
+}

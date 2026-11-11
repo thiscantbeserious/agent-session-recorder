@@ -190,6 +190,34 @@ mod prompts {
     }
 }
 
+mod nothing_to_delete {
+    use super::*;
+
+    #[test]
+    fn all_with_nothing_on_the_remote_says_so_and_never_prompts() {
+        let remote = remote();
+        let m = Machine::gist(remote.path());
+        m.session("claude", "a.cast.gz", "one");
+        assert_eq!(m.run(&["push", "--yes"]).code, 0);
+        assert_eq!(m.run(&["delete", "--yes", "claude/a.cast.gz"]).code, 0);
+        let before = fingerprint(remote.path());
+        let out = m.run(&["delete", "--all"]);
+        assert_eq!(out.code, 0, "{}", out.all());
+        assert!(out.stdout.contains("Nothing to delete"), "{}", out.stdout);
+        for prompt in ["Non-interactive", "No changes made"] {
+            assert!(!out.stdout.contains(prompt), "{}", out.stdout);
+        }
+        assert_eq!(fingerprint(remote.path()), before, "no append");
+    }
+}
+
+#[test]
+fn help_says_the_delete_applies_to_the_newest_version_at_run_time() {
+    let remote = remote();
+    let out = Machine::gist(remote.path()).run(&["delete", "--help"]);
+    assert!(out.stdout.contains("newest version"), "{}", out.stdout);
+}
+
 mod env_var {
     use super::*;
 
