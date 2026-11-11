@@ -442,3 +442,11 @@ mod auto_error_race {
         }
     }
 }
+
+#[test]
+fn sync_backend_docs_describe_pack_gists() {
+    let md = agr::config::docs::generate_config_markdown();
+    let line = md.lines().find(|l| l.contains("`backend`")).unwrap();
+    assert!(!line.contains("One gist per session"), "{line}");
+    assert!(line.contains("pack"), "{line}");
+}
