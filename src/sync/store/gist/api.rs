@@ -80,13 +80,14 @@ fn data_files(seen: &Seen) -> usize {
         .count()
 }
 
-fn parse_pages(text: &str) -> Result<Vec<Gist>, StoreError> {
+/// `capped` refuses a listing at `LIST_LIMIT`, GitHub stops listing there and the rest is unseen.
+fn parse_pages(text: &str, capped: bool) -> Result<Vec<Gist>, StoreError> {
     let pages = serde_json::Deserializer::from_str(text).into_iter::<Vec<Gist>>();
     let mut all = Vec::new();
     for page in pages {
         all.extend(page.map_err(|_| StoreError::Other("unexpected gist list output".into()))?);
     }
-    if all.len() >= LIST_LIMIT {
+    if capped && all.len() >= LIST_LIMIT {
         let msg = format!("GitHub lists at most {LIST_LIMIT} gists, delete old gists and retry");
         return Err(StoreError::Other(msg));
     }
@@ -118,11 +119,11 @@ impl<R: Runner> GistStore<R> {
         check_auth(&format!("{}\n{}", out.stdout, out.stderr)).map_err(be)
     }
 
-    pub(super) fn list_packs(&self) -> Result<Listing, StoreError> {
+    pub(super) fn list_packs(&self, capped: bool) -> Result<Listing, StoreError> {
         let out = self.run_ok("gh", &["api", LIST_ENDPOINT, "--paginate"])?;
         let mut listing = Listing::default();
         let mut seen = self.seen.lock().unwrap_or_else(PoisonError::into_inner);
-        for gist in parse_pages(&out.stdout)? {
+        for gist in parse_pages(&out.stdout, capped)? {
             let desc = gist.description.clone().unwrap_or_default();
             // An empty tag is no pack we made, it is ignored like any foreign gist.
             let tag = desc

@@ -125,7 +125,7 @@ impl<'a> Repo<'a> {
         target: u64,
         hint: Option<&str>,
     ) -> Result<Self, RepoError> {
-        let listing = store.list().map_err(RepoError::List)?;
+        let listing = store.list_for_migrate().map_err(RepoError::List)?;
         Self::from_listing(store, key, (writer, target, hint), listing.packs)
     }
 

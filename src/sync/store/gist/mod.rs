@@ -107,7 +107,11 @@ impl<R: Runner> PackStore for GistStore<R> {
     }
 
     fn list(&self) -> Result<Listing, StoreError> {
-        self.list_packs()
+        self.list_packs(true)
+    }
+
+    fn list_for_migrate(&self) -> Result<Listing, StoreError> {
+        self.list_packs(false)
     }
 
     fn read_index(&self, id: &str) -> Result<String, StoreError> {
