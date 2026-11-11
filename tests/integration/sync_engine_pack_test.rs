@@ -35,6 +35,20 @@ fn overwrite_resolves_fork_with_gen_plus_one() {
 }
 
 #[test]
+fn overwrite_with_the_fork_absent_locally_pushes_the_others() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    raw_push(&store, &key, "w1", (X, 4), "one");
+    raw_push(&store, &key, "w2", (X, 4), "two");
+    n.session("claude", "b.cast.gz", CAST);
+    let report = n.engine(&store, &key, "w3").push(&overwrite()).unwrap();
+    assert_eq!(report.failed, 0, "{:?}", report.items);
+    assert_eq!(report.pushed, 1, "{:?}", report.items);
+    let (at, forks) = merged(&store, &key, X);
+    assert_eq!(at, None, "the absent fork is not pushed");
+    assert!(forks.is_empty() || forks == [X.to_string()], "{forks:?}");
+}
+
+#[test]
 fn overwrite_restores_a_deleted_session() {
     let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
     raw_push(&store, &key, "w1", (X, 4), "one");
