@@ -21,6 +21,12 @@ impl Scratch {
         Ok(Self(dir))
     }
 
+    /// A private directory at exactly `dir`, an existing one is refused.
+    pub fn at(dir: &Path) -> Result<Self, BackendError> {
+        std::fs::create_dir_all(dir).map_err(|e| BackendError::Other(format!("temp dir: {e}")))?;
+        Ok(Self(dir.to_path_buf()))
+    }
+
     pub(crate) fn join(&self, name: &str) -> PathBuf {
         self.0.join(name)
     }

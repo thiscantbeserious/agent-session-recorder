@@ -290,4 +290,20 @@ mod migrate {
         assert!(out.stderr.contains("is not valid"), "{}", out.stderr);
         assert_eq!(std::fs::read_to_string(&index).unwrap(), "{not json");
     }
+
+    #[test]
+    fn a_failed_run_leaves_no_scratch_dir() {
+        let remote = remote();
+        let m = Machine::gist(remote.path());
+        m.session("claude", "a.cast.gz", "one");
+        m.run(&["push", "--yes"]);
+        std::fs::write(m.storage.join(".agr-sync.json"), "{not json").unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let mut cmd = m.base(&["migrate", "--yes"]);
+        cmd.env("TMPDIR", tmp.path()).env("TEMP", tmp.path());
+        let out = m.exec(cmd, None);
+        assert!(!out.success(), "{}", out.all());
+        let left: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().flatten().collect();
+        assert!(left.is_empty(), "scratch left behind: {left:?}");
+    }
 }

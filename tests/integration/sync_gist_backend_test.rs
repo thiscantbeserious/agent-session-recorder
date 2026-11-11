@@ -153,6 +153,26 @@ fn scratch_dir_is_private() {
     assert_eq!(mode & 0o777, 0o700);
 }
 
+#[cfg(unix)]
+#[test]
+fn scratch_at_is_private() {
+    use agr::sync::testing::gist::Scratch;
+    use std::os::unix::fs::PermissionsExt;
+    let base = tempfile::tempdir().unwrap();
+    let scratch = Scratch::at(&base.path().join("one")).unwrap();
+    let mode = std::fs::metadata(&scratch.0).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o700);
+}
+
+#[test]
+fn scratch_at_refuses_an_existing_dir() {
+    use agr::sync::testing::gist::Scratch;
+    let base = tempfile::tempdir().unwrap();
+    let result = Scratch::at(base.path());
+    assert!(result.is_err());
+    assert!(base.path().exists(), "the refused dir is not removed");
+}
+
 #[test]
 fn delete_uses_yes_flag() {
     let fake = Fake::default();
