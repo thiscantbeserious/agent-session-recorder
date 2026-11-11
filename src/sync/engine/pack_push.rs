@@ -152,11 +152,15 @@ impl Engine<'_> {
     }
 }
 
-/// Outcome per tombstone that was reached, the index entry of a landed one is dropped.
+/// Outcome per tombstone that was reached. The index entry of a landed one is dropped only when
+/// the merged view agrees it is deleted, a rival live copy at the same gen is a fork.
 fn landed_tombstones(landed: &PushReport, loaded: &mut Loaded<'_>) -> Landings {
     let mut out = Landings::new();
     for (path, _, outcome) in &landed.items {
         let verdict = match outcome {
+            Landed::Pushed { .. } if still_live(landed, loaded, path) => {
+                Outcome::Failed("a copy is still live on the remote".into())
+            }
             Landed::Pushed { .. } => {
                 loaded.index.entries.remove(path);
                 Outcome::Done(0)
@@ -166,7 +170,23 @@ fn landed_tombstones(landed: &PushReport, loaded: &mut Loaded<'_>) -> Landings {
         out.insert(path.clone(), verdict);
     }
     loaded.index.open_pack = landed.open.as_ref().map(|o| o.id.clone());
+    if landed.check_failed {
+        loaded.report.unchecked = true;
+        loaded.report.warning = Some("deleted, could not check for forks".into());
+    }
     out
+}
+
+/// The merged view after the tombstone still has a live top or a fork for `path`. Nothing to
+/// compare with when the reload failed, that case is reported as unchecked.
+fn still_live(landed: &PushReport, loaded: &Loaded<'_>, path: &str) -> bool {
+    use crate::sync::pack::merge::Top;
+    if landed.check_failed {
+        return false;
+    }
+    let view = loaded.repo.view();
+    let deleted = matches!(view.get(path).map(|m| &m.top), Some(Top::Deleted { .. }));
+    !deleted || view.forks().iter().any(|f| f == path)
 }
 
 /// A delete that stopped halfway: a rate limit ends the run, any other error fails the rest.
