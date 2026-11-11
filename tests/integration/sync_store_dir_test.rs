@@ -4,6 +4,8 @@ use agr::sync::testing::{DirStore, PackStore, Segment};
 use std::fs;
 use std::io::Write;
 
+/// `exists` follows the link and says no, `create_dir` says AlreadyExists, as a racing writer would.
+#[cfg(unix)]
 #[test]
 fn create_never_reuses_an_existing_pack_dir() {
     let dir = tempfile::tempdir().expect("tempdir");
