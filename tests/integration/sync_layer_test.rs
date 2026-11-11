@@ -280,3 +280,19 @@ fn violations_flags_any_backend_path() {
     let v = violations("engine/x.rs", "use crate::sync::backend::X;");
     assert_eq!(v.len(), 1, "{v:?}");
 }
+
+#[test]
+fn violations_flags_engine_naming_crypto_or_store() {
+    let v = violations("engine/x.rs", "use crate::sync::crypto::Key;");
+    assert_eq!(v.len(), 1, "{v:?}");
+    let v = violations("engine/x.rs", "use crate::sync::store::PackStore;");
+    assert_eq!(v.len(), 1, "{v:?}");
+}
+
+#[test]
+fn violations_flags_legacy_outside_pack_migrate() {
+    let v = violations("app/x.rs", "use crate::sync::store::legacy::X;");
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(violations("pack/migrate/x.rs", "use crate::sync::store::legacy::X;").is_empty());
+    assert!(violations("store/x.rs", "use crate::sync::store::legacy::X;").is_empty());
+}
