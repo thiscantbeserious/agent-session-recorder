@@ -1,7 +1,7 @@
 //! `agr sync migrate`: what the report names when gists are kept or an append fails.
 
 use crate::helpers::legacy_fake::{Listed, Rig};
-use agr::sync::testing::{migrate_run, Listing, PackStore, Segment, StoreError};
+use agr::sync::testing::{migrate_preview, migrate_run, Listing, PackStore, Segment, StoreError};
 use std::io::Read;
 
 const A: &str = "claude/a.cast.gz";
@@ -16,6 +16,18 @@ fn a_v1_gist_of_our_key_with_an_extra_file_is_named_and_never_deleted() {
     assert!(report.lines.iter().any(named), "{:?}", report.lines);
     assert_eq!((report.deleted, rig.legacy.deletes().len()), (0, 0));
     assert!(report.kept.contains(&id), "{report:?}");
+}
+
+#[test]
+fn preview_counts_an_own_v1_gist_with_an_extra_file_as_blocked_not_as_not_ours() {
+    let rig = Rig::new();
+    rig.legacy.v1_with_extra(&rig.key, (A, 3), b"body");
+    let store = Listed(&rig.mem, &rig.legacy);
+    let report = migrate_preview(&rig.env(&store)).unwrap();
+    let line = report.lines.join("\n");
+    let blocked = "1 blocked (own gist with extra files, fix by hand, sync stays blocked)";
+    assert!(line.contains(blocked), "{line}");
+    assert!(line.contains("0 not ours (kept)"), "{line}");
 }
 
 #[test]
