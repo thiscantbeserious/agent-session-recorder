@@ -146,6 +146,37 @@ fn missing_gh_or_git_breaks_nothing_outside_sync() {
     assert_eq!(before, tree(&m.storage));
 }
 
+/// Only `git` off the PATH (gh is there), push names git and changes nothing, list and status run.
+#[cfg(unix)]
+#[test]
+fn missing_git_alone_fails_push_with_the_git_text_and_breaks_nothing_else() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "text");
+    let bin = fake_bin(&[("gh", "if [ \"$1\" = api ]; then echo '[]'; fi\nexit 0")]);
+    for args in [["list"], ["status"]] {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_agr"));
+        cmd.args(args)
+            .env("NO_COLOR", "1")
+            .env("HOME", m.home.path())
+            .env("XDG_CONFIG_HOME", m.home.path().join(".config"))
+            .env("PATH", bin.path())
+            .env_remove("AGR_SYNC_TEST_BACKEND_DIR");
+        let out = m.exec(cmd, None);
+        assert_eq!(out.code, 0, "{args:?}: {}", out.all());
+    }
+    let before = tree(&m.storage);
+    let push = gist_cmd(&m, &bin, &["push", "--yes"]);
+    assert_ne!(push.code, 0, "{}", push.all());
+    let all = push.all();
+    assert!(
+        all.contains("git not found, the gist backend needs gh and git"),
+        "{all}"
+    );
+    assert!(all.contains("Install git and gh"), "{all}");
+    assert_eq!(before, tree(&m.storage));
+}
+
 #[cfg(unix)]
 #[test]
 fn a_token_printed_by_gh_never_reaches_output_or_files() {
