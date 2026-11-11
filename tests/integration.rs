@@ -205,6 +205,8 @@ mod cli_color_test;
 #[path = "integration/sync_engine_test.rs"]
 mod sync_engine_test;
 
+#[path = "integration/sync_engine_pack_stamp_test.rs"]
+mod sync_engine_pack_stamp_test;
 #[path = "integration/sync_engine_pack_test.rs"]
 mod sync_engine_pack_test;
 
