@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use super::index::record_synced;
+use super::index::{record_synced, stamp};
 use super::item::{build_item, strip_done};
 use super::lock::SyncLock;
 use super::observe::{counted, no_progress, Observer, Step};
@@ -41,11 +41,15 @@ impl Engine<'_> {
         if items.is_empty() {
             return Ok(Landings::new());
         }
+        let dir = self.storage.storage_dir();
+        let before: BTreeMap<&str, (u64, u64)> = (items.iter())
+            .map(|i| (i.path.as_str(), stamp(&dir.join(&i.path))))
+            .collect();
         let (landed, failure) = match loaded.repo.push_batch(items) {
             Ok(report) => (report, None),
             Err(PushError { error, pushed }) => (pushed, Some(error)),
         };
-        let mut out = self.record_push(&landed, rows, loaded);
+        let mut out = self.record_push(&landed, (rows, &before), loaded);
         self.save(&loaded.index)?;
         if let Some(error) = failure {
             return self.stopped(error, items, &mut out);
@@ -54,7 +58,12 @@ impl Engine<'_> {
     }
 
     /// Index entries and outcomes of what landed, forks and open pack of the report.
-    fn record_push(&self, landed: &PushReport, rows: &[&Row], loaded: &mut Loaded<'_>) -> Landings {
+    fn record_push(
+        &self,
+        landed: &PushReport,
+        (rows, before): (&[&Row], &BTreeMap<&str, (u64, u64)>),
+        loaded: &mut Loaded<'_>,
+    ) -> Landings {
         let dir = self.storage.storage_dir();
         let mut out = Landings::new();
         for (path, gen, outcome) in &landed.items {
@@ -63,6 +72,13 @@ impl Engine<'_> {
                 (Landed::Pushed { .. }, Some(row)) => {
                     let sha = pushed_sha(loaded, row, *gen);
                     record_synced(&mut loaded.index, &dir, path, (&sha, *gen));
+                    // edited since the stamp before the append, so the stamp must not vouch for
+                    // the uploaded hash, (0,0) keeps the file in `maybe_changed`
+                    if before.get(path.as_str()) != Some(&stamp(&dir.join(path))) {
+                        if let Some(e) = loaded.index.entries.get_mut(path) {
+                            (e.size, e.mtime_ns) = (0, 0);
+                        }
+                    }
                     Outcome::Done(std::fs::metadata(dir.join(path)).map_or(0, |m| m.len()))
                 }
                 _ => Outcome::Failed(CHANGED.into()),
