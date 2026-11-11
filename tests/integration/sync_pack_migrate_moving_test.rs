@@ -341,4 +341,15 @@ mod moving {
         assert_eq!((report.deleted, rig.legacy.deletes().len()), (0, 0));
         assert!(report.kept.contains(&id), "{report:?}");
     }
+
+    #[test]
+    fn a_v1_gist_with_an_invalid_path_is_kept_named_and_not_moved() {
+        let rig = Rig::new();
+        let id = rig.legacy.v1(&rig.key, ("claude/a.cast", 3), b"body", None);
+        let store = Listed(&rig.mem, &rig.legacy);
+        let report = migrate_run(&rig.env(&store)).unwrap();
+        let named = |l: &String| l.contains(&format!("gh gist delete {id}"));
+        assert!(report.lines.iter().any(named), "{:?}", report.lines);
+        assert_eq!((rig.mem.appends(), rig.legacy.deletes().len()), (0, 0));
+    }
 }
