@@ -9,10 +9,10 @@ use super::layout::check_parts;
 use super::{GistStore, StoreError};
 use crate::sync::backend::gist::parse::map_failure;
 use crate::sync::backend::gist::parts::PartReader;
-use crate::sync::backend::gist::runner::Runner;
-use crate::sync::backend::gist::scratch::Scratch;
 use crate::sync::backend::gist::{io_result, strings};
 use crate::sync::backend::BackendError;
+use crate::sync::store::gist::runner::Runner;
+use crate::sync::store::gist::scratch::Scratch;
 
 /// `(part, first byte, last byte)` of every part the range `offset..offset + len` touches.
 /// A range past the end is `NotFound`, the same answer memory and dir give.

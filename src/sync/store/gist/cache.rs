@@ -7,7 +7,7 @@ use std::sync::PoisonError;
 
 use super::index_cache::make_private_dir;
 use super::{GistStore, StoreError};
-use crate::sync::backend::gist::runner::Runner;
+use crate::sync::store::gist::runner::Runner;
 
 /// The clone dir of `id` under `root`. The gist id is the one outside input in the path, so it
 /// must be hex before it is joined.

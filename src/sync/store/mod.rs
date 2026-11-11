@@ -57,8 +57,8 @@ impl fmt::Debug for StoreError {
 
 impl std::error::Error for StoreError {}
 
-impl From<crate::sync::backend::gist::pace::ClockError> for StoreError {
-    fn from(e: crate::sync::backend::gist::pace::ClockError) -> Self {
+impl From<crate::sync::store::gist::pace::ClockError> for StoreError {
+    fn from(e: crate::sync::store::gist::pace::ClockError) -> Self {
         Self::Other(e.to_string())
     }
 }

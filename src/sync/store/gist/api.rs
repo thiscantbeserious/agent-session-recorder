@@ -10,10 +10,10 @@ use super::index_cache::{Entry, IndexCache};
 use super::{GistStore, Listing, PackInfo, StoreError};
 use crate::sync::backend::gist::parse::{check_auth, id_from_create_output, map_failure};
 use crate::sync::backend::gist::parse::{DESC_PREFIX, LIST_LIMIT};
-use crate::sync::backend::gist::runner::{Output, Runner};
-use crate::sync::backend::gist::scratch::Scratch;
 use crate::sync::backend::gist::{io_result, strings};
 use crate::sync::backend::BackendError;
+use crate::sync::store::gist::runner::{Output, Runner};
+use crate::sync::store::gist::scratch::Scratch;
 
 /// Description prefix of a pack gist, the tag follows.
 pub(super) const PACK_PREFIX: &str = "agr:v2 ";

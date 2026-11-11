@@ -26,10 +26,6 @@ pub use pack::migrate::{
 #[doc(hidden)]
 pub mod testing {
     pub use crate::sync::backend::file::FileBackend;
-    pub use crate::sync::backend::gist::pace::{Clock, ClockError};
-    pub use crate::sync::backend::gist::runner::{
-        spawn, watch_child, Output, ProcessRunner, Runner,
-    };
     pub use crate::sync::backend::gist::GistBackend;
     pub use crate::sync::backend::memory::MemoryBackend;
     pub use crate::sync::backend::{pull_bytes, push_bytes};
@@ -57,6 +53,8 @@ pub mod testing {
     };
     pub use crate::sync::pack::stream::{open_range, segment, RangeError};
     pub use crate::sync::store::dir::DirStore;
+    pub use crate::sync::store::gist::pace::{Clock, ClockError};
+    pub use crate::sync::store::gist::runner::{spawn, watch_child, Output, ProcessRunner, Runner};
     pub use crate::sync::store::gist::{pack_dir, GistStore};
     pub use crate::sync::store::memory::MemoryStore;
     pub use crate::sync::store::{Listing, PackInfo, PackStore, Segment, StoreError};
@@ -68,12 +66,12 @@ pub mod testing {
 
     /// Gist backend internals for the fake runner tests.
     pub mod gist {
-        pub use crate::sync::backend::gist::pace::{Clock, FakeClock};
         pub use crate::sync::backend::gist::parse::{parse_list, NO_CREATED_AT};
         pub use crate::sync::backend::gist::parts::{part_name, part_names};
-        pub use crate::sync::backend::gist::runner::{Output, Runner};
-        pub use crate::sync::backend::gist::scratch::Scratch;
         pub use crate::sync::backend::gist::{MANIFEST_FILE, STUB_BODY, STUB_FILE};
+        pub use crate::sync::store::gist::pace::{Clock, FakeClock};
+        pub use crate::sync::store::gist::runner::{Output, Runner};
+        pub use crate::sync::store::gist::scratch::Scratch;
     }
 
     /// Blob internals for the framing, nonce and known-answer tests.

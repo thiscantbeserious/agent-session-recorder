@@ -41,7 +41,7 @@ const RULES: &[(&str, &str)] = &[
     ("store/", "aead::"),
     ("", "super::super"),
 ];
-const SPAWNERS: &[&str] = &["backend/gist/runner.rs", "app/auto/mod.rs"];
+const SPAWNERS: &[&str] = &["store/gist/runner.rs", "app/auto/mod.rs"];
 
 fn rs_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
     for e in std::fs::read_dir(dir).unwrap().flatten() {

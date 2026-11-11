@@ -7,7 +7,11 @@ mod cache;
 mod index_cache;
 mod last_push;
 mod layout;
+pub(crate) mod pace;
+pub(crate) mod progress;
 mod read;
+pub mod runner;
+pub mod scratch;
 
 use std::collections::HashMap;
 use std::io::Read;
@@ -19,9 +23,9 @@ use self::append::Request;
 #[doc(hidden)]
 pub use self::cache::pack_dir;
 use super::{Listing, PackInfo, PackStore, Segment, StoreError};
-use crate::sync::backend::gist::pace::{Clock, Pacer, SystemClock};
-use crate::sync::backend::gist::runner::{ProcessRunner, Runner};
 use crate::sync::backend::gist::ProgressSink;
+use crate::sync::store::gist::pace::{Clock, Pacer, SystemClock};
+use crate::sync::store::gist::runner::{ProcessRunner, Runner};
 
 /// Secret gists as packs, the runner is the only way out to `gh` and `git`.
 pub struct GistStore<R: Runner = ProcessRunner> {

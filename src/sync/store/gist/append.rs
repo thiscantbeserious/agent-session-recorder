@@ -11,10 +11,10 @@ use super::index_cache::IndexCache;
 use super::layout::{cut_parts, next_names};
 use super::{GistStore, Segment, StoreError};
 use crate::sync::backend::gist::parse::map_failure;
-use crate::sync::backend::gist::progress::writing_percent;
-use crate::sync::backend::gist::runner::{Output, Runner};
 use crate::sync::backend::gist::{io_result, strings, GIT_IDENTITY, IDENTITY_ENV};
 use crate::sync::backend::BackendError;
+use crate::sync::store::gist::progress::writing_percent;
+use crate::sync::store::gist::runner::{Output, Runner};
 
 /// HTTPS with `gh` as the credential helper, never SSH, an unknown host key would prompt and stall.
 const CRED: [&str; 4] = [

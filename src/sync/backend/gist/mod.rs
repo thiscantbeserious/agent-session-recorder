@@ -1,24 +1,20 @@
 //! Gist backend, `gh` for create, list and delete, `git` for the binary blob.
 
 mod legacy;
-pub mod pace;
 pub mod parse;
 pub mod parts;
-pub(crate) mod progress;
-pub mod runner;
-pub mod scratch;
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-use self::pace::{Clock, Pacer, SystemClock};
 use self::parse::{check_auth, id_from_create_output, map_failure, parse_list, DESC_PREFIX};
 use self::parts::{check_sequence, part_names, PartReader, PartWriter, PART_SIZE};
-use self::progress::{receiving_percent, writing_percent};
-use self::runner::{Output, ProcessRunner, Runner};
-use self::scratch::Scratch;
 use crate::sync::backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
+use crate::sync::store::gist::pace::{Clock, Pacer, SystemClock};
+use crate::sync::store::gist::progress::{receiving_percent, writing_percent};
+use crate::sync::store::gist::runner::{Output, ProcessRunner, Runner};
+use crate::sync::store::gist::scratch::Scratch;
 
 /// Neutral dotfile, only there because `gh gist create` refuses an empty gist.
 pub const STUB_FILE: &str = ".keep";
