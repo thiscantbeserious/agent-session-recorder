@@ -5,6 +5,7 @@ mod local;
 mod recognise;
 
 pub use local::{convert_file, convert_index};
+use recognise::is_ours_v1;
 pub use recognise::{recognise, Kind, LegacyGist};
 
 use crate::sync::crypto::{Key, Meta};
@@ -80,6 +81,8 @@ struct Plan {
     ours: Vec<(LegacyGist, Meta)>,
     stubs: Vec<String>,
     kept: usize,
+    /// Kept gists of our key, they block every sync until the user deletes them.
+    blockers: Vec<String>,
 }
 
 fn classify(env: &Env) -> Result<Plan, MigrateError> {
@@ -88,12 +91,18 @@ fn classify(env: &Env) -> Result<Plan, MigrateError> {
         ours: Vec::new(),
         stubs: Vec::new(),
         kept: 0,
+        blockers: Vec::new(),
     };
     for g in gists {
         match recognise(&g, env.key, env.now) {
             Kind::Ours(meta) => plan.ours.push((g, meta)),
             Kind::Stub => plan.stubs.push(g.id),
-            Kind::Kept => plan.kept += 1,
+            Kind::Kept => {
+                plan.kept += 1;
+                if is_ours_v1(&g, env.key) {
+                    plan.blockers.push(g.id);
+                }
+            }
             Kind::Ignored => {}
         }
     }
@@ -238,6 +247,11 @@ pub fn run(env: &Env) -> Result<Report, MigrateError> {
     let mut repo = open(env)?;
     local::convert_file(env.dir).map_err(MigrateError::Local)?;
     let mut out = Report::default();
+    for id in &plan.blockers {
+        out.lines
+            .push(kept_line(id, "it has files or a path agr did not write"));
+        out.kept.push(id.clone());
+    }
     let limited = move_all(env, &plan, &mut repo, &mut out)?;
     let after = open(env)?;
     let mut ids = Vec::new();

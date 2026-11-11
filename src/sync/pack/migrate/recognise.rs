@@ -69,3 +69,9 @@ pub fn recognise(g: &LegacyGist, key: &Key, now: i64) -> Kind {
         _ => Kind::Kept,
     }
 }
+
+/// An `agr:v1` description our key opens, the gists `Repo::open` refuses to run beside.
+pub fn is_ours_v1(g: &LegacyGist, key: &Key) -> bool {
+    let token = g.description.strip_prefix("agr:v1 ").map(str::trim);
+    token.is_some_and(|t| open_meta(key, t).is_ok())
+}
