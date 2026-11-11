@@ -75,8 +75,17 @@ pub fn delete_preview_lines(report: &Report) -> Vec<String> {
         _ => format!("  {}", i.path),
     };
     lines.extend(remote.iter().map(line));
-    lines.push("A later `agr sync push --overwrite` uploads the session again.".into());
+    lines.push(restore_line(&remote));
     lines
+}
+
+/// Only a session with a local copy can be uploaded again.
+fn restore_line(remote: &[&Item]) -> String {
+    if remote.iter().any(|i| i.on_local) {
+        "A later `agr sync push --overwrite` uploads the session again.".into()
+    } else {
+        "Remote-only sessions cannot be restored by `agr sync push`.".into()
+    }
 }
 
 /// One line per acted-on session, `[i/n] pushed path (size)`, `done` is the past tense verb.

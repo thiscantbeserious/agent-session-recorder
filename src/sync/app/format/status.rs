@@ -56,7 +56,19 @@ pub fn compact_summary_lines(report: &Report, verb: &str) -> Vec<String> {
 pub fn compact_delete_preview_lines(report: &Report) -> Vec<String> {
     let mut lines = super::delete_preview_lines(report);
     if lines.len() > 2 {
-        lines.splice(1..lines.len() - 1, [hint("delete")]);
+        let forks = report
+            .items
+            .iter()
+            .filter(|i| i.on_remote && i.decision == Decision::Fork)
+            .count();
+        let mut mid = vec![hint("delete")];
+        if forks > 0 {
+            mid.insert(
+                0,
+                format!("{forks} fork(s), every version is deleted, see -v"),
+            );
+        }
+        lines.splice(1..lines.len() - 1, mid);
     }
     lines
 }

@@ -71,7 +71,11 @@ pub(super) fn queued_line(report: &Report) -> Option<String> {
 }
 
 pub(super) fn backend_line(report: &Report, backend: &str) -> String {
-    let remote = report.items.iter().filter(|i| i.on_remote).count();
+    let remote = report
+        .items
+        .iter()
+        .filter(|i| i.on_remote && !i.path.starts_with("remote:"))
+        .count();
     format!("Backend: {backend}, {remote} remote session(s)")
 }
 
