@@ -4,6 +4,7 @@
 
 pub mod cli_sync;
 pub mod fake_remote;
+pub mod format_items;
 pub mod gist_fake;
 pub mod gist_rig;
 pub mod gist_store_fake;

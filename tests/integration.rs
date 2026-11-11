@@ -345,3 +345,24 @@ mod sync_confirm_test;
 
 #[path = "integration/sync_select_test.rs"]
 mod sync_select_test;
+
+#[path = "integration/sync_pack_rules_test.rs"]
+mod sync_pack_rules_test;
+
+#[path = "integration/sync_decide_test.rs"]
+mod sync_decide_test;
+
+#[path = "integration/sync_store_memory_test.rs"]
+mod sync_store_memory_test;
+
+#[path = "integration/sync_pack_index_test.rs"]
+mod sync_pack_index_test;
+
+#[path = "integration/sync_format_status_test.rs"]
+mod sync_format_status_test;
+
+#[path = "integration/sync_format_summary_test.rs"]
+mod sync_format_summary_test;
+
+#[path = "integration/sync_store_dir_test.rs"]
+mod sync_store_dir_test;
