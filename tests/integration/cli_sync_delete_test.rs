@@ -358,3 +358,35 @@ mod migrate {
         );
     }
 }
+
+mod shadowed {
+    use super::*;
+
+    fn pair_with_plain_twin(remote: &std::path::Path) -> Machine {
+        let a = Machine::gist(remote);
+        a.session("claude", "a.cast.gz", "one");
+        assert_eq!(a.run(&["push", "--yes"]).code, 0);
+        let b = Machine::gist(remote);
+        assert_eq!(b.run(&["key", "import", &phrase_of(&a)]).code, 0);
+        b.session("claude", "a.cast", "plain twin");
+        b
+    }
+
+    #[test]
+    fn delete_by_the_gz_name_reaches_the_remote_row_behind_a_plain_twin() {
+        let remote = remote();
+        let b = pair_with_plain_twin(remote.path());
+        let out = b.run(&["delete", "--yes", "claude/a.cast.gz"]);
+        assert_eq!(out.code, 0, "{}", out.all());
+        assert!(out.stdout.contains("Deleted: 1"), "{}", out.stdout);
+    }
+
+    #[test]
+    fn delete_all_reaches_the_remote_row_behind_a_plain_twin() {
+        let remote = remote();
+        let b = pair_with_plain_twin(remote.path());
+        let out = b.run(&["delete", "--yes", "--all"]);
+        assert_eq!(out.code, 0, "{}", out.all());
+        assert!(out.stdout.contains("Deleted: 1"), "{}", out.stdout);
+    }
+}
