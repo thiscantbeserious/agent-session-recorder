@@ -387,7 +387,10 @@ fn migrate_lists_past_the_gist_cap_while_the_normal_list_refuses() {
     let many: Vec<_> = (0..3000)
         .map(|i| gist(&format!("g{i}"), "notes", "t1", &[("x", 1)]))
         .collect();
-    let fake = Fake::with(vec![ok(&pages(&[many.clone()])), ok(&pages(&[many]))]);
+    let fake = Fake::with(vec![
+        ok(&pages(std::slice::from_ref(&many))),
+        ok(&pages(&[many])),
+    ]);
     let dir = tempfile::tempdir().unwrap();
     let store = store(&fake, dir.path());
     assert!(store.list().is_err());

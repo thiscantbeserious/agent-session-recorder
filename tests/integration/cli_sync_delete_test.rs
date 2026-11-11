@@ -37,7 +37,7 @@ fn delete_removes_the_remote_and_keeps_the_local_file() {
 }
 
 #[test]
-fn delete_warns_that_a_plain_push_uploads_the_session_again() {
+fn delete_warns_that_only_push_overwrite_uploads_the_session_again() {
     let remote = remote();
     let m = Machine::gist(remote.path());
     m.session("claude", "a.cast.gz", "one");
@@ -45,7 +45,7 @@ fn delete_warns_that_a_plain_push_uploads_the_session_again() {
     let out = m.run(&["delete", "--yes", "claude/a.cast.gz"]);
     assert!(
         out.stdout
-            .contains("A later `agr sync push` uploads the session again."),
+            .contains("A later `agr sync push --overwrite` uploads the session again."),
         "{}",
         out.stdout
     );
