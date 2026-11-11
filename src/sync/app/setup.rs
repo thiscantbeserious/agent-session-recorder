@@ -145,7 +145,8 @@ pub fn writer_id() -> String {
 }
 
 /// Stores the writer id once this machine really pushes, dry runs and refusals leave no trace.
-pub fn keep_writer(id: &str) -> anyhow::Result<()> {
+/// Returns the id that is stored, the caller uses it.
+pub fn keep_writer(id: &str) -> anyhow::Result<String> {
     crate::config::state::State::keep_writer_id(id)
 }
 

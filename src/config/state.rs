@@ -68,15 +68,19 @@ impl State {
         Self::load().writer_id
     }
 
-    /// Stores `id` as the writer id of this machine unless one is stored already.
-    pub fn keep_writer_id(id: &str) -> Result<()> {
-        let path = Config::config_dir()?.join(FILE);
-        let mut state = Self::load_from(&path);
+    /// Stores `id` as the writer id of this machine unless one is stored already, returns the id
+    /// that is stored. Two first runs at once both end up using the same one.
+    pub fn keep_writer_id(id: &str) -> Result<String> {
+        Self::keep_writer_id_at(&Config::config_dir()?.join(FILE), id)
+    }
+
+    pub fn keep_writer_id_at(path: &Path, id: &str) -> Result<String> {
+        let mut state = Self::load_from(path);
         if state.writer_id.is_none() {
             state.writer_id = Some(id.to_string());
-            state.save_to(&path)?;
+            state.save_to(path)?;
         }
-        Ok(())
+        Ok(id.to_string())
     }
 
     /// Load from a path, default when the file is missing or malformed (warns on stderr).

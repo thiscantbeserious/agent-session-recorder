@@ -375,4 +375,20 @@ mod writer_id {
         assert_eq!(first, second);
         assert_eq!(State::load_from(&path).writer_id, Some(first));
     }
+
+    #[test]
+    fn keep_writer_id_returns_the_id_that_was_stored_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        assert_eq!(
+            State::keep_writer_id_at(&path, "w-first").unwrap(),
+            "w-first"
+        );
+        let second = State::keep_writer_id_at(&path, "w-second").unwrap();
+        assert_eq!(second, "w-first");
+        assert_eq!(
+            State::load_from(&path).writer_id.as_deref(),
+            Some("w-first")
+        );
+    }
 }
