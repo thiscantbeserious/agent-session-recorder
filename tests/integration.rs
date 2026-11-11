@@ -333,6 +333,9 @@ mod sync_blob_test;
 #[path = "integration/sync_gist_backend_test.rs"]
 mod sync_gist_backend_test;
 
+#[path = "integration/sync_layer_test.rs"]
+mod sync_layer_test;
+
 #[path = "integration/sync_gist_legacy_test.rs"]
 mod sync_gist_legacy_test;
 
