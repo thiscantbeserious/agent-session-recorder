@@ -4,15 +4,20 @@ use serde_json::{json, Map, Value};
 
 /// What v2 keeps of a v1 entry: hash and gen so the plan keeps its last synced state, the
 /// stamp so an unchanged file is not hashed again. `remote_id`, `token` and `pending` are gone.
-fn carry(e: &Value) -> Value {
-    json!({
-        "sha256": e["sha256"],
+fn carry(path: &str, e: &Value) -> Result<Value, String> {
+    let text = |key: &str| {
+        e[key]
+            .as_str()
+            .ok_or_else(|| format!("entry {path} has no {key}"))
+    };
+    Ok(json!({
+        "sha256": text("sha256")?,
         "remote_id": "",
-        "synced_at": e["synced_at"],
+        "synced_at": text("synced_at")?,
         "gen": e["gen"].as_u64().unwrap_or(0),
         "size": e["size"].as_u64().unwrap_or(0),
         "mtime_ns": e["mtime_ns"].as_u64().unwrap_or(0),
-    })
+    }))
 }
 
 /// The v2 text of a v1 index, `None` when it already is v2. A pending entry never synced
@@ -22,10 +27,13 @@ pub fn convert_index(text: &str) -> Result<Option<String>, String> {
     if old["version"].as_u64().unwrap_or(1) >= 2 {
         return Ok(None);
     }
-    let entries: Map<String, Value> = (old["entries"].as_object().into_iter().flatten())
+    let old_entries = old["entries"]
+        .as_object()
+        .ok_or("entries is not an object")?;
+    let entries = (old_entries.iter())
         .filter(|(_, e)| e["pending"] != true)
-        .map(|(path, e)| (path.clone(), carry(e)))
-        .collect();
+        .map(|(path, e)| Ok((path.clone(), carry(path, e)?)))
+        .collect::<Result<Map<String, Value>, String>>()?;
     let v2 = json!({ "version": 2, "entries": entries, "open_pack": null });
     Ok(Some(v2.to_string()))
 }
