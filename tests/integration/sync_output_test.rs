@@ -196,3 +196,72 @@ fn summaries_show_forks_a_push_left_and_the_overwrite_hint() {
         assert!(out.contains("agr sync push --overwrite"), "{out}");
     }
 }
+
+fn delete_item(path: &str, decision: agr::sync::Decision, on_local: bool) -> agr::sync::Item {
+    agr::sync::Item {
+        path: path.into(),
+        decision,
+        outcome: agr::sync::Outcome::Planned,
+        size: 1,
+        on_remote: true,
+        on_local,
+        local_hash: None,
+        remote_hash: None,
+        remote_size: 1,
+        remote_id: None,
+        pending: false,
+        duplicates: Vec::new(),
+    }
+}
+
+fn report_of(items: Vec<agr::sync::Item>) -> Report {
+    Report {
+        items,
+        ..Report::default()
+    }
+}
+
+#[test]
+fn delete_preview_of_remote_only_sessions_says_they_cannot_be_restored() {
+    use agr::sync::format::{compact_delete_preview_lines, delete_preview_lines};
+    use agr::sync::Decision;
+    let r = report_of(vec![delete_item("a/r.cast.gz", Decision::Pull, false)]);
+    for lines in [delete_preview_lines(&r), compact_delete_preview_lines(&r)] {
+        let text = lines.join("\n");
+        assert!(
+            text.contains("cannot be restored by `agr sync push`"),
+            "{text}"
+        );
+        assert!(!text.contains("uploads the session again"), "{text}");
+    }
+}
+
+#[test]
+fn delete_preview_with_a_local_copy_keeps_the_upload_line() {
+    use agr::sync::format::{compact_delete_preview_lines, delete_preview_lines};
+    use agr::sync::Decision;
+    let r = report_of(vec![
+        delete_item("a/r.cast.gz", Decision::Pull, false),
+        delete_item("a/l.cast.gz", Decision::Push, true),
+    ]);
+    for lines in [delete_preview_lines(&r), compact_delete_preview_lines(&r)] {
+        let text = lines.join("\n");
+        assert!(text.contains("uploads the session again"), "{text}");
+    }
+}
+
+#[test]
+fn compact_delete_preview_keeps_the_fork_count_and_the_hint() {
+    use agr::sync::format::compact_delete_preview_lines;
+    use agr::sync::Decision;
+    let r = report_of(vec![
+        delete_item("a/f.cast.gz", Decision::Fork, true),
+        delete_item("a/p.cast.gz", Decision::Push, true),
+    ]);
+    let text = compact_delete_preview_lines(&r).join("\n");
+    assert!(
+        text.contains("1 fork(s), every version is deleted, see -v"),
+        "{text}"
+    );
+    assert!(text.contains("Would delete 2 sessions"), "{text}");
+}

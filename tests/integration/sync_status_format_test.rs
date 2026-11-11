@@ -153,3 +153,29 @@ fn status_needs_no_clone() {
         rig.remote.calls()
     );
 }
+
+#[test]
+fn backend_line_counts_no_opaque_pack_rows() {
+    use agr::sync::{Decision, Item, Outcome};
+    let row = |path: &str| Item {
+        path: path.into(),
+        decision: Decision::Pull,
+        outcome: Outcome::Nothing,
+        size: 1,
+        on_remote: true,
+        on_local: false,
+        local_hash: None,
+        remote_hash: None,
+        remote_size: 1,
+        remote_id: None,
+        pending: false,
+        duplicates: Vec::new(),
+    };
+    let report = Report {
+        items: vec![row("a/x.cast.gz"), row("remote:abc")],
+        ..Report::default()
+    };
+    for out in [compact(&report), full(&report)] {
+        assert!(out.contains("1 remote session(s)"), "{out}");
+    }
+}
