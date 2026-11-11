@@ -62,10 +62,29 @@ Remove sessions from the remote (the local file stays)
 
 Remove the remote copy of a session and its index entry.
 
-The local file is never touched.
+The local file is never touched. The delete applies to the newest version of the session at the
+time it runs, a version another machine pushed since the preview is deleted too. Patterns use * (any run) and ? (one character) against
+<agent>/<name> of the remote sessions. More than 10 matches ask to type the count.
+When nothing matches it prints Nothing to delete. and exits 0.
 
 EXAMPLE:
     agr sync delete claude/a.cast.gz
+    agr sync delete 'claude/2024-*'
+    agr sync delete --all --dry-run
+
+### sync migrate
+
+Move the per-session gists of the old layout into packs
+
+Move the per-session gists of the old layout into packs.
+
+Shows what would move first and asks. Old gists are deleted only after the pack index
+shows their session. Local session files are never touched. Run it by hand, sync refuses
+to run until it has finished.
+
+EXAMPLE:
+    agr sync migrate
+    agr sync migrate --yes
 
 ### sync key
 
