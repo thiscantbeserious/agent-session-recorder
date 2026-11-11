@@ -38,12 +38,24 @@ impl State {
         self.save_to(&Config::config_dir()?.join(FILE))
     }
 
-    /// Store the last auto push error in the file at `path`.
-    pub fn store_auto_error(path: &Path, line: String) -> Result<()> {
+    /// Re-reads the file at `path` under the lock, applies `f` and saves, so a field another
+    /// writer stored meanwhile (the writer id) is never overwritten by a stale copy.
+    pub fn update_at<T>(path: &Path, f: impl FnOnce(&mut State) -> T) -> Result<T> {
         let _guard = lock::exclusive(path)?;
         let mut state = Self::load_from(path);
-        state.last_auto_push_error = Some(line);
-        state.save_to(path)
+        let out = f(&mut state);
+        state.save_to(path)?;
+        Ok(out)
+    }
+
+    /// `update_at` for `~/.config/agr/state.toml`.
+    pub fn update<T>(f: impl FnOnce(&mut State) -> T) -> Result<T> {
+        Self::update_at(&Config::config_dir()?.join(FILE), f)
+    }
+
+    /// Store the last auto push error in the file at `path`.
+    pub fn store_auto_error(path: &Path, line: String) -> Result<()> {
+        Self::update_at(path, |s| s.last_auto_push_error = Some(line))
     }
 
     /// Like `store_auto_error` for `~/.config/agr/state.toml`, re-reads the file so a writer

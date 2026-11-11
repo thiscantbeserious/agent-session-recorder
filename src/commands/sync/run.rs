@@ -171,10 +171,11 @@ fn opts(args: &Args, dry_run: bool) -> Options {
 
 /// Last failed auto push, shown once and cleared.
 fn show_auto_error() {
-    let mut state = State::load();
-    if let Some(line) = auto::take_error_line(&mut state) {
+    if State::load().last_auto_push_error.is_none() {
+        return;
+    }
+    if let Ok(Some(line)) = State::update(auto::take_error_line) {
         say(&[format!("Warning: {line}")]);
-        let _ = state.save();
     }
 }
 
@@ -242,8 +243,7 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
         .push_with(&opts(&args, true), 0, &mut live.loader())
         .unwrap_or_else(engine_failed);
     live.end();
-    let mut state = State::load();
-    let notice = privacy_notice(&plan, &state);
+    let notice = privacy_notice(&plan, &State::load());
     if !confirm_planned(&plan, "push", &args, &notice)? {
         return Ok(());
     }
@@ -252,8 +252,7 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
         say(&["Created a new sync key. Back up your key with agr sync key export.".to_string()]);
     }
     if !notice.is_empty() {
-        state.sync_privacy_ack = true;
-        state.save()?;
+        State::update(|s| s.sync_privacy_ack = true)?;
     }
     ctx.writer = keep_writer(&ctx.writer)?;
     let mut observer = live.observer();

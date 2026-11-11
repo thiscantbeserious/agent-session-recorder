@@ -101,10 +101,12 @@ pub(super) fn on_path(programs: &[&str], path_var: &std::ffi::OsStr) -> bool {
 /// arguments to spawn, the caller prints and spawns.
 pub fn after_recording(config: &Config, path: &Path) -> (Vec<String>, Option<Vec<String>>) {
     let mut state = State::load();
-    let stored = take_error_line(&mut state);
-    if stored.is_some() {
-        let _ = state.save();
-    }
+    let stored = state
+        .last_auto_push_error
+        .is_some()
+        .then(|| State::update(take_error_line).ok().flatten())
+        .flatten();
+    state.last_auto_push_error = None;
     let path_var = std::env::var_os("PATH").unwrap_or_default();
     let env = Env {
         key_present: key_exists(),
