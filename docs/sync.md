@@ -18,12 +18,12 @@ auto_push = false  # default, true pushes each new recording
 agr sync status                 # What push and pull would do, per session, read only
 agr sync push                   # Upload new and changed sessions
 agr sync pull                   # Download new and changed sessions
-agr sync delete claude/a.cast.gz  # Remove the remote copy, the local file stays
+agr sync delete claude/a.cast.gz  # Mark the remote copy deleted, the local file stays
 agr sync push --dry-run         # Preview, never prompts or changes anything
 agr sync push --yes             # Skip the confirmation (needed without a terminal)
 ```
 
-Sessions (`agent/name.cast.gz`) are appended into pack gists of about `pack_size_mib` each. Plain `.cast` files are skipped with a hint to run `agr compress`, sessions that are still recording are skipped, and so are sessions above 1 GiB. The cap applies to the local `.cast.gz` size on disk, not to the encrypted size. GitHub lists at most 3000 gists, with that many sync aborts instead of guessing which sessions exist. A conflict (both sides changed, decided by content hash and never by file time) is skipped and reported, `--overwrite` makes the local side win on push and the remote side win on pull (the replaced local file is kept as a hidden `.bak`). Deleting a session locally never deletes it remotely and the other way round, only `agr sync delete` removes the remote copy. A later plain `agr sync push` uploads a deleted session again, as the local file is still there.
+Sessions (`agent/name.cast.gz`) are appended into pack gists of about `pack_size_mib` each. Plain `.cast` files are skipped with a hint to run `agr compress`, sessions that are still recording are skipped, and so are sessions above 1 GiB. The cap applies to the local `.cast.gz` size on disk, not to the encrypted size. GitHub lists at most 3000 gists, with that many sync aborts instead of guessing which sessions exist. A conflict (both sides changed, decided by content hash and never by file time) is skipped and reported, `--overwrite` makes the local side win on push and the remote side win on pull (the replaced local file is kept as a hidden `.bak`). Deleting a session locally never deletes it remotely and the other way round, only `agr sync delete` marks the remote copy deleted (its encrypted bytes stay in the remote pack). A later plain `agr sync push` uploads a deleted session again, as the local file is still there.
 
 ## How it works across machines
 

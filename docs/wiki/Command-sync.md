@@ -58,9 +58,10 @@ EXAMPLES:
 
 ### sync delete
 
-Remove sessions from the remote (the local file stays)
+Mark sessions deleted on the remote (encrypted bytes stay in the pack, the local file stays)
 
-Remove the remote copy of a session and its index entry.
+Mark a session deleted on the remote and drop its index entry. The encrypted bytes stay in the remote pack
+gist until a prune, which is not part of sync yet.
 
 The local file is never touched. The delete applies to the newest version of the session at the
 time it runs, a version another machine pushed since the preview is deleted too. Patterns use * (any run) and ? (one character) against

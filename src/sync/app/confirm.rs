@@ -47,7 +47,7 @@ pub fn confirm_delete(
             writeln!(out, "{}", current_theme().secondary_text(hint))?;
             return Ok(Confirm::Declined);
         }
-        let question = "Delete these remote sessions? The local files stay. [y/N]";
+        let question = "Mark these remote sessions deleted? Their encrypted bytes stay in the remote pack and the local files stay. [y/N]";
         let answer = ask(out, input, question)?;
         if answer != "y" && answer != "yes" {
             return Ok(Confirm::Declined);

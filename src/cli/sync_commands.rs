@@ -84,8 +84,10 @@ EXAMPLES:
         #[arg(long, short = 'v', help = "List every session, not only the summary")]
         verbose: bool,
     },
-    /// Remove sessions from the remote (the local file stays)
-    #[command(long_about = "Remove the remote copy of a session and its index entry.
+    /// Mark sessions deleted on the remote (encrypted bytes stay in the pack, the local file stays)
+    #[command(
+        long_about = "Mark a session deleted on the remote and drop its index entry. The encrypted bytes stay in the remote pack
+gist until a prune, which is not part of sync yet.
 
 The local file is never touched. The delete applies to the newest version of the session at the
 time it runs, a version another machine pushed since the preview is deleted too. Patterns use * (any run) and ? (one character) against
@@ -95,7 +97,8 @@ When nothing matches it prints Nothing to delete. and exits 0.
 EXAMPLE:
     agr sync delete claude/a.cast.gz
     agr sync delete 'claude/2024-*'
-    agr sync delete --all --dry-run")]
+    agr sync delete --all --dry-run"
+    )]
     Delete {
         /// Sessions to delete from the remote
         #[arg(

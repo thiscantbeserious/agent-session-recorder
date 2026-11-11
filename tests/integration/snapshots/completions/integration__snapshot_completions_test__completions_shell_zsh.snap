@@ -1,5 +1,6 @@
 ---
 source: tests/integration/snapshot_completions_test.rs
+assertion_line: 36
 expression: output
 ---
 === agr completions --shell zsh ===
@@ -1474,7 +1475,7 @@ _agr__help__sync_commands() {
 'status:Show what push and pull would do, per session' \
 'push:Upload new and changed sessions (encrypted)' \
 'pull:Download new and changed sessions' \
-'delete:Remove sessions from the remote (the local file stays)' \
+'delete:Mark sessions deleted on the remote (encrypted bytes stay in the pack, the local file stays)' \
 'migrate:Move the per-session gists of the old layout into packs' \
 'key:Export or import the sync key' \
     )
@@ -1652,7 +1653,7 @@ _agr__sync_commands() {
 'status:Show what push and pull would do, per session' \
 'push:Upload new and changed sessions (encrypted)' \
 'pull:Download new and changed sessions' \
-'delete:Remove sessions from the remote (the local file stays)' \
+'delete:Mark sessions deleted on the remote (encrypted bytes stay in the pack, the local file stays)' \
 'migrate:Move the per-session gists of the old layout into packs' \
 'key:Export or import the sync key' \
 'help:Print this message or the help of the given subcommand(s)' \
@@ -1670,7 +1671,7 @@ _agr__sync__help_commands() {
 'status:Show what push and pull would do, per session' \
 'push:Upload new and changed sessions (encrypted)' \
 'pull:Download new and changed sessions' \
-'delete:Remove sessions from the remote (the local file stays)' \
+'delete:Mark sessions deleted on the remote (encrypted bytes stay in the pack, the local file stays)' \
 'migrate:Move the per-session gists of the old layout into packs' \
 'key:Export or import the sync key' \
 'help:Print this message or the help of the given subcommand(s)' \
