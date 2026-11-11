@@ -140,12 +140,17 @@ fn local_absent_remote_deleted_drops_the_index_entry() {
     let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
     three(&n);
     n.engine(&store, &key, "w1").push(&opts()).unwrap();
-    n.engine(&store, &key, "w1")
+    let other = node();
+    other.engine(&store, &key, "w2").pull(&opts()).unwrap();
+    other
+        .engine(&store, &key, "w2")
         .delete(&[A.to_string()])
         .unwrap();
+    assert!(
+        index_of(&n).entries.contains_key(A),
+        "the baseline is still there"
+    );
     std::fs::remove_file(n.dir().join(A)).unwrap();
-    let other = node();
-    other.session("claude", "keep.cast.gz", CAST);
     n.engine(&store, &key, "w1").push(&opts()).unwrap();
     assert!(!index_of(&n).entries.contains_key(A));
 }
