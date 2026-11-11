@@ -75,7 +75,7 @@ pub fn delete_preview_lines(report: &Report) -> Vec<String> {
         _ => format!("  {}", i.path),
     };
     lines.extend(remote.iter().map(line));
-    lines.push("A later `agr sync push` uploads the session again.".into());
+    lines.push("A later `agr sync push --overwrite` uploads the session again.".into());
     lines
 }
 
