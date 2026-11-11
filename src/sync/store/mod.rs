@@ -107,6 +107,11 @@ pub trait PackStore {
     fn name(&self) -> &'static str;
     fn check(&self) -> Result<(), StoreError>;
     fn list(&self) -> Result<Listing, StoreError>;
+    /// `list` for `agr sync migrate`, without a cap on the number of gists of the account.
+    /// Migration is the way to reduce that count, it acts on what it saw and is run again.
+    fn list_for_migrate(&self) -> Result<Listing, StoreError> {
+        self.list()
+    }
     /// The sealed index text of the pack, as stored by the last create or append.
     fn read_index(&self, id: &str) -> Result<String, StoreError>;
     /// New pack with no data, `tag` and `index`, returns its id.
