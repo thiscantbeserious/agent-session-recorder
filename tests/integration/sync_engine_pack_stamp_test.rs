@@ -73,3 +73,24 @@ fn dry_runs_and_status_never_sweep_clones_and_a_locked_run_does() {
     n.engine(&store, &key, "w1").push(&opts()).unwrap();
     assert_eq!(store.kept().len(), 1, "{:?}", store.kept());
 }
+
+#[test]
+fn a_manual_push_drains_what_an_auto_child_queued_while_it_held_the_lock() {
+    use crate::helpers::pack_engine::{merged, CAST};
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    n.session("claude", "b.cast.gz", CAST);
+    let dir = n.dir().to_path_buf();
+    // the child enqueues before it spawns and then finds the lock held
+    store.before_append(move |_, _| {
+        agr::sync::testing::queue::enqueue(&dir, "claude/b.cast.gz").unwrap();
+    });
+    let only_a = agr::sync::Options {
+        sessions: vec!["claude/a.cast.gz".into()],
+        ..opts()
+    };
+    n.engine(&store, &key, "w1").push(&only_a).unwrap();
+    let (at, _) = merged(&store, &key, "claude/b.cast.gz");
+    assert!(at.is_some(), "the queued session was left behind");
+    assert!(agr::sync::testing::queue::list(n.dir()).is_empty());
+}
