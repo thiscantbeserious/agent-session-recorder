@@ -55,6 +55,10 @@ fn only_v1_files(g: &LegacyGist) -> bool {
 
 /// Decides per gist, `now` is unix seconds from an injected clock.
 pub fn recognise(g: &LegacyGist, key: &Key, now: i64) -> Kind {
+    // a cut file list can hide files that are not ours, so it is never deleted or moved
+    if g.truncated && g.description.starts_with("agr:") {
+        return Kind::Kept;
+    }
     if g.description == "agr:pending" {
         let old = age(g, now) > STUB_AFTER;
         return if old && is_stub(g) {

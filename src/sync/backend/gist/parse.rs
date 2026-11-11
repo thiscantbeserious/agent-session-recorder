@@ -129,6 +129,9 @@ struct AnyGist {
     created_at: Option<String>,
     #[serde(default)]
     files: std::collections::BTreeMap<String, AnyFile>,
+    /// GitHub lists at most 300 files, the rest is cut.
+    #[serde(default)]
+    truncated: bool,
 }
 
 #[derive(serde::Deserialize)]
@@ -151,7 +154,7 @@ pub fn parse_all(json: &str) -> Result<Vec<crate::sync::pack::migrate::LegacyGis
                     description: g.description.unwrap_or_default(),
                     files: g.files.into_iter().map(|(n, f)| (n, f.size)).collect(),
                     created_at: g.created_at.unwrap_or_default(),
-                    truncated: false,
+                    truncated: g.truncated,
                 }),
         );
     }
