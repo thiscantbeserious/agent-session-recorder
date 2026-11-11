@@ -199,6 +199,23 @@ mod packs {
             assert!(queue::list(n.dir()).is_empty());
         }
     }
+
+    /// A busy lock is not an error, the entry stays queued for the holder.
+    #[cfg(unix)]
+    #[test]
+    fn a_busy_auto_run_leaves_the_entry_and_stores_no_error() {
+        let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+        let one = queued(&n, "one");
+        let held = format!("{{\"pid\":{},\"started\":\"x\"}}", std::process::id());
+        std::fs::write(n.dir().join(".agr-sync.lock"), held).unwrap();
+        let result = n
+            .engine(&store, &key, "w1")
+            .drain_auto(&one, &mut |_: &Event<'_>| {});
+        assert!(matches!(result.as_ref().err(), Some(SyncError::Busy(_))));
+        assert_eq!(queue::list(n.dir()), [one]);
+        assert_eq!(agr::sync::auto::error_line(&result), None);
+        assert_eq!(store.appends(), 0);
+    }
 }
 
 const S: &str = "claude/a.cast.gz";
