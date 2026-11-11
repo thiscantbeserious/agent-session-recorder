@@ -392,3 +392,24 @@ mod writer_id {
         );
     }
 }
+
+mod writer_id_race {
+    use agr::config::state::State;
+
+    #[test]
+    fn first_runs_at_once_all_get_the_id_that_ends_up_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        let got: Vec<String> = std::thread::scope(|s| {
+            let runs: Vec<_> = (0..8)
+                .map(|n| {
+                    let path = &path;
+                    s.spawn(move || State::keep_writer_id_at(path, &format!("w-{n}")).unwrap())
+                })
+                .collect();
+            runs.into_iter().map(|r| r.join().unwrap()).collect()
+        });
+        let stored = State::load_from(&path).writer_id.unwrap();
+        assert!(got.iter().all(|id| *id == stored), "{got:?} vs {stored}");
+    }
+}
