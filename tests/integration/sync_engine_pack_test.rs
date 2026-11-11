@@ -463,3 +463,20 @@ fn a_rate_limited_pull_keeps_the_baselines_of_the_pulls_that_finished() {
     assert_eq!(err, Some(agr::sync::SyncError::RateLimited { left: 1 }));
     assert_eq!(index_of(&other).entries.len(), 1);
 }
+
+#[test]
+fn a_file_edited_while_it_uploads_is_uploaded_again_by_the_next_auto_push() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    let dir = n.dir().to_path_buf();
+    let edited = CAST.replace("secret", "edited while uploading");
+    store.after_append(move |_, _| {
+        let file = dir.join(A);
+        agr::files::codec::atomic_write(&file, |w| Ok(w.write_all(edited.as_bytes())?)).unwrap();
+    });
+    let engine = n.engine(&store, &key, "w1");
+    assert_eq!(engine.push(&opts()).unwrap().pushed, 1);
+    let report = agr::sync::auto::run(&engine, "claude/none.cast.gz").unwrap();
+    assert_eq!(report.pushed, 1, "{:?}", report.items);
+    assert_eq!(merged(&store, &key, A).0.map(|m| m.0), Some(2));
+}
