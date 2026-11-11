@@ -7,13 +7,11 @@ use std::sync::PoisonError;
 use serde::Deserialize;
 
 use super::index_cache::{Entry, IndexCache};
+use super::parse::{check_auth, id_from_create_output, map_failure};
+use super::parse::{DESC_PREFIX, LIST_LIMIT};
+use super::runner::{Output, Runner};
+use super::{io_result, strings};
 use super::{GistStore, Listing, PackInfo, StoreError};
-use crate::sync::backend::gist::parse::{check_auth, id_from_create_output, map_failure};
-use crate::sync::backend::gist::parse::{DESC_PREFIX, LIST_LIMIT};
-use crate::sync::backend::gist::runner::{Output, Runner};
-use crate::sync::backend::gist::scratch::Scratch;
-use crate::sync::backend::gist::{io_result, strings};
-use crate::sync::backend::BackendError;
 
 /// Description prefix of a pack gist, the tag follows.
 pub(super) const PACK_PREFIX: &str = "agr:v2 ";
@@ -50,10 +48,6 @@ pub(super) struct FileRef {
 pub(super) struct Seen {
     pub updated_at: String,
     pub files: Vec<FileRef>,
-}
-
-pub(super) fn be(e: BackendError) -> StoreError {
-    StoreError::from(e)
 }
 
 fn seen_of(gist: &Gist) -> Seen {
@@ -96,11 +90,11 @@ fn parse_pages(text: &str, capped: bool) -> Result<Vec<Gist>, StoreError> {
 
 impl<R: Runner> GistStore<R> {
     pub(super) fn run_ok(&self, tool: &'static str, args: &[&str]) -> Result<Output, StoreError> {
-        let out = io_result(tool, self.runner.run(tool, &strings(args), None, &[])).map_err(be)?;
+        let out = io_result(tool, self.runner.run(tool, &strings(args), None, &[]))?;
         if out.success() {
             return Ok(out);
         }
-        Err(be(map_failure(tool, &out.stderr, out.code)))
+        Err(map_failure(tool, &out.stderr, out.code))
     }
 
     pub(super) fn check_tools(&self) -> Result<(), StoreError> {
@@ -112,11 +106,11 @@ impl<R: Runner> GistStore<R> {
             self.runner
                 .run("gh", &strings(&["auth", "status"]), None, &[]),
         );
-        let out = out.map_err(be)?;
+        let out = out?;
         if !out.success() {
             return Err(StoreError::NotLoggedIn);
         }
-        check_auth(&format!("{}\n{}", out.stdout, out.stderr)).map_err(be)
+        check_auth(&format!("{}\n{}", out.stdout, out.stderr))
     }
 
     pub(super) fn list_packs(&self, capped: bool) -> Result<Listing, StoreError> {
@@ -179,11 +173,11 @@ impl<R: Runner> GistStore<R> {
     /// Downloads the whole file behind `url` into `file` with `gh api`, no `Range`.
     fn fetch_whole(&self, url: &str, size: u64, file: &Path) -> Result<(), StoreError> {
         let args = strings(&["api", url]);
-        let out = io_result("gh", self.runner.run_to_file("gh", &args, &[], file)).map_err(be)?;
+        let out = io_result("gh", self.runner.run_to_file("gh", &args, &[], file))?;
         if !out.success() {
-            return Err(be(map_failure("gh", &out.stderr, out.code)));
+            return Err(map_failure("gh", &out.stderr, out.code));
         }
-        let got = std::fs::metadata(file).map_err(|e| be(BackendError::Other(e.to_string())))?;
+        let got = std::fs::metadata(file).map_err(|e| StoreError::Other(e.to_string()))?;
         match got.len() == size {
             true => Ok(()),
             false => Err(StoreError::Other(format!(
@@ -204,7 +198,7 @@ impl<R: Runner> GistStore<R> {
         if let Some(hit) = cache.as_ref().and_then(|c| c.get(id, &at)) {
             return Ok(hit.index);
         }
-        let scratch = Scratch::create(&self.temp_base).map_err(be)?;
+        let scratch = crate::sync::store::scratch(&self.temp_base)?;
         let path = scratch.join(INDEX_FILE);
         self.fetch_whole(&file.raw_url, file.size, &path)?;
         let bytes = std::fs::read(&path).map_err(|e| StoreError::Other(e.to_string()))?;
@@ -221,7 +215,7 @@ impl<R: Runner> GistStore<R> {
     }
 
     pub(super) fn create_pack(&self, tag: &str, index: &str) -> Result<String, StoreError> {
-        let scratch = Scratch::create(&self.temp_base).map_err(be)?;
+        let scratch = crate::sync::store::scratch(&self.temp_base)?;
         let file = scratch.join(INDEX_FILE);
         std::fs::write(&file, index).map_err(|e| StoreError::Other(format!("write index: {e}")))?;
         let (path, desc) = (file.to_string_lossy(), format!("{PACK_PREFIX}{tag}"));

@@ -2,17 +2,7 @@
 
 use crate::sync::crypto::{open_meta, Key, Meta};
 use crate::sync::pack::rules::valid_path;
-
-/// One gist as the old listing shows it, files as (name, size in bytes).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LegacyGist {
-    pub id: String,
-    pub description: String,
-    pub files: Vec<(String, u64)>,
-    pub created_at: String,
-    /// GitHub cut the file list of this gist, files are missing from `files`.
-    pub truncated: bool,
-}
+use crate::sync::store::legacy::LegacyGist;
 
 /// What migrate does with a gist.
 #[derive(Debug, Clone, PartialEq, Eq)]

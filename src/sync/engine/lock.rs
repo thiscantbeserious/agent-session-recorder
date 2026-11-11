@@ -120,6 +120,7 @@ fn holder(path: &Path) -> Holder {
     }
 }
 
+// inline: SyncLock and its hard-link fallback are private to the engine
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -159,6 +159,7 @@ pub fn spawn_detached(exe: &Path, args: &[String]) -> std::io::Result<()> {
     command.spawn().map(drop)
 }
 
+// inline: decide, candidates and on_path are private pure helpers of the auto push
 #[cfg(test)]
 mod tests {
     use super::{candidates, decide, on_path, Auto, Config, Env, Path, State};

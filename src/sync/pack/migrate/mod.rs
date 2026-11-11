@@ -1,43 +1,17 @@
 //! `agr sync migrate`: moves the per-session gists of the old layout into packs.
 
 mod fetch;
-mod local;
 mod recognise;
 
-pub use local::{convert_file, convert_index};
+pub use crate::sync::store::legacy::{LegacyGist, LegacyRead, NoLegacy};
 use recognise::is_ours_v1;
-pub use recognise::{recognise, Kind, LegacyGist};
+pub use recognise::{recognise, Kind};
 
 use crate::sync::crypto::{Key, Meta};
 use crate::sync::pack::merge::View;
 use crate::sync::pack::repo::{Outcome, PushItem, Repo, RepoError};
 use crate::sync::store::{PackStore, StoreError};
-use std::io::Read;
 use std::path::Path;
-
-/// The read side of the old per-session layout, nothing else of it is needed.
-pub trait LegacyRead {
-    /// Every gist of the user with its files, all pages, no gist cap.
-    fn list_all(&self) -> Result<Vec<LegacyGist>, StoreError>;
-    /// Manifest token and blob reader of one gist.
-    fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn Read>), StoreError>;
-    fn delete(&self, id: &str) -> Result<(), StoreError>;
-}
-
-/// No old gists at all.
-pub struct NoLegacy;
-
-impl LegacyRead for NoLegacy {
-    fn list_all(&self) -> Result<Vec<LegacyGist>, StoreError> {
-        Ok(Vec::new())
-    }
-    fn pull(&self, _id: &str) -> Result<(Option<String>, Box<dyn Read>), StoreError> {
-        Err(StoreError::NotFound)
-    }
-    fn delete(&self, _id: &str) -> Result<(), StoreError> {
-        Err(StoreError::NotFound)
-    }
-}
 
 pub struct Env<'a> {
     pub legacy: &'a dyn LegacyRead,
@@ -50,6 +24,8 @@ pub struct Env<'a> {
     pub dir: &'a Path,
     /// Private directory for the sessions in flight.
     pub scratch: &'a Path,
+    /// Converts the local sync index in `dir` when it is v1, true when it was written.
+    pub convert_index: &'a dyn Fn(&Path) -> Result<bool, String>,
     /// Unix seconds from an injected clock.
     pub now: i64,
     /// Called before every delete, spaces them out.
@@ -284,7 +260,7 @@ fn verified_ids(after: &Repo, plan: &Plan, limited: bool, out: &mut Report) -> V
 pub fn run(env: &Env) -> Result<Report, MigrateError> {
     let plan = classify(env)?;
     let mut repo = open(env)?;
-    local::convert_file(env.dir).map_err(MigrateError::Local)?;
+    (env.convert_index)(env.dir).map_err(MigrateError::Local)?;
     let mut out = Report::default();
     for id in &plan.blockers {
         out.lines

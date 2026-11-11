@@ -6,14 +6,13 @@ use thiserror::Error;
 
 use super::key::{self, Imported, KeyError};
 use crate::config::SyncBackendKind;
-use crate::sync::backend::gist::ProgressSink;
-use crate::sync::backend::BackendError;
 use crate::sync::crypto::{export_phrase, import_phrase, Key, PhraseError};
-use crate::sync::engine::fail::backend_error;
 use crate::sync::pack::rules::pack_size;
 use crate::sync::store::dir::DirStore;
 use crate::sync::store::gist::GistStore;
+use crate::sync::store::gist::ProgressSink;
 use crate::sync::store::PackStore;
+use crate::sync::store::StoreError;
 use crate::Config;
 
 /// Whether a missing key may be created.
@@ -48,7 +47,7 @@ pub enum SetupError {
     #[error(transparent)]
     Key(#[from] KeyError),
     #[error(transparent)]
-    Backend(#[from] BackendError),
+    Backend(#[from] StoreError),
 }
 
 /// Hint line for the import step, shown with `NoKey` and `KeyOnRemote`.
@@ -72,42 +71,16 @@ pub fn resolve_key(
     if need == KeyNeed::Existing {
         return Err(SetupError::NoKey);
     }
-    let listing = store
-        .list()
-        .map_err(|e| SetupError::Backend(backend_error(e)))?;
+    let listing = store.list().map_err(SetupError::Backend)?;
     if !listing.packs.is_empty() || !listing.legacy.is_empty() {
         return Err(SetupError::KeyOnRemote);
     }
     Ok(KeyState::Fresh(Key::generate()))
 }
 
-/// One error line and an optional hint line per backend failure.
-pub fn explain(error: &BackendError) -> (String, Option<String>) {
-    match error {
-        BackendError::NotInstalled("gh") => (
-            "gh not found, the gist backend needs gh and git".into(),
-            Some("Install gh from https://cli.github.com, then run `gh auth login`".into()),
-        ),
-        BackendError::NotInstalled(tool) => (
-            format!("{tool} not found, the gist backend needs gh and git"),
-            Some(format!(
-                "Install {tool} and gh (https://cli.github.com), then run `gh auth login`"
-            )),
-        ),
-        BackendError::NotLoggedIn => (
-            "gh not logged in".into(),
-            Some("Run `gh auth login`".into()),
-        ),
-        BackendError::MissingScope => (
-            "the gh token has no gist scope".into(),
-            Some("Run `gh auth refresh -s gist`".into()),
-        ),
-        BackendError::RateLimited => (
-            "GitHub rate limit reached, sync stopped".into(),
-            Some("Please run again later".into()),
-        ),
-        other => (other.to_string(), None),
-    }
+/// One error line and an optional hint line per store failure, the texts are the store's.
+pub fn explain(error: &StoreError) -> (String, Option<String>) {
+    crate::sync::store::gist::explain(error)
 }
 
 /// The configured pack store, `None` when `backend = "off"`. `test_dir` (the binary reads it from
@@ -135,7 +108,7 @@ pub fn open_store(
 pub fn legacy_reader(test_dir: Option<&Path>) -> Box<dyn crate::sync::pack::migrate::LegacyRead> {
     match test_dir {
         Some(_) => Box::new(crate::sync::pack::migrate::NoLegacy),
-        None => Box::new(crate::sync::backend::gist::GistBackend::new()),
+        None => crate::sync::store::gist::legacy_reader(),
     }
 }
 

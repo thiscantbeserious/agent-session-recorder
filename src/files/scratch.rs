@@ -1,9 +1,7 @@
-//! Scratch clone directory of the gist backend, private and removed on drop.
+//! Private scratch directory, mode 0700 on unix, removed on drop.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-
-use crate::sync::backend::BackendError;
 
 static CLONE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -11,16 +9,14 @@ static CLONE_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct Scratch(pub PathBuf);
 
 impl Scratch {
-    pub fn create(base: &Path) -> Result<Self, BackendError> {
+    pub fn create(base: &Path) -> std::io::Result<Self> {
         let n = CLONE_COUNTER.fetch_add(1, Ordering::Relaxed);
         Self::at(&base.join(format!("agr-sync-{}-{n}", std::process::id())))
     }
 
     /// A private directory at exactly `dir`, an existing one is refused.
-    pub fn at(dir: &Path) -> Result<Self, BackendError> {
-        private_dir_builder()
-            .create(dir)
-            .map_err(|e| BackendError::Other(format!("temp dir: {e}")))?;
+    pub fn at(dir: &Path) -> std::io::Result<Self> {
+        private_dir_builder().create(dir)?;
         Ok(Self(dir.to_path_buf()))
     }
 

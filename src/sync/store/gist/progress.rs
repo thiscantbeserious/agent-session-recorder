@@ -1,13 +1,8 @@
-//! Percent of the `git push` and `git clone` progress lines, pure text parsing.
+//! Percent of the `git push` progress lines, pure text parsing.
 
 /// Percent of a `git push --progress` line like `Writing objects:  45% (9/20), 12.00 MiB | 3.00 MiB/s`.
 pub(crate) fn writing_percent(line: &str) -> Option<u8> {
     percent_after(line, "Writing objects:")
-}
-
-/// Percent of a `git clone --progress` line like `Receiving objects:  45% (9/20), 12.00 MiB | 3.00 MiB/s`.
-pub(crate) fn receiving_percent(line: &str) -> Option<u8> {
-    percent_after(line, "Receiving objects:")
 }
 
 fn percent_after(line: &str, label: &str) -> Option<u8> {
@@ -16,9 +11,10 @@ fn percent_after(line: &str, label: &str) -> Option<u8> {
     digits.parse::<u8>().ok().filter(|p| *p <= 100)
 }
 
+// inline: writing_percent is a crate-private pure parser
 #[cfg(test)]
 mod tests {
-    use super::{receiving_percent, writing_percent};
+    use super::writing_percent;
 
     /// Lines as `git push --progress` prints them, `\r` separated in real life.
     const PUSH_OUTPUT: [(&str, Option<u8>); 9] = [
@@ -60,28 +56,6 @@ mod tests {
             "remote: Writing objects: 45%",
         ] {
             assert_eq!(writing_percent(line), None, "{line}");
-        }
-    }
-
-    #[test]
-    fn receiving_percent_reads_real_git_clone_output() {
-        let want = [
-            ("Cloning into 'clone'...", None),
-            ("remote: Enumerating objects: 20, done.", None),
-            ("Receiving objects:   0% (1/20)", Some(0)),
-            (
-                "Receiving objects:  45% (9/20), 12.00 MiB | 3.00 MiB/s",
-                Some(45),
-            ),
-            (
-                "Receiving objects: 100% (20/20), 45.00 MiB | 3.00 MiB/s, done.",
-                Some(100),
-            ),
-            ("Resolving deltas: 100% (2/2), done.", None),
-            ("Writing objects: 45% (9/20)", None),
-        ];
-        for (line, pct) in want {
-            assert_eq!(receiving_percent(line), pct, "{line}");
         }
     }
 }

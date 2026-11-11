@@ -2,7 +2,7 @@
 
 use super::observe::Step;
 use super::plan::{Command, Decision, Local, Remote, SkipReason};
-use super::run::{BackendEngine, Item, Outcome, Report};
+use super::run::{Item, Outcome, Report};
 use super::scan::Row;
 use crate::StorageManager;
 
@@ -63,9 +63,6 @@ pub(super) fn not_found(name: String) -> Item {
         local_hash: None,
         remote_hash: None,
         remote_size: 0,
-        remote_id: None,
-        pending: false,
-        duplicates: Vec::new(),
     }
 }
 
@@ -170,18 +167,5 @@ pub(super) fn build_item(
         local_hash: hash_of(&row.input.local),
         remote_hash: remote_hash_of(&row.input.remote),
         remote_size: remote.unwrap_or(0),
-        remote_id: row.remote_id.clone(),
-        pending: row.pending,
-        duplicates: row.duplicates.clone(),
-    }
-}
-
-impl BackendEngine<'_> {
-    pub(super) fn started(&self, row: &Row, observer: &mut dyn FnMut(Step<'_>), pull: bool) {
-        announce(self.storage, row, observer, pull);
-    }
-
-    pub(super) fn item(&self, row: &Row, decision: Decision, outcome: Outcome) -> Item {
-        build_item(self.storage, row, decision, outcome)
     }
 }

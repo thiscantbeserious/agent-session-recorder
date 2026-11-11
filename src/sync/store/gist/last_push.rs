@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use super::index_cache::write_atomic;
 use super::GistStore;
-use crate::sync::backend::gist::runner::Runner;
+use crate::sync::store::gist::runner::Runner;
 
 /// GitHub recommends at most 6 pushes a minute per repository.
 const GAP: Duration = Duration::from_secs(10);

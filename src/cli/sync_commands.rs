@@ -92,7 +92,8 @@ gist until a prune, which is not part of sync yet.
 The local file is never touched. The delete applies to the newest version of the session at the
 time it runs, a version another machine pushed since the preview is deleted too. Patterns use * (any run) and ? (one character) against
 <agent>/<name> of the remote sessions. More than 10 matches ask to type the count.
-When nothing matches it prints Nothing to delete. and exits 0.
+A pattern that matches no remote session aborts with exit 1 and deletes nothing, also when another
+pattern matches. With --all on an empty remote it prints Nothing to delete. and exits 0.
 
 EXAMPLE:
     agr sync delete claude/a.cast.gz

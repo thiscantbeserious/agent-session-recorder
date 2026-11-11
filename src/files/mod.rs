@@ -5,6 +5,7 @@ pub mod codec;
 pub mod filename;
 pub mod lock;
 pub mod resolve;
+pub mod scratch;
 pub mod template;
 
 /// Extract the filename from a path as a string.

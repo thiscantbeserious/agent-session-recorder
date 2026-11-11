@@ -4,8 +4,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
-use crate::sync::backend::BackendError;
-
 /// The system clock is before 1970.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClockError;
@@ -13,12 +11,6 @@ pub struct ClockError;
 impl std::fmt::Display for ClockError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("the system clock is before 1970")
-    }
-}
-
-impl From<ClockError> for BackendError {
-    fn from(e: ClockError) -> Self {
-        Self::Other(e.to_string())
     }
 }
 
@@ -115,7 +107,7 @@ impl Clock for FakeClock {
 }
 
 /// Waits before a mutating call so two calls are at least `MIN_GAP` apart.
-/// There is no call budget, a real rate limit stops the run as `BackendError::RateLimited`.
+/// There is no call budget, a real rate limit stops the run as `StoreError::RateLimited`.
 pub(crate) struct Pacer {
     clock: Arc<dyn Clock>,
     last: Option<Duration>,
@@ -139,6 +131,7 @@ impl Pacer {
     }
 }
 
+// inline: secs_since_epoch is private and pure, the facade has no reason to export it
 #[cfg(test)]
 mod tests {
     use super::{secs_since_epoch, Arc, Duration, FakeClock, Pacer, SystemTime};

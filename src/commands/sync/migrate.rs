@@ -3,10 +3,11 @@
 use std::io;
 use std::path::PathBuf;
 
+use agr::files::scratch::Scratch;
 use agr::sync::confirm::{confirm_migrate, Confirm, Flags};
 use agr::sync::format::migrate_lines;
 use agr::sync::setup::{keep_writer, legacy_reader, KeyNeed};
-use agr::sync::{MigrateEnv, MigrateError, Scratch, SyncError, SyncLock};
+use agr::sync::{MigrateEnv, MigrateError, SyncError, SyncLock};
 
 use super::run::{abort, busy_text, prepare, say, Ctx};
 
@@ -29,7 +30,8 @@ fn attempt(ctx: &Ctx, yes: bool, tty: bool) -> Result<(), String> {
     let test_dir = std::env::var_os("AGR_SYNC_TEST_BACKEND_DIR").map(PathBuf::from);
     let legacy = legacy_reader(test_dir.as_deref());
     let name = format!("agr-migrate-{}", std::process::id());
-    let scratch = Scratch::at(&std::env::temp_dir().join(name)).map_err(|e| e.to_string())?;
+    let scratch =
+        Scratch::at(&std::env::temp_dir().join(name)).map_err(|e| format!("temp dir: {e}"))?;
     let env = MigrateEnv {
         legacy: legacy.as_ref(),
         store: ctx.store.as_ref(),
@@ -40,6 +42,7 @@ fn attempt(ctx: &Ctx, yes: bool, tty: bool) -> Result<(), String> {
         dir: &dir,
         scratch: &scratch.0,
         now: chrono::Utc::now().timestamp(),
+        convert_index: &agr::sync::convert_local_index,
         pace: &|| {},
     };
     let preview = agr::sync::migrate_preview(&env).map_err(describe)?;

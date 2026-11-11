@@ -306,6 +306,7 @@ fn drain<R: Read + Send + 'static>(
     Drain { bytes, eof, failed }
 }
 
+// inline: Lines is a private stall-timer line splitter
 #[cfg(test)]
 mod lines_tests {
     use super::Lines;
@@ -348,6 +349,7 @@ mod lines_tests {
     }
 }
 
+// inline: drain and finish are private reader-thread helpers
 #[cfg(test)]
 mod drain_tests {
     use super::{drain, finish};

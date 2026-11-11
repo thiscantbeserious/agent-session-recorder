@@ -7,7 +7,7 @@ use agr::sync::setup::{
     KeyNeed, KeyState, SetupError,
 };
 use agr::sync::testing::{key_bytes, MemoryStore, PackStore};
-use agr::sync::{BackendError, Key};
+use agr::sync::{Key, StoreError};
 use std::path::PathBuf;
 
 #[test]
@@ -111,18 +111,38 @@ fn loose_key_permissions_are_an_error() {
 
 #[test]
 fn explain_gives_message_and_hint() {
-    let (msg, hint) = explain(&BackendError::NotInstalled("gh"));
+    let (msg, hint) = explain(&StoreError::NotInstalled("gh"));
     assert!(msg.starts_with("gh not found"), "{msg}");
     assert!(hint.unwrap().contains("https://cli.github.com"));
-    let (_, hint) = explain(&BackendError::NotLoggedIn);
+    let (_, hint) = explain(&StoreError::NotLoggedIn);
     assert!(hint.unwrap().contains("gh auth login"));
-    let (_, hint) = explain(&BackendError::MissingScope);
+    let (_, hint) = explain(&StoreError::MissingScope);
     assert!(hint.unwrap().contains("gh auth refresh -s gist"));
-    let (msg, hint) = explain(&BackendError::RateLimited);
+    let (msg, hint) = explain(&StoreError::RateLimited);
     assert!(!msg.contains('\n') && msg.contains("rate limit"), "{msg}");
     assert_eq!(hint.as_deref(), Some("Please run again later"));
+    assert_eq!(explain(&StoreError::Other("x".into())), ("x".into(), None));
+}
+
+#[test]
+fn save_new_refuses_existing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sync.key");
+    key::save_new(&path, &Key::generate()).unwrap();
     assert_eq!(
-        explain(&BackendError::Other("x".into())),
-        ("x".into(), None)
+        key::save_new(&path, &Key::generate()),
+        Err(KeyError::Exists)
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn save_new_uses_mode_0600() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sync.key");
+    key::save_new(&path, &Key::generate()).unwrap();
+    assert!(path.exists());
+    let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o600);
 }

@@ -398,6 +398,19 @@ fn generate_markdown(output: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The hand-written intro of a command page, `None` only when the file does not exist.
+/// It lives in the repo, not in the output dir, so `-o other` still finds it.
+fn wiki_intro(name: &str) -> Result<Option<String>> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../docs/wiki-intro")
+        .join(format!("{name}.md"));
+    match fs::read_to_string(&path) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e).with_context(|| format!("Failed to read {}", path.display())),
+    }
+}
+
 /// Generate GitHub Wiki pages
 fn generate_wiki(output: &Path) -> Result<()> {
     let wiki_dir = output.join("wiki");
@@ -445,6 +458,12 @@ fn generate_wiki(output: &Path) -> Result<()> {
 
         if let Some(about) = subcommand.get_about() {
             page.push_str(&format!("{}\n\n", about));
+        }
+
+        // A hand-written intro in docs/wiki-intro/<name>.md survives regeneration.
+        if let Some(intro) = wiki_intro(name)? {
+            page.push_str(intro.trim_end());
+            page.push_str("\n\n");
         }
 
         page.push_str("## Usage\n\n");

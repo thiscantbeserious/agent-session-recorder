@@ -167,9 +167,6 @@ fn backend_line_counts_no_opaque_pack_rows() {
         local_hash: None,
         remote_hash: None,
         remote_size: 1,
-        remote_id: None,
-        pending: false,
-        duplicates: Vec::new(),
     };
     let report = Report {
         items: vec![row("a/x.cast.gz"), row("remote:abc")],

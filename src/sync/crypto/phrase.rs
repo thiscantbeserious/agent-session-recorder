@@ -62,6 +62,7 @@ pub(in crate::sync) fn import_phrase(phrase: &str) -> Result<Key, PhraseError> {
     Ok(Key(key.try_into().expect("split at KEY_LEN")))
 }
 
+// inline: export_phrase and import_phrase are sync-private and read the raw key bytes
 #[cfg(test)]
 mod tests {
     use super::{export_phrase, import_phrase, Key, PhraseError};
