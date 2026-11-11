@@ -27,10 +27,11 @@ fn the_queue_dir_is_ignored_by_listing_and_cleanup() {
 }
 
 mod packs {
+    use crate::helpers::pack_engine::TARGET;
     use crate::helpers::pack_engine::{node, write_v1_index, Node, CAST};
     use crate::helpers::pack_repo::{v1_desc, Legacy};
-    use agr::sync::testing::{queue, MemoryStore, Repo};
-    use agr::sync::{Event, Key, SyncError};
+    use agr::sync::testing::{queue, Listing, MemoryStore, PackStore, Repo, Segment, StoreError};
+    use agr::sync::{format, Event, Key, Outcome, SyncError};
 
     const NEEDS: &str = "run `agr sync migrate` first";
 
@@ -197,6 +198,174 @@ mod packs {
                 assert_eq!(repo.view().get(name).map(|m| m.gen), Some(1), "{name}");
             }
             assert!(queue::list(n.dir()).is_empty());
+        }
+    }
+
+    #[test]
+    fn drain_pushes_every_queued_session_and_empties_the_queue() {
+        let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+        let paths: Vec<String> = ["a", "b", "c"].iter().map(|x| queued(&n, x)).collect();
+        let report = n
+            .engine(&store, &key, "w1")
+            .drain_auto(&paths[0], &mut |_: &Event<'_>| {})
+            .unwrap();
+        assert_eq!(report.pushed, 3, "{:?}", report.items);
+        assert_eq!(
+            Repo::open(&store, &key, "r", TARGET, None)
+                .unwrap()
+                .view()
+                .iter()
+                .count(),
+            3
+        );
+        assert_eq!(queue::list(n.dir()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn drain_picks_up_an_entry_added_between_items() {
+        let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+        let first = queued(&n, "a");
+        queued(&n, "b");
+        let mut added = false;
+        let mut hook = |event: &Event<'_>| {
+            if matches!(event, Event::Finished { .. }) && !added {
+                added = true;
+                queued(&n, "late");
+            }
+        };
+        let report = n
+            .engine(&store, &key, "w1")
+            .drain_auto(&first, &mut hook)
+            .unwrap();
+        assert!(added);
+        assert_eq!(report.pushed, 3, "{:?}", report.items);
+        assert_eq!(
+            Repo::open(&store, &key, "r", TARGET, None)
+                .unwrap()
+                .view()
+                .iter()
+                .count(),
+            3
+        );
+        assert!(queue::list(n.dir()).is_empty());
+    }
+
+    /// Store whose second append fails with a plain error, the first one lands.
+    struct FailSecond<'a>(&'a MemoryStore, std::cell::Cell<usize>);
+
+    impl PackStore for FailSecond<'_> {
+        fn name(&self) -> &'static str {
+            "fail-second"
+        }
+        fn check(&self) -> Result<(), StoreError> {
+            self.0.check()
+        }
+        fn list(&self) -> Result<Listing, StoreError> {
+            self.0.list()
+        }
+        fn read_index(&self, id: &str) -> Result<String, StoreError> {
+            self.0.read_index(id)
+        }
+        fn create(&self, tag: &str, index: &str) -> Result<String, StoreError> {
+            self.0.create(tag, index)
+        }
+        fn append(
+            &self,
+            id: &str,
+            n: u64,
+            e: &str,
+            s: &[Segment],
+            i: &str,
+        ) -> Result<(), StoreError> {
+            self.1.set(self.1.get() + 1);
+            if self.1.get() == 2 {
+                return Err(StoreError::Unreachable("down on purpose".into()));
+            }
+            self.0.append(id, n, e, s, i)
+        }
+        fn read(
+            &self,
+            id: &str,
+            offset: u64,
+            len: u64,
+        ) -> Result<Box<dyn std::io::Read>, StoreError> {
+            self.0.read(id, offset, len)
+        }
+        fn delete(&self, id: &str) -> Result<(), StoreError> {
+            self.0.delete(id)
+        }
+    }
+
+    #[test]
+    fn a_failed_push_keeps_its_entry_and_the_others_go() {
+        let (n, mem, key) = (node(), MemoryStore::new(), Key::generate());
+        let old = queued(&n, "old");
+        let new = queued(&n, "new");
+        let store = FailSecond(&mem, std::cell::Cell::new(0));
+        // target 1 byte, every session gets its own pack and its own append
+        let engine = agr::sync::Engine::new(&store, &key, &n.storage, "w1", 1);
+        let report = engine.drain_auto(&new, &mut |_: &Event<'_>| {}).unwrap();
+        assert_eq!((report.pushed, report.failed), (1, 1), "{:?}", report.items);
+        let failed = report
+            .items
+            .iter()
+            .find(|i| matches!(i.outcome, Outcome::Failed(_)))
+            .map(|i| i.path.clone())
+            .unwrap();
+        assert!(failed == old || failed == new, "{failed}");
+        assert_eq!(queue::list(n.dir()), [failed]);
+    }
+
+    #[test]
+    fn status_shows_the_queued_count_compact_and_verbose() {
+        let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+        queued(&n, "a");
+        queued(&n, "b");
+        let report = n.engine(&store, &key, "w1").status(&[]).unwrap();
+        let compact = format::compact_status_lines(&report, "gist");
+        let full = format::status_lines(&report, "gist");
+        for lines in [compact, full] {
+            assert!(
+                lines.iter().any(|l| l == "2 queued for auto push"),
+                "{lines:?}"
+            );
+        }
+        let clean = node();
+        let report = clean.engine(&store, &key, "w1").status(&[]).unwrap();
+        let lines = format::compact_status_lines(&report, "gist");
+        assert!(!lines.iter().any(|l| l.contains("queued")), "{lines:?}");
+    }
+
+    /// Several recordings finish at once, each enqueues first and then runs the auto path, like
+    /// the real hook and child. Whoever loses the lock race just returns.
+    #[test]
+    fn concurrent_recordings_all_reach_the_remote_and_the_queue_ends_empty() {
+        for round in 0..40 {
+            let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+            let names: Vec<String> = (0..4)
+                .map(|i| {
+                    let file = format!("s{round}_{i}.cast.gz");
+                    n.session("claude", &file, &CAST.replace("secret", &file));
+                    format!("claude/{file}")
+                })
+                .collect();
+            std::thread::scope(|s| {
+                for name in &names {
+                    s.spawn(|| {
+                        queue::enqueue(n.dir(), name).unwrap();
+                        let result = n
+                            .engine(&store, &key, "w1")
+                            .drain_auto(name, &mut |_: &Event<'_>| {});
+                        assert!(
+                            matches!(result, Ok(_) | Err(SyncError::Busy(_))),
+                            "{result:?}"
+                        );
+                    });
+                }
+            });
+            let repo = Repo::open(&store, &key, "reader", TARGET, None).unwrap();
+            assert_eq!(repo.view().iter().count(), names.len(), "round {round}");
+            assert!(queue::list(n.dir()).is_empty(), "round {round}");
         }
     }
 
