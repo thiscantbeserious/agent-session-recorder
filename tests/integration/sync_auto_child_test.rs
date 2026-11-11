@@ -247,3 +247,15 @@ fn error_line_names_failures_conflicts_and_skips_on_one_line() {
     let err = error_line(&Err(SyncError::Failed("boom".into()))).unwrap();
     assert!(err.contains("boom"), "{err}");
 }
+
+#[test]
+fn unchecked_push_with_only_done_items_is_still_an_error_line() {
+    let r = Report {
+        items: vec![item(Outcome::Done(1), Decision::Push)],
+        unchecked: true,
+        warning: Some("pushed, could not check for forks".into()),
+        ..Report::default()
+    };
+    let line = error_line(&Ok(r)).expect("an unchecked run is an error");
+    assert!(line.contains("could not check for forks"), "{line}");
+}
