@@ -216,9 +216,10 @@ fn flush(repo: &mut Repo, batch: &mut Vec<PushItem>, out: &mut Report) -> Result
     if batch.is_empty() {
         return Ok(());
     }
-    let pushed = repo
-        .push_batch(batch)
-        .map_err(|e| MigrateError::Store(e.error))?;
+    let (pushed, failure) = match repo.push_batch(batch) {
+        Ok(report) => (report, None),
+        Err(e) => (e.pushed, Some(e.error)),
+    };
     let landed = pushed
         .items
         .iter()
@@ -227,7 +228,7 @@ fn flush(repo: &mut Repo, batch: &mut Vec<PushItem>, out: &mut Report) -> Result
     batch.drain(..).for_each(|i| {
         let _ = std::fs::remove_file(i.file);
     });
-    Ok(())
+    failure.map_or(Ok(()), |e| Err(MigrateError::Store(e)))
 }
 
 /// Deletes in order, pacing each, a rate limit ends the list and counts what is left. A hard
@@ -292,6 +293,8 @@ pub fn run(env: &Env) -> Result<Report, MigrateError> {
     }
     let limited = match move_all(env, &plan, &mut repo, &mut out) {
         Ok(limited) => limited,
+        // unverified gists count as left below and only verified ones are deleted
+        Err(MigrateError::Store(StoreError::RateLimited)) => true,
         Err(MigrateError::Store(e)) => {
             out.failed = Some(format!("appending to the packs failed: {e}"));
             return Ok(out);
