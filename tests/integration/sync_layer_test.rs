@@ -296,3 +296,13 @@ fn violations_flags_legacy_outside_pack_migrate() {
     assert!(violations("pack/migrate/x.rs", "use crate::sync::store::legacy::X;").is_empty());
     assert!(violations("store/x.rs", "use crate::sync::store::legacy::X;").is_empty());
 }
+
+#[test]
+fn violations_flags_gist_literal_outside_gist_store() {
+    let v = violations("engine/x.rs", "let n = \"gist\";");
+    assert_eq!(v.len(), 1, "{v:?}");
+    assert!(violations("store/gist/x.rs", "let n = \"Gist\";").is_empty());
+    assert!(violations("store/legacy/x.rs", "let n = \"gist\";").is_empty());
+    let test_only = "let n = 1;\n#[cfg(test)]\nmod t { const N: &str = \"gist\"; }";
+    assert!(violations("engine/x.rs", test_only).is_empty());
+}
