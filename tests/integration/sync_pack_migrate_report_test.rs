@@ -86,3 +86,17 @@ fn an_append_error_still_returns_the_report_with_the_kept_lines() {
     assert!(report.lines.iter().any(named), "{:?}", report.lines);
     assert_eq!(rig.legacy.deletes().len(), 0);
 }
+
+#[test]
+fn an_unreachable_pull_stops_the_run_with_work_left_and_never_advises_a_delete() {
+    let rig = Rig::new();
+    let id = rig.legacy.v1(&rig.key, (A, 3), b"body", None);
+    rig.legacy.pull_unreachable(true);
+    let store = Listed(&rig.mem, &rig.legacy);
+    let report = migrate_run(&rig.env(&store)).unwrap();
+    let advised = |l: &String| l.contains(&format!("gh gist delete {id}"));
+    assert!(!report.lines.iter().any(advised), "{:?}", report.lines);
+    assert!(report.left > 0, "{report:?}");
+    assert!(!report.kept.contains(&id), "{report:?}");
+    assert_eq!((report.deleted, rig.legacy.deletes().len()), (0, 0));
+}

@@ -20,6 +20,8 @@ pub struct LegacyFake {
     delete_budget: Mutex<Option<usize>>,
     /// Deletes allowed before a hard error, `None` is never.
     delete_fail_after: Mutex<Option<usize>>,
+    /// Every `pull` fails as unreachable while set.
+    pull_unreachable: Mutex<bool>,
 }
 
 pub const OLD: i64 = 5 * 3600;
@@ -143,6 +145,10 @@ impl LegacyFake {
         *self.delete_budget.lock().unwrap() = n;
     }
 
+    pub fn pull_unreachable(&self, on: bool) {
+        *self.pull_unreachable.lock().unwrap() = on;
+    }
+
     pub fn fail_deletes_after(&self, n: usize) {
         *self.delete_fail_after.lock().unwrap() = Some(n);
     }
@@ -173,6 +179,9 @@ impl LegacyRead for LegacyFake {
     }
 
     fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn Read>), StoreError> {
+        if *self.pull_unreachable.lock().unwrap() {
+            return Err(StoreError::Unreachable("network down".into()));
+        }
         let all = self.gists.lock().unwrap();
         let g = all
             .iter()
