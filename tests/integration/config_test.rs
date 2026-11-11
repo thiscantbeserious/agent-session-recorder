@@ -413,3 +413,32 @@ mod writer_id_race {
         assert!(got.iter().all(|id| *id == stored), "{got:?} vs {stored}");
     }
 }
+
+mod auto_error_race {
+    use agr::config::state::State;
+
+    #[test]
+    fn storing_the_auto_error_never_drops_a_writer_id_kept_meanwhile() {
+        for round in 0..40 {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("state.toml");
+            let id = std::thread::scope(|s| {
+                let err = s.spawn(|| State::store_auto_error(&path, "boom".into()).unwrap());
+                let keep = s.spawn(|| State::keep_writer_id_at(&path, "w-first").unwrap());
+                err.join().unwrap();
+                keep.join().unwrap()
+            });
+            let stored = State::load_from(&path);
+            assert_eq!(
+                stored.writer_id.as_deref(),
+                Some(id.as_str()),
+                "round {round}"
+            );
+            assert_eq!(
+                stored.last_auto_push_error.as_deref(),
+                Some("boom"),
+                "round {round}"
+            );
+        }
+    }
+}
