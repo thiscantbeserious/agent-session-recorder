@@ -95,7 +95,9 @@ pub(super) fn refresh(storage: &StorageManager, row: &Row, index: &mut Index) ->
     let dir = storage.storage_dir();
     match (&row.input.local, &row.input.remote) {
         (Local::Hash(hash), Remote::Hash(_)) => {
-            record_synced(index, &dir, &row.path, (hash, row.gen));
+            // a rolled back remote never lowers the high-water mark
+            let known = index.entries.get(&row.path).map_or(0, |e| e.gen);
+            record_synced(index, &dir, &row.path, (hash, row.gen.max(known)));
             true
         }
         (Local::Absent, Remote::Deleted { .. }) => index.entries.remove(&row.path).is_some(),
