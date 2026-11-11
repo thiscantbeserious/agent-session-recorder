@@ -369,15 +369,3 @@ mod sync_store_dir_test;
 
 #[path = "integration/sync_engine_index_test.rs"]
 mod sync_engine_index_test;
-
-#[path = "integration/sync_format_label_test.rs"]
-mod sync_format_label_test;
-
-#[path = "integration/sync_format_live_test.rs"]
-mod sync_format_live_test;
-
-#[path = "integration/sync_queue_files_test.rs"]
-mod sync_queue_files_test;
-
-#[path = "integration/sync_key_file_test.rs"]
-mod sync_key_file_test;

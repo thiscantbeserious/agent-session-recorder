@@ -3,8 +3,8 @@
 use crate::helpers::format_items::{item, report, sync};
 use agr::sync::format::{
     compact_delete_preview_lines, compact_preview_lines, compact_status_lines,
-    compact_summary_lines, delete_preview_lines, preview_lines, problem_lines, status_lines,
-    summary_lines,
+    compact_summary_lines, delete_preview_lines, label, live_head, preview_lines, problem_lines,
+    progress_line, status_lines, summary_lines, LiveLine, LoadLine,
 };
 use agr::sync::{Decision, Item, Outcome, Report, SkipReason};
 
@@ -190,4 +190,208 @@ fn compact_delete_preview_swaps_the_paths_for_the_hint() {
     assert!(delete_preview_lines(&r)
         .join("\n")
         .contains("  a/x.cast.gz"));
+}
+
+#[test]
+fn labels_cover_every_state() {
+    let mut local_only = item("a/1", Decision::Push, Outcome::Planned);
+    local_only.on_remote = false;
+    let mut remote_only = item("a/2", Decision::Pull, Outcome::Planned);
+    remote_only.on_local = false;
+    let cases = [
+        (item("a/3", sync(), Outcome::Nothing), "in sync"),
+        (
+            item("a/4", Decision::Push, Outcome::Planned),
+            "local ahead (push)",
+        ),
+        (local_only, "local only (push)"),
+        (
+            item("a/5", Decision::Pull, Outcome::Planned),
+            "remote ahead (pull)",
+        ),
+        (remote_only, "remote only (pull)"),
+        (
+            item("a/6", Decision::Conflict, Outcome::Nothing),
+            "conflict",
+        ),
+        (
+            item("a/7", Decision::Skip(SkipReason::Plain), Outcome::Nothing),
+            "skipped",
+        ),
+        (item("a/8", Decision::OtherKey, Outcome::Nothing), "skipped"),
+    ];
+    for (item, want) in cases {
+        assert_eq!(label(&item), want, "{}", item.path);
+    }
+}
+
+#[test]
+fn status_shows_backend_sessions_and_totals() {
+    let r = report(vec![
+        item("claude/a.cast.gz", sync(), Outcome::Nothing),
+        item("claude/b.cast.gz", Decision::Push, Outcome::Planned),
+        item(
+            "claude/c.cast.gz",
+            Decision::Skip(SkipReason::Plain),
+            Outcome::Skipped("plain .cast, run `agr compress` first".into()),
+        ),
+    ]);
+    let text = status_lines(&r, "gist").join("\n");
+    assert!(
+        text.contains("Backend: gist, 3 remote session(s)"),
+        "{text}"
+    );
+    assert!(text.contains("in sync"), "{text}");
+    assert!(text.contains("claude/b.cast.gz"), "{text}");
+    assert!(text.contains("local ahead (push)"), "{text}");
+    assert!(text.contains("2 KiB"), "{text}");
+    assert!(
+        text.contains("plain .cast, run `agr compress` first"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Totals: 1 in sync, 1 local ahead (push), 1 skipped"),
+        "{text}"
+    );
+}
+
+#[test]
+fn status_of_nothing_says_so() {
+    let text = status_lines(&Report::default(), "gist").join("\n");
+    assert!(
+        text.contains("Backend: gist, 0 remote session(s)"),
+        "{text}"
+    );
+    assert!(text.contains("No sessions"), "{text}");
+}
+
+#[test]
+fn progress_line_covers_done_skipped_and_failed() {
+    let p = "claude/x.cast.gz";
+    let done = item(p, Decision::Push, Outcome::Done(12 * 1024 * 1024));
+    let skip = item(
+        p,
+        Decision::Conflict,
+        Outcome::Skipped("conflict, use --overwrite".into()),
+    );
+    let fail = item(p, Decision::Push, Outcome::Failed("upload broke".into()));
+    let gone = item(p, Decision::Push, Outcome::Done(0));
+    let got = [
+        progress_line("pushed", &done, 3, 40),
+        progress_line("pulled", &done, 1, 2),
+        progress_line("deleted", &gone, 2, 2),
+        progress_line("pushed", &skip, 4, 40),
+        progress_line("pushed", &fail, 5, 40),
+    ];
+    assert_eq!(
+        got,
+        [
+            "[3/40] pushed claude/x.cast.gz (12 MiB)",
+            "[1/2] pulled claude/x.cast.gz (12 MiB)",
+            "[2/2] deleted claude/x.cast.gz",
+            "[4/40] skipped claude/x.cast.gz: conflict, use --overwrite",
+            "[5/40] failed claude/x.cast.gz: upload broke",
+        ]
+    );
+}
+
+#[test]
+fn head_names_index_path_and_size() {
+    assert_eq!(
+        live_head("claude/x.cast.gz", 49_700_000, 12, 721),
+        "[12/721] claude/x.cast.gz 47.40 MiB"
+    );
+}
+
+#[test]
+fn start_shows_zero_and_the_percent_redraws_in_place() {
+    let mut live = LiveLine::default();
+    let head = "[12/721] claude/x.cast.gz 47.40 MiB";
+    assert_eq!(
+        live.start("uploading", head),
+        format!("\r{head}, uploading 0%")
+    );
+    assert_eq!(
+        live.percent(45).unwrap(),
+        format!("\r{head}, uploading 45%")
+    );
+}
+
+#[test]
+fn an_unchanged_percent_draws_nothing() {
+    let mut live = LiveLine::default();
+    live.start("uploading", "[1/2] a 1 B");
+    assert!(live.percent(0).is_none());
+    assert!(live.percent(7).is_some());
+    assert!(live.percent(7).is_none());
+}
+
+#[test]
+fn a_percent_without_a_running_session_draws_nothing() {
+    assert!(LiveLine::default().percent(50).is_none());
+}
+
+#[test]
+fn finish_pads_over_the_live_text_and_ends_the_line() {
+    let mut live = LiveLine::default();
+    let head = "[1/2] claude/x.cast.gz 1 MiB";
+    live.start("uploading", head);
+    live.percent(100);
+    let live_width = format!("{head}, uploading 100%").chars().count();
+    let done = "[1/2] pushed claude/x.cast.gz (1 MiB)";
+    let out = live.finish(done);
+    assert_eq!(
+        out,
+        format!(
+            "\r{done}{}\n",
+            " ".repeat(live_width.saturating_sub(done.chars().count()))
+        )
+    );
+    assert!(live.clear().is_none());
+}
+
+#[test]
+fn finish_without_a_live_line_is_a_plain_line() {
+    assert_eq!(
+        LiveLine::default().finish("[1/1] skipped a"),
+        "[1/1] skipped a\n"
+    );
+}
+
+#[test]
+fn clear_wipes_a_live_line_and_never_contains_escape_codes() {
+    let mut live = LiveLine::default();
+    let shown = live.start("downloading", "[1/1] a 1 B");
+    let wipe = live.clear().unwrap();
+    assert!(wipe.starts_with('\r') && wipe.ends_with('\r'), "{wipe:?}");
+    assert_eq!(wipe.trim_matches('\r').trim(), "");
+    assert!(!shown.contains('\u{1b}') && !wipe.contains('\u{1b}'));
+    assert!(live.clear().is_none());
+}
+
+#[test]
+fn load_line_names_listing_and_the_scan_count() {
+    let mut load = LoadLine::default();
+    assert_eq!(load.listing(), "\rListing remote sessions...");
+    assert_eq!(load.scanning(312, 727), "\rScanning local sessions 312/727");
+}
+
+#[test]
+fn load_line_pads_a_shorter_redraw_over_the_old_text() {
+    let mut load = LoadLine::default();
+    load.scanning(10, 727);
+    let short = load.scanning(9, 9);
+    assert_eq!(short.trim_start_matches('\r').chars().count(), 30);
+}
+
+#[test]
+fn load_line_clear_returns_the_full_width_and_never_has_escape_codes() {
+    let mut load = LoadLine::default();
+    assert!(load.clear().is_none());
+    let shown = load.scanning(312, 727);
+    let wipe = load.clear().unwrap();
+    let width = shown.trim_start_matches('\r').chars().count();
+    assert_eq!(wipe, format!("\r{}\r", " ".repeat(width)));
+    assert!(!shown.contains('\u{1b}') && !wipe.contains('\u{1b}'));
+    assert!(load.clear().is_none());
 }
