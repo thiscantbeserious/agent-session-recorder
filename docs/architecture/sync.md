@@ -128,7 +128,7 @@ Legend: only Push and Pull act, everything else is reported, `last` is the hash 
 - **5.2 Cached clone:** the gist store keeps one clone of the own open pack in the user cache dir, deleted when the pack is sealed. Reads never need a clone, they use the `raw_url` of a part with a `Range` header, so pulling one small session costs at most one part.
 - **5.3 Index cache:** every index read is kept in `index-cache.json` in the cache dir, keyed by gist id and the `updated_at` of the listing. Sealed packs never change, as such only open packs that moved and new ids cost a call.
 - **5.4 Pull:** the session range is read and opened frame by frame into a hidden temp file, then hash and size have to equal the index entry. Only then an existing file is copied to its hidden `.bak` and the temp is renamed into place.
-- **5.5 Delete:** `agr sync delete` matches the patterns against `<agent>/<name>` of the merged remote view, previews, asks, and appends tombstones (`deleted: true` at gen + 1) to the open pack, all matches in as few appends as the index cap allows. Tombstones are kept forever, so a machine with an old local index never pushes a deleted session back. The bytes of a deleted session are dead data until a prune.
+- **5.5 Delete:** `agr sync delete` matches the patterns against `<agent>/<name>` of the merged remote view, previews, asks, and appends tombstones (`deleted: true` at gen + 1) to the open pack, all matches in as few appends as the index cap allows. Tombstones are kept forever, so a machine with an old local index never pushes a deleted session back. The bytes of a deleted session are dead data, nothing frees it.
 - **5.6 Migrate:** `agr sync migrate` moves the old per-session gists into packs with their gens kept, and deletes an old gist only after a fresh read of the indexes shows its session. Empty `agr:pending` stubs older than one hour are deleted directly. Gists of another key or with foreign files are listed and never touched. Every other sync command refuses with "run `agr sync migrate` first" while a gist of the old layout that opens with our key exists.
 
 ```mermaid
@@ -182,7 +182,7 @@ Legend: the header is 24 bytes, every frame is ciphertext plus a 16 byte tag, on
   - an auto push part shows roughly the size of one recording and its commit time shows when it was pushed
 - **7.2 Not visible:** session names, agents, which machine wrote a pack, how many sessions sit in a part, hashes, gens, the sealed flag and the content.
 - **7.3 Commit identity:** author and committer are forced to `agr` with `agr@localhost` and UTC dates, through `-c user.*` and the `GIT_AUTHOR_*` and `GIT_COMMITTER_*` env vars, and the user's global git hooks are pointed at an empty path.
-- **7.4 History stays:** a gist keeps its git history, as such old index versions and every part stay readable as ciphertext to anyone with the link. If the key is compromised, deleting the gists is the only remedy.
+- **7.4 History stays:** a gist keeps its git history, as such old index versions and every part stay readable as ciphertext to anyone with the link. If the key is compromised, deleting the gists does not protect ciphertext that someone already copied with the compromised key. The remedy is to keep the local sessions, delete the old gists, let the next push create a new key on the empty remote and encrypt the sessions anew, copies made earlier stay readable with the old key.
 
 ## 8. Local state
 

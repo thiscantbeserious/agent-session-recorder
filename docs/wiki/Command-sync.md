@@ -4,7 +4,7 @@ Sync encrypted sessions to a remote (secret gists)
 
 ## 1. Before you start
 
-**Purpose**: copy your compressed sessions to a second place so another machine can pull them. We need `gh` and `git` on the PATH and `gh auth login` with the `gist` scope. Sessions are encrypted on your machine, how it works inside is in [docs/architecture/sync.md](../architecture/sync.md).
+**Purpose**: copy your compressed sessions to a second place so another machine can pull them. We need `gh` and `git` on the PATH and `gh auth login` with the `gist` scope. Sessions are encrypted on your machine, how it works inside is in [docs/architecture/sync.md](https://github.com/thiscantbeserious/agent-session-recorder/blob/main/docs/architecture/sync.md).
 
 **1.1 Migrate first**: if you synced with an older version (one gist per session), run `agr sync migrate` before anything else. Push, pull, delete and the auto push child refuse with "Run `agr sync migrate` first." until it has finished, and status prints the same hint.
 
@@ -16,6 +16,8 @@ agr sync migrate --yes    # skip the question
 The first run prints `N sessions to move (size), M already moved, K empty stubs to delete, L not ours (kept)` and asks `Move these sessions into packs and delete the old gists? Local files stay. [y/N]`. Without a terminal it needs `--yes`. An old gist is deleted only after the pack index shows its session, local files are never touched. Re-running is safe.
 
 ## 2. Push, pull and status
+
+A second machine needs the original sync key. **Losing every copy of it makes the encrypted remote sessions unrecoverable.** Right after the first push run `agr sync key export` and store the printed recovery phrase (`agr1-XXXXX-...`) somewhere safe, outside the machine. On the second machine run `agr sync key import`, paste the phrase on stdin, and then pull.
 
 ```bash
 agr sync status                  # summary per category, read only
@@ -44,7 +46,7 @@ agr sync delete --all --dry-run
 - **More than 10 matches**: a terminal always asks you to type the count, also with `--yes` and `--force`.
 - **`--force`**: only lifts the abort when there is no terminal, without it more than 10 deletes without a terminal stop.
 
-Deleted sessions become tombstones, the bytes are freed later.
+A delete appends a tombstone. The encrypted bytes stay in the pack gists and in their git history, nothing frees them, so treat a deleted session as still held remotely (as ciphertext).
 
 ## 4. Fork and `--overwrite`
 
@@ -124,7 +126,8 @@ gist until a prune, which is not part of sync yet.
 The local file is never touched. The delete applies to the newest version of the session at the
 time it runs, a version another machine pushed since the preview is deleted too. Patterns use * (any run) and ? (one character) against
 <agent>/<name> of the remote sessions. More than 10 matches ask to type the count.
-When nothing matches it prints Nothing to delete. and exits 0.
+A pattern that matches no remote session aborts with exit 1 and deletes nothing, also when another
+pattern matches. With --all on an empty remote it prints Nothing to delete. and exits 0.
 
 EXAMPLE:
     agr sync delete claude/a.cast.gz

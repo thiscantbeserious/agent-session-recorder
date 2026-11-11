@@ -71,7 +71,7 @@ A session that was deleted from the remote (by `agr sync delete` on another mach
 
 ## 8. The key and what is stored where
 
-Secret gists are not listed anywhere, but **anyone who has the link can read them**, and recordings can hold secrets you typed in the terminal. That is why agr encrypts every session before it uploads.
+Secret gists are unlisted to other users (you still see them on your own gist page), but **anyone who has the link can read them**, and recordings can hold secrets you typed in the terminal. That is why agr encrypts every session before it uploads.
 
 - **On the remote**: ciphertext in pack gists, a description `agr:v2 <random id>`, file names and sizes, and commit times (UTC). Anyone with the link can see how many packs you have and, as the size of the `index` file per revision grows, roughly how many sessions each append added. They cannot see session content, session names or the agent.
 - **`~/.config/agr/sync.key`**: your key, mode 0600, created by the first push only when the remote has no agr packs and no old agr gists. If it has either, agr stops and asks you to import the key of your other machine.
@@ -91,7 +91,7 @@ agr sync key import             # paste the phrase on stdin, an argument also wo
 agr sync pull
 ```
 
-`key import` refuses to replace a different existing key unless you pass `--force`. A gist keeps its git history, as such if the key is compromised, deleting the packs is the only remedy.
+`key import` refuses to replace a different existing key unless you pass `--force`. A gist keeps its git history, as such deleting the packs does not protect ciphertext that someone already copied. If the key is compromised, keep your local sessions, delete the old gists on GitHub yourself, move `~/.config/agr/sync.key` away and push again, the empty remote makes agr create a new key and encrypt the sessions anew. Back up the new key and import it on your other machines. Ciphertext copied earlier stays readable with the old key.
 
 ## 9. Auto push
 
@@ -101,5 +101,5 @@ Once you set `auto_push = true`, a finished recording is pushed in the backgroun
 
 - GitHub lists at most 3000 gists, with that many sync aborts instead of guessing which packs exist.
 - Pushes are paced and stop as soon as GitHub reports a rate limit, the first sync of many sessions may need several runs.
-- A rename leaves the old name on your other machines until you run `agr sync delete` for it there.
+- A rename leaves the old name on the remote and on your other machines. `agr sync delete` removes the old remote entry only, so remove the old local file on each other machine yourself.
 - A machine that lost its `.agr-sync.json` has no history to compare with, as such it cannot detect a rollback that happened before.
