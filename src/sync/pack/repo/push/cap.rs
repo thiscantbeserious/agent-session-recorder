@@ -36,6 +36,7 @@ pub(super) fn take_within(key: &Key, idx: &Index, costs: &[usize]) -> Result<usi
     Ok(costs.len())
 }
 
+// inline: the cost functions are private to the push and need its staged batch types
 #[cfg(test)]
 mod tests {
     use super::*;

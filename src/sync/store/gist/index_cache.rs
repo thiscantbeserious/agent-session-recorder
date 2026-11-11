@@ -95,6 +95,7 @@ impl IndexCache {
     }
 }
 
+// inline: IndexCache and its temp and mode helpers are private to the gist store
 #[cfg(test)]
 mod tests {
     use super::{temp_path, Entry, IndexCache};

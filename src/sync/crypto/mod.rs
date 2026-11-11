@@ -99,6 +99,7 @@ pub(in crate::sync) fn sha256_reader(
     Ok((HEXLOWER.encode(&hasher.finalize()), size))
 }
 
+// inline: random_id_base32 and sha256_reader are private to crypto, Key bytes stay off the public API
 #[cfg(test)]
 mod tests {
     use super::{sha256_hex, sha256_reader, Key};

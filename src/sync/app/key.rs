@@ -135,6 +135,7 @@ pub(super) fn import(path: &Path, key: &Key, force: bool) -> Result<Imported, Ke
     Ok(Imported::Replaced)
 }
 
+// inline: load and import are private to the app layer, the facade has no reason to export them
 #[cfg(test)]
 mod tests {
     use super::{import, load, save_new, Imported, Key, KeyError, Path};
