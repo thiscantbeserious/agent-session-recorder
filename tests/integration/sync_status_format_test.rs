@@ -101,8 +101,9 @@ fn dead_share(dead: usize, kept: usize) -> String {
 #[test]
 fn prune_hint_at_21_percent_dead_not_at_19() {
     let (out21, out19) = (dead_share(4200, 15_800), dead_share(3800, 16_200));
-    assert!(out21.contains("agr sync prune"), "{out21}");
-    assert!(!out19.contains("agr sync prune"), "{out19}");
+    assert!(out21.contains("dead data"), "{out21}");
+    assert!(!out21.contains("agr sync prune"), "{out21}");
+    assert!(!out19.contains("dead data"), "{out19}");
 }
 
 #[test]
