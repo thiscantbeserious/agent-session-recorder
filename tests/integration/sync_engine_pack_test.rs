@@ -506,3 +506,18 @@ fn a_rolled_back_remote_with_the_same_content_never_lowers_the_indexed_gen() {
     let report = n.engine(&newer, &key, "w1").pull(&opts()).unwrap();
     assert_eq!(report.refused, [A], "{:?}", report.items);
 }
+
+#[test]
+fn an_in_sync_session_without_an_index_entry_gets_a_baseline_so_a_later_edit_pushes() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    let other = node();
+    other.session("claude", "a.cast.gz", CAST);
+    other.engine(&store, &key, "w2").push(&opts()).unwrap();
+    let first = n.engine(&store, &key, "w1").pull(&opts()).unwrap();
+    assert!(index_of(&n).entries.contains_key(A), "{:?}", first.items);
+    n.session("claude", "a.cast.gz", &CAST.replace("secret", "edited"));
+    let report = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(report.pushed, 1, "{:?}", report.items);
+    assert_eq!(report.conflicts, 0);
+}
