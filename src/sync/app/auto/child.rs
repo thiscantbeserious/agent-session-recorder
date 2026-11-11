@@ -12,9 +12,15 @@ pub fn error_line(result: &Result<Report, SyncError>) -> Option<String> {
         Err(e) => return Some(format!("auto push failed: {e}")),
         Ok(report) => report,
     };
-    let item = report.items.iter().find(|i| {
+    let found = report.items.iter().find(|i| {
         matches!(i.outcome, Outcome::Failed(_)) || matches!(i.outcome, Outcome::Skipped(_))
-    })?;
+    });
+    let Some(item) = found else {
+        let warning = report.warning.as_deref().unwrap_or("unchecked");
+        return report
+            .unchecked
+            .then(|| format!("auto push could not verify: {warning}"));
+    };
     let (Outcome::Failed(why) | Outcome::Skipped(why)) = &item.outcome else {
         return None;
     };
