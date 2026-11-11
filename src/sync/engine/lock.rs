@@ -15,13 +15,8 @@ impl SyncLock {
     /// Take the lock, `Busy` when a live process holds it.
     pub fn acquire(storage_dir: &Path) -> Result<Self, SyncError> {
         let path = storage_dir.join(LOCK_FILE);
-        if create(&path)? {
+        if !wait_for_holder(&path)? {
             return Ok(Self(path));
-        }
-        match holder(&path) {
-            Holder::Gone => return Self::acquire(storage_dir),
-            Holder::Alive => return Err(SyncError::Busy),
-            Holder::Dead => {}
         }
         // ponytail: two runs can both see a stale holder, one removes the other's fresh lock
         // between our check and our remove. Window is microseconds and needs a dead pid
@@ -33,6 +28,26 @@ impl SyncLock {
         Err(SyncError::Busy)
     }
 }
+
+/// Tries to create the lock, a lock that is released between our failed create and our read is
+/// tried again `RETRIES` times. `Ok(false)` when the lock is ours, `Ok(true)` when the holder
+/// is dead (stale), `Busy` when it is alive or keeps appearing and vanishing.
+fn wait_for_holder(path: &Path) -> Result<bool, SyncError> {
+    for _ in 0..RETRIES {
+        if create(path)? {
+            return Ok(false);
+        }
+        match holder(path) {
+            Holder::Gone => {}
+            Holder::Alive => break,
+            Holder::Dead => return Ok(true),
+        }
+    }
+    Err(SyncError::Busy)
+}
+
+/// Create attempts while the holder keeps vanishing.
+const RETRIES: usize = 5;
 
 impl Drop for SyncLock {
     fn drop(&mut self) {
