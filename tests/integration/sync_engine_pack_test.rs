@@ -44,8 +44,12 @@ fn overwrite_with_the_fork_absent_locally_pushes_the_others() {
     assert_eq!(report.failed, 0, "{:?}", report.items);
     assert_eq!(report.pushed, 1, "{:?}", report.items);
     let (at, forks) = merged(&store, &key, X);
-    assert_eq!(at, None, "the absent fork is not pushed");
-    assert!(forks.is_empty() || forks == [X.to_string()], "{forks:?}");
+    assert_eq!(
+        at.map(|(gen, _)| gen),
+        Some(4),
+        "the absent fork is not pushed"
+    );
+    assert_eq!(forks, [X.to_string()], "it stays a fork");
 }
 
 #[test]
