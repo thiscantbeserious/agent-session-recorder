@@ -155,6 +155,24 @@ fn differs(view: &View, m: &Meta) -> bool {
     view.get(&m.path).is_some_and(|e| e.gen >= m.gen) && !moved(view, m)
 }
 
+/// Plain sessions waiting in the scratch dir for the next append.
+#[derive(Default)]
+struct Waiting {
+    items: Vec<PushItem>,
+    bytes: u64,
+}
+
+impl Waiting {
+    fn add(&mut self, meta: &Meta, file: std::path::PathBuf) {
+        self.bytes += meta.size;
+        self.items.push(PushItem {
+            path: meta.path.clone(),
+            gen: meta.gen,
+            file,
+        });
+    }
+}
+
 /// Reads every session the view does not hold yet and appends it with its own gen.
 /// Returns true when GitHub asked to wait.
 fn move_all(
@@ -163,39 +181,29 @@ fn move_all(
     repo: &mut Repo,
     out: &mut Report,
 ) -> Result<bool, MigrateError> {
-    let (mut batch, mut bytes) = (Vec::new(), 0);
-    let mut limited = false;
-    let todo: Vec<_> = plan
-        .ours
-        .iter()
+    let mut waiting = Waiting::default();
+    let todo: Vec<_> = (plan.ours.iter())
         .filter(|(_, m)| !moved(repo.view(), m))
         .collect();
     for (g, meta) in todo {
         match fetch::fetch(env, g, meta) {
-            fetch::Fetched::Ready(file) => {
-                bytes += meta.size;
-                batch.push(PushItem {
-                    path: meta.path.clone(),
-                    gen: meta.gen,
-                    file,
-                });
-            }
+            fetch::Fetched::Ready(file) => waiting.add(meta, file),
             fetch::Fetched::Kept(why) => {
                 out.lines.push(kept_line(&g.id, &why));
                 out.kept.push(g.id.clone());
             }
             fetch::Fetched::Limit => {
-                limited = true;
-                break;
+                flush(repo, &mut waiting.items, out)?;
+                return Ok(true);
             }
         }
-        if bytes >= BATCH_BYTES {
-            flush(repo, &mut batch, out)?;
-            bytes = 0;
+        if waiting.bytes >= BATCH_BYTES {
+            flush(repo, &mut waiting.items, out)?;
+            waiting.bytes = 0;
         }
     }
-    flush(repo, &mut batch, out)?;
-    Ok(limited)
+    flush(repo, &mut waiting.items, out)?;
+    Ok(false)
 }
 
 fn flush(repo: &mut Repo, batch: &mut Vec<PushItem>, out: &mut Report) -> Result<(), MigrateError> {
@@ -240,27 +248,12 @@ fn lag_line(id: &str) -> String {
     format!("{id} kept, its session is not in the pack index yet, run `agr sync migrate` again")
 }
 
-/// Moves, verifies and deletes. Every delete waits for a fresh read of the indexes that shows
-/// the session, a partial view or a failed re-read ends the run before any delete.
-pub fn run(env: &Env) -> Result<Report, MigrateError> {
-    let plan = classify(env)?;
-    let mut repo = open(env)?;
-    local::convert_file(env.dir).map_err(MigrateError::Local)?;
-    let mut out = Report::default();
-    for id in &plan.blockers {
-        out.lines
-            .push(kept_line(id, "it has files or a path agr did not write"));
-        out.kept.push(id.clone());
-    }
-    let limited = move_all(env, &plan, &mut repo, &mut out)?;
-    let after = open(env)?;
+/// The ids that may be deleted: their session is in the fresh view. The others are counted as
+/// left (rate limited run) or kept with the reason, a partial view never gets here.
+fn verified_ids(after: &Repo, plan: &Plan, limited: bool, out: &mut Report) -> Vec<String> {
     let mut ids = Vec::new();
-    let verified: Vec<_> = plan
-        .ours
-        .iter()
-        .filter(|(g, _)| !out.kept.contains(&g.id))
-        .collect();
-    for (g, meta) in verified {
+    let candidates = plan.ours.iter().filter(|(g, _)| !out.kept.contains(&g.id));
+    for (g, meta) in candidates.collect::<Vec<_>>() {
         if moved(after.view(), meta) {
             ids.push(g.id.clone());
         } else if limited {
@@ -275,10 +268,36 @@ pub fn run(env: &Env) -> Result<Report, MigrateError> {
             out.kept.push(g.id.clone());
         }
     }
-    if !limited {
-        ids.extend(plan.stubs.iter().cloned());
-    } else {
+    ids
+}
+
+/// Moves, verifies and deletes. Every delete waits for a fresh read of the indexes that shows
+/// the session, a partial view or a failed re-read ends the run before any delete. A failed
+/// append ends it too, but the report with the kept lines is still returned.
+pub fn run(env: &Env) -> Result<Report, MigrateError> {
+    let plan = classify(env)?;
+    let mut repo = open(env)?;
+    local::convert_file(env.dir).map_err(MigrateError::Local)?;
+    let mut out = Report::default();
+    for id in &plan.blockers {
+        out.lines
+            .push(kept_line(id, "it has files or a path agr did not write"));
+        out.kept.push(id.clone());
+    }
+    let limited = match move_all(env, &plan, &mut repo, &mut out) {
+        Ok(limited) => limited,
+        Err(MigrateError::Store(e)) => {
+            out.failed = Some(format!("appending to the packs failed: {e}"));
+            return Ok(out);
+        }
+        Err(e) => return Err(e),
+    };
+    let after = open(env)?;
+    let mut ids = verified_ids(&after, &plan, limited, &mut out);
+    if limited {
         out.left += plan.stubs.len();
+    } else {
+        ids.extend(plan.stubs.iter().cloned());
     }
     delete_all(env, &ids, &mut out);
     if out.left > 0 {
