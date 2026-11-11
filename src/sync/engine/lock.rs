@@ -9,11 +9,11 @@ use crate::files::lock::{is_pid_alive, LockInfo};
 
 /// Held lock, removed on drop.
 #[derive(Debug)]
-pub(super) struct SyncLock(PathBuf);
+pub struct SyncLock(PathBuf);
 
 impl SyncLock {
     /// Take the lock, `Busy` when a live process holds it.
-    pub(super) fn acquire(storage_dir: &Path) -> Result<Self, SyncError> {
+    pub fn acquire(storage_dir: &Path) -> Result<Self, SyncError> {
         let path = storage_dir.join(LOCK_FILE);
         if create(&path)? {
             return Ok(Self(path));

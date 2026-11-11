@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use agr::sync::confirm::{confirm_migrate, Confirm, Flags};
 use agr::sync::format::migrate_lines;
 use agr::sync::setup::{keep_writer, legacy_reader, KeyNeed};
-use agr::sync::{MigrateEnv, MigrateError, Scratch};
+use agr::sync::{MigrateEnv, MigrateError, Scratch, SyncError, SyncLock};
 
 use super::run::{abort, prepare, say, Ctx};
 
@@ -21,11 +21,15 @@ fn describe(e: MigrateError) -> String {
 /// Everything after the preconditions. The scratch dir is dropped when this returns, so an error
 /// never reaches `abort` (which exits without running any `Drop`) while plain sessions are on disk.
 fn attempt(ctx: &Ctx, yes: bool, tty: bool) -> Result<(), String> {
+    let dir = ctx.storage.storage_dir();
+    let _lock = SyncLock::acquire(&dir).map_err(|e| match e {
+        SyncError::Busy => "Another sync is running, try again in a moment.".to_string(),
+        other => other.to_string(),
+    })?;
     let test_dir = std::env::var_os("AGR_SYNC_TEST_BACKEND_DIR").map(PathBuf::from);
     let legacy = legacy_reader(test_dir.as_deref());
     let name = format!("agr-migrate-{}", std::process::id());
     let scratch = Scratch::at(&std::env::temp_dir().join(name)).map_err(|e| e.to_string())?;
-    let dir = ctx.storage.storage_dir();
     let env = MigrateEnv {
         legacy: legacy.as_ref(),
         store: ctx.store.as_ref(),

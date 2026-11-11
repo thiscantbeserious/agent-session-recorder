@@ -12,6 +12,7 @@ pub use backend::gist::scratch::Scratch;
 pub use backend::gist::ProgressSink;
 pub use backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 pub use crypto::{new_writer_id, Key, PhraseError};
+pub use engine::lock::SyncLock;
 pub use engine::observe::{Event, Observer};
 pub use engine::pack_run::Engine;
 pub use engine::plan::{Decision, SkipReason};

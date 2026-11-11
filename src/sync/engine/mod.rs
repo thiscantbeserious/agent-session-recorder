@@ -3,7 +3,7 @@
 pub(in crate::sync) mod fail;
 pub mod index;
 mod item;
-pub(super) mod lock;
+pub mod lock;
 pub(super) mod observe;
 mod pack_load;
 mod pack_pull;
