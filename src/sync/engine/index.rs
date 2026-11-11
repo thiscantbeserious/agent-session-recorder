@@ -130,7 +130,6 @@ pub(super) fn record_synced(
         gen,
         size,
         mtime_ns,
-        ..IndexEntry::default()
     };
     index.entries.insert(path.to_string(), entry);
 }
@@ -144,6 +143,7 @@ pub(super) fn save(storage_dir: &Path, index: &Index) -> Result<()> {
     )
 }
 
+// inline: stamp and maybe_changed are private to the engine and read the index file directly
 #[cfg(test)]
 mod tests {
     use super::{load, path_for, save, Index, IndexEntry, Path, PathBuf, INDEX_FILE, LOCK_FILE};
@@ -158,7 +158,7 @@ mod tests {
 
     #[test]
     fn old_entries_load_without_a_stamp_and_changed_files_are_found() {
-        let json = r#"{"version":1,"entries":{"a/x.cast.gz":{"sha256":"h","remote_id":"i","synced_at":"t"}}}"#;
+        let json = r#"{"version":1,"entries":{"a/x.cast.gz":{"sha256":"h","synced_at":"t"}}}"#;
         let mut index: Index = serde_json::from_str(json).unwrap();
         assert_eq!(
             (

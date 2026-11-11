@@ -245,6 +245,7 @@ pub fn live_head(path: &str, size: u64, i: usize, n: usize) -> String {
     format!("[{i}/{n}] {path} {}", super::size(size))
 }
 
+// inline: Live is a private writer wrapper tested against a byte buffer
 #[cfg(test)]
 mod tests {
     use super::{live_head, LiveLine, LoadLine};

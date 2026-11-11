@@ -109,6 +109,7 @@ fn size(bytes: u64) -> String {
     format_size(bytes, BINARY)
 }
 
+// inline: status_lines and label are private formatter functions, covered here against hand built Items
 #[cfg(test)]
 mod tests {
     use super::{label, progress_line, status_lines, Decision, Item, Outcome, Report};

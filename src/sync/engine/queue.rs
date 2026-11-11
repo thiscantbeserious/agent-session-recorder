@@ -148,6 +148,7 @@ fn drain_held<E: Held + ?Sized>(
     }
 }
 
+// inline: walks the private QUEUE_DIR layout to count files and swaps in a no-hard-link filesystem fallback
 #[cfg(test)]
 mod tests {
     use super::*;

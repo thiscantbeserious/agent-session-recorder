@@ -292,6 +292,9 @@ mod sync_pack_repo_session_test;
 #[path = "integration/sync_store_contract_test.rs"]
 mod sync_store_contract_test;
 
+#[path = "integration/sync_store_error_test.rs"]
+mod sync_store_error_test;
+
 #[path = "integration/sync_store_gist_test.rs"]
 mod sync_store_gist_test;
 

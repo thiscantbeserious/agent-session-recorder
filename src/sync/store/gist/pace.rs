@@ -131,6 +131,7 @@ impl Pacer {
     }
 }
 
+// inline: secs_since_epoch is private and pure, the facade has no reason to export it
 #[cfg(test)]
 mod tests {
     use super::{secs_since_epoch, Arc, Duration, FakeClock, Pacer, SystemTime};

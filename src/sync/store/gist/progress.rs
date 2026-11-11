@@ -11,6 +11,7 @@ fn percent_after(line: &str, label: &str) -> Option<u8> {
     digits.parse::<u8>().ok().filter(|p| *p <= 100)
 }
 
+// inline: writing_percent is a crate-private pure parser
 #[cfg(test)]
 mod tests {
     use super::writing_percent;
