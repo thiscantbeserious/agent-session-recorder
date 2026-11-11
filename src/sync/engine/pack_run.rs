@@ -202,8 +202,8 @@ impl<'a> Engine<'a> {
 
     /// Writes or drops the index entry of an in-sync row.
     fn refresh_row(&self, row: &Row, refresh_index: bool, loaded: &mut Loaded<'_>) -> Outcome {
-        if refresh_index || needs_refresh(self.storage, row, &loaded.index) {
-            refresh(self.storage, row, &mut loaded.index);
+        if refresh_index || needs_refresh(row, &loaded.index) {
+            refresh(row, &mut loaded.index);
         }
         Outcome::Nothing
     }

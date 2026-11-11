@@ -5,7 +5,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::index::Index;
+use super::index::{stamp, Index};
 use super::plan::{Input, Local, Remote, SkipReason};
 use crate::files::{codec, lock};
 use crate::storage::SessionInfo;
@@ -38,6 +38,8 @@ pub struct Row {
     pub duplicates: Vec<Duplicate>,
     /// The listed description is older than the index, copy the newest token into it.
     pub repair_description: bool,
+    /// Size and mtime taken before the local file was hashed, `(0, 0)` without a local file.
+    pub stamp: (u64, u64),
 }
 
 /// A listed gist that lost the pick for its path.
@@ -67,6 +69,7 @@ pub(super) fn row(path: &str, local: Local, index: &Index) -> Row {
         pending: false,
         duplicates: Vec::new(),
         repair_description: false,
+        stamp: (0, 0),
     }
 }
 
@@ -115,11 +118,17 @@ pub(super) fn local_rows(
     for (done, session) in sessions.into_iter().enumerate() {
         let path = format!("{}/{}", session.agent, session.filename);
         // Rows that `select` drops are listed but never hashed.
-        let local = match &wanted {
-            Some(w) if !w.contains(&path) => Local::Absent,
-            _ => local_state(&session),
+        let hashed = wanted.as_ref().is_none_or(|w| w.contains(&path));
+        // the stamp comes first, an edit during the hash then leaves a stale stamp behind
+        let at = if hashed { stamp(&session.path) } else { (0, 0) };
+        let local = if hashed {
+            local_state(&session)
+        } else {
+            Local::Absent
         };
-        rows.insert(path.clone(), row(&path, local, index));
+        let mut r = row(&path, local, index);
+        r.stamp = at;
+        rows.insert(path.clone(), r);
         progress(done + 1, total);
     }
     Ok(rows)

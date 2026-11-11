@@ -71,14 +71,9 @@ impl Engine<'_> {
             let verdict = match (outcome, row) {
                 (Landed::Pushed { .. }, Some(row)) => {
                     let sha = pushed_sha(loaded, row, *gen);
-                    record_synced(&mut loaded.index, &dir, path, (&sha, *gen));
-                    // edited since the stamp before the append, so the stamp must not vouch for
-                    // the uploaded hash, (0,0) keeps the file in `maybe_changed`
-                    if before.get(path.as_str()) != Some(&stamp(&dir.join(path))) {
-                        if let Some(e) = loaded.index.entries.get_mut(path) {
-                            (e.size, e.mtime_ns) = (0, 0);
-                        }
-                    }
+                    // the stamp from before the append, a file edited since no longer matches it
+                    let at = before.get(path.as_str()).copied().unwrap_or((0, 0));
+                    record_synced(&mut loaded.index, path, (&sha, *gen), at);
                     Outcome::Done(std::fs::metadata(dir.join(path)).map_or(0, |m| m.len()))
                 }
                 _ => Outcome::Failed(CHANGED.into()),

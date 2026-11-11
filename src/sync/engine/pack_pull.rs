@@ -57,7 +57,7 @@ pub(super) fn pull_one(
     let dir = storage.storage_dir();
     let target = dir.join(&row.path);
     place(repo, &row.path, &target)?;
-    record_synced(index, &dir, &row.path, (sha256, row.gen));
+    record_synced(index, &row.path, (sha256, row.gen), stamp(&target));
     Ok(std::fs::metadata(&target).map_or(0, |m| m.len()))
 }
 
@@ -91,13 +91,12 @@ fn rotate_backup(target: &Path) -> Result<(), String> {
 
 /// Hashes agree and the index lacks the entry, has a stale stamp, or the remote tombstone
 /// outlived the local file. `true` when the index changed.
-pub(super) fn refresh(storage: &StorageManager, row: &Row, index: &mut Index) -> bool {
-    let dir = storage.storage_dir();
+pub(super) fn refresh(row: &Row, index: &mut Index) -> bool {
     match (&row.input.local, &row.input.remote) {
         (Local::Hash(hash), Remote::Hash(_)) => {
             // a rolled back remote never lowers the high-water mark
             let known = index.entries.get(&row.path).map_or(0, |e| e.gen);
-            record_synced(index, &dir, &row.path, (hash, row.gen.max(known)));
+            record_synced(index, &row.path, (hash, row.gen.max(known)), row.stamp);
             true
         }
         (Local::Absent, Remote::Deleted { .. }) => index.entries.remove(&row.path).is_some(),
@@ -106,11 +105,11 @@ pub(super) fn refresh(storage: &StorageManager, row: &Row, index: &mut Index) ->
 }
 
 /// Whether an in-sync row still needs its index entry written or dropped.
-pub(super) fn needs_refresh(storage: &StorageManager, row: &Row, index: &Index) -> bool {
+pub(super) fn needs_refresh(row: &Row, index: &Index) -> bool {
     let entry = index.entries.get(&row.path);
     match (&row.input.local, &row.input.remote, entry) {
         (Local::Absent, Remote::Deleted { .. }, entry) => entry.is_some(),
-        (_, _, Some(e)) => stamp(&storage.storage_dir().join(&row.path)) != (e.size, e.mtime_ns),
+        (_, _, Some(e)) => row.stamp != (e.size, e.mtime_ns),
         _ => false,
     }
 }

@@ -123,9 +123,14 @@ pub(super) fn load_v2(storage_dir: &Path) -> Result<Index, Refused> {
     Ok(index)
 }
 
-/// The entry of a session the packs hold at `gen` with `sha256`, stamped from the local file.
-pub(super) fn record_synced(index: &mut Index, dir: &Path, path: &str, (sha256, gen): (&str, u64)) {
-    let (size, mtime_ns) = stamp(&dir.join(path));
+/// The entry of a session the packs hold at `gen` with `sha256`, `stamp` is the one taken before
+/// the bytes behind `sha256` were read.
+pub(super) fn record_synced(
+    index: &mut Index,
+    path: &str,
+    (sha256, gen): (&str, u64),
+    (size, mtime_ns): (u64, u64),
+) {
     let entry = IndexEntry {
         sha256: sha256.to_string(),
         synced_at: chrono::Utc::now().to_rfc3339(),
