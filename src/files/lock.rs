@@ -51,6 +51,63 @@ pub fn create_lock(path: &Path) -> Result<()> {
         .with_context(|| format!("Failed to write lock file: {}", lock_path.display()))
 }
 
+/// Held exclusive lock next to a file, removed on drop.
+#[derive(Debug)]
+pub struct Exclusive(PathBuf);
+
+impl Drop for Exclusive {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+/// Waits until this process owns the lock file of `path` (`lock_path_for`), a lock whose pid is
+/// dead is taken over. The JSON goes to a temp file and is linked into place, so the lock never
+/// appears empty to a second process.
+pub fn exclusive(path: &Path) -> Result<Exclusive> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let lock = lock_path_for(path);
+    let info = LockInfo {
+        pid: std::process::id(),
+        started: chrono::Utc::now().to_rfc3339(),
+    };
+    let json = serde_json::to_string(&info).context("Failed to serialize lock info")?;
+    let tmp = lock.with_extension(format!(
+        "tmp{}-{}",
+        info.pid,
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    if let Some(dir) = lock.parent() {
+        fs::create_dir_all(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    }
+    fs::write(&tmp, json).with_context(|| format!("Failed to write {}", tmp.display()))?;
+    let mut linked = Ok(());
+    for _ in 0..LOCK_TRIES {
+        linked = fs::hard_link(&tmp, &lock);
+        if linked.is_ok() {
+            break;
+        }
+        // ponytail: two waiters can both see a dead holder and one removes the other's fresh
+        // lock, needs a dead pid first, upgrade to flock if it ever shows up
+        let dead = fs::read_to_string(&lock)
+            .ok()
+            .and_then(|t| serde_json::from_str::<LockInfo>(&t).ok())
+            .is_some_and(|i| !is_pid_alive(i.pid));
+        if dead {
+            let _ = fs::remove_file(&lock);
+        } else {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    }
+    let _ = fs::remove_file(&tmp);
+    linked.with_context(|| format!("Could not lock {}, held by another agr", lock.display()))?;
+    Ok(Exclusive(lock))
+}
+
+/// Tries of `exclusive`, 10 ms apart.
+const LOCK_TRIES: u32 = 1000;
+
 /// Read lock info if the lock file exists and the owning PID is still alive.
 ///
 /// Returns `None` if the lock file is missing, malformed, or the PID is dead.

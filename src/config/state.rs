@@ -1,6 +1,6 @@
 //! Machine-local state (~/.config/agr/state.toml), never synced
 
-use crate::files::codec;
+use crate::files::{codec, lock};
 use anyhow::{Context, Result};
 
 use serde::{Deserialize, Serialize};
@@ -75,6 +75,7 @@ impl State {
     }
 
     pub fn keep_writer_id_at(path: &Path, id: &str) -> Result<String> {
+        let _guard = lock::exclusive(path)?;
         let mut state = Self::load_from(path);
         if state.writer_id.is_none() {
             state.writer_id = Some(id.to_string());
