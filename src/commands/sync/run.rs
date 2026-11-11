@@ -197,8 +197,7 @@ pub fn status(verbose: bool) -> Result<()> {
     Ok(())
 }
 
-/// Preview and problems, then the prompt. `false` when there is nothing to do, on
-/// `--dry-run` or when declined. `notice` is shown right before the prompt.
+/// Preview and problems, then the prompt. `false` on `--dry-run` or when declined, `true` without a prompt when nothing is planned. `notice` is shown right before the prompt.
 fn confirm_planned(plan: &Report, verb: &str, args: &Args, notice: &[String]) -> Result<bool> {
     if args.verbose {
         say(&format::preview_lines(plan, verb));
@@ -207,8 +206,12 @@ fn confirm_planned(plan: &Report, verb: &str, args: &Args, notice: &[String]) ->
         say(&format::compact_preview_lines(plan, verb));
     }
     let planned = plan.items.iter().any(|i| i.outcome == Outcome::Planned);
-    if args.dry_run || !planned {
+    if args.dry_run {
         return Ok(false);
+    }
+    if !planned {
+        // no transfers, the real pass still writes the index rows of sessions already in sync
+        return Ok(true);
     }
     say(notice);
     let question = format!("{}{} these sessions?", verb[..1].to_uppercase(), &verb[1..]);
@@ -247,7 +250,8 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
     if !confirm_planned(&plan, "push", &args, &notice)? {
         return Ok(());
     }
-    if let KeyState::Fresh(fresh) = &ctx.key {
+    let any_planned = plan.items.iter().any(|i| i.outcome == Outcome::Planned);
+    if let (true, KeyState::Fresh(fresh)) = (any_planned, &ctx.key) {
         key::save_new(&default_key_path()?, fresh)?;
         say(&["Created a new sync key. Back up your key with agr sync key export.".to_string()]);
     }
