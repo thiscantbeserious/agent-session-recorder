@@ -5,7 +5,7 @@ use super::lock::SyncLock;
 use super::observe::{counted, no_progress, Observer, Step};
 use super::pack_load::Loaded;
 use super::pack_pull::{needs_refresh, pull_one, refresh, PullFail};
-use super::plan::{decide, resolve, Command, Decision};
+use super::plan::{decide, resolve, Command, Decision, Local};
 use super::queue;
 use super::run::{Options, Outcome, Report, SyncError};
 use super::scan::Row;
@@ -140,7 +140,12 @@ impl<'a> Engine<'a> {
     }
 
     fn decide_row(&self, row: &Row, command: Command, opts: &Options) -> Decision {
-        resolve(decide(&row.input), command, opts.overwrite)
+        let decision = decide(&row.input);
+        // A fork with no local file has nothing to push, `--overwrite` leaves it a fork.
+        if decision == Decision::Fork && row.input.local == Local::Absent {
+            return decision;
+        }
+        resolve(decision, command, opts.overwrite)
     }
 
     fn pull_rows(
