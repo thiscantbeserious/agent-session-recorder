@@ -104,8 +104,10 @@ pub(super) fn local_rows(
     names: Option<&[String]>,
     progress: &mut dyn FnMut(usize, usize),
 ) -> Result<BTreeMap<String, Row>> {
-    let wanted: Option<BTreeSet<String>> =
-        names.map(|n| n.iter().map(|name| wanted_path(storage, name)).collect());
+    let wanted: Option<BTreeSet<String>> = names.map(|n| {
+        let both = |name: &String| [wanted_path(storage, name), slashed(Path::new(name))];
+        n.iter().flat_map(both).collect()
+    });
     let mut rows = BTreeMap::new();
     let sessions = storage.list_sessions(None)?;
     let total = sessions.len();
@@ -256,9 +258,12 @@ pub(super) fn select(
 
 /// Same lookup as other commands, falls back to the name as a remote-only path.
 fn matching(rows: &[Row], storage: &StorageManager, name: &str) -> Option<String> {
+    // The name itself first, a remote-only `a.cast.gz` hides behind a local plain `a.cast`.
     let wanted = wanted_path(storage, name);
-    rows.iter()
-        .find(|r| r.path == wanted)
+    let exact = slashed(Path::new(name));
+    [exact, wanted]
+        .iter()
+        .find_map(|w| rows.iter().find(|r| &r.path == w))
         .map(|r| r.path.clone())
 }
 
