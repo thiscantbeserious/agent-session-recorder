@@ -8,7 +8,7 @@ use super::lock::SyncLock;
 use super::observe::{counted, no_progress, Observer, Step};
 use super::pack_load::Loaded;
 use super::pack_run::Engine;
-use super::plan::{decide, Command, Local};
+use super::plan::{decide, Command};
 use super::queue::Held;
 use super::run::{Options, Outcome, Report, SyncError};
 use super::scan::Row;
@@ -69,11 +69,11 @@ impl Engine<'_> {
         for (path, gen, outcome) in &landed.items {
             let row = rows.iter().find(|r| &r.path == path);
             let verdict = match (outcome, row) {
-                (Landed::Pushed { .. }, Some(row)) => {
-                    let sha = pushed_sha(loaded, row, *gen);
+                (Landed::Pushed { sha256, .. }, Some(_)) => {
+                    let sha = sha256;
                     // the stamp from before the append, a file edited since no longer matches it
                     let at = before.get(path.as_str()).copied().unwrap_or((0, 0));
-                    record_synced(&mut loaded.index, path, (&sha, *gen), at);
+                    record_synced(&mut loaded.index, path, (sha, *gen), at);
                     Outcome::Done(std::fs::metadata(dir.join(path)).map_or(0, |m| m.len()))
                 }
                 _ => Outcome::Failed(CHANGED.into()),
@@ -223,18 +223,6 @@ fn on_remote(row: &Row) -> bool {
         row.input.remote,
         Remote::Hash(_) | Remote::Fork | Remote::Duplicate
     )
-}
-
-/// The hash the append wrote: the merged view after the push when it still holds our gen with a
-/// live top, else the planned local hash. A rival at a higher gen is never recorded as ours.
-fn pushed_sha(loaded: &Loaded<'_>, row: &Row, gen: u64) -> String {
-    use crate::sync::pack::merge::Top;
-    let at_gen = loaded.repo.view().get(&row.path).filter(|m| m.gen == gen);
-    match (at_gen.map(|m| &m.top), &row.input.local) {
-        (Some(Top::Live { sha256 }), _) => sha256.clone(),
-        (_, Local::Hash(h)) => h.clone(),
-        _ => String::new(),
-    }
 }
 
 impl Held for Engine<'_> {

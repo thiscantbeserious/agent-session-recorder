@@ -170,7 +170,14 @@ fn tombstone_landed_after_retry_reports_its_real_outcome() {
     // planned at gen 2, replanned to 3 behind the moved index, and it landed
     assert_eq!(
         report.items,
-        vec![("s".to_string(), 3, Outcome::Pushed { pack })]
+        vec![(
+            "s".to_string(),
+            3,
+            Outcome::Pushed {
+                pack,
+                sha256: String::new()
+            }
+        )]
     );
 }
 

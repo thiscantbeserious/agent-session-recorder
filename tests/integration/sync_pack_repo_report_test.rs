@@ -16,9 +16,10 @@ fn reload_failure_after_push_reports_pushed_and_check_failed() {
     let report = repo.push_batch(&[item(dir.path(), "a", 1, b"x")]).unwrap();
     assert!(report.check_failed);
     let pack = packs_of(&store)[0].id.clone();
+    let sha256 = agr::sync::testing::sha256_hex(b"x");
     assert_eq!(
         report.items,
-        vec![("a".to_string(), 1, Outcome::Pushed { pack })]
+        vec![("a".to_string(), 1, Outcome::Pushed { pack, sha256 })]
     );
 }
 
