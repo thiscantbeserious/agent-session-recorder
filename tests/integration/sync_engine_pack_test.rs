@@ -259,3 +259,27 @@ fn a_rival_append_between_our_append_and_our_reload_is_never_pushed_over() {
     );
     assert_eq!(merged(&store, &key, A).0.map(|m| m.0), Some(3));
 }
+
+#[test]
+fn an_unparseable_index_refuses_every_command_and_is_never_saved_over() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    let file = agr::sync::testing::index::path_for(n.dir());
+    std::fs::write(&file, r#"{"version":1,"entries":{"#).unwrap();
+    let e = n.engine(&store, &key, "w1");
+    let errs = [
+        e.push(&opts()).err(),
+        e.pull(&opts()).err(),
+        e.delete(&[A.to_string()]).err(),
+        e.status(&[]).err(),
+    ];
+    for err in errs {
+        let text = err.map(|e| e.to_string()).unwrap_or_default();
+        assert!(text.contains("is not valid"), "{text}");
+    }
+    assert_eq!(store.appends(), 0);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        r#"{"version":1,"entries":{"#
+    );
+}
