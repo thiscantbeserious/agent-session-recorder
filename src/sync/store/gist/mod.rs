@@ -13,7 +13,6 @@ pub(crate) mod parts;
 pub(crate) mod progress;
 mod read;
 pub mod runner;
-pub mod scratch;
 
 use std::collections::HashMap;
 use std::io::Read;

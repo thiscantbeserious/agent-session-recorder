@@ -9,7 +9,6 @@ use super::layout::check_parts;
 use super::parse::map_failure;
 use super::parts::PartReader;
 use super::runner::Runner;
-use super::scratch::Scratch;
 use super::{io_result, strings};
 use super::{GistStore, StoreError};
 
@@ -76,7 +75,7 @@ impl<R: Runner> GistStore<R> {
         let names: Vec<&str> = parts.iter().map(|p| p.name.as_str()).collect();
         check_parts(&names).map_err(|e| StoreError::Other(format!("pack {id} {e}")))?;
         let wanted = covering(&parts, offset, len)?;
-        let scratch = Scratch::create(&self.temp_base)?;
+        let scratch = crate::sync::store::scratch(&self.temp_base)?;
         let mut paths = Vec::new();
         for (n, (part, from, to)) in wanted.into_iter().enumerate() {
             let path = scratch.join(&format!("range.{n}"));

@@ -61,6 +61,14 @@ impl fmt::Debug for StoreError {
 
 impl std::error::Error for StoreError {}
 
+/// A private scratch dir under `base`, a failure is a store error.
+pub(crate) fn scratch(
+    base: &std::path::Path,
+) -> Result<crate::files::scratch::Scratch, StoreError> {
+    crate::files::scratch::Scratch::create(base)
+        .map_err(|e| StoreError::Other(format!("temp dir: {e}")))
+}
+
 impl From<crate::sync::store::gist::pace::ClockError> for StoreError {
     fn from(e: crate::sync::store::gist::pace::ClockError) -> Self {
         Self::Other(e.to_string())

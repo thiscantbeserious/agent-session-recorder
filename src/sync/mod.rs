@@ -17,7 +17,6 @@ pub use engine::select::{select_remote, SelectError};
 pub use pack::migrate::{
     preview as migrate_preview, run as migrate_run, Env as MigrateEnv, MigrateError,
 };
-pub use store::gist::scratch::Scratch;
 pub use store::gist::ProgressSink;
 pub use store::StoreError;
 
@@ -61,7 +60,6 @@ pub mod testing {
     pub mod gist {
         pub use crate::sync::store::gist::pace::{Clock, FakeClock};
         pub use crate::sync::store::gist::runner::{Output, Runner};
-        pub use crate::sync::store::gist::scratch::Scratch;
         pub use crate::sync::store::legacy::GistLegacy;
     }
 

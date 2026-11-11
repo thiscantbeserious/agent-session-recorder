@@ -155,7 +155,7 @@ fn delete_uses_yes_flag_and_waits_on_the_pacer() {
 #[cfg(unix)]
 #[test]
 fn scratch_dir_is_private() {
-    use agr::sync::testing::gist::Scratch;
+    use agr::files::scratch::Scratch;
     use std::os::unix::fs::PermissionsExt;
     let base = tempfile::tempdir().unwrap();
     let scratch = Scratch::create(base.path()).unwrap();
@@ -166,7 +166,7 @@ fn scratch_dir_is_private() {
 #[cfg(unix)]
 #[test]
 fn scratch_at_is_private() {
-    use agr::sync::testing::gist::Scratch;
+    use agr::files::scratch::Scratch;
     use std::os::unix::fs::PermissionsExt;
     let base = tempfile::tempdir().unwrap();
     let scratch = Scratch::at(&base.path().join("one")).unwrap();
@@ -176,7 +176,7 @@ fn scratch_at_is_private() {
 
 #[test]
 fn scratch_at_refuses_an_existing_dir() {
-    use agr::sync::testing::gist::Scratch;
+    use agr::files::scratch::Scratch;
     let base = tempfile::tempdir().unwrap();
     let result = Scratch::at(base.path());
     assert!(result.is_err());

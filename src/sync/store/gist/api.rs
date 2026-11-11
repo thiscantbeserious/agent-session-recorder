@@ -10,7 +10,6 @@ use super::index_cache::{Entry, IndexCache};
 use super::parse::{check_auth, id_from_create_output, map_failure};
 use super::parse::{DESC_PREFIX, LIST_LIMIT};
 use super::runner::{Output, Runner};
-use super::scratch::Scratch;
 use super::{io_result, strings};
 use super::{GistStore, Listing, PackInfo, StoreError};
 
@@ -199,7 +198,7 @@ impl<R: Runner> GistStore<R> {
         if let Some(hit) = cache.as_ref().and_then(|c| c.get(id, &at)) {
             return Ok(hit.index);
         }
-        let scratch = Scratch::create(&self.temp_base)?;
+        let scratch = crate::sync::store::scratch(&self.temp_base)?;
         let path = scratch.join(INDEX_FILE);
         self.fetch_whole(&file.raw_url, file.size, &path)?;
         let bytes = std::fs::read(&path).map_err(|e| StoreError::Other(e.to_string()))?;
@@ -216,7 +215,7 @@ impl<R: Runner> GistStore<R> {
     }
 
     pub(super) fn create_pack(&self, tag: &str, index: &str) -> Result<String, StoreError> {
-        let scratch = Scratch::create(&self.temp_base)?;
+        let scratch = crate::sync::store::scratch(&self.temp_base)?;
         let file = scratch.join(INDEX_FILE);
         std::fs::write(&file, index).map_err(|e| StoreError::Other(format!("write index: {e}")))?;
         let (path, desc) = (file.to_string_lossy(), format!("{PACK_PREFIX}{tag}"));

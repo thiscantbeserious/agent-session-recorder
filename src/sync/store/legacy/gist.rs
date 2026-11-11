@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use super::{parse, LegacyGist, LegacyRead};
+use crate::files::scratch::Scratch;
 use crate::sync::store::gist::pace::{Clock, Pacer, SystemClock};
 use crate::sync::store::gist::parse::map_failure;
 use crate::sync::store::gist::runner::{Output, ProcessRunner, Runner};
-use crate::sync::store::gist::scratch::Scratch;
 use crate::sync::store::gist::{io_result, strings};
 use crate::sync::store::StoreError;
 
@@ -118,7 +118,7 @@ impl<R: Runner> LegacyRead for GistLegacy<R> {
     /// Manifest and parts come from one clone, so they belong together. The reader owns the
     /// clone and removes it when dropped.
     fn pull(&self, id: &str) -> Result<(Option<String>, Box<dyn Read>), StoreError> {
-        let scratch = Scratch::create(&self.temp_base)?;
+        let scratch = crate::sync::store::scratch(&self.temp_base)?;
         let repo = self.clone_gist(id, &scratch)?;
         let manifest = match std::fs::read_to_string(repo.join(MANIFEST_FILE)) {
             Ok(text) => Some(text),
