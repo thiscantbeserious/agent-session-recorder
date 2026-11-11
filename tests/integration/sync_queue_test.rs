@@ -222,6 +222,24 @@ mod packs {
     }
 
     #[test]
+    fn a_manual_push_also_pushes_the_queued_session_and_empties_the_queue() {
+        let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+        queued(&n, "a");
+        queued(&n, "b");
+        let only_a = agr::sync::Options {
+            sessions: vec!["claude/a.cast.gz".into()],
+            ..crate::helpers::pack_engine::opts()
+        };
+        let report = n.engine(&store, &key, "w1").push(&only_a).unwrap();
+        // the drain runs after the push and its report is dropped, so only a is counted
+        assert_eq!(report.pushed, 1, "{:?}", report.items);
+        let repo = Repo::open(&store, &key, "r", TARGET, None).unwrap();
+        let view = repo.view();
+        assert_eq!(view.iter().count(), 2, "both a and b reached the remote");
+        assert!(queue::list(n.dir()).is_empty());
+    }
+
+    #[test]
     fn drain_picks_up_an_entry_added_between_items() {
         let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
         let first = queued(&n, "a");
