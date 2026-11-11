@@ -133,6 +133,18 @@ fn a_pull_with_a_missing_or_absent_part_errors_and_cleans_up() {
 }
 
 #[test]
+fn a_pull_with_a_manifest_and_no_data_parts_errors_and_cleans_up() {
+    let fake = Fake {
+        remote: vec![("manifest".into(), b"CUR".to_vec())],
+        ..Fake::default()
+    };
+    let base = tempfile::tempdir().unwrap();
+    let err = backend(&fake, base.path()).pull("abc123").err().unwrap();
+    assert!(err.to_string().contains("has no data parts"), "{err}");
+    assert_eq!(std::fs::read_dir(base.path()).unwrap().count(), 0);
+}
+
+#[test]
 fn delete_uses_yes_flag_and_waits_on_the_pacer() {
     let fake = Fake::default();
     let base = tempfile::tempdir().unwrap();
