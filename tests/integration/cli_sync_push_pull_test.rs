@@ -322,3 +322,41 @@ fn busy_text_names_the_lock_file_for_an_empty_or_garbage_lock() {
         }
     }
 }
+
+/// Machine `b` holds the key and a local copy identical to what `a` pushed, but no index row.
+fn identical_without_row(remote: &std::path::Path) -> Machine {
+    let a = Machine::gist(remote);
+    a.session("claude", "x.cast.gz", "same text");
+    assert_eq!(a.run(&["push", "--yes"]).code, 0);
+    let b = Machine::gist(remote);
+    assert_eq!(b.run(&["key", "import", &phrase_of(&a)]).code, 0);
+    b.session("claude", "x.cast.gz", "same text");
+    assert!(!b.storage.join(".agr-sync.json").exists());
+    b
+}
+
+fn index_row_of(m: &Machine) -> bool {
+    let (index, _) = agr::sync::testing::index::load(&m.storage);
+    index
+        .entries
+        .get("claude/x.cast.gz")
+        .is_some_and(|e| !e.sha256.is_empty())
+}
+
+#[test]
+fn push_writes_the_index_row_of_an_identical_session_without_transfers() {
+    let remote = remote();
+    let b = identical_without_row(remote.path());
+    let out = b.run(&["push", "--yes"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(index_row_of(&b), "no index row after push");
+}
+
+#[test]
+fn pull_writes_the_index_row_of_an_identical_session_without_transfers() {
+    let remote = remote();
+    let b = identical_without_row(remote.path());
+    let out = b.run(&["pull", "--yes"]);
+    assert_eq!(out.code, 0, "{}", out.all());
+    assert!(index_row_of(&b), "no index row after pull");
+}
