@@ -104,7 +104,7 @@ pub struct Report {
 impl Report {
     /// The run must exit non-zero.
     pub fn run_failed(&self) -> bool {
-        self.failed > 0
+        self.failed > 0 || self.unchecked
     }
 }
 
