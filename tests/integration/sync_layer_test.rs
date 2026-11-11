@@ -4,27 +4,17 @@ use std::path::Path;
 
 /// (layer, forbidden text). `Command::new` is checked separately.
 const RULES: &[(&str, &str)] = &[
-    ("backend/", "crate::sync::crypto"),
-    ("backend/", "crate::sync::engine"),
-    ("backend/", "crate::sync::app"),
+    ("", "crate::sync::backend"),
     ("engine/", "crate::sync::app"),
-    ("engine/", "crate::sync::backend::gist"),
-    ("engine/", "crate::sync::backend::memory"),
-    ("engine/", "crate::sync::backend::file"),
-    ("engine/", "crate::sync::store::gist"),
-    ("engine/", "crate::sync::store::memory"),
-    ("engine/", "crate::sync::store::dir"),
+    ("engine/", "crate::sync::crypto"),
+    ("engine/", "crate::sync::store"),
     ("app/", "chacha20poly1305"),
     ("engine/", "chacha20poly1305"),
-    ("backend/", "chacha20poly1305"),
     ("app/", "sha2::"),
     ("engine/", "sha2::"),
-    ("backend/", "sha2::"),
     ("app/", "aead::"),
     ("engine/", "aead::"),
-    ("backend/", "aead::"),
     ("pack/", "crate::sync::app"),
-    ("pack/", "crate::sync::backend"),
     ("pack/", "crate::sync::engine"),
     ("pack/", "crate::sync::store::memory"),
     ("pack/", "crate::sync::store::dir"),
@@ -41,6 +31,8 @@ const RULES: &[(&str, &str)] = &[
     ("store/", "aead::"),
     ("", "super::super"),
 ];
+/// (path of the needle, the only layers that may name it).
+const ONLY_IN: &[(&str, &[&str])] = &[("crate::sync::store::legacy", &["pack/migrate/", "store/"])];
 const SPAWNERS: &[&str] = &["store/gist/runner.rs", "app/auto/mod.rs"];
 
 fn rs_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
@@ -131,6 +123,27 @@ fn is_pack_production(rel: &str) -> bool {
     rel.starts_with("pack/") && !test
 }
 
+/// Layers that may spell the backend name, `app/setup.rs` has the one config value match.
+const GIST_OK: &[&str] = &[
+    "store/gist/",
+    "store/legacy/",
+    "app/setup.rs",
+    // user facing wording about secret gists and the old gists migrate deletes
+    "app/confirm.rs",
+    "app/format/packs.rs",
+    "app/format/summary.rs",
+    "pack/migrate/mod.rs",
+];
+
+/// A string literal with `gist` in it (any case), text after `#[cfg(test)]` is skipped.
+fn has_gist_literal(text: &str) -> bool {
+    let code = text.split("#[cfg(test)]").next().unwrap_or(text);
+    code.split('"')
+        .skip(1)
+        .step_by(2)
+        .any(|lit| lit.to_lowercase().contains("gist"))
+}
+
 fn violations(rel: &str, text: &str) -> Vec<String> {
     let text = &strip_comments(text);
     let paths = use_paths(text);
@@ -144,6 +157,15 @@ fn violations(rel: &str, text: &str) -> Vec<String> {
         bad.push(format!(
             "{rel} (pack) must not contain `crate::sync::testing`"
         ));
+    }
+    for (needle, allowed) in ONLY_IN {
+        let named = has_segment(text, needle) || paths.iter().any(|p| has_segment(p, needle));
+        if named && !allowed.iter().any(|a| rel.starts_with(a)) {
+            bad.push(format!("{rel} must not contain `{needle}`"));
+        }
+    }
+    if has_gist_literal(text) && !GIST_OK.iter().any(|a| rel.starts_with(a)) {
+        bad.push(format!("{rel} must not hold a `gist` string literal"));
     }
     if text.contains("Command::new") && !SPAWNERS.contains(&rel) {
         bad.push(format!("{rel} must not contain `Command::new`"));
@@ -176,13 +198,13 @@ fn layer_rules_hold() {
 
 #[test]
 fn violations_flags_plain_import() {
-    let v = violations("backend/x.rs", "use crate::sync::crypto::Key;");
+    let v = violations("store/x.rs", "use crate::sync::crypto::Key;");
     assert_eq!(v.len(), 1, "{v:?}");
 }
 
 #[test]
 fn violations_flags_group_import_in_backend() {
-    let v = violations("backend/x.rs", "use crate::sync::{crypto, engine};");
+    let v = violations("store/x.rs", "use crate::sync::{crypto, engine};");
     assert_eq!(v.len(), 2, "{v:?}");
 }
 
@@ -226,7 +248,7 @@ fn violations_match_whole_path_segments_only() {
 
 #[test]
 fn violations_allows_sibling_imports_within_layer() {
-    let src = "use crate::sync::{engine::index, backend::BlobSource};";
+    let src = "use crate::sync::{engine::index, pack::Key};";
     assert!(violations("engine/x.rs", src).is_empty());
 }
 
