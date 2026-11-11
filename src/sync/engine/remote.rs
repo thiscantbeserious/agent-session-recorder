@@ -4,9 +4,10 @@ use std::collections::BTreeMap;
 
 use super::index::Index;
 use super::plan::{Local, Remote};
-use super::scan::{row, valid_path, Row};
+use super::scan::{row, Row};
 use crate::sync::crypto::Meta;
 use crate::sync::pack::merge::{Merged, Rejected, Top, View};
+use crate::sync::pack::rules::valid_path;
 
 /// Joins the view into `rows` (local sessions keyed by path). A path that cannot be a session
 /// path or a pack that is rejected becomes an opaque `remote:<pack>` row that is never acted on.

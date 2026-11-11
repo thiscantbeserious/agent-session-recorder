@@ -11,6 +11,7 @@ use crate::files::{codec, lock};
 use crate::storage::SessionInfo;
 use crate::sync::backend::RemoteEntry;
 use crate::sync::crypto::{open_meta, sha256_reader, CryptoError, Key, Meta};
+use crate::sync::pack::rules::valid_path;
 use crate::StorageManager;
 
 /// Manifest version this build reads, older tokens are never touched.
@@ -230,16 +231,6 @@ fn opaque(rows: &mut BTreeMap<String, Row>, entry: &RemoteEntry, remote: Remote,
     opaque.remote_id = Some(entry.id.clone());
     opaque.token = Some(entry.meta_token.clone());
     rows.insert(path, opaque);
-}
-
-/// `agent/name.cast.gz`, nothing that can escape the storage dir or hit hidden files.
-pub fn valid_path(path: &str) -> bool {
-    let parts: Vec<&str> = path.split('/').collect();
-    parts.len() == 2
-        && parts
-            .iter()
-            .all(|p| !p.is_empty() && !p.starts_with('.') && !p.contains(['\\', ':']))
-        && parts[1].ends_with(".cast.gz")
 }
 
 /// Keep rows matching `names`, returns the names that matched nothing.

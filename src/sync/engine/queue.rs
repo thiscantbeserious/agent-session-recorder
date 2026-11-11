@@ -12,7 +12,7 @@ use super::lock::SyncLock;
 use super::observe::{counted, Observer, Step};
 use super::plan::{Command, Decision, SkipReason};
 use super::run::{BackendEngine, Item, Options, Outcome, Report, SyncError};
-use super::scan::valid_path;
+use crate::sync::pack::rules::valid_path;
 
 pub const QUEUE_DIR: &str = ".agr-sync-queue";
 

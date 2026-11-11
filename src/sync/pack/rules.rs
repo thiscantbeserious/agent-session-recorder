@@ -49,6 +49,16 @@ pub fn pack_size(mib: u64) -> Result<u64, PackSizeError> {
     }
 }
 
+/// `agent/name.cast.gz`, nothing that can escape the storage dir or hit hidden files.
+pub fn valid_path(path: &str) -> bool {
+    let parts: Vec<&str> = path.split('/').collect();
+    parts.len() == 2
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && !p.starts_with('.') && !p.contains(['\\', ':']))
+        && parts[1].ends_with(".cast.gz")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{pack_size, place, should_seal, should_seal_index, Place};

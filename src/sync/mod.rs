@@ -40,7 +40,7 @@ pub mod testing {
     pub use crate::sync::engine::index;
     pub use crate::sync::engine::plan::{decide, resolve, Command, Input, Local, Remote};
     pub use crate::sync::engine::queue;
-    pub use crate::sync::engine::scan::{scan, valid_path, Row};
+    pub use crate::sync::engine::scan::{scan, Row};
     pub use crate::sync::pack::index::{
         new_pack_uuid, open_index, seal_index, Entry, Index, IndexError,
     };
@@ -53,7 +53,7 @@ pub mod testing {
         read_pack, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo, RepoError,
     };
     pub use crate::sync::pack::rules::{
-        pack_size, place, should_seal, should_seal_index, PackSizeError, Place,
+        pack_size, place, should_seal, should_seal_index, valid_path, PackSizeError, Place,
     };
     pub use crate::sync::pack::stream::{open_range, segment, RangeError};
     pub use crate::sync::store::dir::DirStore;

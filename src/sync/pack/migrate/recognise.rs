@@ -1,6 +1,7 @@
 //! Pure recognition of one gist of the user: ours (v1), an empty stub, or something to leave alone.
 
 use crate::sync::crypto::{open_meta, Key, Meta};
+use crate::sync::pack::rules::valid_path;
 
 /// One gist as the old listing shows it, files as (name, size in bytes).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,7 +66,7 @@ pub fn recognise(g: &LegacyGist, key: &Key, now: i64) -> Kind {
     };
     let token = rest.strip_prefix("v1 ").map(str::trim);
     match token.map(|t| open_meta(key, t)) {
-        Some(Ok(meta)) if only_v1_files(g) => Kind::Ours(meta),
+        Some(Ok(meta)) if only_v1_files(g) && valid_path(&meta.path) => Kind::Ours(meta),
         _ => Kind::Kept,
     }
 }
