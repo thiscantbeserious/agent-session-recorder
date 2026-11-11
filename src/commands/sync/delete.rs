@@ -77,7 +77,7 @@ pub fn delete(args: &Args, tty: bool) -> Result<()> {
     let plan = ctx
         .engine()
         .status_with(&[], &mut load.loader())
-        .unwrap_or_else(|e| engine_failed(e));
+        .unwrap_or_else(engine_failed);
     load.end();
     let matched = collect(plan, args);
     say(&if args.verbose {

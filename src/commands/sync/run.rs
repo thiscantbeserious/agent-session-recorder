@@ -136,7 +136,8 @@ fn prepare_with(need: KeyNeed, progress: Option<ProgressSink>) -> Result<Ctx> {
         .unwrap_or_else(|Failure(message, hint)| abort(&message, hint.as_deref())))
 }
 
-pub(super) fn engine_failed(e: SyncError) -> ! {
+/// Prints the error and exits, generic so it fits `unwrap_or_else` as a plain function.
+pub(super) fn engine_failed<T>(e: SyncError) -> T {
     match e {
         SyncError::Busy => abort("Another sync is running, try again in a moment.", None),
         SyncError::Backend(e) => {
@@ -175,7 +176,7 @@ pub fn status(verbose: bool) -> Result<()> {
     let report = ctx
         .engine()
         .status_with(&[], &mut live.loader())
-        .unwrap_or_else(|e| engine_failed(e));
+        .unwrap_or_else(engine_failed);
     live.end();
     let name = ctx.store.name();
     say(&if verbose {
@@ -231,7 +232,7 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
     let plan = ctx
         .engine()
         .push_with(&opts(&args, true), 0, &mut live.loader())
-        .unwrap_or_else(|e| engine_failed(e));
+        .unwrap_or_else(engine_failed);
     live.end();
     let mut state = State::load();
     let notice = privacy_notice(&plan, &state);
@@ -261,7 +262,7 @@ pub fn pull(args: Args) -> Result<()> {
     let plan = ctx
         .engine()
         .pull_with(&opts(&args, true), 0, &mut live.loader())
-        .unwrap_or_else(|e| engine_failed(e));
+        .unwrap_or_else(engine_failed);
     live.end();
     if !confirm_planned(&plan, "pull", &args, &[])? {
         return Ok(());
@@ -305,7 +306,7 @@ fn push_auto(args: &Args) -> Result<()> {
 
 /// Print the summary, exit non-zero when any session failed.
 pub(super) fn finish(result: Result<Report, SyncError>, verb: &str, verbose: bool) -> Result<()> {
-    let report = result.unwrap_or_else(|e| engine_failed(e));
+    let report = result.unwrap_or_else(engine_failed);
     say(&if verbose {
         format::summary_lines(&report)
     } else {
