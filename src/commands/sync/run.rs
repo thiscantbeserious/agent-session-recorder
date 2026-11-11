@@ -312,7 +312,7 @@ pub(super) fn finish(result: Result<Report, SyncError>, verb: &str, verbose: boo
     } else {
         format::compact_summary_lines(&report, verb)
     });
-    if report.failed > 0 {
+    if report.run_failed() {
         std::process::exit(1);
     }
     Ok(())

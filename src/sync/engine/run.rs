@@ -88,6 +88,8 @@ pub struct Report {
     pub bytes: u64,
     /// Index was unparseable and rebuilt.
     pub warning: Option<String>,
+    /// A push landed but the check for forks afterwards failed.
+    pub unchecked: bool,
     /// Sessions waiting in the auto push queue, only set by status.
     pub queued: usize,
     /// Sessions with a fork in the merged view that this run pushed to.
@@ -97,6 +99,13 @@ pub struct Report {
     pub pack_bytes: u64,
     /// Sessions whose merged gen is below the last synced one, never pulled.
     pub refused: Vec<String>,
+}
+
+impl Report {
+    /// The run must exit non-zero.
+    pub fn run_failed(&self) -> bool {
+        self.failed > 0
+    }
 }
 
 /// BackendEngine over any backend, the key and the storage dir.

@@ -15,6 +15,7 @@ impl Report {
         self.failed += other.failed;
         self.bytes += other.bytes;
         self.warning = self.warning.take().or(other.warning);
+        self.unchecked |= other.unchecked;
         self.forks.extend(other.forks);
         self.refused.extend(other.refused);
         self.items.extend(other.items);

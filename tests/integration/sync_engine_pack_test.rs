@@ -355,3 +355,14 @@ fn a_duplicated_own_pack_is_never_appended_to_and_the_next_push_opens_a_new_pack
         packs.last().map(|p| p.id.as_str())
     );
 }
+
+#[test]
+fn push_that_could_not_check_for_forks_fails_the_run() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    store.before_append(|m, _| m.fail_next_list());
+    let report = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(report.pushed, 3, "{:?}", report.items);
+    assert!(report.warning.is_some(), "the warning is shown");
+    assert!(report.run_failed(), "and the exit code is non-zero");
+}

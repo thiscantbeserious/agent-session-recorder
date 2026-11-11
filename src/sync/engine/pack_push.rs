@@ -72,6 +72,7 @@ impl Engine<'_> {
         loaded.index.open_pack = landed.open.as_ref().map(|o| o.id.clone());
         loaded.report.forks.extend(landed.forks.iter().cloned());
         if landed.check_failed {
+            loaded.report.unchecked = true;
             loaded.report.warning = Some("pushed, could not check for forks".into());
         }
         out
