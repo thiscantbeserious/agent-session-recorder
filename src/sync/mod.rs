@@ -8,6 +8,7 @@ mod pack;
 mod store;
 
 pub use app::{auto, confirm, format, key, setup};
+pub use backend::gist::scratch::Scratch;
 pub use backend::gist::ProgressSink;
 pub use backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 pub use crypto::{new_writer_id, Key, PhraseError};

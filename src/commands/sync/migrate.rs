@@ -3,45 +3,28 @@
 use std::io;
 use std::path::PathBuf;
 
-use anyhow::Result;
-
 use agr::sync::confirm::{confirm_migrate, Confirm, Flags};
 use agr::sync::format::migrate_lines;
 use agr::sync::setup::{keep_writer, legacy_reader, KeyNeed};
-use agr::sync::{MigrateEnv, MigrateError};
+use agr::sync::{MigrateEnv, MigrateError, Scratch};
 
-use super::run::{abort, prepare, say};
+use super::run::{abort, prepare, say, Ctx};
 
-fn failed(e: MigrateError) -> ! {
+fn describe(e: MigrateError) -> String {
     match e {
-        MigrateError::List(e) | MigrateError::Store(e) => abort(&e.to_string(), None),
-        MigrateError::Open(e) => abort(&e.to_string(), None),
-        MigrateError::Local(m) => abort(&m, None),
+        MigrateError::List(e) | MigrateError::Store(e) => e.to_string(),
+        MigrateError::Open(e) => e.to_string(),
+        MigrateError::Local(m) => m,
     }
 }
 
-/// A private directory for the sessions in flight, removed when the command ends.
-struct Scratch(PathBuf);
-
-impl Scratch {
-    fn new() -> Result<Self> {
-        let dir = std::env::temp_dir().join(format!("agr-migrate-{}", std::process::id()));
-        std::fs::create_dir_all(&dir)?;
-        Ok(Self(dir))
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-pub fn migrate(yes: bool, tty: bool) -> Result<()> {
-    let ctx = prepare(KeyNeed::Existing)?;
+/// Everything after the preconditions. The scratch dir is dropped when this returns, so an error
+/// never reaches `abort` (which exits without running any `Drop`) while plain sessions are on disk.
+fn attempt(ctx: &Ctx, yes: bool, tty: bool) -> Result<(), String> {
     let test_dir = std::env::var_os("AGR_SYNC_TEST_BACKEND_DIR").map(PathBuf::from);
     let legacy = legacy_reader(test_dir.as_deref());
-    let scratch = Scratch::new()?;
+    let name = format!("agr-migrate-{}", std::process::id());
+    let scratch = Scratch::at(&std::env::temp_dir().join(name)).map_err(|e| e.to_string())?;
     let dir = ctx.storage.storage_dir();
     let env = MigrateEnv {
         legacy: legacy.as_ref(),
@@ -55,7 +38,7 @@ pub fn migrate(yes: bool, tty: bool) -> Result<()> {
         now: chrono::Utc::now().timestamp(),
         pace: &|| {},
     };
-    let preview = agr::sync::migrate_preview(&env).unwrap_or_else(|e| failed(e));
+    let preview = agr::sync::migrate_preview(&env).map_err(describe)?;
     say(&preview.lines);
     let flags = Flags {
         yes,
@@ -63,15 +46,21 @@ pub fn migrate(yes: bool, tty: bool) -> Result<()> {
         tty,
     };
     let (stdin, mut out) = (io::stdin(), io::stdout());
-    if confirm_migrate(&flags, &mut stdin.lock(), &mut out)? != Confirm::Go {
+    let go = confirm_migrate(&flags, &mut stdin.lock(), &mut out).map_err(|e| e.to_string())?;
+    if go != Confirm::Go {
         say(&["No changes made.".to_string()]);
         return Ok(());
     }
-    keep_writer(&ctx.writer)?;
-    let report = agr::sync::migrate_run(&env).unwrap_or_else(|e| failed(e));
+    keep_writer(&ctx.writer).map_err(|e| e.to_string())?;
+    let report = agr::sync::migrate_run(&env).map_err(describe)?;
     say(&migrate_lines(&report));
-    match &report.failed {
-        Some(why) => abort(why, None),
-        None => Ok(()),
+    report.failed.map_or(Ok(()), Err)
+}
+
+pub fn migrate(yes: bool, tty: bool) -> anyhow::Result<()> {
+    let ctx = prepare(KeyNeed::Existing)?;
+    match attempt(&ctx, yes, tty) {
+        Ok(()) => Ok(()),
+        Err(why) => abort(&why, None),
     }
 }

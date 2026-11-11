@@ -13,17 +13,14 @@ pub struct Scratch(pub PathBuf);
 impl Scratch {
     pub fn create(base: &Path) -> Result<Self, BackendError> {
         let n = CLONE_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = base.join(format!("agr-sync-{}-{n}", std::process::id()));
-        let builder = private_dir_builder();
-        builder
-            .create(&dir)
-            .map_err(|e| BackendError::Other(format!("temp dir: {e}")))?;
-        Ok(Self(dir))
+        Self::at(&base.join(format!("agr-sync-{}-{n}", std::process::id())))
     }
 
     /// A private directory at exactly `dir`, an existing one is refused.
     pub fn at(dir: &Path) -> Result<Self, BackendError> {
-        std::fs::create_dir_all(dir).map_err(|e| BackendError::Other(format!("temp dir: {e}")))?;
+        private_dir_builder()
+            .create(dir)
+            .map_err(|e| BackendError::Other(format!("temp dir: {e}")))?;
         Ok(Self(dir.to_path_buf()))
     }
 
