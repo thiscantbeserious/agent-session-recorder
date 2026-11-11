@@ -42,6 +42,7 @@ fn attempt(ctx: &Ctx, yes: bool, tty: bool) -> Result<(), String> {
         dir: &dir,
         scratch: &scratch.0,
         now: chrono::Utc::now().timestamp(),
+        convert_index: &agr::sync::convert_local_index,
         pace: &|| {},
     };
     let preview = agr::sync::migrate_preview(&env).map_err(describe)?;

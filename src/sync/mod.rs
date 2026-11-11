@@ -8,6 +8,7 @@ mod store;
 
 pub use app::{auto, confirm, format, key, setup};
 pub use crypto::{new_writer_id, Key, PhraseError};
+pub use engine::index::convert_file as convert_local_index;
 pub use engine::lock::SyncLock;
 pub use engine::observe::{Event, Observer};
 pub use engine::pack_run::Engine;
@@ -26,7 +27,7 @@ pub mod testing {
     pub use crate::sync::crypto::blob::{open_stream, seal_stream, BlobError};
     pub use crate::sync::crypto::CryptoError;
     pub use crate::sync::crypto::{open_meta, seal, seal_meta, sha256_hex, Meta};
-    pub use crate::sync::engine::index;
+    pub use crate::sync::engine::index::{self, convert_file, convert_index};
     pub use crate::sync::engine::plan::{decide, resolve, Command, Input, Local, Remote};
     pub use crate::sync::engine::queue;
     pub use crate::sync::pack::index::{
@@ -34,8 +35,8 @@ pub mod testing {
     };
     pub use crate::sync::pack::merge::{merge, PackIn, Rejected, Top};
     pub use crate::sync::pack::migrate::{
-        convert_file, convert_index, preview as migrate_preview, recognise, run as migrate_run,
-        Env as MigrateEnv, Kind, LegacyGist, LegacyRead, MigrateError, Report as MigrateReport,
+        preview as migrate_preview, recognise, run as migrate_run, Env as MigrateEnv, Kind,
+        LegacyGist, LegacyRead, MigrateError, Report as MigrateReport,
     };
     pub use crate::sync::pack::repo::{
         read_pack, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo, RepoError,

@@ -1,11 +1,9 @@
 //! `agr sync migrate`: moves the per-session gists of the old layout into packs.
 
 mod fetch;
-mod local;
 mod recognise;
 
 pub use crate::sync::store::legacy::{LegacyGist, LegacyRead, NoLegacy};
-pub use local::{convert_file, convert_index};
 use recognise::is_ours_v1;
 pub use recognise::{recognise, Kind};
 
@@ -26,6 +24,8 @@ pub struct Env<'a> {
     pub dir: &'a Path,
     /// Private directory for the sessions in flight.
     pub scratch: &'a Path,
+    /// Converts the local sync index in `dir` when it is v1, true when it was written.
+    pub convert_index: &'a dyn Fn(&Path) -> Result<bool, String>,
     /// Unix seconds from an injected clock.
     pub now: i64,
     /// Called before every delete, spaces them out.
@@ -260,7 +260,7 @@ fn verified_ids(after: &Repo, plan: &Plan, limited: bool, out: &mut Report) -> V
 pub fn run(env: &Env) -> Result<Report, MigrateError> {
     let plan = classify(env)?;
     let mut repo = open(env)?;
-    local::convert_file(env.dir).map_err(MigrateError::Local)?;
+    (env.convert_index)(env.dir).map_err(MigrateError::Local)?;
     let mut out = Report::default();
     for id in &plan.blockers {
         out.lines

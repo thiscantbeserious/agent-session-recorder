@@ -329,6 +329,7 @@ impl Rig {
 
     pub fn env<'a>(&'a self, store: &'a dyn PackStore) -> MigrateEnv<'a> {
         MigrateEnv {
+            convert_index: &agr::sync::convert_local_index,
             legacy: &self.legacy,
             store,
             key: &self.key,
