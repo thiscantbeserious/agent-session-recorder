@@ -22,6 +22,9 @@ const RULES: &[(&str, &str)] = &[
     ("pack/", "chacha20poly1305"),
     ("pack/", "aead::"),
     ("pack/", "sha2::"),
+    // the engine owns its index file and its field names
+    ("pack/", ".agr-sync.json"),
+    ("pack/", "remote_id"),
     ("store/", "crate::sync::crypto"),
     ("store/", "crate::sync::engine"),
     ("store/", "crate::sync::pack"),
