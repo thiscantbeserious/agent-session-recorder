@@ -90,3 +90,21 @@ mod migrate {
         assert_eq!(ask(true, false, "").0, Confirm::Go);
     }
 }
+
+#[test]
+fn the_delete_prompt_says_the_encrypted_bytes_stay_remote() {
+    let (_, out) = run(1, false, false, true, "n\n");
+    assert!(out.contains("encrypted"), "{out}");
+    assert!(out.contains("stay"), "{out}");
+}
+
+#[test]
+fn the_delete_help_does_not_promise_remote_removal() {
+    use clap::CommandFactory;
+    let mut cmd = agr::cli::Cli::command();
+    let sync = cmd.find_subcommand_mut("sync").unwrap();
+    let del = sync.find_subcommand_mut("delete").unwrap();
+    let help = del.render_long_help().to_string();
+    assert!(!help.contains("Remove the remote copy"), "{help}");
+    assert!(help.contains("encrypted"), "{help}");
+}
