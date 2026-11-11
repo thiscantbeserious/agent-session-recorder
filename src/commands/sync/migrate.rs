@@ -55,7 +55,11 @@ fn attempt(ctx: &Ctx, yes: bool, tty: bool) -> Result<(), String> {
         say(&["No changes made.".to_string()]);
         return Ok(());
     }
-    keep_writer(&ctx.writer).map_err(|e| e.to_string())?;
+    let writer = keep_writer(&ctx.writer).map_err(|e| e.to_string())?;
+    let env = MigrateEnv {
+        writer: &writer,
+        ..env
+    };
     let report = agr::sync::migrate_run(&env).map_err(describe)?;
     say(&migrate_lines(&report));
     report.failed.map_or(Ok(()), Err)

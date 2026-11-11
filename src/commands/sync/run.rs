@@ -227,7 +227,7 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
         return push_auto(&args);
     }
     let live = Live::stderr("uploading", "pushed");
-    let ctx = prepare_with(KeyNeed::MayCreate, live.sink())?;
+    let mut ctx = prepare_with(KeyNeed::MayCreate, live.sink())?;
     let plan = ctx
         .engine()
         .push_with(&opts(&args, true), 0, &mut live.loader())
@@ -246,7 +246,7 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
         state.sync_privacy_ack = true;
         state.save()?;
     }
-    keep_writer(&ctx.writer)?;
+    ctx.writer = keep_writer(&ctx.writer)?;
     let mut observer = live.observer();
     let result = ctx
         .engine()
@@ -293,8 +293,8 @@ fn push_auto(args: &Args) -> Result<()> {
     let session = args.sessions.first().map_or("", String::as_str);
     let result = try_prepare(KeyNeed::Existing, false, None)
         .map_err(|Failure(message, _)| SyncError::Failed(message))
-        .and_then(|ctx| {
-            keep_writer(&ctx.writer).map_err(|e| SyncError::Failed(e.to_string()))?;
+        .and_then(|mut ctx| {
+            ctx.writer = keep_writer(&ctx.writer).map_err(|e| SyncError::Failed(e.to_string()))?;
             auto::run(&ctx.engine(), session)
         });
     if let Some(line) = auto::error_line(&result) {

@@ -67,7 +67,7 @@ fn confirmed(count: usize, args: &Args, tty: bool) -> Result<bool> {
 }
 
 pub fn delete(args: &Args, tty: bool) -> Result<()> {
-    let ctx = prepare(KeyNeed::Existing)?;
+    let mut ctx = prepare(KeyNeed::Existing)?;
     let load = Live::stderr("", "deleted");
     let plan = ctx
         .engine()
@@ -87,7 +87,7 @@ pub fn delete(args: &Args, tty: bool) -> Result<()> {
         say(&["No changes made.".to_string()]);
         return Ok(());
     }
-    keep_writer(&ctx.writer)?;
+    ctx.writer = keep_writer(&ctx.writer)?;
     let paths: Vec<String> = matched.items.iter().map(|i| i.path.clone()).collect();
     let live = Live::stderr("", "deleted");
     let mut observer = live.observer();

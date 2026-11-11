@@ -80,7 +80,7 @@ impl State {
             state.writer_id = Some(id.to_string());
             state.save_to(path)?;
         }
-        Ok(id.to_string())
+        Ok(state.writer_id.unwrap_or_else(|| id.to_string()))
     }
 
     /// Load from a path, default when the file is missing or malformed (warns on stderr).
