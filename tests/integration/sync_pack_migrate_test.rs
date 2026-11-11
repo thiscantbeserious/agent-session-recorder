@@ -19,6 +19,7 @@ fn stub(age: i64) -> LegacyGist {
         description: "agr:pending".into(),
         files: vec![(".keep".into(), 4)],
         created_at: at(age),
+        truncated: false,
     }
 }
 
@@ -44,6 +45,7 @@ fn v1(desc: String, extra: &[&str]) -> LegacyGist {
         description: desc,
         files,
         created_at: at(5 * HOUR),
+        truncated: false,
     }
 }
 

@@ -69,6 +69,7 @@ impl LegacyFake {
                 .chain(files)
                 .collect(),
             created_at: at(OLD),
+            truncated: false,
         };
         self.push(info, Some(token), seal_blob(key, path, gen, plain))
     }
@@ -98,6 +99,7 @@ impl LegacyFake {
             description: "agr:pending".into(),
             files: vec![(".keep".into(), 4)],
             created_at: at(age),
+            truncated: false,
         };
         self.push(info, None, Vec::new())
     }
@@ -122,6 +124,7 @@ impl LegacyFake {
                 description: "notes".into(),
                 files: vec![("a.txt".into(), 1)],
                 created_at: at(OLD),
+                truncated: false,
             };
             self.push(info, None, Vec::new());
         }
@@ -368,5 +371,20 @@ impl Rig {
         let repo = Repo::open_for_migrate(&self.mem, &self.key, "w1", TARGET, None).unwrap();
         let m = repo.view().get(path)?;
         Some((m.gen, m.keeper().sha256.clone()))
+    }
+}
+
+impl LegacyFake {
+    /// A v1 session of `key` whose file list GitHub cut off, files may be missing from it.
+    pub fn v1_truncated(&self, key: &Key, (path, gen): (&str, u64), plain: &[u8]) -> String {
+        let id = self.v1(key, (path, gen), plain, None);
+        self.gists
+            .lock()
+            .unwrap()
+            .last_mut()
+            .unwrap()
+            .info
+            .truncated = true;
+        id
     }
 }

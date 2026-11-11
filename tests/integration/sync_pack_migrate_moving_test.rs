@@ -53,6 +53,21 @@ mod moving {
     }
 
     #[test]
+    fn a_truncated_gist_is_kept_and_blocks_instead_of_being_deleted() {
+        let rig = Rig::new();
+        let id = rig.legacy.v1_truncated(&rig.key, (A, 3), b"content");
+        let store = Listed(&rig.mem, &rig.legacy);
+        let report = migrate_run(&rig.env(&store)).unwrap();
+        assert!(rig.legacy.deletes().is_empty(), "{:?}", report.lines);
+        assert_eq!(rig.legacy.descriptions().len(), 1);
+        assert!(
+            report.lines.iter().any(|l| l.contains(&id)),
+            "{:?}",
+            report.lines
+        );
+    }
+
+    #[test]
     fn dry_run_counts_and_writes_nothing() {
         let rig = Rig::new();
         let plain = vec![7u8; 1536];

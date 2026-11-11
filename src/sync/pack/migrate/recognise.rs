@@ -10,6 +10,8 @@ pub struct LegacyGist {
     pub description: String,
     pub files: Vec<(String, u64)>,
     pub created_at: String,
+    /// GitHub cut the file list of this gist, files are missing from `files`.
+    pub truncated: bool,
 }
 
 /// What migrate does with a gist.

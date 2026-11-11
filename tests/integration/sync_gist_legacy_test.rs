@@ -64,3 +64,15 @@ fn listing_past_3000_gists_is_not_capped() {
     let got = backend(&fake, base.path()).list_all().unwrap();
     assert_eq!(got.len(), 3200);
 }
+
+#[test]
+fn the_truncated_flag_of_a_gist_is_read() {
+    let json = r#"[{"id":"a","truncated":true},{"id":"b"}]"#;
+    let fake = Fake::with(vec![ok(json)]);
+    let base = tempfile::tempdir().unwrap();
+    let got = backend(&fake, base.path()).list_all().unwrap();
+    assert_eq!(
+        got.iter().map(|g| g.truncated).collect::<Vec<_>>(),
+        [true, false]
+    );
+}
