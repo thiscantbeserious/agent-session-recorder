@@ -1,7 +1,7 @@
 //! The load step of a pack run: local index, repo over the store, rows of local and remote.
 
 use super::fail::sync_error;
-use super::index::{self, load_v2, Index};
+use super::index::{self, load_v2, Index, Refused};
 use super::item::not_found;
 use super::observe::{scan_tick, Step};
 use super::pack_run::Engine;
@@ -44,7 +44,10 @@ impl<'a> Engine<'a> {
         observer: &mut dyn FnMut(Step<'_>),
     ) -> Result<Loaded<'a>, SyncError> {
         let dir = self.storage.storage_dir();
-        let (mut index, warning) = load_v2(&dir).map_err(|_| SyncError::NeedsMigrate)?;
+        let mut index = load_v2(&dir).map_err(|e| match e {
+            Refused::V1 => SyncError::NeedsMigrate,
+            Refused::Corrupt(text) => SyncError::Failed(text),
+        })?;
         observer(Step::Listing);
         let hint = index.open_pack.as_deref();
         let repo = Repo::open(self.store, self.key, &self.writer, self.target, hint)
@@ -61,7 +64,6 @@ impl<'a> Engine<'a> {
         attach_view(&mut rows, repo.view(), &index);
         let (dead_bytes, pack_bytes) = pack_bytes(repo.view());
         let mut report = Report {
-            warning,
             dead_bytes,
             pack_bytes,
             ..Report::default()

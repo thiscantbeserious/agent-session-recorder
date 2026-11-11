@@ -97,19 +97,30 @@ pub fn load(storage_dir: &Path) -> (Index, Option<String>) {
     }
 }
 
-/// The local index was written by the per-session engine, `agr sync migrate` converts it.
+/// Why the pack engine will not plan against the local index file.
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct IsV1;
+pub(super) enum Refused {
+    /// Written by the per-session engine, `agr sync migrate` converts it.
+    V1,
+    /// Exists but does not parse, treating it as empty would plan every local edit as new and
+    /// the next save would overwrite it.
+    Corrupt(String),
+}
 
-/// Like `load` for the pack engine: a missing or unreadable file is an empty v2 index, a v1 file
-/// is refused so nothing is planned against it.
-pub(super) fn load_v2(storage_dir: &Path) -> Result<(Index, Option<String>), IsV1> {
+/// Like `load` for the pack engine: a missing file is an empty v2 index, a v1 file or a file
+/// that does not parse is refused so nothing is planned against it.
+pub(super) fn load_v2(storage_dir: &Path) -> Result<Index, Refused> {
     let (mut index, warning) = load(storage_dir);
-    if path_for(storage_dir).exists() && warning.is_none() && index.version < 2 {
-        return Err(IsV1);
+    if warning.is_some() {
+        let path = path_for(storage_dir);
+        let text = format!("{} is not valid, fix or remove it first", path.display());
+        return Err(Refused::Corrupt(text));
+    }
+    if path_for(storage_dir).exists() && index.version < 2 {
+        return Err(Refused::V1);
     }
     index.version = 2;
-    Ok((index, warning))
+    Ok(index)
 }
 
 /// The entry of a session the packs hold at `gen` with `sha256`, stamped from the local file.
