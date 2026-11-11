@@ -11,7 +11,8 @@ pub(super) enum Fetched {
     Ready(PathBuf),
     /// Not moved and not deleted, the text says why.
     Kept(String),
-    /// GitHub asked to wait.
+    /// GitHub asked to wait or the read failed in a way a later run may get past, the gist
+    /// stays untouched and counts as left.
     Limit,
 }
 
@@ -22,8 +23,8 @@ fn unreadable(why: impl std::fmt::Display) -> Fetched {
 pub(super) fn fetch(env: &Env, g: &LegacyGist, meta: &Meta) -> Fetched {
     let (manifest, reader) = match env.legacy.pull(&g.id) {
         Ok(got) => got,
-        Err(StoreError::RateLimited) => return Fetched::Limit,
-        Err(e) => return unreadable(e),
+        Err(StoreError::NotFound) => return unreadable(StoreError::NotFound),
+        Err(_) => return Fetched::Limit,
     };
     match manifest.map(|t| open_meta(env.key, &t)) {
         Some(Ok(m)) if &m == meta => {}
