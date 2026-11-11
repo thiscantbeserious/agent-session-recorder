@@ -216,6 +216,28 @@ mod packs {
         assert_eq!(agr::sync::auto::error_line(&result), None);
         assert_eq!(store.appends(), 0);
     }
+
+    /// A lock that cannot be read right now is not a dead one, the holder may be mid write.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_lock_is_busy_and_stays() {
+        use std::os::unix::fs::PermissionsExt;
+        let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+        let one = queued(&n, "one");
+        let lock = n.dir().join(".agr-sync.lock");
+        let held = format!("{{\"pid\":{},\"started\":\"x\"}}", std::process::id());
+        std::fs::write(&lock, held).unwrap();
+        std::fs::set_permissions(&lock, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read_to_string(&lock).is_ok() {
+            return; // running as root, permissions do not apply
+        }
+        let result = n
+            .engine(&store, &key, "w1")
+            .drain_auto(&one, &mut |_: &Event<'_>| {});
+        assert!(matches!(result.as_ref().err(), Some(SyncError::Busy(_))));
+        assert!(lock.exists());
+        assert_eq!(queue::list(n.dir()), [one]);
+    }
 }
 
 const S: &str = "claude/a.cast.gz";
