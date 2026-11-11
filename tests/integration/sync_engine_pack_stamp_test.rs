@@ -57,3 +57,19 @@ fn a_file_edited_between_scan_and_refresh_is_still_listed_as_maybe_changed() {
     assert!(index_of(&n).entries.contains_key(z), "the refresh ran");
     assert_eq!(index::maybe_changed(n.dir(), &index_of(&n)), [z]);
 }
+
+#[test]
+fn dry_runs_and_status_never_sweep_clones_and_a_locked_run_does() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", crate::helpers::pack_engine::CAST);
+    let dry = agr::sync::Options {
+        dry_run: true,
+        ..opts()
+    };
+    n.engine(&store, &key, "w1").push(&dry).unwrap();
+    n.engine(&store, &key, "w1").pull(&dry).unwrap();
+    n.engine(&store, &key, "w1").status(&[]).unwrap();
+    assert!(store.kept().is_empty(), "{:?}", store.kept());
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(store.kept().len(), 1, "{:?}", store.kept());
+}
