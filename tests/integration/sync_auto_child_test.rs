@@ -152,6 +152,16 @@ fn an_identical_rewrite_is_hashed_once_then_restamped() {
     w.write("old", b"v1");
     w.manual_push("old");
     w.write("old", b"v1"); // same bytes, new mtime
+    let file = w.dir.path().join("claude/old.cast.gz");
+    let before = fs::metadata(&file).unwrap().modified().unwrap();
+    let later = before + std::time::Duration::from_secs(3600);
+    fs::File::options()
+        .write(true)
+        .open(&file)
+        .unwrap()
+        .set_modified(later)
+        .unwrap();
+    assert_ne!(fs::metadata(&file).unwrap().modified().unwrap(), before);
     w.write("new", b"fresh");
     assert_eq!(w.auto("new").pushed, 1);
     let index = agr::sync::testing::index::load(w.dir.path()).0;
