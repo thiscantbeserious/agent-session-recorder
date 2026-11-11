@@ -138,4 +138,25 @@ mod local_index {
             .values()
             .all(|e| !e.pending && e.token.is_none()));
     }
+
+    #[test]
+    fn a_v1_index_that_cannot_convert_is_refused_and_left_untouched() {
+        let bad = [
+            r#"{"version":1}"#,
+            r#"{"version":1,"entries":{"a/x.cast.gz":{"synced_at":"t"}}}"#,
+            r#"{"version":1,"entries":{"a/x.cast.gz":{"sha256":"h"}}}"#,
+            r#"{"version":1,"entries":[]}"#,
+        ];
+        for text in bad {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::write(index::path_for(dir.path()), text).unwrap();
+            let err = agr::sync::testing::convert_file(dir.path()).unwrap_err();
+            assert!(err.contains("not valid"), "{err}");
+            let kept = std::fs::read_to_string(index::path_for(dir.path())).unwrap();
+            assert_eq!(kept, text);
+        }
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(index::path_for(dir.path()), v1_text()).unwrap();
+        assert!(agr::sync::testing::convert_file(dir.path()).unwrap());
+    }
 }
