@@ -283,3 +283,57 @@ fn an_unparseable_index_refuses_every_command_and_is_never_saved_over() {
         r#"{"version":1,"entries":{"#
     );
 }
+
+/// A gist copied by hand: a second pack with the same tag, the same index and the same bytes.
+fn copy_pack(store: &MemoryStore, id: &str) -> String {
+    use agr::sync::testing::Segment;
+    use std::io::Read;
+    let info = store
+        .list()
+        .unwrap()
+        .packs
+        .into_iter()
+        .find(|p| p.id == id)
+        .unwrap();
+    let index = store.read_index(id).unwrap();
+    let mut bytes = Vec::new();
+    store
+        .read(id, 0, info.len)
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    let copy = store.create(&info.tag, &index).unwrap();
+    let write = |w: &mut dyn std::io::Write| w.write_all(&bytes);
+    let seg = Segment {
+        len: info.len,
+        write: &write,
+    };
+    store.append(&copy, 0, &index, &[seg], &index).unwrap();
+    copy
+}
+
+#[test]
+fn a_duplicated_own_pack_is_never_appended_to_and_the_next_push_opens_a_new_pack() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    let first = store.list().unwrap().packs[0].id.clone();
+    let copy = copy_pack(&store, &first);
+    let lens = |ids: [&String; 2]| -> Vec<u64> {
+        let all = store.list().unwrap().packs;
+        ids.iter()
+            .map(|i| all.iter().find(|p| &p.id == *i).unwrap().len)
+            .collect()
+    };
+    let before = lens([&first, &copy]);
+    n.session("claude", "b.cast.gz", &CAST.replace("secret", "other"));
+    let report = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(report.pushed, 1, "{:?}", report.items);
+    assert_eq!(lens([&first, &copy]), before, "neither copy grew");
+    let packs = store.list().unwrap().packs;
+    assert_eq!(packs.len(), 3, "a new pack for the push");
+    assert_eq!(
+        index_of(&n).open_pack.as_deref(),
+        packs.last().map(|p| p.id.as_str())
+    );
+}
