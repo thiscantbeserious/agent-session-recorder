@@ -9,9 +9,9 @@ use super::plan::{decide, resolve, Command, Decision, Local};
 use super::queue;
 use super::run::{Options, Outcome, Report, SyncError};
 use super::scan::Row;
-use crate::sync::crypto::Key;
 use crate::sync::pack::repo::PushItem;
-use crate::sync::store::PackStore;
+use crate::sync::pack::Key;
+use crate::sync::pack::PackStore;
 use crate::StorageManager;
 
 /// Engine over any pack store, the key, the storage dir and the writer id of this machine.

@@ -1,4 +1,4 @@
-//! Local sync index `<storage>/.agr-sync.json`, last synced hash and remote id per session.
+//! Local sync index `<storage>/.agr-sync.json`, last synced hash and gen per session.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -13,17 +13,10 @@ pub const LOCK_FILE: &str = ".agr-sync.lock";
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexEntry {
     pub sha256: String,
-    pub remote_id: String,
     pub synced_at: String,
     /// Generation of the last synced manifest, 0 when unknown (old index).
     #[serde(default)]
     pub gen: u64,
-    /// Sealed manifest token of the last sync, the `expected` of the next push.
-    #[serde(default)]
-    pub token: Option<String>,
-    /// The gist was created but its first push is not recorded yet, the next run resumes it.
-    #[serde(default)]
-    pub pending: bool,
     /// On-disk size and mtime of the local file when it was synced, 0 when unknown (old index).
     /// A cheap "might have changed" check, never an input of the plan, the hash decides.
     #[serde(default)]
@@ -47,11 +40,11 @@ pub fn stamp(path: &Path) -> (u64, u64) {
 }
 
 /// Paths whose file exists and no longer matches the size and mtime of their last sync.
-/// Old entries without a stamp are listed too (hashed once, the plan finds them unchanged). Pending entries are left to a manual push.
+/// Old entries without a stamp are listed too (hashed once, the plan finds them unchanged).
 pub fn maybe_changed(storage_dir: &Path, index: &Index) -> Vec<String> {
     let differs = |(path, e): &(&String, &IndexEntry)| {
         let now = stamp(&storage_dir.join(path));
-        !e.pending && now != (0, 0) && now != (e.size, e.mtime_ns)
+        now != (0, 0) && now != (e.size, e.mtime_ns)
     };
     let all = index.entries.iter().filter(differs);
     all.map(|(path, _)| path.clone()).collect()
@@ -158,7 +151,6 @@ mod tests {
     fn entry(n: u8) -> IndexEntry {
         IndexEntry {
             sha256: format!("hash{n}"),
-            remote_id: format!("id{n}"),
             synced_at: "2026-11-06T10:00:00+00:00".into(),
             ..IndexEntry::default()
         }

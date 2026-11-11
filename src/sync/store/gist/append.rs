@@ -5,16 +5,15 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::PoisonError;
 
-use super::api::{be, INDEX_FILE};
+use super::api::INDEX_FILE;
 use super::cache::{parse_tree, Cut, PackCache};
 use super::index_cache::IndexCache;
 use super::layout::{cut_parts, next_names};
+use super::parse::map_failure;
+use super::runner::{Output, Runner};
+use super::{io_result, strings, GIT_IDENTITY, IDENTITY_ENV};
 use super::{GistStore, Segment, StoreError};
-use crate::sync::backend::gist::parse::map_failure;
-use crate::sync::backend::gist::{io_result, strings, GIT_IDENTITY, IDENTITY_ENV};
-use crate::sync::backend::BackendError;
 use crate::sync::store::gist::progress::writing_percent;
-use crate::sync::store::gist::runner::{Output, Runner};
 
 /// HTTPS with `gh` as the credential helper, never SSH, an unknown host key would prompt and stall.
 const CRED: [&str; 4] = [
@@ -83,10 +82,10 @@ impl<R: Runner> GistStore<R> {
         cwd: Option<&Path>,
         env: &[(&str, String)],
     ) -> Result<Output, StoreError> {
-        let out = io_result("git", self.runner.run("git", &strings(args), cwd, env)).map_err(be)?;
+        let out = io_result("git", self.runner.run("git", &strings(args), cwd, env))?;
         match out.success() {
             true => Ok(out),
-            false => Err(be(map_failure("git", &out.stderr, out.code))),
+            false => Err(map_failure("git", &out.stderr, out.code)),
         }
     }
 
@@ -196,14 +195,14 @@ impl<R: Runner> GistStore<R> {
         let run = self
             .runner
             .run_watched("git", &strings(&args), Some(dir), &[], &mut on_line);
-        let out = io_result("git", run).map_err(be)?;
+        let out = io_result("git", run)?;
         if out.success() {
             self.note_push(id);
             return Ok(());
         }
         match map_failure("git", &out.stderr, out.code) {
-            BackendError::Changed(_) => Err(self.fetched_index(dir)),
-            e => Err(be(e)),
+            StoreError::Moved(_) => Err(self.fetched_index(dir)),
+            e => Err(e),
         }
     }
 

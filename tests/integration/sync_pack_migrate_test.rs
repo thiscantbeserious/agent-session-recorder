@@ -135,10 +135,6 @@ mod local_index {
             .map(|e| (e.sha256.as_str(), e.gen))
             .collect();
         assert_eq!(got, vec![("h", 3), ("k", 5)]);
-        assert!(idx
-            .entries
-            .values()
-            .all(|e| !e.pending && e.token.is_none()));
     }
 
     #[test]

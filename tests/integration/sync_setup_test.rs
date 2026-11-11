@@ -7,7 +7,7 @@ use agr::sync::setup::{
     KeyNeed, KeyState, SetupError,
 };
 use agr::sync::testing::{key_bytes, MemoryStore, PackStore};
-use agr::sync::{BackendError, Key};
+use agr::sync::{Key, StoreError};
 use std::path::PathBuf;
 
 #[test]
@@ -111,18 +111,15 @@ fn loose_key_permissions_are_an_error() {
 
 #[test]
 fn explain_gives_message_and_hint() {
-    let (msg, hint) = explain(&BackendError::NotInstalled("gh"));
+    let (msg, hint) = explain(&StoreError::NotInstalled("gh"));
     assert!(msg.starts_with("gh not found"), "{msg}");
     assert!(hint.unwrap().contains("https://cli.github.com"));
-    let (_, hint) = explain(&BackendError::NotLoggedIn);
+    let (_, hint) = explain(&StoreError::NotLoggedIn);
     assert!(hint.unwrap().contains("gh auth login"));
-    let (_, hint) = explain(&BackendError::MissingScope);
+    let (_, hint) = explain(&StoreError::MissingScope);
     assert!(hint.unwrap().contains("gh auth refresh -s gist"));
-    let (msg, hint) = explain(&BackendError::RateLimited);
+    let (msg, hint) = explain(&StoreError::RateLimited);
     assert!(!msg.contains('\n') && msg.contains("rate limit"), "{msg}");
     assert_eq!(hint.as_deref(), Some("Please run again later"));
-    assert_eq!(
-        explain(&BackendError::Other("x".into())),
-        ("x".into(), None)
-    );
+    assert_eq!(explain(&StoreError::Other("x".into())), ("x".into(), None));
 }

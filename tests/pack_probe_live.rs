@@ -2,8 +2,7 @@
 //! Run by hand only: `cargo test --test pack_probe_live -- --ignored --nocapture --test-threads=1`.
 //! Every fact is printed as a `PROBE:` line, so the output answers the questions even on a failed assert.
 
-use agr::sync::testing::GistBackend;
-use agr::sync::SyncBackend;
+use agr::sync::testing::{GistStore, PackStore};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -12,7 +11,7 @@ use std::time::Duration;
 const MIB: usize = 1024 * 1024;
 
 /// Deletes the gist on drop, also when an assertion panics.
-struct Cleanup<'a>(&'a GistBackend, String);
+struct Cleanup<'a>(&'a GistStore, String);
 
 impl Drop for Cleanup<'_> {
     fn drop(&mut self) {
@@ -181,8 +180,8 @@ fn blob_missing(dir: &Path, oid: &str) -> bool {
         .any(|l| l == format!("?{oid}"))
 }
 
-fn new_gist() -> GistBackend {
-    let backend = GistBackend::new();
+fn new_gist() -> GistStore {
+    let backend = GistStore::new();
     backend.check().unwrap();
     backend
 }
@@ -191,7 +190,7 @@ fn new_gist() -> GistBackend {
 #[ignore = "creates a real secret gist, run by hand"]
 fn append_from_partial_clone() {
     let backend = new_gist();
-    let id = backend.create().unwrap();
+    let id = backend.create("probe", "v0\n").unwrap();
     let _cleanup = Cleanup(&backend, id.clone());
     let d0 = binary_blob(3 * MIB, 1);
     let d1 = binary_blob(3 * MIB, 2);
@@ -278,7 +277,7 @@ fn append_from_partial_clone() {
 #[ignore = "creates a real secret gist, run by hand"]
 fn binary_part_round_trip() {
     let backend = new_gist();
-    let id = backend.create().unwrap();
+    let id = backend.create("probe", "v0\n").unwrap();
     let _cleanup = Cleanup(&backend, id.clone());
     let part = binary_blob(8 * MIB, 3);
     let want = sha(&part);
@@ -328,7 +327,7 @@ fn binary_part_round_trip() {
 #[ignore = "creates a real secret gist, run by hand"]
 fn index_through_api() {
     let backend = new_gist();
-    let id = backend.create().unwrap();
+    let id = backend.create("probe", "v0\n").unwrap();
     let _cleanup = Cleanup(&backend, id.clone());
 
     let small = text_blob(700 * 1024);
@@ -365,7 +364,7 @@ fn index_through_api() {
 #[ignore = "creates a real secret gist, run by hand"]
 fn file_cap() {
     let backend = new_gist();
-    let id = backend.create().unwrap();
+    let id = backend.create("probe", "v0\n").unwrap();
     let _cleanup = Cleanup(&backend, id.clone());
     let names: Vec<String> = (0..30).map(|i| format!("f{i:03}")).collect();
     let files: Vec<(&str, &[u8])> = names.iter().map(|n| (n.as_str(), b"x" as &[u8])).collect();
@@ -436,7 +435,7 @@ fn tree_commit(dir: &Path, name: &str) {
 #[ignore = "creates a real secret gist, run by hand"]
 fn append_fetch_trigger() {
     let backend = new_gist();
-    let id = backend.create().unwrap();
+    let id = backend.create("probe", "v0\n").unwrap();
     let _cleanup = Cleanup(&backend, id.clone());
     let version = Command::new("git").arg("--version").output().unwrap();
     info(
@@ -559,7 +558,7 @@ fn api_updated_at(id: &str) -> (String, String) {
 #[ignore = "creates a real secret gist, run by hand"]
 fn updated_at_moves_on_git_push() {
     let backend = new_gist();
-    let id = backend.create().unwrap();
+    let id = backend.create("probe", "v0\n").unwrap();
     let _cleanup = Cleanup(&backend, id.clone());
     push_files(&id, &[("index", b"v1\n")]);
     // updated_at has second resolution, keep the push clearly in a later second.

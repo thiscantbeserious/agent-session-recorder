@@ -13,7 +13,7 @@ use super::queue::Held;
 use super::run::{Options, Outcome, Report, SyncError};
 use super::scan::Row;
 use crate::sync::pack::repo::{Outcome as Landed, PushError, PushItem, PushReport};
-use crate::sync::store::StoreError;
+use crate::sync::pack::StoreError;
 
 /// Report text when somebody else's data was ahead when the append was planned.
 const CHANGED: &str = "changed on the remote, run again";

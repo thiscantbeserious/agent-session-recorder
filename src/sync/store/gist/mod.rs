@@ -8,6 +8,8 @@ mod index_cache;
 mod last_push;
 mod layout;
 pub(crate) mod pace;
+pub(crate) mod parse;
+pub(crate) mod parts;
 pub(crate) mod progress;
 mod read;
 pub mod runner;
@@ -23,9 +25,80 @@ use self::append::Request;
 #[doc(hidden)]
 pub use self::cache::pack_dir;
 use super::{Listing, PackInfo, PackStore, Segment, StoreError};
-use crate::sync::backend::gist::ProgressSink;
 use crate::sync::store::gist::pace::{Clock, Pacer, SystemClock};
-use crate::sync::store::gist::runner::{ProcessRunner, Runner};
+use crate::sync::store::gist::runner::{Output, ProcessRunner, Runner};
+
+/// Receives the percent of the running upload or download, never a path or a name.
+pub type ProgressSink = Arc<dyn Fn(u8) + Send + Sync>;
+
+pub(crate) const GIT_IDENTITY: [&str; 6] = [
+    "-c",
+    "user.name=agr",
+    "-c",
+    "user.email=agr@localhost",
+    "-c",
+    "commit.gpgsign=false",
+];
+/// Env beats `-c user.*`, so a user's exported `GIT_AUTHOR_*` would leak without these.
+pub(crate) const IDENTITY_ENV: [(&str, &str); 4] = [
+    ("GIT_AUTHOR_NAME", "agr"),
+    ("GIT_AUTHOR_EMAIL", "agr@localhost"),
+    ("GIT_COMMITTER_NAME", "agr"),
+    ("GIT_COMMITTER_EMAIL", "agr@localhost"),
+];
+
+pub(crate) fn strings(args: &[&str]) -> Vec<String> {
+    args.iter().map(ToString::to_string).collect()
+}
+
+pub(crate) fn io_result(
+    tool: &'static str,
+    result: std::io::Result<Output>,
+) -> Result<Output, StoreError> {
+    match result {
+        Ok(out) => Ok(out),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(StoreError::NotInstalled(tool)),
+        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => Err(StoreError::Other(format!(
+            "{tool} stalled, nothing came back in time, retry with `agr sync push`"
+        ))),
+        Err(e) => Err(StoreError::Other(format!("{tool}: {}", e.kind()))),
+    }
+}
+
+/// One error line and an optional hint line per failure, the gist store knows its tools.
+pub fn explain(error: &StoreError) -> (String, Option<String>) {
+    match error {
+        StoreError::NotInstalled("gh") => (
+            "gh not found, the gist backend needs gh and git".into(),
+            Some("Install gh from https://cli.github.com, then run `gh auth login`".into()),
+        ),
+        StoreError::NotInstalled(tool) => (
+            format!("{tool} not found, the gist backend needs gh and git"),
+            Some(format!(
+                "Install {tool} and gh (https://cli.github.com), then run `gh auth login`"
+            )),
+        ),
+        StoreError::NotLoggedIn => (
+            "gh not logged in".into(),
+            Some("Run `gh auth login`".into()),
+        ),
+        StoreError::MissingScope => (
+            "the gh token has no gist scope".into(),
+            Some("Run `gh auth refresh -s gist`".into()),
+        ),
+        StoreError::RateLimited => (
+            "GitHub rate limit reached, sync stopped".into(),
+            Some("Please run again later".into()),
+        ),
+        StoreError::NotFound => ("remote entry not found".into(), None),
+        other => (other.to_string(), None),
+    }
+}
+
+/// The old per-session gists, read by `agr sync migrate` only.
+pub fn legacy_reader() -> Box<dyn super::legacy::LegacyRead> {
+    Box::new(super::legacy::GistLegacy::new())
+}
 
 /// Secret gists as packs, the runner is the only way out to `gh` and `git`.
 pub struct GistStore<R: Runner = ProcessRunner> {

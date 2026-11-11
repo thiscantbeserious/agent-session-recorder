@@ -10,8 +10,8 @@ use std::collections::BTreeSet;
 use super::index;
 use super::lock::SyncLock;
 use super::observe::{counted, Observer, Step};
-use super::plan::{Command, Decision, SkipReason};
-use super::run::{BackendEngine, Item, Options, Outcome, Report, SyncError};
+use super::plan::{Decision, SkipReason};
+use super::run::{Item, Options, Outcome, Report, SyncError};
 use crate::sync::pack::rules::valid_path;
 
 pub const QUEUE_DIR: &str = ".agr-sync-queue";
@@ -80,7 +80,7 @@ pub(super) fn settle(storage_dir: &Path, item: &Item) {
     }
 }
 
-/// What the auto drain needs from an engine, the old per-session one and the pack one.
+/// What the auto drain needs from an engine.
 pub(super) trait Held {
     fn storage_dir(&self) -> std::path::PathBuf;
     /// One push round for `opts.sessions`, the caller holds the sync lock.
@@ -89,31 +89,6 @@ pub(super) trait Held {
         opts: &Options,
         observer: &mut dyn FnMut(Step<'_>),
     ) -> Result<Report, SyncError>;
-}
-
-impl Held for BackendEngine<'_> {
-    fn storage_dir(&self) -> std::path::PathBuf {
-        self.storage.storage_dir()
-    }
-
-    fn push_held(
-        &self,
-        opts: &Options,
-        observer: &mut dyn FnMut(Step<'_>),
-    ) -> Result<Report, SyncError> {
-        self.sync_held(Command::Push, opts, observer)
-    }
-}
-
-impl BackendEngine<'_> {
-    /// The `--auto` run, see `drain`.
-    pub fn drain_auto(
-        &self,
-        session: &str,
-        observer: &mut Observer<'_>,
-    ) -> Result<Report, SyncError> {
-        drain(self, session, observer)
-    }
 }
 
 /// The `--auto` run, pushes the queue plus the changed synced sessions, never pulls or

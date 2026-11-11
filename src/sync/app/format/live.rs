@@ -4,8 +4,8 @@
 use std::io::Write;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use crate::sync::backend::gist::ProgressSink;
 use crate::sync::engine::observe::Event;
+use crate::sync::store::gist::ProgressSink;
 use crate::theme::cli::{colors_enabled, paint_if};
 use crate::theme::current_theme;
 

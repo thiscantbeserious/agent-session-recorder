@@ -202,11 +202,6 @@ mod cli_offer_test;
 #[path = "integration/cli_color_test.rs"]
 mod cli_color_test;
 
-#[path = "integration/sync_engine_test.rs"]
-mod sync_engine_test;
-
-#[path = "integration/sync_engine_pack_stamp_test.rs"]
-mod sync_engine_pack_stamp_test;
 #[path = "integration/sync_engine_pack_test.rs"]
 mod sync_engine_pack_test;
 
@@ -231,9 +226,6 @@ mod sync_auto_child_test;
 #[path = "integration/sync_plan_test.rs"]
 mod sync_plan_test;
 
-#[path = "integration/sync_index_fields_test.rs"]
-mod sync_index_fields_test;
-
 #[path = "integration/cli_sync_parse_test.rs"]
 mod cli_sync_parse_test;
 
@@ -248,9 +240,6 @@ mod cli_sync_status_test;
 
 #[path = "integration/cli_sync_test.rs"]
 mod cli_sync_test;
-
-#[path = "integration/sync_multi_machine_test.rs"]
-mod sync_multi_machine_test;
 
 #[path = "integration/sync_queue_test.rs"]
 mod sync_queue_test;
@@ -330,20 +319,11 @@ mod sync_blob_stream_test;
 #[path = "integration/sync_blob_test.rs"]
 mod sync_blob_test;
 
-#[path = "integration/sync_gist_backend_test.rs"]
-mod sync_gist_backend_test;
-
 #[path = "integration/sync_layer_test.rs"]
 mod sync_layer_test;
 
 #[path = "integration/sync_gist_legacy_test.rs"]
 mod sync_gist_legacy_test;
-
-#[path = "integration/sync_gist_pull_test.rs"]
-mod sync_gist_pull_test;
-
-#[path = "integration/sync_gist_push_test.rs"]
-mod sync_gist_push_test;
 
 #[path = "integration/sync_scan_path_test.rs"]
 mod sync_scan_path_test;

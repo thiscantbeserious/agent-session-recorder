@@ -10,8 +10,8 @@ use agr::sync::setup::{
     default_key_path, explain, keep_writer, needs_privacy_ack, open_store, pack_target,
     resolve_key, writer_id, KeyNeed, KeyState, SetupError, IMPORT_HINT,
 };
-use agr::sync::testing::{backend_error, PackStore};
-use agr::sync::{BackendError, Engine, Item, Options, Outcome, ProgressSink, Report, SyncError};
+use agr::sync::testing::PackStore;
+use agr::sync::{Engine, Item, Options, Outcome, ProgressSink, Report, StoreError, SyncError};
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
 
@@ -69,8 +69,8 @@ pub(super) fn abort(message: &str, hint: Option<&str>) -> ! {
 /// A precondition that failed, message plus optional hint line.
 struct Failure(String, Option<String>);
 
-impl From<BackendError> for Failure {
-    fn from(e: BackendError) -> Self {
+impl From<StoreError> for Failure {
+    fn from(e: StoreError) -> Self {
         let (message, hint) = explain(&e);
         Failure(message, hint)
     }
@@ -113,7 +113,7 @@ fn try_prepare(
             Some("Set `[sync] backend = \"gist\"` (or remove `backend = \"off\"`) in ~/.config/agr/config.toml.".into()),
         ));
     };
-    store.check().map_err(backend_error)?;
+    store.check()?;
     let key = resolve_key(&default_key_path()?, store.as_ref(), need)?;
     let target = pack_target(config.sync.pack_size_mib).map_err(anyhow::Error::msg)?;
     let storage = StorageManager::new(config);

@@ -1,42 +1,35 @@
 //! Encrypted session sync.
 
 mod app;
-mod backend;
 mod crypto;
 mod engine;
 mod pack;
 mod store;
 
 pub use app::{auto, confirm, format, key, setup};
-pub use backend::gist::scratch::Scratch;
-pub use backend::gist::ProgressSink;
-pub use backend::{BackendError, BlobSource, RemoteEntry, SyncBackend};
 pub use crypto::{new_writer_id, Key, PhraseError};
 pub use engine::lock::SyncLock;
 pub use engine::observe::{Event, Observer};
 pub use engine::pack_run::Engine;
 pub use engine::plan::{Decision, SkipReason};
-pub use engine::run::{BackendEngine, Item, Options, Outcome, Report, SyncError};
+pub use engine::run::{Item, Options, Outcome, Report, SyncError};
 pub use engine::select::{select_remote, SelectError};
 pub use pack::migrate::{
     preview as migrate_preview, run as migrate_run, Env as MigrateEnv, MigrateError,
 };
+pub use store::gist::scratch::Scratch;
+pub use store::gist::ProgressSink;
+pub use store::StoreError;
 
 /// Internals for the integration tests, not a stable API.
 #[doc(hidden)]
 pub mod testing {
-    pub use crate::sync::backend::file::FileBackend;
-    pub use crate::sync::backend::gist::GistBackend;
-    pub use crate::sync::backend::memory::MemoryBackend;
-    pub use crate::sync::backend::{pull_bytes, push_bytes};
     pub use crate::sync::crypto::blob::{open_stream, seal_stream, BlobError};
     pub use crate::sync::crypto::CryptoError;
     pub use crate::sync::crypto::{open_meta, seal, seal_meta, sha256_hex, Meta};
-    pub use crate::sync::engine::fail::backend_error;
     pub use crate::sync::engine::index;
     pub use crate::sync::engine::plan::{decide, resolve, Command, Input, Local, Remote};
     pub use crate::sync::engine::queue;
-    pub use crate::sync::engine::scan::{scan, Row};
     pub use crate::sync::pack::index::{
         new_pack_uuid, open_index, seal_index, Entry, Index, IndexError,
     };
@@ -64,14 +57,12 @@ pub mod testing {
         crate::sync::Key::from_bytes(*key.as_bytes())
     }
 
-    /// Gist backend internals for the fake runner tests.
+    /// Gist store internals for the fake runner tests.
     pub mod gist {
-        pub use crate::sync::backend::gist::parse::{parse_list, NO_CREATED_AT};
-        pub use crate::sync::backend::gist::parts::{part_name, part_names};
-        pub use crate::sync::backend::gist::{MANIFEST_FILE, STUB_BODY, STUB_FILE};
         pub use crate::sync::store::gist::pace::{Clock, FakeClock};
         pub use crate::sync::store::gist::runner::{Output, Runner};
         pub use crate::sync::store::gist::scratch::Scratch;
+        pub use crate::sync::store::legacy::GistLegacy;
     }
 
     /// Blob internals for the framing, nonce and known-answer tests.

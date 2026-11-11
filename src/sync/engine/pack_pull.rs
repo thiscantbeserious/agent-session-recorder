@@ -8,7 +8,7 @@ use super::scan::Row;
 use crate::files::backup;
 use crate::sync::pack::repo::{ReadError, Repo};
 use crate::sync::pack::stream::RangeError;
-use crate::sync::store::StoreError;
+use crate::sync::pack::StoreError;
 use crate::StorageManager;
 
 const OLDER: &str = "remote version is older than the last sync, not pulling";

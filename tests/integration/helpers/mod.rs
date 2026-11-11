@@ -13,7 +13,6 @@ pub mod pack_repo;
 pub mod storage;
 #[macro_use]
 pub mod store_contract;
-pub mod sync_net;
 pub mod tui_snapshot;
 
 use std::fs;

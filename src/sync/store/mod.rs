@@ -7,7 +7,11 @@ pub(super) mod dir;
 pub(super) mod gist;
 pub(super) mod memory;
 
-pub use crate::sync::backend::BlobSource;
+pub(super) mod legacy;
+
+/// Produces the sealed bytes of one segment into the writer it is given, at most once per append.
+/// An `Err` aborts the append, nothing is committed.
+pub type BlobSource<'a> = &'a dyn Fn(&mut dyn std::io::Write) -> std::io::Result<()>;
 
 /// Store failures, one clear case each so commands print one line. The text is backend neutral,
 /// the app layer adds the hint of the backend (`gh auth login`, rate limit page).
@@ -60,21 +64,6 @@ impl std::error::Error for StoreError {}
 impl From<crate::sync::store::gist::pace::ClockError> for StoreError {
     fn from(e: crate::sync::store::gist::pace::ClockError) -> Self {
         Self::Other(e.to_string())
-    }
-}
-
-impl From<crate::sync::backend::BackendError> for StoreError {
-    fn from(e: crate::sync::backend::BackendError) -> Self {
-        use crate::sync::backend::BackendError as B;
-        match e {
-            B::NotInstalled(t) => Self::NotInstalled(t),
-            B::NotLoggedIn => Self::NotLoggedIn,
-            B::MissingScope => Self::MissingScope,
-            B::Unreachable(w) => Self::Unreachable(w),
-            B::RateLimited => Self::RateLimited,
-            B::NotFound => Self::NotFound,
-            B::Changed(_) | B::Other(_) => Self::Other(e.to_string()),
-        }
     }
 }
 
