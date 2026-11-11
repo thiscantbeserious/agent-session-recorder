@@ -40,6 +40,7 @@ impl State {
 
     /// Store the last auto push error in the file at `path`.
     pub fn store_auto_error(path: &Path, line: String) -> Result<()> {
+        let _guard = lock::exclusive(path)?;
         let mut state = Self::load_from(path);
         state.last_auto_push_error = Some(line);
         state.save_to(path)
