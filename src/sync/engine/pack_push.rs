@@ -61,7 +61,7 @@ impl Engine<'_> {
             let row = rows.iter().find(|r| &r.path == path);
             let verdict = match (outcome, row) {
                 (Landed::Pushed { .. }, Some(row)) => {
-                    let sha = pushed_sha(loaded, row);
+                    let sha = pushed_sha(loaded, row, *gen);
                     record_synced(&mut loaded.index, &dir, path, (&sha, *gen));
                     Outcome::Done(std::fs::metadata(dir.join(path)).map_or(0, |m| m.len()))
                 }
@@ -176,12 +176,12 @@ fn on_remote(row: &Row) -> bool {
     )
 }
 
-/// The hash the append wrote: the merged view after the push when it has one for this gen, else
-/// the planned local hash.
-fn pushed_sha(loaded: &Loaded<'_>, row: &Row) -> String {
+/// The hash the append wrote: the merged view after the push when it still holds our gen with a
+/// live top, else the planned local hash. A rival at a higher gen is never recorded as ours.
+fn pushed_sha(loaded: &Loaded<'_>, row: &Row, gen: u64) -> String {
     use crate::sync::pack::merge::Top;
-    let top = loaded.repo.view().get(&row.path).map(|m| &m.top);
-    match (top, &row.input.local) {
+    let at_gen = loaded.repo.view().get(&row.path).filter(|m| m.gen == gen);
+    match (at_gen.map(|m| &m.top), &row.input.local) {
         (Some(Top::Live { sha256 }), _) => sha256.clone(),
         (_, Local::Hash(h)) => h.clone(),
         _ => String::new(),
