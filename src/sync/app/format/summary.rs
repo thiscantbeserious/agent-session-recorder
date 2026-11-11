@@ -110,7 +110,26 @@ pub fn summary_lines(report: &Report) -> Vec<String> {
     if lines.is_empty() {
         lines.push("Nothing to do.".into());
     }
+    lines.extend(fork_lines(report));
     lines.extend(report.warning.iter().map(|w| format!("Warning: {w}")));
+    lines
+}
+
+/// Forks this run's push left, not already shown as a fork item, with the way out.
+pub(super) fn fork_lines(report: &Report) -> Vec<String> {
+    let shown = |p: &&String| {
+        let fork = |i: &Item| i.path == **p && i.decision == Decision::Fork;
+        !report.items.iter().any(fork)
+    };
+    let mut lines: Vec<String> = report
+        .forks
+        .iter()
+        .filter(shown)
+        .map(|p| format!("Fork after push: {p}"))
+        .collect();
+    if !lines.is_empty() {
+        lines.push("run `agr sync push --overwrite` to resolve".into());
+    }
     lines
 }
 

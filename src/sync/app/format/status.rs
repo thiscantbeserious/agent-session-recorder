@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use super::summary::{conflict_line, count_lines, detail, failed_line, planned_head};
+use super::summary::{conflict_line, count_lines, detail, failed_line, fork_lines, planned_head};
 use super::{backend_line, label, size, status_block};
 use crate::sync::engine::plan::Decision;
 use crate::sync::engine::run::{Item, Outcome, Report};
@@ -42,6 +42,7 @@ pub fn compact_summary_lines(report: &Report, verb: &str) -> Vec<String> {
     lines.extend(skipped_lines(report));
     lines.extend(detail("Conflicts", report.conflicts, report, conflict_line));
     lines.extend(detail("Failed", report.failed, report, failed_line));
+    lines.extend(fork_lines(report));
     if lines.is_empty() {
         lines.push("Nothing to do.".into());
     } else if report.skipped > 0 {
