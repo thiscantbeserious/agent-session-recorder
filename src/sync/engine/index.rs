@@ -1,10 +1,11 @@
-//! Local sync index `<storage>/.agr-sync.json`, last synced hash and remote id per session.
+//! Local sync index `<storage>/.agr-sync.json`, last synced hash and gen per session.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Map, Value};
 
 pub(super) const INDEX_FILE: &str = ".agr-sync.json";
 pub const LOCK_FILE: &str = ".agr-sync.lock";
@@ -13,17 +14,10 @@ pub const LOCK_FILE: &str = ".agr-sync.lock";
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IndexEntry {
     pub sha256: String,
-    pub remote_id: String,
     pub synced_at: String,
     /// Generation of the last synced manifest, 0 when unknown (old index).
     #[serde(default)]
     pub gen: u64,
-    /// Sealed manifest token of the last sync, the `expected` of the next push.
-    #[serde(default)]
-    pub token: Option<String>,
-    /// The gist was created but its first push is not recorded yet, the next run resumes it.
-    #[serde(default)]
-    pub pending: bool,
     /// On-disk size and mtime of the local file when it was synced, 0 when unknown (old index).
     /// A cheap "might have changed" check, never an input of the plan, the hash decides.
     #[serde(default)]
@@ -47,11 +41,11 @@ pub fn stamp(path: &Path) -> (u64, u64) {
 }
 
 /// Paths whose file exists and no longer matches the size and mtime of their last sync.
-/// Old entries without a stamp are listed too (hashed once, the plan finds them unchanged). Pending entries are left to a manual push.
+/// Old entries without a stamp are listed too (hashed once, the plan finds them unchanged).
 pub fn maybe_changed(storage_dir: &Path, index: &Index) -> Vec<String> {
     let differs = |(path, e): &(&String, &IndexEntry)| {
         let now = stamp(&storage_dir.join(path));
-        !e.pending && now != (0, 0) && now != (e.size, e.mtime_ns)
+        now != (0, 0) && now != (e.size, e.mtime_ns)
     };
     let all = index.entries.iter().filter(differs);
     all.map(|(path, _)| path.clone()).collect()
@@ -62,6 +56,9 @@ pub fn maybe_changed(storage_dir: &Path, index: &Index) -> Vec<String> {
 pub struct Index {
     pub version: u32,
     pub entries: BTreeMap<String, IndexEntry>,
+    /// Id of the open pack of this machine, the hint of the next `Repo::open`.
+    #[serde(default)]
+    pub open_pack: Option<String>,
 }
 
 impl Default for Index {
@@ -69,6 +66,7 @@ impl Default for Index {
         Self {
             version: 1,
             entries: BTreeMap::new(),
+            open_pack: None,
         }
     }
 }
@@ -93,6 +91,50 @@ pub fn load(storage_dir: &Path) -> (Index, Option<String>) {
     }
 }
 
+/// Why the pack engine will not plan against the local index file.
+#[derive(Debug, PartialEq, Eq)]
+pub(super) enum Refused {
+    /// Written by the per-session engine, `agr sync migrate` converts it.
+    V1,
+    /// Exists but does not parse, treating it as empty would plan every local edit as new and
+    /// the next save would overwrite it.
+    Corrupt(String),
+}
+
+/// Like `load` for the pack engine: a missing file is an empty v2 index, a v1 file or a file
+/// that does not parse is refused so nothing is planned against it.
+pub(super) fn load_v2(storage_dir: &Path) -> Result<Index, Refused> {
+    let (mut index, warning) = load(storage_dir);
+    if warning.is_some() {
+        let path = path_for(storage_dir);
+        let text = format!("{} is not valid, fix or remove it first", path.display());
+        return Err(Refused::Corrupt(text));
+    }
+    if path_for(storage_dir).exists() && index.version < 2 {
+        return Err(Refused::V1);
+    }
+    index.version = 2;
+    Ok(index)
+}
+
+/// The entry of a session the packs hold at `gen` with `sha256`, `stamp` is the one taken before
+/// the bytes behind `sha256` were read.
+pub(super) fn record_synced(
+    index: &mut Index,
+    path: &str,
+    (sha256, gen): (&str, u64),
+    (size, mtime_ns): (u64, u64),
+) {
+    let entry = IndexEntry {
+        sha256: sha256.to_string(),
+        synced_at: chrono::Utc::now().to_rfc3339(),
+        gen,
+        size,
+        mtime_ns,
+    };
+    index.entries.insert(path.to_string(), entry);
+}
+
 /// Save atomically.
 pub(super) fn save(storage_dir: &Path, index: &Index) -> Result<()> {
     let json = serde_json::to_string_pretty(index)?;
@@ -102,6 +144,68 @@ pub(super) fn save(storage_dir: &Path, index: &Index) -> Result<()> {
     )
 }
 
+/// What v2 keeps of a v1 entry: hash and gen so the plan keeps its last synced state, the
+/// stamp so an unchanged file is not hashed again. The old remote id, token and pending flag are gone.
+fn carry(path: &str, e: &Value) -> Result<Value, String> {
+    let text = |key: &str| {
+        e[key]
+            .as_str()
+            .ok_or_else(|| format!("entry {path} has no {key}"))
+    };
+    Ok(json!({
+        "sha256": text("sha256")?,
+        "synced_at": text("synced_at")?,
+        "gen": e["gen"].as_u64().unwrap_or(0),
+        "size": e["size"].as_u64().unwrap_or(0),
+        "mtime_ns": e["mtime_ns"].as_u64().unwrap_or(0),
+    }))
+}
+
+/// The v2 text of a v1 index, `None` when it already is v2. A pending entry never synced
+/// anything, so it is dropped and its local file reads as new.
+pub fn convert_index(text: &str) -> Result<Option<String>, String> {
+    let old: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    if old["version"].as_u64().unwrap_or(1) >= 2 {
+        return Ok(None);
+    }
+    let old_entries = old["entries"]
+        .as_object()
+        .ok_or("entries is not an object")?;
+    let entries = (old_entries.iter())
+        .filter(|(_, e)| e["pending"] != true)
+        .map(|(path, e)| Ok((path.clone(), carry(path, e)?)))
+        .collect::<Result<Map<String, Value>, String>>()?;
+    let v2 = json!({ "version": 2, "entries": entries, "open_pack": null });
+    Ok(Some(v2.to_string()))
+}
+
+/// Converts `<dir>/.agr-sync.json` in place when it is v1, true when it was written.
+/// `agr sync migrate` gets this as a closure, the pack layer never names the index file.
+/// A missing file is left alone, the engine starts an empty v2 from it. A file that exists
+/// but cannot be read or parsed aborts, the engine would rebuild it empty and plan unsynced
+/// local edits as new.
+pub fn convert_file(dir: &Path) -> Result<bool, String> {
+    let path = path_for(dir);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(format!("could not read {}: {e}", path.display())),
+    };
+    let converted = convert_index(&text).map_err(|e| {
+        format!(
+            "{} is not valid ({e}), fix or remove it first",
+            path.display()
+        )
+    })?;
+    let Some(v2) = converted else {
+        return Ok(false);
+    };
+    crate::files::codec::atomic_write(&path, |w| Ok(w.write_all(v2.as_bytes())?))
+        .map_err(|e| format!("could not write {}: {e}", path.display()))?;
+    Ok(true)
+}
+
+// inline: save and INDEX_FILE are private to the engine, the tests write and read the index file directly
 #[cfg(test)]
 mod tests {
     use super::{load, path_for, save, Index, IndexEntry, Path, PathBuf, INDEX_FILE, LOCK_FILE};
@@ -109,36 +213,9 @@ mod tests {
     fn entry(n: u8) -> IndexEntry {
         IndexEntry {
             sha256: format!("hash{n}"),
-            remote_id: format!("id{n}"),
             synced_at: "2026-11-06T10:00:00+00:00".into(),
             ..IndexEntry::default()
         }
-    }
-
-    #[test]
-    fn old_entries_load_without_a_stamp_and_changed_files_are_found() {
-        let json = r#"{"version":1,"entries":{"a/x.cast.gz":{"sha256":"h","remote_id":"i","synced_at":"t"}}}"#;
-        let mut index: Index = serde_json::from_str(json).unwrap();
-        assert_eq!(
-            (
-                index.entries["a/x.cast.gz"].size,
-                index.entries["a/x.cast.gz"].mtime_ns
-            ),
-            (0, 0)
-        );
-        let dir = tempfile::tempdir().unwrap();
-        assert!(
-            super::maybe_changed(dir.path(), &index).is_empty(),
-            "missing file"
-        );
-        std::fs::create_dir_all(dir.path().join("a")).unwrap();
-        let file = dir.path().join("a/x.cast.gz");
-        std::fs::write(&file, "abc").unwrap();
-        assert_eq!(super::maybe_changed(dir.path(), &index), ["a/x.cast.gz"]);
-        let (size, mtime_ns) = super::stamp(&file);
-        let entry = index.entries.get_mut("a/x.cast.gz").unwrap();
-        (entry.size, entry.mtime_ns) = (size, mtime_ns);
-        assert!(super::maybe_changed(dir.path(), &index).is_empty());
     }
 
     #[test]

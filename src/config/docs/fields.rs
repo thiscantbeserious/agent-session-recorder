@@ -134,7 +134,7 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
         fields: &[
             FieldDoc {
                 name: "backend",
-                description: "Sync backend: \"gist\" (secret GitHub Gists via gh, link holders can read them but sessions are encrypted locally, losing the key makes them unrecoverable). \"off\" disables sync. One gist per session, sessions over 1 GiB are skipped, large ones are split into parts inside their gist",
+                description: "Sync backend: \"gist\" (secret GitHub Gists via gh, link holders can read them but sessions are encrypted locally, losing the key makes them unrecoverable). \"off\" disables sync. Sessions are appended into pack gists of about pack_size_mib each, sessions over 1 GiB are skipped",
                 default_display: "\"gist\"",
                 example: None,
             },
@@ -142,6 +142,12 @@ pub const CONFIG_SECTIONS: &[SectionDoc] = &[
                 name: "auto_push",
                 description: "Push new sessions automatically after recording, off by default, set true to push each new recording (needs one manual push first to confirm the privacy notice)",
                 default_display: "false",
+                example: None,
+            },
+            FieldDoc {
+                name: "pack_size_mib",
+                description: "Target size of one pack gist in MiB, 16 to 512",
+                default_display: "64",
                 example: None,
             },
         ],

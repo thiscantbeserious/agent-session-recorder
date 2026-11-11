@@ -1,22 +1,20 @@
-//! status, push, pull and delete, thin layer over `agr::sync::Engine`.
+//! status, push and pull, thin layer over `agr::sync::Engine`.
 
 use anyhow::Result;
 
 use agr::config::state::State;
 use agr::sync::auto;
-use agr::sync::format;
+use agr::sync::format::{self, Live};
 use agr::sync::key;
 use agr::sync::setup::{
-    default_key_path, explain, needs_privacy_ack, open_backend, resolve_key, KeyNeed, KeyState,
-    SetupError, IMPORT_HINT,
+    default_key_path, explain, keep_writer, needs_privacy_ack, open_store, pack_target,
+    resolve_key, writer_id, KeyNeed, KeyState, SetupError, IMPORT_HINT,
 };
-use agr::sync::{
-    BackendError, Engine, Item, Options, Outcome, ProgressSink, Report, SyncBackend, SyncError,
-};
+use agr::sync::testing::PackStore;
+use agr::sync::{Engine, Item, Options, Outcome, ProgressSink, Report, StoreError, SyncError};
 use agr::theme::current_theme;
 use agr::{Config, StorageManager};
 
-use super::live::Live;
 use crate::commands::prompt::should_proceed;
 
 pub struct Args {
@@ -28,23 +26,22 @@ pub struct Args {
 }
 
 /// Everything a command needs after the preconditions passed.
-struct Ctx {
-    backend: Box<dyn SyncBackend>,
-    storage: StorageManager,
-    key: KeyState,
+pub(super) struct Ctx {
+    pub store: Box<dyn PackStore>,
+    pub storage: StorageManager,
+    pub key: KeyState,
+    pub writer: String,
+    pub target: u64,
 }
 
 impl Ctx {
-    fn engine(&self) -> Engine<'_> {
-        Engine {
-            backend: self.backend.as_ref(),
-            key: self.key.key(),
-            storage: &self.storage,
-        }
+    pub fn engine(&self) -> Engine<'_> {
+        let (store, key) = (self.store.as_ref(), self.key.key());
+        Engine::new(store, key, &self.storage, &self.writer, self.target)
     }
 }
 
-fn say(lines: &[String]) {
+pub(super) fn say(lines: &[String]) {
     let theme = current_theme();
     for line in lines {
         let failing = ["Failed", "Warning", "Conflicts"]
@@ -60,7 +57,7 @@ fn say(lines: &[String]) {
 }
 
 /// Print an error line and an optional hint on stderr, then exit non-zero.
-fn abort(message: &str, hint: Option<&str>) -> ! {
+pub(super) fn abort(message: &str, hint: Option<&str>) -> ! {
     let theme = current_theme();
     eprintln!("{}", theme.error_text(message));
     if let Some(hint) = hint {
@@ -72,8 +69,8 @@ fn abort(message: &str, hint: Option<&str>) -> ! {
 /// A precondition that failed, message plus optional hint line.
 struct Failure(String, Option<String>);
 
-impl From<BackendError> for Failure {
-    fn from(e: BackendError) -> Self {
+impl From<StoreError> for Failure {
+    fn from(e: StoreError) -> Self {
         let (message, hint) = explain(&e);
         Failure(message, hint)
     }
@@ -110,24 +107,27 @@ fn try_prepare(
     if let (Some(dir), true) = (&test_dir, announce) {
         eprintln!("Using test sync backend at {}", dir.display());
     }
-    let Some(backend) = open_backend(config.sync.backend, test_dir, progress) else {
+    let Some(store) = open_store(config.sync.backend, test_dir, progress) else {
         return Err(Failure(
             "Sync is off.".into(),
             Some("Set `[sync] backend = \"gist\"` (or remove `backend = \"off\"`) in ~/.config/agr/config.toml.".into()),
         ));
     };
-    backend.check()?;
-    let key = resolve_key(&default_key_path()?, backend.as_ref(), need)?;
+    store.check()?;
+    let key = resolve_key(&default_key_path()?, store.as_ref(), need)?;
+    let target = pack_target(config.sync.pack_size_mib).map_err(anyhow::Error::msg)?;
     let storage = StorageManager::new(config);
     storage.ensure_storage_dir()?;
     Ok(Ctx {
-        backend,
+        store,
         storage,
         key,
+        writer: writer_id(),
+        target,
     })
 }
 
-fn prepare(need: KeyNeed) -> Result<Ctx> {
+pub(super) fn prepare(need: KeyNeed) -> Result<Ctx> {
     prepare_with(need, None)
 }
 
@@ -136,13 +136,23 @@ fn prepare_with(need: KeyNeed, progress: Option<ProgressSink>) -> Result<Ctx> {
         .unwrap_or_else(|Failure(message, hint)| abort(&message, hint.as_deref())))
 }
 
-fn engine_failed(e: SyncError) -> ! {
+/// The lock file is named so a stale one (empty or garbage, counted as held) can be removed.
+pub(super) fn busy_text(lock: &std::path::Path) -> String {
+    format!(
+        "Another sync is running, try again in a moment. If none is, remove {}",
+        lock.display()
+    )
+}
+
+/// Prints the error and exits, generic so it fits `unwrap_or_else` as a plain function.
+pub(super) fn engine_failed<T>(e: SyncError) -> T {
     match e {
-        SyncError::Busy => abort("Another sync is running, try again in a moment.", None),
+        SyncError::Busy(lock) => abort(&busy_text(&lock), None),
         SyncError::Backend(e) => {
             let (message, hint) = explain(&e);
             abort(&message, hint.as_deref())
         }
+        SyncError::NeedsMigrate => abort("Run `agr sync migrate` first.", None),
         SyncError::Failed(message) => abort(&message, None),
         SyncError::RateLimited { left } => {
             let [stopped, later] = format::rate_limit_lines(left);
@@ -161,22 +171,23 @@ fn opts(args: &Args, dry_run: bool) -> Options {
 
 /// Last failed auto push, shown once and cleared.
 fn show_auto_error() {
-    let mut state = State::load();
-    if let Some(line) = auto::take_error_line(&mut state) {
+    if State::load().last_auto_push_error.is_none() {
+        return;
+    }
+    if let Ok(Some(line)) = State::update(auto::take_error_line) {
         say(&[format!("Warning: {line}")]);
-        let _ = state.save();
     }
 }
 
 pub fn status(verbose: bool) -> Result<()> {
     let ctx = prepare(KeyNeed::MayCreate)?;
-    let live = Live::new("", "");
+    let live = Live::stderr("", "");
     let report = ctx
         .engine()
         .status_with(&[], &mut live.loader())
-        .unwrap_or_else(|e| engine_failed(e));
+        .unwrap_or_else(engine_failed);
     live.end();
-    let name = ctx.backend.name();
+    let name = ctx.store.name();
     say(&if verbose {
         format::status_lines(&report, name)
     } else {
@@ -186,8 +197,7 @@ pub fn status(verbose: bool) -> Result<()> {
     Ok(())
 }
 
-/// Preview and problems, then the prompt. `false` when there is nothing to do, on
-/// `--dry-run` or when declined. `notice` is shown right before the prompt.
+/// Preview and problems, then the prompt. `false` on `--dry-run` or when declined, `true` without a prompt when nothing is planned. `notice` is shown right before the prompt.
 fn confirm_planned(plan: &Report, verb: &str, args: &Args, notice: &[String]) -> Result<bool> {
     if args.verbose {
         say(&format::preview_lines(plan, verb));
@@ -196,8 +206,12 @@ fn confirm_planned(plan: &Report, verb: &str, args: &Args, notice: &[String]) ->
         say(&format::compact_preview_lines(plan, verb));
     }
     let planned = plan.items.iter().any(|i| i.outcome == Outcome::Planned);
-    if args.dry_run || !planned {
+    if args.dry_run {
         return Ok(false);
+    }
+    if !planned {
+        // no transfers, the real pass still writes the index rows of sessions already in sync
+        return Ok(true);
     }
     say(notice);
     let question = format!("{}{} these sessions?", verb[..1].to_uppercase(), &verb[1..]);
@@ -225,26 +239,26 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
     if auto {
         return push_auto(&args);
     }
-    let live = Live::new("uploading", "pushed");
-    let ctx = prepare_with(KeyNeed::MayCreate, live.sink())?;
+    let live = Live::stderr("uploading", "pushed");
+    let mut ctx = prepare_with(KeyNeed::MayCreate, live.sink())?;
     let plan = ctx
         .engine()
         .push_with(&opts(&args, true), 0, &mut live.loader())
-        .unwrap_or_else(|e| engine_failed(e));
+        .unwrap_or_else(engine_failed);
     live.end();
-    let mut state = State::load();
-    let notice = privacy_notice(&plan, &state);
+    let notice = privacy_notice(&plan, &State::load());
     if !confirm_planned(&plan, "push", &args, &notice)? {
         return Ok(());
     }
-    if let KeyState::Fresh(fresh) = &ctx.key {
+    let any_planned = plan.items.iter().any(|i| i.outcome == Outcome::Planned);
+    if let (true, KeyState::Fresh(fresh)) = (any_planned, &ctx.key) {
         key::save_new(&default_key_path()?, fresh)?;
         say(&["Created a new sync key. Back up your key with agr sync key export.".to_string()]);
     }
     if !notice.is_empty() {
-        state.sync_privacy_ack = true;
-        state.save()?;
+        State::update(|s| s.sync_privacy_ack = true)?;
     }
+    ctx.writer = keep_writer(&ctx.writer)?;
     let mut observer = live.observer();
     let result = ctx
         .engine()
@@ -254,12 +268,12 @@ pub fn push(args: Args, auto: bool) -> Result<()> {
 }
 
 pub fn pull(args: Args) -> Result<()> {
-    let live = Live::new("downloading", "pulled");
+    let live = Live::stderr("downloading", "pulled");
     let ctx = prepare_with(KeyNeed::Existing, live.sink())?;
     let plan = ctx
         .engine()
         .pull_with(&opts(&args, true), 0, &mut live.loader())
-        .unwrap_or_else(|e| engine_failed(e));
+        .unwrap_or_else(engine_failed);
     live.end();
     if !confirm_planned(&plan, "pull", &args, &[])? {
         return Ok(());
@@ -272,45 +286,8 @@ pub fn pull(args: Args) -> Result<()> {
     finish(result, "pull", args.verbose)
 }
 
-pub fn delete(args: Args) -> Result<()> {
-    let ctx = prepare(KeyNeed::Existing)?;
-    let load = Live::new("", "deleted");
-    let plan = ctx
-        .engine()
-        .status_with(&args.sessions, &mut load.loader())
-        .unwrap_or_else(|e| engine_failed(e));
-    load.end();
-    say(&if args.verbose {
-        format::delete_preview_lines(&plan)
-    } else {
-        format::compact_delete_preview_lines(&plan)
-    });
-    if args.dry_run || !plan.items.iter().any(|i| i.on_remote) {
-        return Ok(());
-    }
-    if !should_proceed(
-        "Delete these remote sessions? The local files stay.",
-        args.yes,
-    )? {
-        say(&["No changes made.".to_string()]);
-        return Ok(());
-    }
-    let total = plan
-        .items
-        .iter()
-        .filter(|i| i.outcome != Outcome::Failed("no such session".into()))
-        .count();
-    let live = Live::new("", "deleted");
-    let mut observer = live.observer();
-    let result = ctx
-        .engine()
-        .delete_with(&args.sessions, total, &mut observer);
-    live.end();
-    finish(result, "delete", args.verbose)
-}
-
 /// Sessions that get a progress line in a real run, planned, skipped and failed ones.
-fn planned(plan: &Report) -> usize {
+pub(super) fn planned(plan: &Report) -> usize {
     let lined = |i: &&Item| {
         matches!(
             i.outcome,
@@ -328,7 +305,10 @@ fn push_auto(args: &Args) -> Result<()> {
     let session = args.sessions.first().map_or("", String::as_str);
     let result = try_prepare(KeyNeed::Existing, false, None)
         .map_err(|Failure(message, _)| SyncError::Failed(message))
-        .and_then(|ctx| auto::run(&ctx.engine(), session));
+        .and_then(|mut ctx| {
+            ctx.writer = keep_writer(&ctx.writer).map_err(|e| SyncError::Failed(e.to_string()))?;
+            auto::run(&ctx.engine(), session)
+        });
     if let Some(line) = auto::error_line(&result) {
         State::store_auto_error_default(line)?;
     }
@@ -336,14 +316,14 @@ fn push_auto(args: &Args) -> Result<()> {
 }
 
 /// Print the summary, exit non-zero when any session failed.
-fn finish(result: Result<Report, SyncError>, verb: &str, verbose: bool) -> Result<()> {
-    let report = result.unwrap_or_else(|e| engine_failed(e));
+pub(super) fn finish(result: Result<Report, SyncError>, verb: &str, verbose: bool) -> Result<()> {
+    let report = result.unwrap_or_else(engine_failed);
     say(&if verbose {
         format::summary_lines(&report)
     } else {
         format::compact_summary_lines(&report, verb)
     });
-    if report.failed > 0 {
+    if report.run_failed() {
         std::process::exit(1);
     }
     Ok(())

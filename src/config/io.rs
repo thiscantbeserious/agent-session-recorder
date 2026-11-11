@@ -36,6 +36,10 @@ pub fn load_from(config_path: &Path) -> Result<Config> {
         .analysis
         .validate()
         .map_err(|e| anyhow::anyhow!("Invalid config: {}", e))?;
+    config
+        .sync
+        .validate()
+        .map_err(|e| anyhow::anyhow!("Invalid config: {}", e))?;
     Ok(config)
 }
 

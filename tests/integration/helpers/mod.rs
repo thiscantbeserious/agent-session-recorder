@@ -2,15 +2,18 @@
 
 #![allow(dead_code)]
 
+pub mod cli_sync;
 pub mod fake_remote;
+pub mod format_items;
 pub mod gist_fake;
 pub mod gist_rig;
 pub mod gist_store_fake;
+pub mod legacy_fake;
+pub mod pack_engine;
 pub mod pack_repo;
 pub mod storage;
 #[macro_use]
 pub mod store_contract;
-pub mod sync_net;
 pub mod tui_snapshot;
 
 use std::fs;

@@ -9,17 +9,14 @@ use crate::files::lock::{is_pid_alive, LockInfo};
 
 /// Held lock, removed on drop.
 #[derive(Debug)]
-pub(super) struct SyncLock(PathBuf);
+pub struct SyncLock(PathBuf);
 
 impl SyncLock {
     /// Take the lock, `Busy` when a live process holds it.
-    pub(super) fn acquire(storage_dir: &Path) -> Result<Self, SyncError> {
+    pub fn acquire(storage_dir: &Path) -> Result<Self, SyncError> {
         let path = storage_dir.join(LOCK_FILE);
-        if create(&path)? {
+        if !wait_for_holder(&path)? {
             return Ok(Self(path));
-        }
-        if holder_alive(&path) {
-            return Err(SyncError::Busy);
         }
         // ponytail: two runs can both see a stale holder, one removes the other's fresh lock
         // between our check and our remove. Window is microseconds and needs a dead pid
@@ -28,9 +25,29 @@ impl SyncLock {
         if create(&path)? {
             return Ok(Self(path));
         }
-        Err(SyncError::Busy)
+        Err(SyncError::Busy(path))
     }
 }
+
+/// Tries to create the lock, a lock that is released between our failed create and our read is
+/// tried again `RETRIES` times. `Ok(false)` when the lock is ours, `Ok(true)` when the holder
+/// is dead (stale), `Busy` when it is alive or keeps appearing and vanishing.
+fn wait_for_holder(path: &Path) -> Result<bool, SyncError> {
+    for _ in 0..RETRIES {
+        if create(path)? {
+            return Ok(false);
+        }
+        match holder(path) {
+            Holder::Gone => {}
+            Holder::Alive => break,
+            Holder::Dead => return Ok(true),
+        }
+    }
+    Err(SyncError::Busy(path.to_path_buf()))
+}
+
+/// Create attempts while the holder keeps vanishing.
+const RETRIES: usize = 5;
 
 impl Drop for SyncLock {
     fn drop(&mut self) {
@@ -54,7 +71,10 @@ fn create_with(
         started: chrono::Utc::now().to_rfc3339(),
     };
     let json = serde_json::to_string(&info).unwrap_or_default();
-    let tmp = path.with_extension(format!("tmp{}", info.pid));
+    // Unique per call, threads share the pid and a shared temp would share the lock's inode.
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_extension(format!("tmp{}-{n}", info.pid));
     std::fs::write(&tmp, &json).map_err(fail)?;
     let linked = link(&tmp, path);
     let _ = std::fs::remove_file(&tmp);
@@ -79,15 +99,28 @@ fn create_new(path: &Path, json: &str) -> std::io::Result<bool> {
     }
 }
 
-/// An empty file is a lock written by an older build that is still writing, so it counts.
-fn holder_alive(path: &Path) -> bool {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return false;
-    };
-    text.is_empty()
-        || serde_json::from_str::<LockInfo>(&text).is_ok_and(|info| is_pid_alive(info.pid))
+enum Holder {
+    Alive,
+    Dead,
+    /// Released between our failed create and our read, just try again.
+    Gone,
 }
 
+/// Only a readable lock of a dead pid is stale. Empty (still being written) or unreadable
+/// counts as held, so a lock is never removed under a live holder.
+fn holder(path: &Path) -> Holder {
+    match std::fs::read_to_string(path) {
+        Err(e) if e.kind() == ErrorKind::NotFound => Holder::Gone,
+        Err(_) => Holder::Alive,
+        Ok(text) if text.is_empty() => Holder::Alive,
+        Ok(text) => match serde_json::from_str::<LockInfo>(&text) {
+            Ok(info) if !is_pid_alive(info.pid) => Holder::Dead,
+            _ => Holder::Alive,
+        },
+    }
+}
+
+// inline: SyncLock and its hard-link fallback are private to the engine
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,7 +131,7 @@ mod tests {
         let path = dir.path().join(LOCK_FILE);
         let no_links = |_: &Path, _: &Path| Err(std::io::Error::from(ErrorKind::Unsupported));
         assert!(matches!(create_with(&path, no_links), Ok(true)));
-        assert!(holder_alive(&path));
+        assert!(matches!(holder(&path), Holder::Alive));
         assert!(matches!(create_with(&path, no_links), Ok(false)));
     }
 
@@ -109,7 +142,7 @@ mod tests {
         std::fs::write(&path, "").unwrap();
         assert!(matches!(
             SyncLock::acquire(dir.path()),
-            Err(SyncError::Busy)
+            Err(SyncError::Busy(_))
         ));
         assert!(path.exists());
     }
@@ -120,7 +153,7 @@ mod tests {
         let path = dir.path().join(LOCK_FILE);
         std::fs::write(&path, r#"{"pid":4294967,"started":"x"}"#).unwrap();
         let lock = SyncLock::acquire(dir.path()).unwrap();
-        assert!(holder_alive(&path));
+        assert!(matches!(holder(&path), Holder::Alive));
         drop(lock);
         assert!(!path.exists());
     }

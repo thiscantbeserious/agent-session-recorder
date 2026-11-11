@@ -74,6 +74,7 @@ pub fn open_meta(key: &Key, token: &str) -> Result<Meta, CryptoError> {
     serde_json::from_slice(&json).map_err(|_| CryptoError::BadMeta)
 }
 
+// inline: seal_with_nonce and open are private to crypto, the known-answer test needs a fixed nonce
 #[cfg(test)]
 mod tests {
     use super::{open, open_meta, seal, seal_meta, seal_with_nonce, CryptoError, Key, Meta};

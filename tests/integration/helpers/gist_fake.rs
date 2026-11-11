@@ -1,10 +1,6 @@
-//! Fake `gh` and `git` runner and gist backend helpers.
+//! Fake `gh` and `git` runner and legacy gist reader helpers.
 
-use agr::sync::testing::gist::{
-    part_name, part_names, Clock, FakeClock, Output, Runner, MANIFEST_FILE, STUB_BODY, STUB_FILE,
-};
-use agr::sync::testing::{pull_bytes, push_bytes, GistBackend};
-use agr::sync::{BackendError, SyncBackend};
+use agr::sync::testing::gist::{Clock, FakeClock, GistLegacy, Output, Runner};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -12,17 +8,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub type Files = Vec<(String, Vec<u8>)>;
-
-/// Whole-blob shorthands over the streaming trait.
-pub trait Bytes: SyncBackend + Sized {
-    fn push_b(&self, id: &str, e: Option<&str>, m: &str, b: &[u8]) -> Result<(), BackendError> {
-        push_bytes(self, id, e, m, b)
-    }
-    fn pull_b(&self, id: &str) -> Result<(Option<String>, Vec<u8>), BackendError> {
-        pull_bytes(self, id)
-    }
-}
-impl<T: SyncBackend> Bytes for T {}
 
 #[derive(Default)]
 pub struct Fake {
@@ -44,9 +29,11 @@ pub struct Fake {
 
 /// Every `data.*` file of a clone, sorted by name.
 pub fn data_files(dir: &Path) -> Files {
-    let mut files: Vec<_> = part_names(dir)
+    let mut files: Vec<_> = std::fs::read_dir(dir)
         .unwrap()
-        .into_iter()
+        .flatten()
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.starts_with("data."))
         .map(|n| {
             let body = std::fs::read(dir.join(&n)).unwrap();
             (n, body)
@@ -57,7 +44,9 @@ pub fn data_files(dir: &Path) -> Files {
 }
 
 pub fn remote_parts(n: usize) -> Files {
-    (0..n).map(|i| (part_name(i), vec![i as u8; 3])).collect()
+    (0..n)
+        .map(|i| (format!("data.{i:03}"), vec![i as u8; 3]))
+        .collect()
 }
 
 pub fn ok(stdout: &str) -> std::io::Result<Output> {
@@ -96,7 +85,7 @@ impl Fake {
         if program == "git" && args.iter().any(|a| a == "clone") {
             let dir = PathBuf::from(args.last().unwrap());
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join(STUB_FILE), STUB_BODY).unwrap();
+            std::fs::write(dir.join(".keep"), "agr\n").unwrap();
             for (name, body) in &self.remote {
                 std::fs::write(dir.join(name), body).unwrap();
             }
@@ -104,7 +93,7 @@ impl Fake {
         }
         if program == "git" && args.iter().any(|a| a == "push") {
             *self.pushed.borrow_mut() = Some(data_files(cwd.unwrap()));
-            let manifest = std::fs::read_to_string(cwd.unwrap().join(MANIFEST_FILE)).ok();
+            let manifest = std::fs::read_to_string(cwd.unwrap().join("manifest")).ok();
             *self.pushed_manifest.borrow_mut() = manifest;
         }
     }
@@ -181,8 +170,8 @@ impl Runner for &Fake {
     }
 }
 
-pub fn backend<'a>(fake: &'a Fake, base: &Path) -> GistBackend<&'a Fake> {
-    GistBackend::with_runner(fake, base.to_path_buf())
+pub fn backend<'a>(fake: &'a Fake, base: &Path) -> GistLegacy<&'a Fake> {
+    GistLegacy::with_runner(fake, base.to_path_buf())
 }
 
 pub fn scrub(calls: &[String], base: &Path) -> Vec<String> {
@@ -204,8 +193,4 @@ pub fn scrub(calls: &[String], base: &Path) -> Vec<String> {
             out
         })
         .collect()
-}
-
-pub fn source_of(bytes: &'static [u8]) -> impl Fn(&mut dyn std::io::Write) -> std::io::Result<()> {
-    move |w| w.write_all(bytes)
 }

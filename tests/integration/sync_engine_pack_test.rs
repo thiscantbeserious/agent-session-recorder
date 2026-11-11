@@ -1,0 +1,528 @@
+//! The sync engine on a `Repo` over the in-memory pack store.
+
+use crate::helpers::pack_engine::{
+    index_of, merged, node, opts, overwrite, raw_push, three, write_v1_index, A, CAST, TARGET,
+};
+use agr::sync::testing::{MemoryStore, PackStore, Repo};
+use agr::sync::{Engine, Key};
+
+#[test]
+fn push_of_three_sessions_is_one_pack() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    let report = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(store.list().unwrap().packs.len(), 1);
+    assert_eq!(report.pushed, 3, "{:?}", report.items);
+}
+
+const X: &str = "claude/x.cast.gz";
+
+#[test]
+fn overwrite_resolves_fork_with_gen_plus_one() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    raw_push(&store, &key, "w1", (X, 4), "one");
+    raw_push(&store, &key, "w2", (X, 4), "two");
+    n.session("claude", "x.cast.gz", CAST);
+    let plain = n.engine(&store, &key, "w3").push(&opts()).unwrap();
+    assert_eq!(
+        plain.pushed, 0,
+        "a fork is never pushed without --overwrite"
+    );
+    n.engine(&store, &key, "w3").push(&overwrite()).unwrap();
+    let (at, forks) = merged(&store, &key, X);
+    assert_eq!(at.map(|(gen, _)| gen), Some(5));
+    assert!(forks.is_empty(), "{forks:?}");
+}
+
+#[test]
+fn overwrite_with_the_fork_absent_locally_pushes_the_others() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    raw_push(&store, &key, "w1", (X, 4), "one");
+    raw_push(&store, &key, "w2", (X, 4), "two");
+    n.session("claude", "b.cast.gz", CAST);
+    let report = n.engine(&store, &key, "w3").push(&overwrite()).unwrap();
+    assert_eq!(report.failed, 0, "{:?}", report.items);
+    assert_eq!(report.pushed, 1, "{:?}", report.items);
+    let (at, forks) = merged(&store, &key, X);
+    assert_eq!(
+        at.map(|(gen, _)| gen),
+        Some(4),
+        "the absent fork is not pushed"
+    );
+    assert_eq!(forks, [X.to_string()], "it stays a fork");
+}
+
+#[test]
+fn overwrite_restores_a_deleted_session() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    raw_push(&store, &key, "w1", (X, 4), "one");
+    let mut repo = Repo::open(&store, &key, "w1", TARGET, None).unwrap();
+    repo.tombstone(X).unwrap();
+    n.session("claude", "x.cast.gz", CAST);
+    let plain = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(plain.pushed, 0, "a tombstone is not pushed back");
+    n.engine(&store, &key, "w1").push(&overwrite()).unwrap();
+    let (at, _) = merged(&store, &key, X);
+    assert_eq!(at, Some((6, false)));
+}
+
+#[test]
+fn push_on_v1_index_requires_migrate_first() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    write_v1_index(&n);
+    let e = n.engine(&store, &key, "w1");
+    let errs = [
+        e.push(&opts()).err(),
+        e.pull(&opts()).err(),
+        e.delete(&[A.to_string()]).err(),
+    ];
+    assert_eq!(store.appends(), 0);
+    for err in errs {
+        let text = err.map(|e| e.to_string()).unwrap_or_default();
+        assert!(text.contains("run `agr sync migrate` first"), "{text}");
+    }
+}
+
+#[test]
+fn open_pack_saved_after_push_and_cleared_after_seal() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(index_of(&n).open_pack, Some("mem-1".to_string()));
+    // a session that brings the open pack to the target seals it
+    let target = 64 * 1024;
+    let small = Engine::new(&store, &key, &n.storage, "w1", target);
+    let noise: Vec<u8> = (0..target as usize).map(|i| (i * 31 % 251) as u8).collect();
+    let file = n.dir().join("claude/fill.cast.gz");
+    std::fs::write(file, noise).unwrap();
+    small.push(&opts()).unwrap();
+    assert_eq!(index_of(&n).open_pack, None);
+}
+
+#[test]
+fn delete_is_a_tombstone() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    n.engine(&store, &key, "w1")
+        .delete(&[A.to_string()])
+        .unwrap();
+    let (at, _) = merged(&store, &key, A);
+    assert_eq!(at.map(|(_, dead)| dead), Some(true));
+    assert!(n.bytes(A).is_some(), "the local file stays");
+    assert!(!index_of(&n).entries.contains_key(A));
+}
+
+#[test]
+fn rollback_below_local_gen_is_refused() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    let e = n.engine(&store, &key, "w1");
+    e.push(&opts()).unwrap();
+    n.session("claude", "a.cast.gz", &CAST.replace("secret", "v2"));
+    e.push(&opts()).unwrap();
+    let before = n.bytes(A);
+    // a pack gist deleted outside agr: the view falls back to a lower gen
+    let rolled = MemoryStore::new();
+    raw_push(&rolled, &key, "w9", (A, 1), "old");
+    let report = n.engine(&rolled, &key, "w1").pull(&overwrite()).unwrap();
+    assert!(
+        report.refused.contains(&A.to_string()),
+        "{:?}",
+        report.items
+    );
+    assert_eq!(n.bytes(A), before);
+}
+
+#[test]
+fn local_absent_remote_deleted_drops_the_index_entry() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    let other = node();
+    other.engine(&store, &key, "w2").pull(&opts()).unwrap();
+    other
+        .engine(&store, &key, "w2")
+        .delete(&[A.to_string()])
+        .unwrap();
+    assert!(
+        index_of(&n).entries.contains_key(A),
+        "the baseline is still there"
+    );
+    std::fs::remove_file(n.dir().join(A)).unwrap();
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert!(!index_of(&n).entries.contains_key(A));
+}
+
+/// Store whose second append fails, the first one lands.
+struct FailSecond<'a>(&'a MemoryStore, std::cell::Cell<usize>);
+
+impl PackStore for FailSecond<'_> {
+    fn name(&self) -> &'static str {
+        "fail-second"
+    }
+    fn check(&self) -> Result<(), agr::sync::testing::StoreError> {
+        self.0.check()
+    }
+    fn list(&self) -> Result<agr::sync::testing::Listing, agr::sync::testing::StoreError> {
+        self.0.list()
+    }
+    fn read_index(&self, id: &str) -> Result<String, agr::sync::testing::StoreError> {
+        self.0.read_index(id)
+    }
+    fn create(&self, tag: &str, index: &str) -> Result<String, agr::sync::testing::StoreError> {
+        self.0.create(tag, index)
+    }
+    fn append(
+        &self,
+        id: &str,
+        n: u64,
+        e: &str,
+        s: &[agr::sync::testing::Segment],
+        i: &str,
+    ) -> Result<(), agr::sync::testing::StoreError> {
+        self.1.set(self.1.get() + 1);
+        if self.1.get() == 2 {
+            return Err(agr::sync::testing::StoreError::RateLimited);
+        }
+        self.0.append(id, n, e, s, i)
+    }
+    fn read(
+        &self,
+        id: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Box<dyn std::io::Read>, agr::sync::testing::StoreError> {
+        self.0.read(id, offset, len)
+    }
+    fn delete(&self, id: &str) -> Result<(), agr::sync::testing::StoreError> {
+        self.0.delete(id)
+    }
+}
+
+#[test]
+fn failed_append_mid_batch_keeps_the_index_entries_of_the_earlier_appends() {
+    let (n, mem, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    let store = FailSecond(&mem, std::cell::Cell::new(0));
+    // target 1 byte, every session is bigger and gets its own pack and its own append
+    let engine = agr::sync::Engine::new(&store, &key, &n.storage, "w1", 1);
+    let err = engine.push(&opts()).err().map(|e| e.to_string());
+    assert!(err.is_some(), "a rate limit ends the run");
+    assert_eq!(
+        index_of(&n).entries.len(),
+        1,
+        "the landed append is indexed"
+    );
+}
+
+#[test]
+fn pattern_delete_is_one_tombstone_append() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    let all: Vec<String> = (0..11).map(|i| format!("claude/s{i:02}.cast.gz")).collect();
+    for p in &all {
+        n.session("claude", p.trim_start_matches("claude/"), p);
+    }
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    let before = store.appends();
+    let report = n.engine(&store, &key, "w1").delete(&all).unwrap();
+    assert_eq!(store.appends() - before, 1, "one append for 11 tombstones");
+    assert_eq!(report.deleted, 11);
+    for p in &all {
+        assert_eq!(merged(&store, &key, p).0, Some((2, true)), "{p}");
+        assert!(n.bytes(p).is_some(), "the local file stays");
+    }
+}
+
+#[test]
+fn all_selects_only_live_remote_sessions_not_tombstoned_ones() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    n.engine(&store, &key, "w1")
+        .delete(&[A.to_string()])
+        .unwrap();
+    let plan = n.engine(&store, &key, "w1").status(&[]).unwrap();
+    let live: Vec<String> = plan
+        .items
+        .iter()
+        .filter(|i| i.on_remote)
+        .map(|i| i.path.clone())
+        .collect();
+    let hits = agr::sync::select_remote(&[], true, &live).unwrap();
+    assert_eq!(hits.len(), 2, "{hits:?}");
+    assert!(!hits.iter().any(|p| p == A), "{hits:?}");
+}
+
+#[test]
+fn a_rival_append_between_our_append_and_our_reload_is_never_pushed_over() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    n.session(
+        "claude",
+        "a.cast.gz",
+        &CAST.replace("secret", "edited here"),
+    );
+    let rival_key = agr::sync::testing::copy_key(&key);
+    let once = std::sync::atomic::AtomicBool::new(true);
+    store.after_append(move |s, _| {
+        if once.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            raw_push(s, &rival_key, "w2", (A, 3), "the rival edit");
+        }
+    });
+    let first = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(first.pushed, 1, "{:?}", first.items);
+    let second = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(
+        second.pushed, 0,
+        "silent push over gen 3: {:?}",
+        second.items
+    );
+    assert_eq!(merged(&store, &key, A).0.map(|m| m.0), Some(3));
+}
+
+#[test]
+fn an_unparseable_index_refuses_every_command_and_is_never_saved_over() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    let file = agr::sync::testing::index::path_for(n.dir());
+    std::fs::write(&file, r#"{"version":1,"entries":{"#).unwrap();
+    let e = n.engine(&store, &key, "w1");
+    let errs = [
+        e.push(&opts()).err(),
+        e.pull(&opts()).err(),
+        e.delete(&[A.to_string()]).err(),
+        e.status(&[]).err(),
+    ];
+    for err in errs {
+        let text = err.map(|e| e.to_string()).unwrap_or_default();
+        assert!(text.contains("is not valid"), "{text}");
+    }
+    assert_eq!(store.appends(), 0);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        r#"{"version":1,"entries":{"#
+    );
+}
+
+/// A gist copied by hand: a second pack with the same tag, the same index and the same bytes.
+fn copy_pack(store: &MemoryStore, id: &str) -> String {
+    use agr::sync::testing::Segment;
+    use std::io::Read;
+    let info = store
+        .list()
+        .unwrap()
+        .packs
+        .into_iter()
+        .find(|p| p.id == id)
+        .unwrap();
+    let index = store.read_index(id).unwrap();
+    let mut bytes = Vec::new();
+    store
+        .read(id, 0, info.len)
+        .unwrap()
+        .read_to_end(&mut bytes)
+        .unwrap();
+    let copy = store.create(&info.tag, &index).unwrap();
+    let write = |w: &mut dyn std::io::Write| w.write_all(&bytes);
+    let seg = Segment {
+        len: info.len,
+        write: &write,
+    };
+    store.append(&copy, 0, &index, &[seg], &index).unwrap();
+    copy
+}
+
+#[test]
+fn a_duplicated_own_pack_is_never_appended_to_and_the_next_push_opens_a_new_pack() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    let first = store.list().unwrap().packs[0].id.clone();
+    let copy = copy_pack(&store, &first);
+    let lens = |ids: [&String; 2]| -> Vec<u64> {
+        let all = store.list().unwrap().packs;
+        ids.iter()
+            .map(|i| all.iter().find(|p| &p.id == *i).unwrap().len)
+            .collect()
+    };
+    let before = lens([&first, &copy]);
+    n.session("claude", "b.cast.gz", &CAST.replace("secret", "other"));
+    let report = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(report.pushed, 1, "{:?}", report.items);
+    assert_eq!(lens([&first, &copy]), before, "neither copy grew");
+    let packs = store.list().unwrap().packs;
+    assert_eq!(packs.len(), 3, "a new pack for the push");
+    assert_eq!(
+        index_of(&n).open_pack.as_deref(),
+        packs.last().map(|p| p.id.as_str())
+    );
+}
+
+#[test]
+fn push_that_could_not_check_for_forks_fails_the_run() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    three(&n);
+    store.before_append(|m, _| m.fail_next_list());
+    let report = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(report.pushed, 3, "{:?}", report.items);
+    assert!(report.warning.is_some(), "the warning is shown");
+    assert!(report.run_failed(), "and the exit code is non-zero");
+}
+
+fn pushed_a() -> (crate::helpers::pack_engine::Node, MemoryStore, Key) {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    (n, store, key)
+}
+
+#[test]
+fn a_delete_with_a_rival_live_copy_at_the_same_gen_is_not_deleted() {
+    let (n, store, key) = pushed_a();
+    let rival_key = agr::sync::testing::copy_key(&key);
+    let once = std::sync::atomic::AtomicBool::new(true);
+    store.after_append(move |s, _| {
+        if once.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            raw_push(s, &rival_key, "w2", (A, 2), "the rival live copy");
+        }
+    });
+    let report = n
+        .engine(&store, &key, "w1")
+        .delete_with(&[A.to_string()], 0, &mut |_: &agr::sync::Event<'_>| {})
+        .unwrap();
+    assert_eq!(report.deleted, 0, "{:?}", report.items);
+    assert_eq!(report.failed, 1, "{:?}", report.items);
+    assert!(index_of(&n).entries.contains_key(A));
+}
+
+#[test]
+fn a_delete_whose_fork_check_fails_is_unchecked_and_fails_the_run() {
+    let (n, store, key) = pushed_a();
+    store.after_append(|s, _| s.fail_next_list());
+    let report = n
+        .engine(&store, &key, "w1")
+        .delete_with(&[A.to_string()], 0, &mut |_: &agr::sync::Event<'_>| {})
+        .unwrap();
+    assert!(report.unchecked, "{report:?}");
+    assert!(report.run_failed());
+}
+
+/// Store whose second `read` is rate limited, the first one works.
+struct LimitSecondRead<'a>(&'a MemoryStore, std::cell::Cell<usize>);
+
+impl PackStore for LimitSecondRead<'_> {
+    fn name(&self) -> &'static str {
+        "limit-second-read"
+    }
+    fn check(&self) -> Result<(), agr::sync::testing::StoreError> {
+        self.0.check()
+    }
+    fn list(&self) -> Result<agr::sync::testing::Listing, agr::sync::testing::StoreError> {
+        self.0.list()
+    }
+    fn read_index(&self, id: &str) -> Result<String, agr::sync::testing::StoreError> {
+        self.0.read_index(id)
+    }
+    fn create(&self, tag: &str, index: &str) -> Result<String, agr::sync::testing::StoreError> {
+        self.0.create(tag, index)
+    }
+    fn append(
+        &self,
+        id: &str,
+        n: u64,
+        e: &str,
+        s: &[agr::sync::testing::Segment],
+        i: &str,
+    ) -> Result<(), agr::sync::testing::StoreError> {
+        self.0.append(id, n, e, s, i)
+    }
+    fn read(
+        &self,
+        id: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Box<dyn std::io::Read>, agr::sync::testing::StoreError> {
+        self.1.set(self.1.get() + 1);
+        if self.1.get() == 2 {
+            return Err(agr::sync::testing::StoreError::RateLimited);
+        }
+        self.0.read(id, offset, len)
+    }
+    fn delete(&self, id: &str) -> Result<(), agr::sync::testing::StoreError> {
+        self.0.delete(id)
+    }
+}
+
+#[test]
+fn a_rate_limited_pull_keeps_the_baselines_of_the_pulls_that_finished() {
+    let (n, mem, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    n.session("claude", "b.cast.gz", &CAST.replace("secret", "other"));
+    n.engine(&mem, &key, "w1").push(&opts()).unwrap();
+    let other = node();
+    let store = LimitSecondRead(&mem, std::cell::Cell::new(0));
+    let err = other.engine(&store, &key, "w2").pull(&opts()).err();
+    assert_eq!(err, Some(agr::sync::SyncError::RateLimited { left: 1 }));
+    assert_eq!(index_of(&other).entries.len(), 1);
+}
+
+#[test]
+fn a_file_edited_while_it_uploads_is_uploaded_again_by_the_next_auto_push() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    let dir = n.dir().to_path_buf();
+    let edited = CAST.replace("secret", "edited while uploading");
+    store.after_append(move |_, _| {
+        let file = dir.join(A);
+        agr::files::codec::atomic_write(&file, |w| Ok(w.write_all(edited.as_bytes())?)).unwrap();
+    });
+    let engine = n.engine(&store, &key, "w1");
+    assert_eq!(engine.push(&opts()).unwrap().pushed, 1);
+    let report = agr::sync::auto::run(&engine, "claude/none.cast.gz").unwrap();
+    assert_eq!(report.pushed, 1, "{:?}", report.items);
+    assert_eq!(merged(&store, &key, A).0.map(|m| m.0), Some(2));
+}
+
+/// Moves the mtime of a session file, the content stays, so its index stamp goes stale.
+fn age_file(n: &crate::helpers::pack_engine::Node, path: &str) {
+    let file = std::fs::File::options()
+        .write(true)
+        .open(n.dir().join(path))
+        .unwrap();
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+    file.set_modified(later).unwrap();
+}
+
+#[test]
+fn a_rolled_back_remote_with_the_same_content_never_lowers_the_indexed_gen() {
+    let (n, key) = (node(), Key::generate());
+    let (high, low, newer) = (MemoryStore::new(), MemoryStore::new(), MemoryStore::new());
+    raw_push(&high, &key, "w2", (A, 5), CAST);
+    n.engine(&high, &key, "w1").pull(&opts()).unwrap();
+    assert_eq!(index_of(&n).entries[A].gen, 5);
+    raw_push(&low, &key, "w2", (A, 3), CAST);
+    age_file(&n, A);
+    n.engine(&low, &key, "w1").pull(&opts()).unwrap();
+    assert_eq!(index_of(&n).entries[A].gen, 5);
+    raw_push(&newer, &key, "w2", (A, 4), "different content");
+    let report = n.engine(&newer, &key, "w1").pull(&opts()).unwrap();
+    assert_eq!(report.refused, [A], "{:?}", report.items);
+}
+
+#[test]
+fn an_in_sync_session_without_an_index_entry_gets_a_baseline_so_a_later_edit_pushes() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    let other = node();
+    other.session("claude", "a.cast.gz", CAST);
+    other.engine(&store, &key, "w2").push(&opts()).unwrap();
+    let first = n.engine(&store, &key, "w1").pull(&opts()).unwrap();
+    assert!(index_of(&n).entries.contains_key(A), "{:?}", first.items);
+    n.session("claude", "a.cast.gz", &CAST.replace("secret", "edited"));
+    let report = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(report.pushed, 1, "{:?}", report.items);
+    assert_eq!(report.conflicts, 0);
+}

@@ -243,15 +243,7 @@ Set `NO_COLOR=1` to disable colored output.
 
 ## Syncing Sessions
 
-`agr sync` copies your compressed sessions, encrypted on this machine, to secret GitHub gists so another machine can pull them. It needs `gh` and `git` on your PATH and `gh auth login` with the `gist` scope. Auto push is off by default.
-
-```bash
-agr sync status          # what push and pull would do
-agr sync push            # upload new and changed sessions, asks first
-agr sync key export      # back up the key, without it synced sessions are unrecoverable
-```
-
-Setup, safety, limits, the key and auto push are described in [docs/sync.md](docs/sync.md), the internals in [docs/architecture/sync.md](docs/architecture/sync.md).
+`agr sync` copies your compressed sessions, encrypted, to secret GitHub gists so another machine can pull them, see [docs/sync.md](docs/sync.md) and [docs/wiki/Command-sync.md](docs/wiki/Command-sync.md).
 
 ## Documentation
 

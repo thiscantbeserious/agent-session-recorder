@@ -81,6 +81,11 @@ pub(in crate::sync) fn random_id_base32(n: usize) -> String {
     BASE32_NOPAD.encode(&nonce[..n])
 }
 
+/// Random id of one machine for its packs, 96 bits as base32.
+pub fn new_writer_id() -> String {
+    random_id_base32(12)
+}
+
 pub fn sha256_hex(data: &[u8]) -> String {
     HEXLOWER.encode(&Sha256::digest(data))
 }
@@ -94,6 +99,7 @@ pub(in crate::sync) fn sha256_reader(
     Ok((HEXLOWER.encode(&hasher.finalize()), size))
 }
 
+// inline: random_id_base32 and sha256_reader are private to crypto, Key bytes stay off the public API
 #[cfg(test)]
 mod tests {
     use super::{sha256_hex, sha256_reader, Key};

@@ -1,6 +1,6 @@
 //! Machine-local state (~/.config/agr/state.toml), never synced
 
-use crate::files::codec;
+use crate::files::{codec, lock};
 use anyhow::{Context, Result};
 
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,9 @@ pub struct State {
     /// Last failed automatic push, shown by `agr sync status`
     #[serde(default)]
     pub last_auto_push_error: Option<String>,
+    /// Random id of this machine for sync packs, created once
+    #[serde(default)]
+    pub writer_id: Option<String>,
 }
 
 impl State {
@@ -35,17 +38,63 @@ impl State {
         self.save_to(&Config::config_dir()?.join(FILE))
     }
 
+    /// Re-reads the file at `path` under the lock, applies `f` and saves, so a field another
+    /// writer stored meanwhile (the writer id) is never overwritten by a stale copy.
+    pub fn update_at<T>(path: &Path, f: impl FnOnce(&mut State) -> T) -> Result<T> {
+        let _guard = lock::exclusive(path)?;
+        let mut state = Self::load_from(path);
+        let out = f(&mut state);
+        state.save_to(path)?;
+        Ok(out)
+    }
+
+    /// `update_at` for `~/.config/agr/state.toml`.
+    pub fn update<T>(f: impl FnOnce(&mut State) -> T) -> Result<T> {
+        Self::update_at(&Config::config_dir()?.join(FILE), f)
+    }
+
     /// Store the last auto push error in the file at `path`.
     pub fn store_auto_error(path: &Path, line: String) -> Result<()> {
-        let mut state = Self::load_from(path);
-        state.last_auto_push_error = Some(line);
-        state.save_to(path)
+        Self::update_at(path, |s| s.last_auto_push_error = Some(line))
     }
 
     /// Like `store_auto_error` for `~/.config/agr/state.toml`, re-reads the file so a writer
     /// that ran meanwhile is not overwritten.
     pub fn store_auto_error_default(line: String) -> Result<()> {
         Self::store_auto_error(&Config::config_dir()?.join(FILE), line)
+    }
+
+    /// The writer id stored in the file at `path`, created and saved on first use.
+    pub fn writer_id(path: &Path) -> Result<String> {
+        let mut state = Self::load_from(path);
+        if let Some(id) = &state.writer_id {
+            return Ok(id.clone());
+        }
+        let id = crate::sync::new_writer_id();
+        state.writer_id = Some(id.clone());
+        state.save_to(path)?;
+        Ok(id)
+    }
+
+    /// The stored writer id, `None` before the first push of this machine.
+    pub fn stored_writer_id() -> Option<String> {
+        Self::load().writer_id
+    }
+
+    /// Stores `id` as the writer id of this machine unless one is stored already, returns the id
+    /// that is stored. Two first runs at once both end up using the same one.
+    pub fn keep_writer_id(id: &str) -> Result<String> {
+        Self::keep_writer_id_at(&Config::config_dir()?.join(FILE), id)
+    }
+
+    pub fn keep_writer_id_at(path: &Path, id: &str) -> Result<String> {
+        let _guard = lock::exclusive(path)?;
+        let mut state = Self::load_from(path);
+        if state.writer_id.is_none() {
+            state.writer_id = Some(id.to_string());
+            state.save_to(path)?;
+        }
+        Ok(state.writer_id.unwrap_or_else(|| id.to_string()))
     }
 
     /// Load from a path, default when the file is missing or malformed (warns on stderr).
@@ -111,6 +160,7 @@ mod tests {
             compress_offer_version: None,
             sync_privacy_ack: true,
             last_auto_push_error: Some("offline".into()),
+            writer_id: None,
         };
         state.save_to(&path).unwrap();
         assert_eq!(State::load_checked(&path), (state, None));

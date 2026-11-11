@@ -381,3 +381,18 @@ fn covering_with_overflowing_range_is_an_error() {
     assert!(store.read("a", u64::MAX, 2).is_err());
     assert!(store.read("a", 1, u64::MAX).is_err());
 }
+
+#[test]
+fn migrate_lists_past_the_gist_cap_while_the_normal_list_refuses() {
+    let many: Vec<_> = (0..3000)
+        .map(|i| gist(&format!("g{i}"), "notes", "t1", &[("x", 1)]))
+        .collect();
+    let fake = Fake::with(vec![
+        ok(&pages(std::slice::from_ref(&many))),
+        ok(&pages(&[many])),
+    ]);
+    let dir = tempfile::tempdir().unwrap();
+    let store = store(&fake, dir.path());
+    assert!(store.list().is_err());
+    assert!(store.list_for_migrate().is_ok());
+}

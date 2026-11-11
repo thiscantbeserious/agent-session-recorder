@@ -7,7 +7,11 @@ pub(super) mod dir;
 pub(super) mod gist;
 pub(super) mod memory;
 
-pub use crate::sync::backend::BlobSource;
+pub(super) mod legacy;
+
+/// Produces the sealed bytes of one segment into the writer it is given, at most once per append.
+/// An `Err` aborts the append, nothing is committed.
+pub type BlobSource<'a> = &'a dyn Fn(&mut dyn std::io::Write) -> std::io::Result<()>;
 
 /// Store failures, one clear case each so commands print one line. The text is backend neutral,
 /// the app layer adds the hint of the backend (`gh auth login`, rate limit page).
@@ -57,8 +61,16 @@ impl fmt::Debug for StoreError {
 
 impl std::error::Error for StoreError {}
 
-impl From<crate::sync::backend::gist::pace::ClockError> for StoreError {
-    fn from(e: crate::sync::backend::gist::pace::ClockError) -> Self {
+/// A private scratch dir under `base`, a failure is a store error.
+pub(crate) fn scratch(
+    base: &std::path::Path,
+) -> Result<crate::files::scratch::Scratch, StoreError> {
+    crate::files::scratch::Scratch::create(base)
+        .map_err(|e| StoreError::Other(format!("temp dir: {e}")))
+}
+
+impl From<crate::sync::store::gist::pace::ClockError> for StoreError {
+    fn from(e: crate::sync::store::gist::pace::ClockError) -> Self {
         Self::Other(e.to_string())
     }
 }
@@ -92,6 +104,11 @@ pub trait PackStore {
     fn name(&self) -> &'static str;
     fn check(&self) -> Result<(), StoreError>;
     fn list(&self) -> Result<Listing, StoreError>;
+    /// `list` for `agr sync migrate`, without a cap on the number of gists of the account.
+    /// Migration is the way to reduce that count, it acts on what it saw and is run again.
+    fn list_for_migrate(&self) -> Result<Listing, StoreError> {
+        self.list()
+    }
     /// The sealed index text of the pack, as stored by the last create or append.
     fn read_index(&self, id: &str) -> Result<String, StoreError>;
     /// New pack with no data, `tag` and `index`, returns its id.
@@ -126,43 +143,4 @@ pub trait PackStore {
     /// Streams the logical range `offset..offset + len` of the pack.
     fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn Read>, StoreError>;
     fn delete(&self, id: &str) -> Result<(), StoreError>;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::StoreError;
-
-    #[test]
-    fn store_error_messages_name_the_next_step() {
-        assert_eq!(
-            StoreError::Moved("idx".into()).to_string(),
-            "changed on the remote, run again"
-        );
-        let msg = StoreError::RateLimited.to_string();
-        assert!(msg.contains("run again later"), "{msg}");
-        let msg = StoreError::NotFound.to_string();
-        assert!(msg.contains("not found"), "{msg}");
-    }
-
-    #[test]
-    fn debug_of_moved_hides_the_index() {
-        let shown = format!("{:?}", StoreError::Moved("secret".into()));
-        assert!(!shown.contains("secret"), "{shown}");
-    }
-
-    #[test]
-    fn store_error_display_is_backend_neutral() {
-        let all = [
-            StoreError::NotInstalled("tool"),
-            StoreError::NotLoggedIn,
-            StoreError::MissingScope,
-            StoreError::Unreachable("why".into()),
-            StoreError::RateLimited,
-            StoreError::NotFound,
-        ];
-        for e in all {
-            let text = e.to_string();
-            assert!(!text.contains("gh ") && !text.contains("GitHub"), "{text}");
-        }
-    }
 }

@@ -135,6 +135,7 @@ pub(super) fn import(path: &Path, key: &Key, force: bool) -> Result<Imported, Ke
     Ok(Imported::Replaced)
 }
 
+// inline: load and import are private to the app layer, the tests read the key file back through them
 #[cfg(test)]
 mod tests {
     use super::{import, load, save_new, Imported, Key, KeyError, Path};
@@ -156,26 +157,6 @@ mod tests {
         let key = Key::generate();
         save_new(&path, &key).unwrap();
         assert_eq!(loaded(&path), Some(*key.as_bytes()));
-    }
-
-    #[test]
-    fn save_new_refuses_existing() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("sync.key");
-        save_new(&path, &Key::generate()).unwrap();
-        assert_eq!(save_new(&path, &Key::generate()), Err(KeyError::Exists));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn save_new_uses_mode_0600() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("sync.key");
-        save_new(&path, &Key::generate()).unwrap();
-        assert!(path.exists());
-        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
-        assert_eq!(mode & 0o777, 0o600);
     }
 
     #[cfg(unix)]

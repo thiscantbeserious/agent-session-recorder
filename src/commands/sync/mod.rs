@@ -4,8 +4,9 @@ use anyhow::Result;
 
 use agr::cli::SyncCommands;
 
+mod delete;
 mod key;
-mod live;
+mod migrate;
 mod run;
 
 /// Route one `agr sync ...` command.
@@ -45,16 +46,23 @@ pub fn handle(cmd: SyncCommands) -> Result<()> {
         }),
         SyncCommands::Delete {
             sessions,
+            all,
+            force,
             dry_run,
             yes,
             verbose,
-        } => run::delete(run::Args {
-            sessions,
-            dry_run,
-            yes,
-            overwrite: false,
-            verbose,
-        }),
+        } => delete::delete(
+            &delete::Args {
+                patterns: sessions,
+                all,
+                force,
+                dry_run,
+                yes,
+                verbose,
+            },
+            super::prompt::stdin_is_tty(),
+        ),
+        SyncCommands::Migrate { yes } => migrate::migrate(yes, super::prompt::stdin_is_tty()),
         SyncCommands::Key(cmd) => key::handle(cmd),
     }
 }

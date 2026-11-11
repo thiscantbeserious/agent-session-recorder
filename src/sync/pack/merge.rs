@@ -34,6 +34,8 @@ pub struct Place {
     pub offset: u64,
     pub length: u64,
     pub sha256: String,
+    /// Plaintext size of the session, 0 for a tombstone.
+    pub size: u64,
     pub deleted: bool,
 }
 
@@ -85,6 +87,11 @@ pub struct View {
 impl View {
     pub fn get(&self, path: &str) -> Option<&Merged> {
         self.merged.get(path)
+    }
+
+    /// Every path of the view with its merged entry, sorted by path.
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &Merged)> {
+        self.merged.iter()
     }
 
     pub fn pack(&self, id: &str) -> Option<&PackMeta> {
@@ -238,6 +245,7 @@ fn place(pack: &str, e: &Entry) -> Place {
         offset: e.offset,
         length: e.length,
         sha256: e.sha256.clone(),
+        size: e.size,
         deleted: e.deleted,
     }
 }

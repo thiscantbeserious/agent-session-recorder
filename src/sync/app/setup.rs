@@ -6,10 +6,13 @@ use thiserror::Error;
 
 use super::key::{self, Imported, KeyError};
 use crate::config::SyncBackendKind;
-use crate::sync::backend::file::FileBackend;
-use crate::sync::backend::gist::{GistBackend, ProgressSink};
-use crate::sync::backend::{BackendError, SyncBackend};
 use crate::sync::crypto::{export_phrase, import_phrase, Key, PhraseError};
+use crate::sync::pack::rules::pack_size;
+use crate::sync::store::dir::DirStore;
+use crate::sync::store::gist::GistStore;
+use crate::sync::store::gist::ProgressSink;
+use crate::sync::store::PackStore;
+use crate::sync::store::StoreError;
 use crate::Config;
 
 /// Whether a missing key may be created.
@@ -44,7 +47,7 @@ pub enum SetupError {
     #[error(transparent)]
     Key(#[from] KeyError),
     #[error(transparent)]
-    Backend(#[from] BackendError),
+    Backend(#[from] StoreError),
 }
 
 /// Hint line for the import step, shown with `NoKey` and `KeyOnRemote`.
@@ -59,7 +62,7 @@ pub fn default_key_path() -> anyhow::Result<PathBuf> {
 /// Load the key, or decide what to do when there is none (ADR "Key file").
 pub fn resolve_key(
     path: &Path,
-    backend: &dyn SyncBackend,
+    store: &dyn PackStore,
     need: KeyNeed,
 ) -> Result<KeyState, SetupError> {
     if let Some(key) = key::load(path)? {
@@ -68,59 +71,61 @@ pub fn resolve_key(
     if need == KeyNeed::Existing {
         return Err(SetupError::NoKey);
     }
-    if !backend.list()?.is_empty() {
+    let listing = store.list().map_err(SetupError::Backend)?;
+    if !listing.packs.is_empty() || !listing.legacy.is_empty() {
         return Err(SetupError::KeyOnRemote);
     }
     Ok(KeyState::Fresh(Key::generate()))
 }
 
-/// One error line and an optional hint line per backend failure.
-pub fn explain(error: &BackendError) -> (String, Option<String>) {
-    match error {
-        BackendError::NotInstalled("gh") => (
-            "gh not found, the gist backend needs gh and git".into(),
-            Some("Install gh from https://cli.github.com, then run `gh auth login`".into()),
-        ),
-        BackendError::NotInstalled(tool) => (
-            format!("{tool} not found, the gist backend needs gh and git"),
-            Some(format!(
-                "Install {tool} and gh (https://cli.github.com), then run `gh auth login`"
-            )),
-        ),
-        BackendError::NotLoggedIn => (
-            "gh not logged in".into(),
-            Some("Run `gh auth login`".into()),
-        ),
-        BackendError::MissingScope => (
-            "the gh token has no gist scope".into(),
-            Some("Run `gh auth refresh -s gist`".into()),
-        ),
-        BackendError::RateLimited => (
-            "GitHub rate limit reached, sync stopped".into(),
-            Some("Please run again later".into()),
-        ),
-        other => (other.to_string(), None),
-    }
+/// One error line and an optional hint line per store failure, the texts are the store's.
+pub fn explain(error: &StoreError) -> (String, Option<String>) {
+    crate::sync::store::gist::explain(error)
 }
 
-/// The configured backend, `None` when `backend = "off"`. `test_dir` (the binary reads it from
-/// `AGR_SYNC_TEST_BACKEND_DIR`) swaps the gist backend for a directory fake, tests only.
-/// `progress` gets the percent of a running git transfer, the fake never reports one.
-pub fn open_backend(
+/// The configured pack store, `None` when `backend = "off"`. `test_dir` (the binary reads it from
+/// `AGR_SYNC_TEST_BACKEND_DIR`) swaps the gist store for a directory store, tests only.
+/// `progress` gets the percent of a running git transfer, the directory store never reports one.
+pub fn open_store(
     kind: SyncBackendKind,
     test_dir: Option<PathBuf>,
     progress: Option<ProgressSink>,
-) -> Option<Box<dyn SyncBackend>> {
+) -> Option<Box<dyn PackStore>> {
     if kind == SyncBackendKind::Off {
         return None;
     }
     Some(match test_dir {
-        Some(dir) => Box::new(FileBackend::new(dir)),
+        Some(dir) => Box::new(DirStore::new(&dir)),
         None => Box::new(match progress {
-            Some(sink) => GistBackend::new().with_progress(sink),
-            None => GistBackend::new(),
+            Some(sink) => GistStore::new().with_progress(sink),
+            None => GistStore::new(),
         }),
     })
+}
+
+/// The old per-session gists, read by `agr sync migrate` only. With a test store dir there are
+/// none, so a test run never reaches `gh`.
+pub fn legacy_reader(test_dir: Option<&Path>) -> Box<dyn crate::sync::pack::migrate::LegacyRead> {
+    match test_dir {
+        Some(_) => Box::new(crate::sync::pack::migrate::NoLegacy),
+        None => crate::sync::store::gist::legacy_reader(),
+    }
+}
+
+/// The writer id of this machine, a fresh one until `keep_writer` stores it.
+pub fn writer_id() -> String {
+    crate::config::state::State::stored_writer_id().unwrap_or_else(crate::sync::new_writer_id)
+}
+
+/// Stores the writer id once this machine really pushes, dry runs and refusals leave no trace.
+/// Returns the id that is stored, the caller uses it.
+pub fn keep_writer(id: &str) -> anyhow::Result<String> {
+    crate::config::state::State::keep_writer_id(id)
+}
+
+/// Target pack size in bytes from `[sync] pack_size_mib`.
+pub fn pack_target(mib: u64) -> Result<u64, String> {
+    pack_size(mib).map_err(|e| e.to_string())
 }
 
 /// The privacy notice is due before a push that would create the first remote entry
@@ -146,130 +151,4 @@ pub fn import_key(path: &Path, phrase: &str, force: bool) -> Result<Imported, Im
 /// The recovery phrase of the stored key, `None` when there is no key.
 pub fn export_key(path: &Path) -> Result<Option<String>, KeyError> {
     Ok(key::load(path)?.map(|key| export_phrase(&key)))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::key;
-    use super::{
-        explain, export_key, import_key, needs_privacy_ack, open_backend, resolve_key,
-        BackendError, ImportError, Imported, Key, KeyError, KeyNeed, KeyState, PathBuf, SetupError,
-        SyncBackendKind,
-    };
-    use crate::sync::backend::memory::MemoryBackend;
-
-    #[test]
-    fn privacy_ack_is_due_once_for_creating_pushes() {
-        assert!(needs_privacy_ack(false, 1));
-        assert!(!needs_privacy_ack(true, 1));
-        assert!(!needs_privacy_ack(false, 0));
-    }
-
-    #[test]
-    fn backend_factory_follows_config_and_test_switch() {
-        assert!(open_backend(SyncBackendKind::Off, None, None).is_none());
-        assert!(open_backend(SyncBackendKind::Off, Some("/x".into()), None).is_none());
-        let gist = open_backend(
-            SyncBackendKind::Gist,
-            None,
-            Some(std::sync::Arc::new(|_| {})),
-        )
-        .unwrap();
-        assert_eq!(gist.name(), "gist");
-        let fake = open_backend(SyncBackendKind::Gist, Some("/x".into()), None).unwrap();
-        assert_eq!(fake.name(), "file");
-    }
-
-    #[test]
-    fn export_then_import_round_trips_and_guards() {
-        let (_dir, path) = key_path();
-        assert_eq!(export_key(&path), Ok(None));
-        let key = Key::generate();
-        key::save_new(&path, &key).unwrap();
-        let phrase = export_key(&path).unwrap().unwrap();
-        assert!(phrase.starts_with("agr1-"));
-        assert_eq!(import_key(&path, &phrase, false), Ok(Imported::Same));
-        let (_d2, other) = key_path();
-        assert_eq!(import_key(&other, &phrase, false), Ok(Imported::Created));
-        let different = crate::sync::crypto::export_phrase(&Key::generate());
-        assert_eq!(
-            import_key(&path, &different, false),
-            Err(ImportError::Key(KeyError::Differs))
-        );
-        assert_eq!(import_key(&path, &different, true), Ok(Imported::Replaced));
-        assert!(matches!(
-            import_key(&path, "agr1-AAAA", true),
-            Err(ImportError::Phrase(_))
-        ));
-    }
-
-    fn key_path() -> (tempfile::TempDir, PathBuf) {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("sync.key");
-        (dir, path)
-    }
-
-    #[test]
-    fn existing_key_is_used() {
-        let (_dir, path) = key_path();
-        let key = Key::generate();
-        key::save_new(&path, &key).unwrap();
-        let state = resolve_key(&path, &MemoryBackend::new(), KeyNeed::Existing).unwrap();
-        assert!(matches!(&state, KeyState::Have(k) if k.as_bytes() == key.as_bytes()));
-    }
-
-    #[test]
-    fn missing_key_aborts_when_it_must_exist() {
-        let (_dir, path) = key_path();
-        let got = resolve_key(&path, &MemoryBackend::new(), KeyNeed::Existing);
-        assert!(matches!(got, Err(SetupError::NoKey)));
-    }
-
-    #[test]
-    fn missing_key_on_an_empty_remote_is_fresh_and_not_stored() {
-        let (_dir, path) = key_path();
-        let got = resolve_key(&path, &MemoryBackend::new(), KeyNeed::MayCreate).unwrap();
-        assert!(matches!(got, KeyState::Fresh(_)));
-        assert!(!path.exists());
-    }
-
-    #[test]
-    fn missing_key_with_remote_sessions_never_creates_one() {
-        let (_dir, path) = key_path();
-        let backend = MemoryBackend::new();
-        backend.put(None, "token", b"blob");
-        let got = resolve_key(&path, &backend, KeyNeed::MayCreate);
-        assert!(matches!(got, Err(SetupError::KeyOnRemote)));
-    }
-
-    #[test]
-    fn loose_key_permissions_are_an_error() {
-        let (_dir, path) = key_path();
-        std::fs::write(&path, "agr-sync-key v1 AAAA\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-            let got = resolve_key(&path, &MemoryBackend::new(), KeyNeed::Existing);
-            assert!(matches!(got, Err(SetupError::Key(KeyError::Insecure(_)))));
-        }
-    }
-
-    #[test]
-    fn explain_gives_message_and_hint() {
-        let (msg, hint) = explain(&BackendError::NotInstalled("gh"));
-        assert!(msg.starts_with("gh not found"), "{msg}");
-        assert!(hint.unwrap().contains("https://cli.github.com"));
-        let (_, hint) = explain(&BackendError::NotLoggedIn);
-        assert!(hint.unwrap().contains("gh auth login"));
-        let (_, hint) = explain(&BackendError::MissingScope);
-        assert!(hint.unwrap().contains("gh auth refresh -s gist"));
-        let (msg, hint) = explain(&BackendError::RateLimited);
-        assert!(!msg.contains('\n') && msg.contains("rate limit"), "{msg}");
-        assert_eq!(hint.as_deref(), Some("Please run again later"));
-        assert_eq!(
-            explain(&BackendError::Other("x".into())),
-            ("x".into(), None)
-        );
-    }
 }

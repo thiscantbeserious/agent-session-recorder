@@ -59,6 +59,7 @@ pub(crate) fn fits(files: usize, lens: &[u64]) -> bool {
     files + cut_parts(lens).len() <= MAX_FILES
 }
 
+// inline: crate-private pure layout maths of the gist parts
 #[cfg(test)]
 mod tests {
     use super::{check_parts, cut_parts, fits, next_names, MIB};

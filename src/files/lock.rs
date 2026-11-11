@@ -51,6 +51,70 @@ pub fn create_lock(path: &Path) -> Result<()> {
         .with_context(|| format!("Failed to write lock file: {}", lock_path.display()))
 }
 
+/// Held exclusive lock next to a file, released on drop (or by the kernel when the process dies).
+#[derive(Debug)]
+pub struct Exclusive(#[allow(dead_code)] fs::File, #[cfg(not(unix))] PathBuf);
+
+#[cfg(not(unix))]
+impl Drop for Exclusive {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.1);
+    }
+}
+
+/// Waits until this process owns the `flock` of `lock_path_for(path)`. The file stays on disk, so
+/// there is nothing to unlink or reclaim and no hard links are needed.
+#[cfg(unix)]
+pub fn exclusive(path: &Path) -> Result<Exclusive> {
+    use std::os::unix::io::AsRawFd;
+    let lock = lock_path_for(path);
+    if let Some(dir) = lock.parent() {
+        fs::create_dir_all(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    }
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock)
+        .with_context(|| format!("Failed to open {}", lock.display()))?;
+    loop {
+        // SAFETY: the fd belongs to `file`, which outlives the call.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } == 0 {
+            return Ok(Exclusive(file));
+        }
+        let err = std::io::Error::last_os_error();
+        if err.kind() != std::io::ErrorKind::Interrupted {
+            return Err(err).with_context(|| format!("Could not lock {}", lock.display()));
+        }
+    }
+}
+
+/// Without `flock` the lock file is created exclusively and polled, a crash leaves it behind.
+#[cfg(not(unix))]
+pub fn exclusive(path: &Path) -> Result<Exclusive> {
+    let lock = lock_path_for(path);
+    if let Some(dir) = lock.parent() {
+        fs::create_dir_all(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    }
+    let mut last = None;
+    for _ in 0..1000 {
+        match fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&lock)
+        {
+            Ok(file) => return Ok(Exclusive(file, lock)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                last = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(e) => return Err(e).with_context(|| format!("Failed to lock {}", lock.display())),
+        }
+    }
+    Err(last.unwrap())
+        .with_context(|| format!("Could not lock {}, held by another agr", lock.display()))
+}
+
 /// Read lock info if the lock file exists and the owning PID is still alive.
 ///
 /// Returns `None` if the lock file is missing, malformed, or the PID is dead.

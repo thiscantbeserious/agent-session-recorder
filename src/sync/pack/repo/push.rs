@@ -25,8 +25,8 @@ pub struct PushItem {
 /// What became of one item of a push.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
-    /// Written to pack `pack`.
-    Pushed { pack: String },
+    /// Written to pack `pack`, `sha256` is the hash of the bytes that were appended.
+    Pushed { pack: String, sha256: String },
     /// The merged view was ahead of this gen when the append was planned, nothing was written.
     Superseded,
 }
@@ -76,6 +76,7 @@ impl PushReport {
             let outcome = match hit {
                 true => Outcome::Pushed {
                     pack: next.id.clone(),
+                    sha256: s.sha256.clone(),
                 },
                 false => Outcome::Superseded,
             };
@@ -99,6 +100,7 @@ impl PushReport {
                     gen,
                     Outcome::Pushed {
                         pack: next.id.clone(),
+                        sha256: String::new(),
                     },
                 ),
                 None => (*planned, Outcome::Superseded),

@@ -247,3 +247,60 @@ fn find_by_header_ignores_non_cast_files() {
     let found = lock::find_by_header(dir.path(), header);
     assert!(found.is_none());
 }
+
+#[test]
+fn exclusive_sections_of_two_threads_never_overlap() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("state.toml");
+    let inside = AtomicUsize::new(0);
+    let overlaps = AtomicUsize::new(0);
+    std::thread::scope(|s| {
+        for _ in 0..2 {
+            s.spawn(|| {
+                for _ in 0..50 {
+                    let _g = lock::exclusive(&path).unwrap();
+                    if inside.fetch_add(1, Ordering::SeqCst) != 0 {
+                        overlaps.fetch_add(1, Ordering::SeqCst);
+                    }
+                    std::thread::yield_now();
+                    inside.fetch_sub(1, Ordering::SeqCst);
+                }
+            });
+        }
+    });
+    assert_eq!(overlaps.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn exclusive_takes_a_lock_file_left_by_a_dead_pid() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("state.toml");
+    let info = lock::LockInfo {
+        pid: 0x7fff_fff0,
+        started: "2020-01-01T00:00:00Z".into(),
+    };
+    std::fs::write(
+        lock::lock_path_for(&path),
+        serde_json::to_string(&info).unwrap(),
+    )
+    .unwrap();
+    lock::exclusive(&path).unwrap();
+}
+
+#[test]
+fn exclusive_takes_an_unheld_lock_file_even_when_its_pid_is_alive() {
+    // a crash leaves the file behind and the pid may be reused by a live process
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("state.toml");
+    let info = lock::LockInfo {
+        pid: std::process::id(),
+        started: "2020-01-01T00:00:00Z".into(),
+    };
+    std::fs::write(
+        lock::lock_path_for(&path),
+        serde_json::to_string(&info).unwrap(),
+    )
+    .unwrap();
+    lock::exclusive(&path).unwrap();
+}

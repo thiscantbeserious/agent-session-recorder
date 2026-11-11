@@ -105,6 +105,16 @@ impl<'a> Repo<'a> {
         target: u64,
         hint: Option<&str>,
     ) -> Result<Self, RepoError> {
+        Self::open_with(store, key, (writer, target, hint), true)
+    }
+
+    /// `open`, `sweep` false leaves the local clones alone, for runs that do not hold the lock.
+    pub fn open_with(
+        store: &'a dyn PackStore,
+        key: &'a Key,
+        (writer, target, hint): (&str, u64, Option<&str>),
+        sweep: bool,
+    ) -> Result<Self, RepoError> {
         let listing = store.list().map_err(RepoError::List)?;
         let legacy = &listing.legacy;
         let ours = |d: &String| {
@@ -114,7 +124,7 @@ impl<'a> Repo<'a> {
         if legacy.iter().any(ours) {
             return Err(RepoError::NeedsMigrate);
         }
-        Self::from_listing(store, key, (writer, target, hint), listing.packs)
+        Self::from_listing(store, key, (writer, target, hint), listing.packs, sweep)
     }
 
     /// `hint` is the open pack id the app saved locally, `target` the pack size in bytes.
@@ -125,8 +135,8 @@ impl<'a> Repo<'a> {
         target: u64,
         hint: Option<&str>,
     ) -> Result<Self, RepoError> {
-        let listing = store.list().map_err(RepoError::List)?;
-        Self::from_listing(store, key, (writer, target, hint), listing.packs)
+        let listing = store.list_for_migrate().map_err(RepoError::List)?;
+        Self::from_listing(store, key, (writer, target, hint), listing.packs, true)
     }
 
     fn from_listing(
@@ -134,6 +144,7 @@ impl<'a> Repo<'a> {
         key: &'a Key,
         (writer, target, hint): (&str, u64, Option<&str>),
         listed: Vec<PackInfo>,
+        sweep: bool,
     ) -> Result<Self, RepoError> {
         if target > MAX_TARGET {
             return Err(RepoError::Target(target));
@@ -151,7 +162,9 @@ impl<'a> Repo<'a> {
         };
         repo.open = repo.pick_open(hint);
         // once per open: a crash before `sealed` or a frozen pack leaves clones nobody drops
-        store.keep_only(repo.open_pack());
+        if sweep {
+            store.keep_only(repo.open_pack());
+        }
         Ok(repo)
     }
 

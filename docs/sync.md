@@ -1,101 +1,113 @@
 # Syncing Sessions
 
-Sync copies your compressed sessions to a second place so another machine can pull them. Right now the only backend is secret GitHub gists through the `gh` CLI, as such `gh` and `git` need to be on your PATH and `gh auth login` done (the token needs the `gist` scope, `gh auth refresh -s gist` adds it). agr never reads or stores your GitHub token.
+Sync copies your compressed sessions, encrypted, to secret GitHub gists so another machine can pull them. We need `gh` and `git` on the PATH and `gh auth login` done (the token needs the `gist` scope, `gh auth refresh -s gist` adds it). agr never reads or stores your GitHub token. How sync works inside (layers, pack format, encryption, push and pull flow) is in [architecture/sync.md](architecture/sync.md), the command reference is in [wiki/Command-sync.md](wiki/Command-sync.md).
 
-How sync works inside (layers, remote layout, encryption, push and pull flow) is described in [docs/architecture/sync.md](architecture/sync.md).
+## 1. What sync does
 
-## Setup
+Many sessions are bundled into pack gists, so your gist page does not fill up with one entry per session. Every session is encrypted on your machine before it leaves, the remote only holds ciphertext.
 
-The backend defaults to `gist` but nothing is uploaded on its own, `auto_push` is off by default. A push needs `gh` and `git` and the privacy notice confirmed with a first `agr sync push`. To switch sync off set `backend = "off"` in `~/.config/agr/config.toml`:
+- **Compressed only**: plain `.cast` files are skipped with a hint to run `agr compress`, sessions that are still recording are skipped, and so are sessions above 1 GiB on disk.
+- **Nothing happens on its own**: `auto_push` is off by default, see section 9.
+- **No cross deletes**: deleting a file locally never deletes it remotely and the other way round, only `agr sync delete` removes the remote copy.
+
+## 2. Setup
+
+The backend defaults to `gist`. To switch sync off set `backend = "off"` in `~/.config/agr/config.toml`:
 
 ```toml
 [sync]
-backend = "gist"   # default, "off" disables sync
-auto_push = false  # default, true pushes each new recording
+backend = "gist"      # default, "off" disables sync
+auto_push = false     # default, true pushes each new recording
+pack_size_mib = 64    # target size of one pack gist, 16 to 512
 ```
+
+## 3. Migrate first
+
+If you synced with an older version (one gist per session), run `agr sync migrate` before anything else. On a machine without a sync key run `agr sync key import` first (see section 8), migrate refuses without an existing key. Push, pull and delete refuse with "Run `agr sync migrate` first." until it has finished, and status prints the same hint.
 
 ```bash
-agr sync status                 # What push and pull would do, per session, read only
-agr sync push                   # Upload new and changed sessions
-agr sync pull                   # Download new and changed sessions
-agr sync delete claude/a.cast.gz  # Remove the remote copy, the local file stays
-agr sync push --dry-run         # Preview, never prompts or changes anything
-agr sync push --yes             # Skip the confirmation (needed without a terminal)
+agr sync migrate          # shows what would move, asks, then moves the sessions into packs
+agr sync migrate --yes    # skip the question
 ```
 
-Every session is its own gist (`agent/name.cast.gz`). Plain `.cast` files are skipped with a hint to run `agr compress`, sessions that are still recording are skipped, and so are sessions above 1 GiB. The cap applies to the local `.cast.gz` size on disk, not to the encrypted size. Sessions above 45 MiB are split into `data.NNN` parts inside their own gist. GitHub lists at most 3000 gists, with that many sync aborts instead of guessing which sessions exist. A conflict (both sides changed, decided by content hash and never by file time) is skipped and reported, `--overwrite` makes the local side win on push and the remote side win on pull (the replaced local file is kept as a hidden `.bak`). Deleting a session locally never deletes it remotely and the other way round, only `agr sync delete` removes the remote copy. A later plain `agr sync push` uploads a deleted session again, as the local file is still there.
+An old gist is deleted only after the pack index shows its session, local files are never touched and re-running is safe. Without a terminal it needs `--yes`.
 
-## How it works across machines
+## 4. Push, pull and status
 
-Every session gist holds an encrypted `manifest` and the encrypted `data.NNN` parts, committed together. The manifest carries the session name, the content hash and a generation counter that goes up by one on every push. Pull compares that counter with the last one this machine saw.
+```bash
+agr sync status                  # summary per category, read only
+agr sync status -v               # one line per session
+agr sync push                    # upload new and changed sessions, asks first
+agr sync push claude/a.cast.gz   # one session
+agr sync pull                    # download new and changed sessions
+agr sync push --dry-run          # preview, change nothing
+agr sync push --yes              # skip the question, needed without a terminal
+```
 
-Anyone who can see the gist can see:
+Every push or pull with planned changes asks first. The first push that creates packs shows a privacy notice once per machine and creates your key (see section 8). A conflict (both sides changed, decided by hash and never by file time) is skipped and reported, `--overwrite` makes the local side win on push and the remote side win on pull (the replaced local file is kept as a hidden `.bak`). Pull checks every session against its hash before it replaces your file, so a damaged or tampered remote never touches the local copy.
 
-- the `agr:v1` prefix in the description, the file names (`manifest`, `data.000`, ...) and their sizes
-- the commit times (always UTC)
-- how many sessions you have synced
+## 5. Delete
 
-They cannot see the session content, the session names or which agent recorded them.
+`agr sync delete` removes the remote copy, the local file always stays. Patterns use `*` (any run) and `?` (one character) against `<agent>/<name>`.
 
-## Push and pull safety
+```bash
+agr sync delete claude/a.cast.gz
+agr sync delete 'claude/2024-*'
+agr sync delete --all --dry-run
+```
 
-Every push is a compare-and-swap. If the gist changed on the remote since agr looked at it, the session is reported as "changed on the remote, run again" and nothing is written. Run the sync again and it plans against the new state. Nothing on the remote is overwritten without `--overwrite`, and agr never force pushes. An interrupted upload is resumed by the next push.
+- **`--all`**: every remote session, cannot be combined with patterns.
+- **`--yes`**: skips the yes or no question only.
+- **More than 10 matches**: a terminal always asks you to type the count, also with `--yes` and `--force`.
+- **`--force`**: only lifts the abort when there is no terminal, without it more than 10 deletes without a terminal stop.
 
-Pull refuses a remote version that is older than the last one this machine synced (rollback), and a manifest or blob that belongs to another session or does not match its hash. The local file stays untouched in all of these cases.
+## 6. Fork and `--overwrite`
 
-## Memory and tampering
+When two machines push different content of one session at the same time, both pushes land and the next listing shows a **fork**. Push and pull skip it with "fork, run `agr sync push --overwrite`". Run `agr sync push --overwrite` on the machine whose version should win, the other version stays as dead data on the remote.
 
-Sessions are encrypted and decrypted in chunks. Each 64 KiB chunk is encrypted and authenticated on its own, as such memory stays small however big the session is. A damaged or tampered gist (cut off, reordered, with chunks dropped, duplicated or appended) is refused, and your local file is not touched. Pull writes into a hidden temp file first and only replaces your file once the whole stream and its hash checked out.
+## 7. Deleted on the remote
 
-## Duplicates, deleted gists and rate limits
+A session that was deleted from the remote (by `agr sync delete` on another machine) shows as "deleted on the remote" in status and is not pushed back. Your local file stays. To restore it run `agr sync push --overwrite`, it uploads the local file again. If you edited the file after the last sync it counts as a fork and `--overwrite` resolves it the same way.
 
-- **Duplicates**: if the same session exists in more than one gist, agr uses one of them, reports the others with `gh gist delete <id>` and never deletes anything itself.
-- **Deleted gist**: if you deleted the gist on GitHub, the session is reported as "remote copy gone" and skipped. Only `agr sync push --overwrite` uploads it again.
-- **Rate limits**: agr paces its changing calls to at most 60 per minute and stops as soon as GitHub reports a rate limit, with "N left, please run again later". The first sync of many sessions may need several runs.
+## 8. The key and what is stored where
 
-## Known limits
+Secret gists are unlisted to other users (you still see them on your own gist page), but **anyone who has the link can read them**, and recordings can hold secrets you typed in the terminal. That is why agr encrypts every session before it uploads.
 
-- GitHub lists at most 3000 gists, with that many sync aborts.
-- The gist description can lag behind the manifest after an interrupted push. A later run repairs it.
-- A rename leaves the old name on your other machines until you run `agr sync delete` for it there.
-- If the key is compromised, every old version in the gist history is exposed. Deleting the gists is the only remedy.
-- When two machines push the same session at nearly the same time, GitHub has no conditional description update, so a newer description can be overwritten in a window of a few milliseconds. The next run of the newer machine repairs it.
-- `agr sync delete` racing a push of the same session on another machine is not a compare-and-swap. The other machine creates the gist again from its local copy on its next push.
-- A push landed but the run crashed before the index save, and the file was edited before the next run: it is reported as a conflict, `--overwrite` resolves it.
-- A machine that lost its index (`.agr-sync.json` in the storage directory) trusts the first version it sees, so it cannot detect a rollback that happened before.
-
-## Encryption and the key
-
-Secret gists are not listed anywhere, but **anyone who has the link can read them**, and recordings can hold secrets you typed in the terminal. That is why agr encrypts every session on your machine before it uploads (XChaCha20-Poly1305). The gist only holds ciphertext, and its description only holds an opaque token, so session names are not readable either. A gist keeps its git history, as such old ciphertexts of a changed session stay readable to anyone with the link and the key.
-
-The first push that creates gists shows this notice and asks for a confirmation once per machine (stored in `~/.config/agr/state.toml`). The key is created then, in `~/.config/agr/sync.key` with mode 0600, but only if the remote has no agr gists yet. If it has, agr stops and asks you to import the key of your other machine.
+- **On the remote**: ciphertext in pack gists, a description `agr:v2 <random id>`, file names and sizes, and commit times (UTC). Anyone with the link can see how many packs you have and, as the size of the `index` file per revision grows, roughly how many sessions each append added. They cannot see session content, session names or the agent.
+- **`~/.config/agr/sync.key`**: your key, mode 0600, created by the first push only when the remote has no agr packs and no old agr gists. If it has either, agr stops and asks you to import the key of your other machine.
+- **`~/.config/agr/state.toml`**: the privacy notice confirmation, and the last failed auto push.
+- **Storage directory**: `.agr-sync.json` (what this machine last synced), `.agr-sync.lock` and `.agr-sync-queue`.
 
 **Losing every copy of the key makes your synced sessions unrecoverable.** Back it up right after the first push:
 
 ```bash
-agr sync key export             # Prints the recovery phrase (agr1-XXXXX-...)
+agr sync key export             # prints the recovery phrase (agr1-XXXXX-...)
 ```
 
 On a second machine:
 
 ```bash
-agr sync key import             # Paste the phrase on stdin, an argument also works but lands in your shell history
+agr sync key import             # paste the phrase on stdin, an argument also works but lands in your shell history
 agr sync pull
 ```
 
-`key import` refuses to replace a different existing key unless you pass `--force`. Remote entries sealed with another key are reported and left alone, remove them with `gh gist delete <id>` if you do not need them.
+`key import` refuses to replace a different existing key unless you pass `--force`. A gist keeps its git history, as such deleting the packs does not protect ciphertext that someone already copied. If the key is compromised, rotate it in this order:
 
-## Test-only backend switch
+1. Run `agr sync pull` on every machine and check `agr sync status`, so every remote session exists locally. Keeping local files alone does not save a session that only lives on the remote, and resolve any fork first.
+2. Remove local files of sessions you deleted from the remote earlier. Deleting the old gists also deletes their tombstones, as such a leftover local file is pushed again as new.
+3. Delete the old gists on GitHub yourself.
+4. On every machine move `~/.config/agr/sync.key` and `.agr-sync.json` (in the storage directory) away. With the old key in place the next push would encrypt with it, and an old index with higher gens makes the rebuilt remote look like a rollback and is refused.
+5. Push from one machine, the empty remote makes agr create a new key. Back it up with `agr sync key export`, import it on the other machines and pull there.
 
-`AGR_SYNC_TEST_BACKEND_DIR=<dir>` redirects sync to a local folder instead of GitHub. It exists for the end to end tests and stays in release builds. It is for tests only, never set it for real data. Every sync command prints `Using test sync backend at <dir>` on stderr when it is set.
+Ciphertext copied earlier stays readable with the old key.
 
-## Auto push
+## 9. Auto push
 
-Auto push is off by default (`auto_push = false`). Once you turn it on, a finished recording is pushed in the background. The new session is pushed together with every session you synced before that changed since (markers, optimize), a new session that cannot be pushed right away because another sync holds the lock waits in a small queue (`.agr-sync-queue` in the storage directory, shown by `agr sync status`) and the running sync or the next one takes it, and a rename is only picked up by a manual push. Auto push never pulls or deletes, and a failure never changes the exit status of the recording. Auto push waits until you confirmed the privacy notice with one manual `agr sync push`, until then the recording prints one hint line. A failed background push is stored in `state.toml`, shown as one warning on the next recording and by `agr sync status`.
+Once you set `auto_push = true`, a finished recording is pushed in the background, together with every session you synced before that changed since. Auto push never pulls or deletes, and a failure never changes the exit status of the recording. It waits until you confirmed the privacy notice with one manual `agr sync push`, until then the recording prints one hint line. A failed background push is shown as one warning on the next recording and by `agr sync status`.
 
-To turn it on:
+## 10. Known limits
 
-```toml
-[sync]
-auto_push = true
-```
+- GitHub lists at most 3000 gists, with that many sync aborts instead of guessing which packs exist.
+- Pushes are paced and stop as soon as GitHub reports a rate limit, the first sync of many sessions may need several runs.
+- A rename leaves the old name on the remote and on your other machines. `agr sync delete` removes the old remote entry only, so remove the old local file on each other machine yourself.
+- A machine that lost its `.agr-sync.json` has no history to compare with, as such it cannot detect a rollback that happened before.

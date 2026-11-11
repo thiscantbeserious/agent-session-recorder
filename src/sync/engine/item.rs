@@ -2,8 +2,9 @@
 
 use super::observe::Step;
 use super::plan::{Command, Decision, Local, Remote, SkipReason};
-use super::run::{Engine, Item, Outcome, Report};
+use super::run::{Item, Outcome, Report};
 use super::scan::Row;
+use crate::StorageManager;
 
 impl Report {
     /// Add the counts and items of a later round of the same run.
@@ -14,6 +15,9 @@ impl Report {
         self.failed += other.failed;
         self.bytes += other.bytes;
         self.warning = self.warning.take().or(other.warning);
+        self.unchecked |= other.unchecked;
+        self.forks.extend(other.forks);
+        self.refused.extend(other.refused);
         self.items.extend(other.items);
     }
 
@@ -43,6 +47,7 @@ pub(super) fn passive(decision: Decision) -> Outcome {
         Decision::OtherKey => Outcome::Skipped("sealed with another key".into()),
         Decision::UnknownVersion => Outcome::Skipped("unknown remote version".into()),
         Decision::Duplicate => Outcome::Skipped("duplicate remote copies".into()),
+        Decision::Fork => Outcome::Skipped("fork, run `agr sync push --overwrite`".into()),
         _ => Outcome::Nothing,
     }
 }
@@ -58,9 +63,6 @@ pub(super) fn not_found(name: String) -> Item {
         local_hash: None,
         remote_hash: None,
         remote_size: 0,
-        remote_id: None,
-        pending: false,
-        duplicates: Vec::new(),
     }
 }
 
@@ -96,47 +98,74 @@ pub(super) fn skip_text(reason: SkipReason) -> &'static str {
         SkipReason::OverCap => "over the 1 GiB limit",
         SkipReason::Unreadable => "cannot read the file",
         SkipReason::NotFound => "no such session",
+        SkipReason::DeletedOnRemote => {
+            "deleted on the remote, run `agr sync push --overwrite` to restore"
+        }
     }
 }
 
-impl Engine<'_> {
-    /// Tells the observer which session is about to move and how big it is.
-    pub(super) fn started(&self, row: &Row, observer: &mut dyn FnMut(Step<'_>), pull: bool) {
-        let remote = row.meta.as_ref().map(|m| m.size);
-        let local = std::fs::metadata(self.storage.storage_dir().join(&row.path))
-            .map(|m| m.len())
-            .ok();
-        let size = if pull {
-            remote.or(local)
-        } else {
-            local.or(remote)
-        };
-        observer(Step::Started {
-            path: &row.path,
-            size: size.unwrap_or(0),
-        });
-    }
+/// One `Started` for a whole append: the session, or `N sessions` and their summed size.
+pub(super) fn announce_batch(
+    storage: &StorageManager,
+    rows: &[&Row],
+    observer: &mut dyn FnMut(Step<'_>),
+) {
+    let size =
+        |r: &Row| std::fs::metadata(storage.storage_dir().join(&r.path)).map_or(0, |m| m.len());
+    let name = match rows {
+        [one] => one.path.clone(),
+        many => format!("{} sessions", many.len()),
+    };
+    let total = rows.iter().map(|r| size(r)).sum();
+    observer(Step::Started {
+        path: &name,
+        size: total,
+    });
+}
 
-    pub(super) fn item(&self, row: &Row, decision: Decision, outcome: Outcome) -> Item {
-        let local = std::fs::metadata(self.storage.storage_dir().join(&row.path))
-            .as_ref()
-            .map(std::fs::Metadata::len)
-            .ok();
-        let remote = row.meta.as_ref().map(|m| m.size);
-        Item {
-            path: row.path.clone(),
-            decision,
-            outcome,
-            size: local.or(remote).unwrap_or(0),
-            // a fallback id from the index is not a listed remote copy
-            on_remote: row.input.remote != Remote::Absent,
-            on_local: local.is_some(),
-            local_hash: hash_of(&row.input.local),
-            remote_hash: remote_hash_of(&row.input.remote),
-            remote_size: remote.unwrap_or(0),
-            remote_id: row.remote_id.clone(),
-            pending: row.pending,
-            duplicates: row.duplicates.clone(),
-        }
+/// Tells the observer which session is about to move and how big it is.
+pub(super) fn announce(
+    storage: &StorageManager,
+    row: &Row,
+    observer: &mut dyn FnMut(Step<'_>),
+    pull: bool,
+) {
+    let remote = row.meta.as_ref().map(|m| m.size);
+    let local = std::fs::metadata(storage.storage_dir().join(&row.path))
+        .map(|m| m.len())
+        .ok();
+    let size = if pull {
+        remote.or(local)
+    } else {
+        local.or(remote)
+    };
+    observer(Step::Started {
+        path: &row.path,
+        size: size.unwrap_or(0),
+    });
+}
+
+pub(super) fn build_item(
+    storage: &StorageManager,
+    row: &Row,
+    decision: Decision,
+    outcome: Outcome,
+) -> Item {
+    let local = std::fs::metadata(storage.storage_dir().join(&row.path))
+        .as_ref()
+        .map(std::fs::Metadata::len)
+        .ok();
+    let remote = row.meta.as_ref().map(|m| m.size);
+    Item {
+        path: row.path.clone(),
+        decision,
+        outcome,
+        size: local.or(remote).unwrap_or(0),
+        // a fallback id from the index is not a listed remote copy
+        on_remote: !matches!(row.input.remote, Remote::Absent | Remote::Deleted { .. }),
+        on_local: local.is_some(),
+        local_hash: hash_of(&row.input.local),
+        remote_hash: remote_hash_of(&row.input.remote),
+        remote_size: remote.unwrap_or(0),
     }
 }

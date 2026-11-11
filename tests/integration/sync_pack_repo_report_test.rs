@@ -16,9 +16,10 @@ fn reload_failure_after_push_reports_pushed_and_check_failed() {
     let report = repo.push_batch(&[item(dir.path(), "a", 1, b"x")]).unwrap();
     assert!(report.check_failed);
     let pack = packs_of(&store)[0].id.clone();
+    let sha256 = agr::sync::testing::sha256_hex(b"x");
     assert_eq!(
         report.items,
-        vec![("a".to_string(), 1, Outcome::Pushed { pack })]
+        vec![("a".to_string(), 1, Outcome::Pushed { pack, sha256 })]
     );
 }
 
@@ -64,4 +65,22 @@ fn push_report_names_the_open_pack_and_its_length() {
     let info = packs_of(&store).remove(0);
     let open = report.open.unwrap();
     assert_eq!((open.id, open.len), (info.id, info.len));
+}
+
+#[test]
+fn a_pushed_item_reports_the_hash_of_the_bytes_it_appended() {
+    let (store, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let mut repo = repo(&store, &key, "w1");
+    let report = repo
+        .push_batch(&[item(dir.path(), "a", 1, b"the bytes")])
+        .unwrap();
+    let want = agr::sync::testing::sha256_hex(b"the bytes");
+    match &report.items[0].2 {
+        Outcome::Pushed { sha256, .. } => assert_eq!(sha256, &want),
+        other => panic!("{other:?}"),
+    }
 }
