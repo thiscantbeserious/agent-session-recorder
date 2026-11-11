@@ -41,6 +41,7 @@ pub struct MemoryStore {
     list_fails: AtomicBool,
     list_fails_once: AtomicBool,
     before_append: Mutex<Option<AppendHook>>,
+    after_append: Mutex<Option<AppendHook>>,
 }
 
 /// Runs before every append with the store and the pack id, a writer that wins the race.
@@ -111,6 +112,15 @@ impl MemoryStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(hook));
     }
 
+    /// `hook` runs after every later successful append, before the caller sees it return, outside
+    /// the store lock. A rival that writes between our append and our reload.
+    pub fn after_append(&self, hook: impl Fn(&MemoryStore, &str) + Send + Sync + 'static) {
+        *self
+            .after_append
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(hook));
+    }
+
     /// Store whose packs hold at most `n` file slots, one per segment, for `fits`.
     pub fn with_slots(n: usize) -> Self {
         Self {
@@ -120,9 +130,9 @@ impl MemoryStore {
     }
 
     /// The hook is out of its slot while it runs, its own appends do not call it again.
-    fn run_hook(&self, id: &str) {
+    fn run_hook(&self, which: &Mutex<Option<AppendHook>>, id: &str) {
         let slot = || {
-            (self.before_append)
+            which
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
         };
@@ -226,7 +236,7 @@ impl PackStore for MemoryStore {
         segments: &[Segment],
         index: &str,
     ) -> Result<(), StoreError> {
-        self.run_hook(id);
+        self.run_hook(&self.before_append, id);
         let mut inner = self.lock();
         let pack = inner.packs.get_mut(id).ok_or(StoreError::NotFound)?;
         if pack.data.len() as u64 != expected_len || pack.index != expected_index {
@@ -247,6 +257,8 @@ impl PackStore for MemoryStore {
         pack.index = index.to_string();
         inner.indexes.push(index.to_string());
         inner.appends += 1;
+        drop(inner);
+        self.run_hook(&self.after_append, id);
         Ok(())
     }
 

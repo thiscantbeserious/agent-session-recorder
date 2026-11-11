@@ -231,3 +231,31 @@ fn all_selects_only_live_remote_sessions_not_tombstoned_ones() {
     assert_eq!(hits.len(), 2, "{hits:?}");
     assert!(!hits.iter().any(|p| p == A), "{hits:?}");
 }
+
+#[test]
+fn a_rival_append_between_our_append_and_our_reload_is_never_pushed_over() {
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    n.session(
+        "claude",
+        "a.cast.gz",
+        &CAST.replace("secret", "edited here"),
+    );
+    let rival_key = agr::sync::testing::copy_key(&key);
+    let once = std::sync::atomic::AtomicBool::new(true);
+    store.after_append(move |s, _| {
+        if once.swap(false, std::sync::atomic::Ordering::SeqCst) {
+            raw_push(s, &rival_key, "w2", (A, 3), "the rival edit");
+        }
+    });
+    let first = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(first.pushed, 1, "{:?}", first.items);
+    let second = n.engine(&store, &key, "w1").push(&opts()).unwrap();
+    assert_eq!(
+        second.pushed, 0,
+        "silent push over gen 3: {:?}",
+        second.items
+    );
+    assert_eq!(merged(&store, &key, A).0.map(|m| m.0), Some(3));
+}
