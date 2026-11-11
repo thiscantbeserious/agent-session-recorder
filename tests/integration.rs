@@ -277,6 +277,9 @@ mod sync_pack_migrate_test;
 #[path = "integration/sync_pack_migrate_moving_test.rs"]
 mod sync_pack_migrate_moving_test;
 
+#[path = "integration/sync_pack_migrate_report_test.rs"]
+mod sync_pack_migrate_report_test;
+
 #[path = "integration/sync_pack_repo_legacy_test.rs"]
 mod sync_pack_repo_legacy_test;
 
