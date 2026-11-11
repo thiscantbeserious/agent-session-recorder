@@ -51,62 +51,69 @@ pub fn create_lock(path: &Path) -> Result<()> {
         .with_context(|| format!("Failed to write lock file: {}", lock_path.display()))
 }
 
-/// Held exclusive lock next to a file, removed on drop.
+/// Held exclusive lock next to a file, released on drop (or by the kernel when the process dies).
 #[derive(Debug)]
-pub struct Exclusive(PathBuf);
+pub struct Exclusive(#[allow(dead_code)] fs::File, #[cfg(not(unix))] PathBuf);
 
+#[cfg(not(unix))]
 impl Drop for Exclusive {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.0);
+        let _ = fs::remove_file(&self.1);
     }
 }
 
-/// Waits until this process owns the lock file of `path` (`lock_path_for`), a lock whose pid is
-/// dead is taken over. The JSON goes to a temp file and is linked into place, so the lock never
-/// appears empty to a second process.
+/// Waits until this process owns the `flock` of `lock_path_for(path)`. The file stays on disk, so
+/// there is nothing to unlink or reclaim and no hard links are needed.
+#[cfg(unix)]
 pub fn exclusive(path: &Path) -> Result<Exclusive> {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
+    use std::os::unix::io::AsRawFd;
     let lock = lock_path_for(path);
-    let info = LockInfo {
-        pid: std::process::id(),
-        started: chrono::Utc::now().to_rfc3339(),
-    };
-    let json = serde_json::to_string(&info).context("Failed to serialize lock info")?;
-    let tmp = lock.with_extension(format!(
-        "tmp{}-{}",
-        info.pid,
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
     if let Some(dir) = lock.parent() {
         fs::create_dir_all(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
     }
-    fs::write(&tmp, json).with_context(|| format!("Failed to write {}", tmp.display()))?;
-    let mut linked = Ok(());
-    for _ in 0..LOCK_TRIES {
-        linked = fs::hard_link(&tmp, &lock);
-        if linked.is_ok() {
-            break;
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&lock)
+        .with_context(|| format!("Failed to open {}", lock.display()))?;
+    loop {
+        // SAFETY: the fd belongs to `file`, which outlives the call.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } == 0 {
+            return Ok(Exclusive(file));
         }
-        // ponytail: two waiters can both see a dead holder and one removes the other's fresh
-        // lock, needs a dead pid first, upgrade to flock if it ever shows up
-        let dead = fs::read_to_string(&lock)
-            .ok()
-            .and_then(|t| serde_json::from_str::<LockInfo>(&t).ok())
-            .is_some_and(|i| !is_pid_alive(i.pid));
-        if dead {
-            let _ = fs::remove_file(&lock);
-        } else {
-            std::thread::sleep(std::time::Duration::from_millis(10));
+        let err = std::io::Error::last_os_error();
+        if err.kind() != std::io::ErrorKind::Interrupted {
+            return Err(err).with_context(|| format!("Could not lock {}", lock.display()));
         }
     }
-    let _ = fs::remove_file(&tmp);
-    linked.with_context(|| format!("Could not lock {}, held by another agr", lock.display()))?;
-    Ok(Exclusive(lock))
 }
 
-/// Tries of `exclusive`, 10 ms apart.
-const LOCK_TRIES: u32 = 1000;
+/// Without `flock` the lock file is created exclusively and polled, a crash leaves it behind.
+#[cfg(not(unix))]
+pub fn exclusive(path: &Path) -> Result<Exclusive> {
+    let lock = lock_path_for(path);
+    if let Some(dir) = lock.parent() {
+        fs::create_dir_all(dir).with_context(|| format!("Failed to create {}", dir.display()))?;
+    }
+    let mut last = None;
+    for _ in 0..1000 {
+        match fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&lock)
+        {
+            Ok(file) => return Ok(Exclusive(file, lock)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                last = Some(e);
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(e) => return Err(e).with_context(|| format!("Failed to lock {}", lock.display())),
+        }
+    }
+    Err(last.unwrap())
+        .with_context(|| format!("Could not lock {}, held by another agr", lock.display()))
+}
 
 /// Read lock info if the lock file exists and the owning PID is still alive.
 ///
