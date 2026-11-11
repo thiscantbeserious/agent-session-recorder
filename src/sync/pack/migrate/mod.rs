@@ -129,14 +129,20 @@ pub fn preview(env: &Env) -> Result<Report, MigrateError> {
     let repo = open(env)?;
     let (done, todo): (Vec<_>, Vec<_>) = plan.ours.iter().partition(|(_, m)| moved(repo.view(), m));
     let bytes: u64 = todo.iter().map(|(_, m)| m.size).sum();
-    let line = format!(
+    let mut line = format!(
         "{} sessions to move ({}), {} already moved, {} empty stubs to delete, {} not ours (kept)",
         todo.len(),
         humansize::format_size(bytes, humansize::BINARY),
         done.len(),
         plan.stubs.len(),
-        plan.kept
+        plan.kept - plan.blockers.len()
     );
+    if !plan.blockers.is_empty() {
+        line += &format!(
+            ", {} blocked (own gist with extra files, fix by hand, sync stays blocked)",
+            plan.blockers.len()
+        );
+    }
     Ok(Report {
         lines: vec![line],
         ..Report::default()
