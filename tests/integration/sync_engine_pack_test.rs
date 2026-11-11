@@ -404,3 +404,62 @@ fn a_delete_whose_fork_check_fails_is_unchecked_and_fails_the_run() {
     assert!(report.unchecked, "{report:?}");
     assert!(report.run_failed());
 }
+
+/// Store whose second `read` is rate limited, the first one works.
+struct LimitSecondRead<'a>(&'a MemoryStore, std::cell::Cell<usize>);
+
+impl PackStore for LimitSecondRead<'_> {
+    fn name(&self) -> &'static str {
+        "limit-second-read"
+    }
+    fn check(&self) -> Result<(), agr::sync::testing::StoreError> {
+        self.0.check()
+    }
+    fn list(&self) -> Result<agr::sync::testing::Listing, agr::sync::testing::StoreError> {
+        self.0.list()
+    }
+    fn read_index(&self, id: &str) -> Result<String, agr::sync::testing::StoreError> {
+        self.0.read_index(id)
+    }
+    fn create(&self, tag: &str, index: &str) -> Result<String, agr::sync::testing::StoreError> {
+        self.0.create(tag, index)
+    }
+    fn append(
+        &self,
+        id: &str,
+        n: u64,
+        e: &str,
+        s: &[agr::sync::testing::Segment],
+        i: &str,
+    ) -> Result<(), agr::sync::testing::StoreError> {
+        self.0.append(id, n, e, s, i)
+    }
+    fn read(
+        &self,
+        id: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Box<dyn std::io::Read>, agr::sync::testing::StoreError> {
+        self.1.set(self.1.get() + 1);
+        if self.1.get() == 2 {
+            return Err(agr::sync::testing::StoreError::RateLimited);
+        }
+        self.0.read(id, offset, len)
+    }
+    fn delete(&self, id: &str) -> Result<(), agr::sync::testing::StoreError> {
+        self.0.delete(id)
+    }
+}
+
+#[test]
+fn a_rate_limited_pull_keeps_the_baselines_of_the_pulls_that_finished() {
+    let (n, mem, key) = (node(), MemoryStore::new(), Key::generate());
+    n.session("claude", "a.cast.gz", CAST);
+    n.session("claude", "b.cast.gz", &CAST.replace("secret", "other"));
+    n.engine(&mem, &key, "w1").push(&opts()).unwrap();
+    let other = node();
+    let store = LimitSecondRead(&mem, std::cell::Cell::new(0));
+    let err = other.engine(&store, &key, "w2").pull(&opts()).err();
+    assert_eq!(err, Some(agr::sync::SyncError::RateLimited { left: 1 }));
+    assert_eq!(index_of(&other).entries.len(), 1);
+}
