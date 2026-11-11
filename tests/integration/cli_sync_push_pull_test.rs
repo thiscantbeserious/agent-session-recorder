@@ -303,3 +303,22 @@ fn push_dry_run_and_declined_prompt_store_no_writer_id() {
     assert_eq!(m.run(&["push", "--yes"]).code, 0);
     assert!(writer_of(&m).is_some(), "{}", m.state());
 }
+
+/// An empty or garbage lock file counts as held, so the Busy text names the file to remove.
+#[test]
+fn busy_text_names_the_lock_file_for_an_empty_or_garbage_lock() {
+    for content in ["", "garbage"] {
+        let remote = remote();
+        let m = Machine::gist(remote.path());
+        m.session("claude", "a.cast.gz", "one");
+        let lock = m.storage.join(".agr-sync.lock");
+        std::fs::write(&lock, content).unwrap();
+        for args in [&["push", "--yes"][..], &["migrate", "--yes"]] {
+            let out = m.run(args);
+            assert!(!out.success(), "{}", out.all());
+            let all = out.all();
+            assert!(all.contains("Another sync is running"), "{all}");
+            assert!(all.contains(&lock.display().to_string()), "{args:?}: {all}");
+        }
+    }
+}
