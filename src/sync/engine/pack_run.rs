@@ -121,10 +121,11 @@ impl<'a> Engine<'a> {
     ) -> Result<Report, SyncError> {
         let mut loaded = self.load(&opts.sessions, observer)?;
         let rows = std::mem::take(&mut loaded.rows);
-        match command {
-            Command::Push => self.push_rows(rows, opts, &mut loaded, observer)?,
-            Command::Pull => self.pull_rows(rows, opts, &mut loaded, observer)?,
-        }
+        let run = match command {
+            Command::Push => self.push_rows(rows, opts, &mut loaded, observer),
+            Command::Pull => self.pull_rows(rows, opts, &mut loaded, observer),
+        };
+        // saved and settled also when the run stopped, what finished is never done twice
         if !opts.dry_run {
             self.save(&loaded.index)?;
         }
@@ -136,6 +137,7 @@ impl<'a> Engine<'a> {
                 .iter()
                 .for_each(|i| queue::settle(&dir, i));
         }
+        run?;
         Ok(loaded.report)
     }
 

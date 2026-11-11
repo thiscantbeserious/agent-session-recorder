@@ -7,6 +7,7 @@ use super::plan::{Local, Remote};
 use super::scan::Row;
 use crate::files::backup;
 use crate::sync::pack::repo::{ReadError, Repo};
+use crate::sync::pack::stream::RangeError;
 use crate::sync::store::StoreError;
 use crate::StorageManager;
 
@@ -33,7 +34,8 @@ impl PullFail {
 
 fn read_fail(e: ReadError) -> PullFail {
     match e {
-        ReadError::Store(StoreError::RateLimited) => PullFail::Stop,
+        ReadError::Store(StoreError::RateLimited)
+        | ReadError::Range(RangeError::Store(StoreError::RateLimited)) => PullFail::Stop,
         other => PullFail::Failed(other.to_string()),
     }
 }
