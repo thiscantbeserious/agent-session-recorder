@@ -2,6 +2,7 @@
 
 use crate::helpers::pack_engine::{node, opts, CAST};
 use crate::helpers::pack_repo::{index_of, item, packs_of, repo, FILL, TARGET};
+use agr::sync::testing::PackStore;
 use agr::sync::testing::{
     copy_key, prune_run, sha256_hex, MemoryStore, PruneEnv, PruneError, PruneReport, Repo,
     RepoError, SEAL_BUDGET,
@@ -237,4 +238,23 @@ fn a_fork_tombstone_in_a_repacked_pack_is_carried_over_once() {
     let second = prune(&store, &key, "w9", true);
     let line = second.lines.join("\n");
     assert!(line.contains("0 to repack"), "{line}");
+}
+
+#[test]
+fn freed_bytes_count_only_the_packs_that_were_deleted() {
+    let (store, key, dir) = fixture();
+    scenario(&store, &key, dir.path());
+    let planned = prune(&store, &key, "w9", true);
+    assert!(planned.free_bytes > 0);
+    let old: Vec<String> = store
+        .list()
+        .unwrap()
+        .packs
+        .iter()
+        .map(|p| p.id.clone())
+        .collect();
+    store.after_append(move |s, _| old.iter().for_each(|id| s.delete(id).unwrap()));
+    let out = prune(&store, &key, "w9", false);
+    assert_eq!(out.deleted, 0, "{out:?}");
+    assert_eq!(out.free_bytes, 0, "{out:?}");
 }
