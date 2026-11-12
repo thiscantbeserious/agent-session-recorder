@@ -98,7 +98,7 @@ impl Repo<'_> {
         let batch = Batch {
             staged,
             tombs,
-            seal: seal || full,
+            seal: seal || (full && !self.keep_open),
             at,
             copy,
         };
