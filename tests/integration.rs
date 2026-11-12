@@ -375,3 +375,6 @@ mod sync_pack_prune_plan_test;
 
 #[path = "integration/sync_pack_prune_run_test.rs"]
 mod sync_pack_prune_run_test;
+
+#[path = "integration/sync_pack_prune_orphans_test.rs"]
+mod sync_pack_prune_orphans_test;

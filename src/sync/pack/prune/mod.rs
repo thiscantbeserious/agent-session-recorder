@@ -1,8 +1,10 @@
 //! Prune: frees the dead bytes of sealed packs.
 
+mod orphans;
 mod plan;
 mod safe;
 
+pub use orphans::{seal_plan, SealPlan, BUDGET};
 pub use plan::{plan, Plan};
 
 use crate::sync::crypto::Key;
@@ -20,6 +22,12 @@ pub struct Env<'a> {
     /// Private directory for the sessions in flight.
     pub scratch: &'a Path,
     pub dry_run: bool,
+    /// Seal idle open packs of other writers first.
+    pub seal_orphans: bool,
+    /// Unix seconds from an injected clock.
+    pub now: i64,
+    /// Bytes a run may download for seals.
+    pub seal_budget: u64,
     /// Called before every delete, spaces them out.
     pub pace: &'a dyn Fn(),
 }
@@ -29,6 +37,7 @@ pub struct Report {
     pub lines: Vec<String>,
     pub deleted: usize,
     pub copied: usize,
+    pub sealed: usize,
     pub move_bytes: u64,
     pub free_bytes: u64,
     pub failed: Option<String>,

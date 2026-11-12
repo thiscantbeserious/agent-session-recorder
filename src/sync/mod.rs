@@ -39,8 +39,8 @@ pub mod testing {
         LegacyGist, LegacyRead, MigrateError, Report as MigrateReport,
     };
     pub use crate::sync::pack::prune::{
-        plan as prune_plan, run as prune_run, Env as PruneEnv, Plan as PrunePlan, PruneError,
-        Report as PruneReport,
+        plan as prune_plan, run as prune_run, seal_plan, Env as PruneEnv, Plan as PrunePlan,
+        PruneError, Report as PruneReport, SealPlan, BUDGET as SEAL_BUDGET,
     };
     pub use crate::sync::pack::repo::{
         read_pack, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo, RepoError,

@@ -4,7 +4,7 @@ use crate::helpers::pack_engine::{node, opts, CAST};
 use crate::helpers::pack_repo::{index_of, item, packs_of, repo, TARGET};
 use agr::sync::testing::{
     copy_key, prune_run, sha256_hex, MemoryStore, PruneEnv, PruneError, PruneReport, Repo,
-    RepoError,
+    RepoError, SEAL_BUDGET,
 };
 use agr::sync::Key;
 use std::path::Path;
@@ -28,6 +28,9 @@ fn try_prune(
         hint: None,
         scratch: scratch.path(),
         dry_run: dry,
+        seal_orphans: false,
+        now: 0,
+        seal_budget: SEAL_BUDGET,
         pace: &|| {},
     };
     prune_run(&env)

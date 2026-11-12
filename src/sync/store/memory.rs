@@ -32,6 +32,8 @@ struct Inner {
     appends: usize,
     /// Successful deletes so far.
     deletes: usize,
+    /// `updated_at` texts set by tests, a pack without one lists an empty text.
+    touched: HashMap<String, String>,
 }
 
 /// Packs in a `Mutex`, ids are `mem-<n>`. One lock around check and write models the git ref.
@@ -79,6 +81,11 @@ impl MemoryStore {
     /// How many appends went through.
     pub fn appends(&self) -> usize {
         self.lock().appends
+    }
+
+    /// What `list` shows as `updated_at` of `id`, an injected idle time for the orphan tests.
+    pub fn set_updated_at(&self, id: &str, at: &str) {
+        self.lock().touched.insert(id.to_string(), at.to_string());
     }
 
     /// How many deletes went through.
@@ -192,7 +199,7 @@ impl PackStore for MemoryStore {
                 id: id.clone(),
                 tag: p.tag.clone(),
                 len: p.data.len() as u64,
-                updated_at: String::new(),
+                updated_at: inner.touched.get(id).cloned().unwrap_or_default(),
                 files: p.files,
             })
             .collect();
