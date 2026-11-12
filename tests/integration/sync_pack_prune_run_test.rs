@@ -258,3 +258,37 @@ fn freed_bytes_count_only_the_packs_that_were_deleted() {
     assert_eq!(out.deleted, 0, "{out:?}");
     assert_eq!(out.free_bytes, 0, "{out:?}");
 }
+
+#[test]
+fn a_fork_with_two_places_in_one_pack_copies_each_places_own_bytes() {
+    let (store, key, dir) = fixture();
+    let d = dir.path();
+    let other = tempfile::tempdir().unwrap();
+    let mut w1 = repo(&store, &key, "w1");
+    let items = [
+        item(d, "a", 1, b"first version"),
+        item(other.path(), "a", 1, b"second version"),
+        item(d, "c", 1, &vec![1u8; BIG_A]),
+        item(d, "e", 1, &vec![7u8; BIG_B]),
+    ];
+    w1.push_batch(&items).unwrap();
+    w1.push_batch(&[item(d, "c", 2, b"tiny")]).unwrap();
+    let shas = |s: &MemoryStore| {
+        let r = Repo::open(s, &key, "reader", TARGET, None).unwrap();
+        let mut v: Vec<String> = r
+            .view()
+            .get("a")
+            .unwrap()
+            .places
+            .iter()
+            .map(|p| p.sha256.clone())
+            .collect();
+        v.sort();
+        v
+    };
+    let before = shas(&store);
+    assert_eq!(before.len(), 2);
+    assert_ne!(before[0], before[1]);
+    prune(&store, &key, "w9", false);
+    assert_eq!(shas(&store), before);
+}
