@@ -1,5 +1,6 @@
 ---
 source: tests/integration/snapshot_cli_test.rs
+assertion_line: 163
 expression: output
 ---
 === agr sync --help ===

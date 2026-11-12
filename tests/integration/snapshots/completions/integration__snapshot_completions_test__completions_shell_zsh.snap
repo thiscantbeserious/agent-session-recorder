@@ -1,5 +1,6 @@
 ---
 source: tests/integration/snapshot_completions_test.rs
+assertion_line: 36
 expression: output
 ---
 === agr completions --shell zsh ===
