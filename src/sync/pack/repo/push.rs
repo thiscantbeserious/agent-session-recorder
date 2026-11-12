@@ -165,7 +165,7 @@ impl Repo<'_> {
         Ok(())
     }
 
-    /// Fills the open pack up to the target or the index cap, seals it and goes on in a new one.
+    /// Fills the open pack up to the target or the index cap, seals it (unless a prune copy, keep_open) and goes on in a new one.
     fn push_small(
         &mut self,
         mut rest: &[Staged],
@@ -273,7 +273,7 @@ impl Repo<'_> {
         Ok(())
     }
 
-    /// The tombstones in as few appends as the index cap allows, the pack that fills up is sealed.
+    /// The tombstones in as few appends as the index cap allows, the pack that fills up is sealed, unless a prune copy (keep_open).
     fn append_tombs(
         &mut self,
         mut rest: Vec<(String, u64)>,
