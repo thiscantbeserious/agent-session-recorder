@@ -19,11 +19,14 @@ pub struct LiveLine {
 }
 
 impl LiveLine {
-    /// A session starts, `verb` is `uploading` or `downloading`.
+    /// A session starts, `verb` is `uploading` or `downloading`. Over a line that is still shown
+    /// the old width stays, so the new line pads over what is left of the old one.
     pub fn start(&mut self, verb: &str, head: &str) -> String {
         self.head = head.into();
         self.verb = verb.into();
-        self.width = 0;
+        if self.percent.is_none() {
+            self.width = 0;
+        }
         self.percent = Some(0);
         self.draw(0)
     }
