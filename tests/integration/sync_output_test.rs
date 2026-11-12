@@ -328,3 +328,52 @@ fn sessions_of(heads: &[String]) -> usize {
     };
     heads.iter().map(count).sum()
 }
+
+/// What the live line wrote for two events in a row, the redraws of each split on `\r`.
+fn two_events(first: agr::sync::Event<'_>, second: agr::sync::Event<'_>) -> Vec<String> {
+    let sink = Sink::default();
+    let live = Live::with("uploading", "pushed", (true, false), Box::new(sink.clone()));
+    let mut observer = live.observer();
+    observer(&first);
+    observer(&second);
+    sink.text().split('\r').map(str::to_owned).collect()
+}
+
+#[test]
+fn a_shorter_append_line_erases_the_longer_one_before_it() {
+    let long = agr::sync::Event::Append {
+        pack: 10,
+        sessions: 100,
+        size: 123_456_789,
+    };
+    let short = agr::sync::Event::Append {
+        pack: 1,
+        sessions: 1,
+        size: 1,
+    };
+    let drawn = two_events(long, short);
+    let (first, last) = (&drawn[1], &drawn[2]);
+    assert!(
+        last.chars().count() >= first.chars().count(),
+        "{first:?} then {last:?}"
+    );
+}
+
+#[test]
+fn a_shorter_started_line_erases_the_longer_one_before_it() {
+    let started = |path, size| agr::sync::Event::Started {
+        path,
+        size,
+        i: 1,
+        n: 1,
+    };
+    let drawn = two_events(
+        started("a/very/long/session/path.cast", 123_456_789),
+        started("b", 1),
+    );
+    let (first, last) = (&drawn[1], &drawn[2]);
+    assert!(
+        last.chars().count() >= first.chars().count(),
+        "{first:?} then {last:?}"
+    );
+}
