@@ -212,3 +212,29 @@ fn two_prunes_with_full_low_id_copy_packs_keep_every_place() {
         assert!(places(&store, &key, path) >= 1, "{path}");
     }
 }
+
+#[test]
+fn a_fork_tombstone_in_a_repacked_pack_is_carried_over_once() {
+    let (store, key, dir) = fixture();
+    let d = dir.path();
+    repo(&store, &key, "w1")
+        .push_batch(&[item(d, "a", 1, b"x")])
+        .unwrap();
+    repo(&store, &key, "w2")
+        .push_batch(&[item(d, "a", 1, b"y")])
+        .unwrap();
+    let mut w3 = repo(&store, &key, "w3");
+    w3.copy_tombstones(&[("a".to_string(), 1)]).unwrap();
+    let both = [
+        item(d, "c", 1, &vec![1u8; BIG_A]),
+        item(d, "e", 1, &vec![7u8; BIG_B]),
+    ];
+    w3.push_batch(&both).unwrap();
+    repo(&store, &key, "w4")
+        .push_batch(&[item(d, "c", 2, b"tiny")])
+        .unwrap();
+    prune(&store, &key, "w9", false);
+    let second = prune(&store, &key, "w9", true);
+    let line = second.lines.join("\n");
+    assert!(line.contains("0 to repack"), "{line}");
+}
