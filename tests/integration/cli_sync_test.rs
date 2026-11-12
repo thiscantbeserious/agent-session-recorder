@@ -266,3 +266,16 @@ fn key_import_takes_the_phrase_as_argument_and_guards_a_different_key() {
     assert!(refused.all().contains("--force"), "{}", refused.all());
     assert_eq!(b.run(&["key", "import", "--force", &other]).code, 0);
 }
+
+#[test]
+fn prune_while_locked_is_busy() {
+    let remote = remote();
+    let m = Machine::gist(remote.path());
+    m.session("claude", "a.cast.gz", "one");
+    assert_eq!(m.run(&["push", "--yes"]).code, 0);
+    let lock = format!(r#"{{"pid":{},"started":"x"}}"#, std::process::id());
+    fs::write(m.storage.join(".agr-sync.lock"), lock).unwrap();
+    let out = m.run(&["prune", "--dry-run"]);
+    assert!(!out.success(), "{}", out.all());
+    assert!(out.all().contains("busy"), "{}", out.all());
+}
