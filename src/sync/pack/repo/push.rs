@@ -112,6 +112,15 @@ impl PushReport {
 }
 
 impl Repo<'_> {
+    /// Prune copies: like `push_batch`, but no pack is sealed, so the copies stay in open packs
+    /// which no prune deletes.
+    pub fn push_copies(&mut self, items: &[PushItem]) -> Result<PushReport, PushError> {
+        self.keep_open = true;
+        let res = self.push_batch(items);
+        self.keep_open = false;
+        res
+    }
+
     pub fn push_batch(&mut self, items: &[PushItem]) -> Result<PushReport, PushError> {
         let mut report = PushReport::default();
         match self.push_into(items, &mut report) {
@@ -143,7 +152,7 @@ impl Repo<'_> {
         for s in &big {
             let pack = self.new_pack()?;
             let one = std::slice::from_ref(s);
-            let next = self.try_append(&pack, &Batch::of(one, true, &at))?;
+            let next = self.try_append(&pack, &Batch::of(one, !self.keep_open, &at))?;
             report.record(one, &next);
         }
         self.push_small(&small, &at, report)?;
@@ -180,7 +189,8 @@ impl Repo<'_> {
             let (chunk, tail) = rest.split_at(n);
             let sum: u64 = chunk.iter().map(|s| s.len).sum();
             let capped = n == by_cap.max(1) && !tail.is_empty();
-            let seal = capped || should_seal(self.target, pack.index.len + sum);
+            let full = capped || should_seal(self.target, pack.index.len + sum);
+            let seal = full && !self.keep_open;
             let next = self.try_append(&pack, &Batch::of(chunk, seal, at))?;
             report.record(chunk, &next);
             self.open = open_of(next);
@@ -198,6 +208,11 @@ impl Repo<'_> {
 
     /// Seals `pack` with a zero byte append, the next chunk starts a new pack.
     fn seal_open(&mut self, pack: &OpenPack, at: &str) -> Result<(), StoreError> {
+        if self.keep_open {
+            // a copy pack stays open, a later normal push or seal-orphans seals it
+            self.open = None;
+            return Ok(());
+        }
         self.try_append(pack, &Batch::of(&[], true, at))?;
         self.open = None;
         Ok(())
@@ -273,7 +288,7 @@ impl Repo<'_> {
                 continue;
             }
             let tail = rest.split_off(by_cap.max(1));
-            let seal = !tail.is_empty();
+            let seal = !tail.is_empty() && !self.keep_open;
             let sent = rest.clone();
             let batch = Batch {
                 staged: &[],

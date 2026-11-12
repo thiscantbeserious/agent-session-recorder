@@ -67,6 +67,8 @@ pub struct Repo<'a> {
     packs: Packs,
     files: Files,
     open: Option<OpenPack>,
+    /// Prune copies: no append seals its pack, ADR "Last place rule".
+    keep_open: bool,
 }
 
 /// Data file count per pack id.
@@ -159,6 +161,7 @@ impl<'a> Repo<'a> {
             packs,
             files,
             open: None,
+            keep_open: false,
         };
         repo.open = repo.pick_open(hint);
         // once per open: a crash before `sealed` or a frozen pack leaves clones nobody drops

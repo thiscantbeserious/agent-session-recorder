@@ -9,7 +9,9 @@ impl Repo<'_> {
     /// merge sees one tombstone with several places. A retry keeps the gen.
     pub fn copy_tombstones(&mut self, tombs: &[(String, u64)]) -> Result<PushReport, PushError> {
         let mut report = PushReport::default();
+        self.keep_open = true;
         let res = self.append_tombs(tombs.to_vec(), (&now(), true), &mut report);
+        self.keep_open = false;
         report.open = self.open_ref();
         match res {
             Ok(()) => {
