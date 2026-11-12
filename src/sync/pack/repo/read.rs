@@ -125,13 +125,18 @@ impl Repo<'_> {
         Err(last.unwrap_or_else(|| ReadError::Unknown(path.into())))
     }
 
-    /// The live place of `path` in pack `pack` into `target`, what prune copies.
-    pub fn read_place_of(&self, path: &str, pack: &str, target: &Path) -> Result<(), ReadError> {
-        let unknown = || ReadError::Unknown(path.into());
-        let merged = self.view().get(path).ok_or_else(unknown)?;
-        let place = (merged.places.iter()).find(|p| p.pack == pack && !p.deleted);
-        let entry = place.and_then(|p| self.entry_of(path, merged.gen, p));
-        self.read_place(pack, &entry.ok_or_else(unknown)?, target)
+    /// Exactly this place of `path` into `target`, what prune copies, never another place of
+    /// the same pack.
+    pub fn read_place_of(
+        &self,
+        path: &str,
+        gen: u64,
+        place: &Place,
+        target: &Path,
+    ) -> Result<(), ReadError> {
+        let entry = self.entry_of(path, gen, place);
+        let entry = entry.ok_or_else(|| ReadError::Unknown(path.into()))?;
+        self.read_place(&place.pack, &entry, target)
     }
 
     /// One place into its own temp file, a failed place leaves nothing for the next one.

@@ -119,17 +119,17 @@ fn copy_sessions(
         };
         for p in m.places[..take].iter().filter(|p| !p.deleted) {
             if ids.contains(&p.pack) {
-                todo.push((path.clone(), m.gen, p.pack.clone(), p.size));
+                todo.push((path.clone(), m.gen, p.clone()));
             }
         }
     }
-    for (path, gen, pack, size) in todo {
+    for (path, gen, place) in todo {
         n += 1;
         let file = env.scratch.join(format!("{n}.copy"));
-        repo.read_place_of(&path, &pack, &file)
-            .map_err(|e| PruneError::Local(format!("reading {path} from {pack}: {e}")))?;
+        repo.read_place_of(&path, gen, &place, &file)
+            .map_err(|e| PruneError::Local(format!("reading {path} from {}: {e}", place.pack)))?;
         batch.push(PushItem { path, gen, file });
-        bytes += size;
+        bytes += place.size;
         if bytes >= BATCH_BYTES {
             flush(repo, &mut batch, copied)?;
             bytes = 0;
