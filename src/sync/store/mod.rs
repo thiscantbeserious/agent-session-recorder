@@ -125,6 +125,18 @@ pub trait PackStore {
         segments: &[Segment],
         index: &str,
     ) -> Result<(), StoreError>;
+    /// `append` to a pack that is not the own open pack: no working copy of it is kept, whatever
+    /// the store cloned is gone when this returns. The orphan seal of prune uses it.
+    fn append_transient(
+        &self,
+        id: &str,
+        expected_len: u64,
+        expected_index: &str,
+        segments: &[Segment],
+        index: &str,
+    ) -> Result<(), StoreError> {
+        self.append(id, expected_len, expected_index, segments, index)
+    }
     /// Whether one more append with these segment lengths fits the pack (file slots on gists).
     fn fits(&self, _info: &PackInfo, _lens: &[u64]) -> bool {
         true

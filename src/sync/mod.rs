@@ -18,6 +18,9 @@ pub use engine::select::{select_remote, SelectError};
 pub use pack::migrate::{
     preview as migrate_preview, run as migrate_run, Env as MigrateEnv, MigrateError,
 };
+pub use pack::prune::{
+    run as prune_run, Env as PruneEnv, PruneError, Report as PruneReport, BUDGET as SEAL_BUDGET,
+};
 pub use store::gist::ProgressSink;
 pub use store::StoreError;
 
@@ -38,8 +41,13 @@ pub mod testing {
         preview as migrate_preview, recognise, run as migrate_run, Env as MigrateEnv, Kind,
         LegacyGist, LegacyRead, MigrateError, Report as MigrateReport,
     };
+    pub use crate::sync::pack::prune::{
+        plan as prune_plan, run as prune_run, seal_plan, Env as PruneEnv, Plan as PrunePlan,
+        PruneError, Report as PruneReport, SealPlan, BUDGET as SEAL_BUDGET,
+    };
     pub use crate::sync::pack::repo::{
-        read_pack, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo, RepoError,
+        read_pack, Append, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo,
+        RepoError,
     };
     pub use crate::sync::pack::rules::{
         pack_size, place, should_seal, should_seal_index, valid_path, PackSizeError, Place,

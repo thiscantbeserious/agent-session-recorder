@@ -30,6 +30,10 @@ struct Inner {
     kept: Vec<Option<String>>,
     /// Successful appends so far.
     appends: usize,
+    /// Successful deletes so far.
+    deletes: usize,
+    /// `updated_at` texts set by tests, a pack without one lists an empty text.
+    touched: HashMap<String, String>,
 }
 
 /// Packs in a `Mutex`, ids are `mem-<n>`. One lock around check and write models the git ref.
@@ -77,6 +81,16 @@ impl MemoryStore {
     /// How many appends went through.
     pub fn appends(&self) -> usize {
         self.lock().appends
+    }
+
+    /// What `list` shows as `updated_at` of `id`, an injected idle time for the orphan tests.
+    pub fn set_updated_at(&self, id: &str, at: &str) {
+        self.lock().touched.insert(id.to_string(), at.to_string());
+    }
+
+    /// How many deletes went through.
+    pub fn deletes(&self) -> usize {
+        self.lock().deletes
     }
 
     /// What `keep_only` was called with, in order.
@@ -185,7 +199,7 @@ impl PackStore for MemoryStore {
                 id: id.clone(),
                 tag: p.tag.clone(),
                 len: p.data.len() as u64,
-                updated_at: String::new(),
+                updated_at: inner.touched.get(id).cloned().unwrap_or_default(),
                 files: p.files,
             })
             .collect();
@@ -285,10 +299,9 @@ impl PackStore for MemoryStore {
     }
 
     fn delete(&self, id: &str) -> Result<(), StoreError> {
-        self.lock()
-            .packs
-            .remove(id)
-            .map(drop)
-            .ok_or(StoreError::NotFound)
+        let mut inner = self.lock();
+        inner.packs.remove(id).ok_or(StoreError::NotFound)?;
+        inner.deletes += 1;
+        Ok(())
     }
 }

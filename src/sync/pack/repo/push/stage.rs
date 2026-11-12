@@ -17,6 +17,8 @@ pub(in crate::sync::pack::repo) struct Batch<'b> {
     pub(super) tombs: Vec<(String, u64)>,
     pub(super) seal: bool,
     pub(super) at: String,
+    /// Tombstones copied by prune keep their gen on a retry, they are not new deletes.
+    pub(super) copy: bool,
 }
 
 impl<'b> Batch<'b> {
@@ -26,6 +28,7 @@ impl<'b> Batch<'b> {
             tombs: Vec::new(),
             seal,
             at: at.to_string(),
+            copy: false,
         }
     }
 }

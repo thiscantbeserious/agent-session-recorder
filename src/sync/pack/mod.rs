@@ -3,6 +3,7 @@
 pub(in crate::sync) mod index;
 pub(in crate::sync) mod merge;
 pub(in crate::sync) mod migrate;
+pub(in crate::sync) mod prune;
 pub(in crate::sync) mod repo;
 pub(in crate::sync) mod rules;
 pub(in crate::sync) mod stream;

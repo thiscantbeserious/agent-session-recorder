@@ -166,3 +166,10 @@ fn parses_migrate_yes() {
     assert!(Cli::try_parse_from(["agr", "sync", "migrate"]).is_ok());
     assert!(Cli::try_parse_from(["agr", "sync", "migrate", "x"]).is_err());
 }
+
+#[test]
+fn parses_prune_dry_run_and_seal_orphans() {
+    assert!(Cli::try_parse_from(["agr", "sync", "prune", "--dry-run", "--seal-orphans"]).is_ok());
+    assert!(Cli::try_parse_from(["agr", "sync", "prune"]).is_ok());
+    assert!(Cli::try_parse_from(["agr", "sync", "prune", "x"]).is_err());
+}

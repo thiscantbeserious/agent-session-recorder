@@ -12,7 +12,13 @@ use crate::sync::store::StoreError;
 fn replan(view: &View, batch: &Batch) -> (Vec<Staged>, Vec<(String, u64)>) {
     let wanted = |s: &&Staged| view.get(&s.path).is_none_or(|m| m.gen <= s.gen);
     let staged = batch.staged.iter().filter(wanted).cloned().collect();
-    let tomb = |(path, _): &(String, u64)| {
+    let tomb = |(path, gen): &(String, u64)| {
+        if batch.copy {
+            return view
+                .get(path)
+                .is_none_or(|m| m.gen <= *gen)
+                .then(|| (path.clone(), *gen));
+        }
         let m = view.get(path).filter(|m| !m.is_deleted())?;
         Some((path.clone(), m.gen + 1))
     };
@@ -51,6 +57,7 @@ impl Repo<'_> {
             tombs,
             seal: batch.seal,
             at: batch.at.clone(),
+            copy: batch.copy,
         };
         let again = OpenPack {
             text: current,
@@ -71,6 +78,7 @@ impl Repo<'_> {
             tombs,
             seal,
             at,
+            copy,
         }: Batch,
     ) -> Result<OpenPack, StoreError> {
         let idle = staged.is_empty() && tombs.is_empty();
@@ -90,8 +98,9 @@ impl Repo<'_> {
         let batch = Batch {
             staged,
             tombs,
-            seal: seal || full,
+            seal: seal || (full && !self.keep_open),
             at,
+            copy,
         };
         self.append_once(&base, &batch)
     }

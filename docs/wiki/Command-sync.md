@@ -46,7 +46,21 @@ agr sync delete --all --dry-run
 - **More than 10 matches**: a terminal always asks you to type the count, also with `--yes` and `--force`.
 - **`--force`**: only lifts the abort when there is no terminal, without it more than 10 deletes without a terminal stop.
 
-A delete appends a tombstone. The encrypted bytes stay in the pack gists and in their git history, nothing frees them, so treat a deleted session as still held remotely (as ciphertext).
+A delete appends a tombstone. The encrypted bytes stay in the pack gists and in their git history, only `agr sync prune` frees them (see section 3.1), so until then treat a deleted session as still held remotely (as ciphertext).
+
+### 3.1 Prune
+
+`agr sync prune` frees the dead bytes of sealed packs. It copies the sessions that are still live out of a pack into new ones, checks the copies are visible, and only then deletes the old pack gist. Local files are never touched. Run it by hand, it is never part of auto push.
+
+```bash
+agr sync prune --dry-run
+agr sync prune
+agr sync prune --seal-orphans
+```
+
+- **`--dry-run`**: prints the packs to delete, to repack, the bytes to move and to free, changes nothing.
+- **`--seal-orphans`**: first seals the idle open packs of other writers so their dead bytes count too. It downloads a fixed budget per run and prints `N left, run again` when the budget stops it.
+- **Busy**: it takes the local sync lock and stops when another sync holds it.
 
 ## 4. Fork and `--overwrite`
 
@@ -121,7 +135,7 @@ EXAMPLES:
 Mark sessions deleted on the remote (encrypted bytes stay in the pack, the local file stays)
 
 Mark a session deleted on the remote and drop its index entry. The encrypted bytes stay in the remote pack
-gist until a prune, which is not part of sync yet.
+gist until `agr sync prune` frees them.
 
 The local file is never touched. The delete applies to the newest version of the session at the
 time it runs, a version another machine pushed since the preview is deleted too. Patterns use * (any run) and ? (one character) against
@@ -147,6 +161,25 @@ to run until it has finished.
 EXAMPLE:
     agr sync migrate
     agr sync migrate --yes
+
+### sync prune
+
+Free the dead bytes of sealed packs on the remote
+
+Free the dead bytes of sealed packs on the remote.
+
+Sessions you deleted or replaced leave dead bytes in sealed packs. Prune copies the
+sessions that are still live out of such a pack into new ones, checks the copies are
+visible, and only then deletes the old pack. Local session files are never touched.
+
+--seal-orphans first seals the idle open packs of other writers, so their dead bytes can
+be freed too. It downloads at most a fixed budget per run and prints how many packs are
+left, run it again for those.
+
+EXAMPLE:
+    agr sync prune --dry-run
+    agr sync prune
+    agr sync prune --seal-orphans
 
 ### sync key
 

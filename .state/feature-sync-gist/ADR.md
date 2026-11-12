@@ -1555,7 +1555,7 @@ flowchart TD
     each -- no dead bytes --> keep[keep]
     each -- all dead --> gone[delete after next step]
     each -- dead share at least 20 percent --> copy[read live sessions and tombstones]
-    copy --> append[append them with the same gen to own open pack, sealing as usual]
+    copy --> append[append them with the same gen to own open pack, the copy pack stays open]
     append --> check[re-read indexes, copies visible]
     check --> del[delete old pack gists]
     gone --> check
@@ -1566,7 +1566,9 @@ Legend: only sealed packs are repacked, the copies are pushed and visible before
 - **Same gen**: copies keep path, gen and sha256, so the merge treats original and copy as one session with two places, and the rollback floors of other machines stay valid.
 - **Tombstones** of a repacked pack are copied too, they are never dropped. A tombstone that is the top gen of its path counts as live in the dead share, as such a pack holding a live tombstone is never fully dead and never deleted outright.
 - **Two places, one keeper**: when one session has several places at its top gen (prune or migrate copies), the place in the pack with the highest pack id is the keeper and every other place counts as dead, "lowest pack id loses". Every machine computes the same keeper from the same view, as such two prunes never keep different places and delete the rest.
-- **Last place rule**: a pack is deleted only when, in a fresh view read after the copies, every live entry in it has another place in a pack that this run does not delete. Copies sit in open packs, which no prune deletes, as such two concurrent prunes can never delete the last place of a session.
+- **Last place rule**: a pack is deleted only when, in a fresh view read after the copies, every live entry in it has another place in a pack that this run does not delete. Copies sit in open packs, which no prune deletes (a prune copy never seals its pack, a later normal push seals it, or `--seal-orphans` of another machine), as such two concurrent prunes can never delete the last place of a session.
+
+- **Several open own packs**: prune may leave several open packs of our own writer id, a normal push seals them one at a time when it has no hint, as such "exactly one open pack per machine" holds for normal pushes only.
 - **Unreadable packs**: a pack that is `OtherKey`, `UnknownVersion` or not readable is never planned, never repacked and never deleted. A failed index read aborts the whole prune (see "Partial views abort").
 - **Orphaned open packs** (`--seal-orphans`): a machine that lost `state.toml` leaves its open pack open forever, and open packs are never pruned. `agr sync prune --seal-orphans` seals every open pack of another writer id whose `updated_at` is older than 30 days with a zero-byte append (`sealed: true`, no data). This is safe even when the owner is only offline: its next append sees another index, gets `Moved`, re-reads a sealed pack and starts a fresh one. After that the normal prune rules apply.
   - **Exception to "our writer"**: this is the one append to a pack of another writer. The pack layer checks our key, not sealed and idle over 30 days instead of our writer id, and passes the orphan's index as `expected_index`, the store guard is unchanged.
@@ -1641,15 +1643,17 @@ The dry-run prints `N sessions to move (size), M already moved, K empty stubs to
 - A directory or S3 store implements six methods later, the format above it does not change.
 
 ### Open risks
-1. **Append from a partial clone**: resolved on 2026-11-09, not possible (second probe, see Verified facts). **Branch C chosen**: a cached clone of the own open pack in the cache dir, at most one pack size (64 MiB) locally, deleted on seal, cloned again once if missing. `expected_len` and the writer check still guard against a stale cache, and an append uploads only its new parts.
+1. **Append from a partial clone**: resolved on 2026-11-09, not possible (second probe, see Verified facts). **Branch C chosen**: a cached clone of the own open pack in the cache dir, at most one pack size (64 MiB) locally, deleted on seal, cloned again once if missing. `expected_len` and the writer check still guard against a stale cache, and an append uploads only its new parts. Note from the live run on 2026-11-12: the second append to a gist took 9 to 12 s and the first about 3 s, even with the cached clone. Recorded only, not a fix, the status of this risk does not change.
 2. **Forks after the write**: two machines can both report success and then a fork, which is new for users used to "changed on the remote, run again". Wording in status has to make the next step obvious. **Closed by C1**: a fork is skipped with "fork, run `agr sync push --overwrite`" (`src/sync/engine/item.rs`), the delete preview marks it too.
-3. **Writer id copied** with the config dir: two machines then append to one open pack. The `expected_len` check plus the rejected push, re-clone and one retry keep it safe, but it is the one place where two writers meet, a test with two writers on one id is mandatory.
+3. **Writer id copied** with the config dir: two machines then append to one open pack. The `expected_len` check plus the rejected push, re-clone and one retry keep it safe, but it is the one place where two writers meet, a test with two writers on one id is mandatory. **Closed by live run** on 2026-11-12: `pack_gist_live` `stale_writer` (two writers on one id) passed, 5 of 5 live tests passed, run by the user.
 4. **Lost writer id or local state**: a machine that loses `state.toml` gets a new writer id and its old open pack stays open, readable and merged. Its dead bytes would never be freed, as such `agr sync prune --seal-orphans` seals open packs of other writers idle for 30 days, after which normal prune applies (built in Stage 61).
 5. **Index history**: every append rewrites `index` and git keeps the old versions. With about 200 bytes per entry and the 250 file cap this stays in the low MiB per pack, the 768 KiB cap bounds the worst case.
 6. **Prune bandwidth**: repacking downloads and uploads live bytes, a user with many changed sessions may move GiBs. Dry-run first, no automatic prune.
 7. **Rate limits**: status and auto push cost one API call per pack that missed the index cache (about 5 calls at 10 GiB), migrate deletes count too, pacing exists but bursts of hundreds of stubs to delete will hit the secondary rate limit, migrate has to be resumable (it is by design). **Closed by C1** for migrate: `rate_limit_stops_with_n_left_and_rerun_finishes` stops with "N left" and the rerun finishes.
 8. **Index cache key**: **closed**, verified 2026-11-09, the listing `updated_at` moves on every git push (see "Status and pull cost"), no fallback needed.
 9. **Verified, one left**: `raw_url` and `Range` work on secret gists for binary parts up to 8 MiB (2026-11-09, user live run). Still unverified is the community "about 5 GB per gist" figure (no official source, our packs stay far below it).
+
+**Migrate live result** on 2026-11-12: the user ran `agr sync migrate` live, 74 sessions moved, 75 old gists deleted, the remote is now 2 gists and status shows 74 in sync.
 
 ### Verified facts
 **restic** (all from https://github.com/restic/restic/blob/master/doc/design.rst unless noted, fetched 2026-11-09):

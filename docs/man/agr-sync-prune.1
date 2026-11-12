@@ -1,0 +1,32 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH prune 1  "prune " 
+.SH NAME
+prune \- Free the dead bytes of sealed packs on the remote
+.SH SYNOPSIS
+\fBprune\fR [\fB\-\-dry\-run\fR] [\fB\-\-seal\-orphans\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Free the dead bytes of sealed packs on the remote.
+.PP
+Sessions you deleted or replaced leave dead bytes in sealed packs. Prune copies the
+sessions that are still live out of such a pack into new ones, checks the copies are
+visible, and only then deletes the old pack. Local session files are never touched.
+.PP
+\-\-seal\-orphans first seals the idle open packs of other writers, so their dead bytes can
+be freed too. It downloads at most a fixed budget per run and prints how many packs are
+left, run it again for those.
+.PP
+EXAMPLE:
+    agr sync prune \-\-dry\-run
+    agr sync prune
+    agr sync prune \-\-seal\-orphans
+.SH OPTIONS
+.TP
+\fB\-\-dry\-run\fR
+Show what would happen, change nothing
+.TP
+\fB\-\-seal\-orphans\fR
+Seal idle open packs of other writers first, within a download budget
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)

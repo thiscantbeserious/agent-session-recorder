@@ -9,6 +9,7 @@ use std::io;
 use std::path::PathBuf;
 
 mod cap;
+mod copy;
 mod retry;
 mod stage;
 
@@ -20,6 +21,22 @@ pub struct PushItem {
     pub path: String,
     pub gen: u64,
     pub file: PathBuf,
+}
+
+/// What one pack append carries, the number of sessions and their plain bytes.
+#[derive(Debug, Clone, Copy)]
+pub struct Append {
+    pub sessions: usize,
+    pub bytes: u64,
+}
+
+impl Append {
+    fn of(chunk: &[Staged]) -> Self {
+        Self {
+            sessions: chunk.len(),
+            bytes: chunk.iter().map(|s| s.size).sum(),
+        }
+    }
 }
 
 /// What became of one item of a push.
@@ -111,9 +128,27 @@ impl PushReport {
 }
 
 impl Repo<'_> {
+    /// Prune copies: like `push_batch`, but no pack is sealed, so the copies stay in open packs
+    /// which no prune deletes.
+    pub fn push_copies(&mut self, items: &[PushItem]) -> Result<PushReport, PushError> {
+        self.keep_open = true;
+        let res = self.push_batch(items);
+        self.keep_open = false;
+        res
+    }
+
     pub fn push_batch(&mut self, items: &[PushItem]) -> Result<PushReport, PushError> {
+        self.push_batch_with(items, &mut |_| {})
+    }
+
+    /// Like `push_batch`, `announce` runs before every pack append with what that append carries.
+    pub fn push_batch_with(
+        &mut self,
+        items: &[PushItem],
+        announce: &mut dyn FnMut(Append),
+    ) -> Result<PushReport, PushError> {
         let mut report = PushReport::default();
-        match self.push_into(items, &mut report) {
+        match self.push_into(items, &mut report, announce) {
             Ok(()) => Ok(report),
             Err(error) => {
                 report.open = self.open_ref();
@@ -133,7 +168,12 @@ impl Repo<'_> {
         })
     }
 
-    fn push_into(&mut self, items: &[PushItem], report: &mut PushReport) -> Result<(), StoreError> {
+    fn push_into(
+        &mut self,
+        items: &[PushItem],
+        report: &mut PushReport,
+        announce: &mut dyn FnMut(Append),
+    ) -> Result<(), StoreError> {
         let at = now();
         let staged = items.iter().map(stage).collect::<Result<Vec<_>, _>>()?;
         let (big, small): (Vec<_>, Vec<_>) = staged
@@ -142,10 +182,11 @@ impl Repo<'_> {
         for s in &big {
             let pack = self.new_pack()?;
             let one = std::slice::from_ref(s);
-            let next = self.try_append(&pack, &Batch::of(one, true, &at))?;
+            announce(Append::of(one));
+            let next = self.try_append(&pack, &Batch::of(one, !self.keep_open, &at))?;
             report.record(one, &next);
         }
-        self.push_small(&small, &at, report)?;
+        self.push_small(&small, &at, report, announce)?;
         report.open = self.open_ref();
         report.check_failed = self.reload().is_err();
         if !report.check_failed {
@@ -155,12 +196,13 @@ impl Repo<'_> {
         Ok(())
     }
 
-    /// Fills the open pack up to the target or the index cap, seals it and goes on in a new one.
+    /// Fills the open pack up to the target or the index cap, seals it (unless a prune copy, keep_open) and goes on in a new one.
     fn push_small(
         &mut self,
         mut rest: &[Staged],
         at: &str,
         report: &mut PushReport,
+        announce: &mut dyn FnMut(Append),
     ) -> Result<(), StoreError> {
         while !rest.is_empty() {
             let len = self.open.as_ref().map_or(0, |o| o.index.len);
@@ -179,7 +221,9 @@ impl Repo<'_> {
             let (chunk, tail) = rest.split_at(n);
             let sum: u64 = chunk.iter().map(|s| s.len).sum();
             let capped = n == by_cap.max(1) && !tail.is_empty();
-            let seal = capped || should_seal(self.target, pack.index.len + sum);
+            let full = capped || should_seal(self.target, pack.index.len + sum);
+            let seal = full && !self.keep_open;
+            announce(Append::of(chunk));
             let next = self.try_append(&pack, &Batch::of(chunk, seal, at))?;
             report.record(chunk, &next);
             self.open = open_of(next);
@@ -197,6 +241,11 @@ impl Repo<'_> {
 
     /// Seals `pack` with a zero byte append, the next chunk starts a new pack.
     fn seal_open(&mut self, pack: &OpenPack, at: &str) -> Result<(), StoreError> {
+        if self.keep_open {
+            // a copy pack stays open, a later normal push or seal-orphans seals it
+            self.open = None;
+            return Ok(());
+        }
         self.try_append(pack, &Batch::of(&[], true, at))?;
         self.open = None;
         Ok(())
@@ -251,17 +300,17 @@ impl Repo<'_> {
                 .gen;
             tombs.push((path.clone(), gen + 1));
         }
-        self.append_tombs(tombs, &at, report)?;
+        self.append_tombs(tombs, (&at, false), report)?;
         report.open = self.open_ref();
         report.check_failed = self.reload().is_err();
         Ok(())
     }
 
-    /// The tombstones in as few appends as the index cap allows, the pack that fills up is sealed.
+    /// The tombstones in as few appends as the index cap allows, the pack that fills up is sealed, unless a prune copy (keep_open).
     fn append_tombs(
         &mut self,
         mut rest: Vec<(String, u64)>,
-        at: &str,
+        (at, copy): (&str, bool),
         report: &mut PushReport,
     ) -> Result<(), StoreError> {
         while !rest.is_empty() {
@@ -272,13 +321,14 @@ impl Repo<'_> {
                 continue;
             }
             let tail = rest.split_off(by_cap.max(1));
-            let seal = !tail.is_empty();
+            let seal = !tail.is_empty() && !self.keep_open;
             let sent = rest.clone();
             let batch = Batch {
                 staged: &[],
                 tombs: rest,
                 seal,
                 at: at.to_string(),
+                copy,
             };
             let next = self.try_append(&pack, &batch)?;
             report.record_tombs(&sent, &next);

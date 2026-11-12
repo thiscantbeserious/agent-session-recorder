@@ -19,11 +19,14 @@ pub struct LiveLine {
 }
 
 impl LiveLine {
-    /// A session starts, `verb` is `uploading` or `downloading`.
+    /// A session starts, `verb` is `uploading` or `downloading`. Over a line that is still shown
+    /// the old width stays, so the new line pads over what is left of the old one.
     pub fn start(&mut self, verb: &str, head: &str) -> String {
         self.head = head.into();
         self.verb = verb.into();
-        self.width = 0;
+        if self.percent.is_none() {
+            self.width = 0;
+        }
         self.percent = Some(0);
         self.draw(0)
     }
@@ -226,6 +229,14 @@ impl Live {
                     &line.start(self.verb, &live_head(path, *size, *i, *n)),
                 );
             }
+            Event::Append {
+                pack,
+                sessions,
+                size,
+            } => {
+                let head = pack_head(*pack, *sessions, *size);
+                put(&self.out, &line.start(self.verb, &head));
+            }
             Event::Finished { item, i, n } => {
                 let plain = super::progress_line(self.done, item, *i, *n);
                 let theme = current_theme();
@@ -243,4 +254,10 @@ impl Live {
 /// `[i/n] path size`, the part of the live line that stays while the percent moves.
 pub fn live_head(path: &str, size: u64, i: usize, n: usize) -> String {
     format!("[{i}/{n}] {path} {}", super::size(size))
+}
+
+/// `[pack k] N sessions size`, one pack append of a push, the total is not known up front.
+pub fn pack_head(pack: usize, sessions: usize, size: u64) -> String {
+    let noun = if sessions == 1 { "session" } else { "sessions" };
+    format!("[pack {pack}] {sessions} {noun} {}", super::size(size))
 }

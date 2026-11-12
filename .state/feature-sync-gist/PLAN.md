@@ -1460,8 +1460,8 @@ Goal: ADR "Changes, deletes and `agr sync prune`", pure planner plus execution o
 Owner: implementer
 PR: D
 
-- [ ] RED commit: `fully_dead_sealed_pack_is_deleted` [`assert_eq!(plan.delete, vec![id])`, the stub returns an empty plan].
-- [ ] RED commit:
+- [x] RED commit: `fully_dead_sealed_pack_is_deleted` [`assert_eq!(plan.delete, vec![id])`, the stub returns an empty plan].
+- [x] RED commit:
   - `dead_share_20_percent_is_repacked_19_is_kept` [`assert_eq!(plan.repack, vec![a])` and `assert!(!plan.repack.contains(&b))`]
   - `open_packs_are_never_planned` [`assert!(plan.is_empty())` for own and other writers]
   - `tombstones_are_copied` [`assert_eq!(plan.copy_tombstones, 1)`]
@@ -1469,24 +1469,24 @@ PR: D
   - `two_places_tie_break_is_deterministic` [`assert_eq!(plan(view_ab).delete, plan(view_ba).delete)` and `assert_eq!(plan.delete, vec!["a"])`, lowest pack id loses whatever order the packs were listed in]
   - `prune_never_touches_unreadable_packs` [`assert!(!plan.touches(other_key) && !plan.touches(unknown_version))`]
   - `dry_run_reports_bytes_to_move_and_free` [`assert_eq!((plan.move_bytes, plan.free_bytes), (m, f))`]
-- [ ] GREEN commit: `prune/plan.rs`.
-- [ ] RED commit:
+- [x] GREEN commit: `prune/plan.rs`.
+- [x] RED commit:
   - `copies_keep_path_gen_and_sha` [`assert_eq!((c.path, c.gen, c.sha256), (p, g, s))`]
   - `old_pack_deleted_only_after_copies_are_visible` [`assert_eq!(deletes, 0)` when the re-read fails]
   - `two_prunes_at_once_lose_nothing` [`assert_eq!(view.len(), before)`]
   - `concurrent_prunes_never_delete_the_last_place` [`assert!(view.get(p).unwrap().places.len() >= 1)` for every path after two prunes interleaved step by step on one `MemoryStore`, the stub deletes on the first view without the last place check]
   - `pull_during_prune_retries_with_the_copy` [`assert_eq!(sha, want)`]
   - `partial_index_view_aborts_push_delete_and_prune` [`assert_eq!((appends, deletes), (0, 0))` for engine push, engine delete and prune with `fail_read_index` on one pack, each returns `PartialView`]
-- [ ] GREEN commit: `prune/mod.rs`.
-- [ ] RED commit (`--seal-orphans`, ADR Open risk 4):
+- [x] GREEN commit: `prune/mod.rs`.
+- [x] RED commit (`--seal-orphans`, ADR Open risk 4):
   - `seal_orphans_seals_idle_open_packs_of_other_writers` [`assert!(index.sealed)` and `assert_eq!(info.len, len_before)` for an open pack of another writer idle 31 days, a pack idle 29 days and the own open pack stay open, the stub seals nothing]
   - `sealed_orphan_owner_starts_a_fresh_pack` [`assert_eq!(store.list()?.packs.len(), 2)` after the original writer pushes again, its `Moved` retry sees a sealed pack]
   - `seal_orphans_loses_the_race_to_the_owner_and_drops_the_seal` [the owner appends between the orphan read and the seal, `assert_eq!(appends_by_prune, 1)` (no retry), `assert!(!index.sealed)`, the owner's entry is in the view and the report says "changed during the seal, skipped", the stub retries on the `Moved` text and seals over the owner]
   - `seal_orphans_dry_run_prints_download_size` [`assert!(out.contains("2 packs to seal, 96 MiB to download"))` and `assert_eq!(appends, 0)`, a real run stops at 1 GiB of download with "N left, run again"]
   - `seal_orphans_never_touches_a_duplicated_pack` [`assert!(!plan.seal.contains(&a))` for a pack with a copy]
-- [ ] GREEN commit: `prune/orphans.rs`. The one append to another writer's pack: checks our key, not sealed and idle over 30 days instead of our writer id. Gist store side in `store/gist/append.rs`: an append to an id that is not the cached `open_pack` clones into a temp dir and deletes it when the append returns, covered by `orphan_seal_clone_is_not_kept` [`assert!(!cache_dir.join(id).exists())` after success and after an error].
+- [x] GREEN commit: `prune/orphans.rs`. The one append to another writer's pack: checks our key, not sealed and idle over 30 days instead of our writer id. Gist store side in `store/gist/append.rs`: an append to an id that is not the cached `open_pack` clones into a temp dir and deletes it when the append returns, covered by `orphan_seal_clone_is_not_kept` [`assert!(!cache_dir.join(id).exists())` after success and after an error].
 
-Files: `src/sync/pack/mod.rs`, `src/sync/pack/prune/mod.rs`, `src/sync/pack/prune/plan.rs`, `src/sync/pack/prune/orphans.rs`, `src/sync/pack/prune/tests.rs`, `src/sync/store/gist/append.rs`, `src/sync/store/gist/tests.rs`, `tests/integration/sync_engine_test.rs`
+Files: `src/sync/pack/mod.rs`, `src/sync/pack/prune/mod.rs`, `src/sync/pack/prune/plan.rs`, `src/sync/pack/prune/orphans.rs`, `src/sync/pack/prune/safe.rs`, `src/sync/pack/repo/mod.rs`, `src/sync/pack/repo/push.rs`, `src/sync/pack/repo/push/copy.rs`, `src/sync/store/gist/append.rs`, `tests/integration/sync_engine_test.rs`
 Depends on: Stage 60
 
 Considerations: `plan.rs` pure under 150 lines, execution under 250, `orphans.rs` under 100, dead bytes and the keeper come from `merge` (Stage 50).
@@ -1497,10 +1497,10 @@ Goal: `agr sync prune [--dry-run] [--seal-orphans]` under the local lock, docume
 Owner: implementer
 PR: D
 
-- [ ] RED commit: `parses_prune_dry_run_and_seal_orphans` in `cli_sync_parse_test.rs` [`assert!(parse(["prune", "--dry-run", "--seal-orphans"]).is_ok())`] and `prune_while_locked_is_busy` in `cli_sync_test.rs` [`assert!(out.contains("busy"))`].
-- [ ] Output of `agr sync prune` goes through the shared formatter in `src/sync/app/format/`, tested once in Stage 56 (no per command output tests).
-- [ ] GREEN commit: command, summary output.
-- [ ] `docs/wiki/Command-sync.md` and `docs/architecture/sync.md` get prune and `--seal-orphans`, gates as in Stage 60, `git diff --stat origin/feature/sync-gist...HEAD` under 100 files.
+- [x] RED commit: `parses_prune_dry_run_and_seal_orphans` in `cli_sync_parse_test.rs` [`assert!(parse(["prune", "--dry-run", "--seal-orphans"]).is_ok())`] and `prune_while_locked_is_busy` in `cli_sync_test.rs` [`assert!(out.contains("busy"))`].
+- [x] Output of `agr sync prune` goes through the shared formatter in `src/sync/app/format/`, tested once in Stage 56 (no per command output tests).
+- [x] GREEN commit: command, summary output.
+- [x] `docs/wiki/Command-sync.md` and `docs/architecture/sync.md` get prune and `--seal-orphans`, gates as in Stage 60, `git diff --stat origin/feature/sync-gist...HEAD` under 100 files.
 
 Files: `src/sync/mod.rs`, `src/cli/subcommands.rs`, `src/commands/sync/mod.rs`, `src/commands/sync/prune.rs`, `src/dispatch.rs`, `src/sync/app/format/summary.rs`, `tests/integration/cli_sync_parse_test.rs`, `tests/integration/cli_sync_test.rs`, `docs/wiki/Command-sync.md`, `docs/architecture/sync.md`, `.state/feature-sync-gist/ADR.md`, `.state/feature-sync-gist/PLAN.md`
 Depends on: Stage 61

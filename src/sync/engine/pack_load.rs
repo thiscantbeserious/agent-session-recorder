@@ -28,11 +28,15 @@ fn open_error(e: RepoError) -> SyncError {
     }
 }
 
-/// Dead bytes and total bytes over the readable packs of the view.
+/// Dead bytes and total bytes over the sealed, non-frozen packs, the ones prune can act on.
 fn pack_bytes(view: &View) -> (u64, u64) {
-    let dead = view.dead_bytes();
-    let total = dead.keys().filter_map(|id| view.pack(id)).map(|p| p.len);
-    (dead.values().sum(), total.sum())
+    let actable = |id: &&String| view.pack(id).is_some_and(|p| p.sealed) && !view.is_frozen(id);
+    let ids = view.dead_bytes().keys().filter(actable);
+    let dead = ids.clone().map(|id| view.dead_bytes()[id]).sum();
+    (
+        dead,
+        ids.filter_map(|id| view.pack(id)).map(|p| p.len).sum(),
+    )
 }
 
 impl<'a> Engine<'a> {

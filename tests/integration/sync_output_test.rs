@@ -259,3 +259,121 @@ fn compact_delete_preview_keeps_the_fork_count_and_the_hint() {
     );
     assert!(text.contains("Would delete 2 sessions"), "{text}");
 }
+
+/// 12 sessions of about 15 KiB packed, a 64 KiB target gives several pack appends.
+fn heavy(n: &Node) {
+    let mut x: u64 = 7;
+    for i in 0..12 {
+        let noise: String = (0..30_000)
+            .map(|_| {
+                x = x
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                char::from(b'a' + (x >> 59) as u8)
+            })
+            .collect();
+        n.session(
+            "claude",
+            &format!("h{i}.cast.gz"),
+            &CAST.replace("secret", &noise),
+        );
+    }
+}
+
+/// The live heads drawn by a push of `heavy` sessions, with `plain` skipped plain casts around.
+fn pack_heads(plain: usize) -> Vec<String> {
+    use agr::sync::Engine;
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    heavy(&n);
+    for i in 0..plain {
+        let dir = n.dir().join("claude");
+        std::fs::write(dir.join(format!("p{i}.cast")), CAST).unwrap();
+    }
+    let sink = Sink::default();
+    let live = Live::with("uploading", "pushed", (true, false), Box::new(sink.clone()));
+    let engine = Engine::new(&store, &key, &n.storage, "w1", 64 * 1024);
+    engine
+        .push_with(&opts(), 12 + plain, &mut live.observer())
+        .unwrap();
+    let text = sink.text();
+    text.split('\r')
+        .filter(|s| s.contains(", uploading 0%"))
+        .map(|s| s.trim().to_string())
+        .collect()
+}
+
+#[test]
+fn live_head_counts_pack_appends_not_rows() {
+    let heads = pack_heads(0);
+    assert!(heads.len() >= 3, "{heads:?}");
+    for (i, h) in heads.iter().enumerate() {
+        assert!(h.starts_with(&format!("[pack {}] ", i + 1)), "{heads:?}");
+        assert!(h.contains(" session"), "{heads:?}");
+    }
+    assert_eq!(sessions_of(&heads), 12, "{heads:?}");
+}
+
+#[test]
+fn skipped_rows_do_not_count_toward_the_pack_progress() {
+    let heads = pack_heads(5);
+    assert_eq!(heads.len(), pack_heads(0).len(), "{heads:?}");
+    assert_eq!(sessions_of(&heads), 12, "{heads:?}");
+}
+
+/// Sessions the heads announce together, a head without a count is one session.
+fn sessions_of(heads: &[String]) -> usize {
+    let count = |h: &String| {
+        let word = h.split(' ').nth(2).unwrap_or("");
+        word.parse::<usize>().unwrap_or(1)
+    };
+    heads.iter().map(count).sum()
+}
+
+/// What the live line wrote for two events in a row, the redraws of each split on `\r`.
+fn two_events(first: agr::sync::Event<'_>, second: agr::sync::Event<'_>) -> Vec<String> {
+    let sink = Sink::default();
+    let live = Live::with("uploading", "pushed", (true, false), Box::new(sink.clone()));
+    let mut observer = live.observer();
+    observer(&first);
+    observer(&second);
+    sink.text().split('\r').map(str::to_owned).collect()
+}
+
+#[test]
+fn a_shorter_append_line_erases_the_longer_one_before_it() {
+    let long = agr::sync::Event::Append {
+        pack: 10,
+        sessions: 100,
+        size: 123_456_789,
+    };
+    let short = agr::sync::Event::Append {
+        pack: 1,
+        sessions: 1,
+        size: 1,
+    };
+    let drawn = two_events(long, short);
+    let (first, last) = (&drawn[1], &drawn[2]);
+    assert!(
+        last.chars().count() >= first.chars().count(),
+        "{first:?} then {last:?}"
+    );
+}
+
+#[test]
+fn a_shorter_started_line_erases_the_longer_one_before_it() {
+    let started = |path, size| agr::sync::Event::Started {
+        path,
+        size,
+        i: 1,
+        n: 1,
+    };
+    let drawn = two_events(
+        started("a/very/long/session/path.cast", 123_456_789),
+        started("b", 1),
+    );
+    let (first, last) = (&drawn[1], &drawn[2]);
+    assert!(
+        last.chars().count() >= first.chars().count(),
+        "{first:?} then {last:?}"
+    );
+}
