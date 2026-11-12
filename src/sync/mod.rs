@@ -38,6 +38,7 @@ pub mod testing {
         preview as migrate_preview, recognise, run as migrate_run, Env as MigrateEnv, Kind,
         LegacyGist, LegacyRead, MigrateError, Report as MigrateReport,
     };
+    pub use crate::sync::pack::prune::{plan as prune_plan, Plan as PrunePlan};
     pub use crate::sync::pack::repo::{
         read_pack, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo, RepoError,
     };
