@@ -30,6 +30,8 @@ struct Inner {
     kept: Vec<Option<String>>,
     /// Successful appends so far.
     appends: usize,
+    /// Successful deletes so far.
+    deletes: usize,
 }
 
 /// Packs in a `Mutex`, ids are `mem-<n>`. One lock around check and write models the git ref.
@@ -77,6 +79,11 @@ impl MemoryStore {
     /// How many appends went through.
     pub fn appends(&self) -> usize {
         self.lock().appends
+    }
+
+    /// How many deletes went through.
+    pub fn deletes(&self) -> usize {
+        self.lock().deletes
     }
 
     /// What `keep_only` was called with, in order.
@@ -285,10 +292,9 @@ impl PackStore for MemoryStore {
     }
 
     fn delete(&self, id: &str) -> Result<(), StoreError> {
-        self.lock()
-            .packs
-            .remove(id)
-            .map(drop)
-            .ok_or(StoreError::NotFound)
+        let mut inner = self.lock();
+        inner.packs.remove(id).ok_or(StoreError::NotFound)?;
+        inner.deletes += 1;
+        Ok(())
     }
 }
