@@ -259,3 +259,72 @@ fn compact_delete_preview_keeps_the_fork_count_and_the_hint() {
     );
     assert!(text.contains("Would delete 2 sessions"), "{text}");
 }
+
+/// 12 sessions of about 15 KiB packed, a 64 KiB target gives several pack appends.
+fn heavy(n: &Node) {
+    let mut x: u64 = 7;
+    for i in 0..12 {
+        let noise: String = (0..30_000)
+            .map(|_| {
+                x = x
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                char::from(b'a' + (x >> 59) as u8)
+            })
+            .collect();
+        n.session(
+            "claude",
+            &format!("h{i}.cast.gz"),
+            &CAST.replace("secret", &noise),
+        );
+    }
+}
+
+/// The live heads drawn by a push of `heavy` sessions, with `plain` skipped plain casts around.
+fn pack_heads(plain: usize) -> Vec<String> {
+    use agr::sync::Engine;
+    let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
+    heavy(&n);
+    for i in 0..plain {
+        let dir = n.dir().join("claude");
+        std::fs::write(dir.join(format!("p{i}.cast")), CAST).unwrap();
+    }
+    let sink = Sink::default();
+    let live = Live::with("uploading", "pushed", (true, false), Box::new(sink.clone()));
+    let engine = Engine::new(&store, &key, &n.storage, "w1", 64 * 1024);
+    engine
+        .push_with(&opts(), 12 + plain, &mut live.observer())
+        .unwrap();
+    let text = sink.text();
+    text.split('\r')
+        .filter(|s| s.contains(", uploading 0%"))
+        .map(|s| s.trim().to_string())
+        .collect()
+}
+
+#[test]
+fn live_head_counts_pack_appends_not_rows() {
+    let heads = pack_heads(0);
+    assert!(heads.len() >= 3, "{heads:?}");
+    for (i, h) in heads.iter().enumerate() {
+        assert!(h.starts_with(&format!("[pack {}] ", i + 1)), "{heads:?}");
+        assert!(h.contains(" session"), "{heads:?}");
+    }
+    assert_eq!(sessions_of(&heads), 12, "{heads:?}");
+}
+
+#[test]
+fn skipped_rows_do_not_count_toward_the_pack_progress() {
+    let heads = pack_heads(5);
+    assert_eq!(heads.len(), pack_heads(0).len(), "{heads:?}");
+    assert_eq!(sessions_of(&heads), 12, "{heads:?}");
+}
+
+/// Sessions the heads announce together, a head without a count is one session.
+fn sessions_of(heads: &[String]) -> usize {
+    let count = |h: &String| {
+        let word = h.split(' ').nth(2).unwrap_or("");
+        word.parse::<usize>().unwrap_or(1)
+    };
+    heads.iter().map(count).sum()
+}
