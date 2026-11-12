@@ -1486,7 +1486,7 @@ PR: D
   - `seal_orphans_never_touches_a_duplicated_pack` [`assert!(!plan.seal.contains(&a))` for a pack with a copy]
 - [x] GREEN commit: `prune/orphans.rs`. The one append to another writer's pack: checks our key, not sealed and idle over 30 days instead of our writer id. Gist store side in `store/gist/append.rs`: an append to an id that is not the cached `open_pack` clones into a temp dir and deletes it when the append returns, covered by `orphan_seal_clone_is_not_kept` [`assert!(!cache_dir.join(id).exists())` after success and after an error].
 
-Files: `src/sync/pack/mod.rs`, `src/sync/pack/prune/mod.rs`, `src/sync/pack/prune/plan.rs`, `src/sync/pack/prune/orphans.rs`, `src/sync/pack/prune/tests.rs`, `src/sync/store/gist/append.rs`, `src/sync/store/gist/tests.rs`, `tests/integration/sync_engine_test.rs`
+Files: `src/sync/pack/mod.rs`, `src/sync/pack/prune/mod.rs`, `src/sync/pack/prune/plan.rs`, `src/sync/pack/prune/orphans.rs`, `src/sync/pack/prune/safe.rs`, `src/sync/pack/repo/mod.rs`, `src/sync/pack/repo/push.rs`, `src/sync/pack/repo/push/copy.rs`, `src/sync/store/gist/append.rs`, `tests/integration/sync_engine_test.rs`
 Depends on: Stage 60
 
 Considerations: `plan.rs` pure under 150 lines, execution under 250, `orphans.rs` under 100, dead bytes and the keeper come from `merge` (Stage 50).
