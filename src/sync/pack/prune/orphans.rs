@@ -43,21 +43,30 @@ pub fn seal_plan(view: &View, packs: &[PackInfo], own: &str, now: i64, budget: u
     plan
 }
 
+/// What became of one seal.
+pub(super) enum Sealed {
+    Done,
+    /// The owner appended meanwhile.
+    Moved,
+    /// The index does not open, wrong key or damaged.
+    Unreadable,
+}
+
 /// The zero byte append that seals `id`, the one append to a pack of another writer.
-/// `Ok(false)` when the owner appended meanwhile, never retried.
-pub(super) fn seal_one(env: &Env, id: &str, info: &PackInfo) -> Result<bool, StoreError> {
+/// `Moved` when the owner appended meanwhile, never retried.
+pub(super) fn seal_one(env: &Env, id: &str, info: &PackInfo) -> Result<Sealed, StoreError> {
     let text = env.store.read_index(id)?;
     let Ok(mut index) = open_index(env.key, &info.tag, &text) else {
-        return Ok(false);
+        return Ok(Sealed::Unreadable);
     };
     index.sealed = true;
     let next = seal_index(env.key, &index).map_err(|e| StoreError::Other(e.to_string()))?;
     match env.store.append_transient(id, info.len, &text, &[], &next) {
         Ok(()) => {
             env.store.sealed(id);
-            Ok(true)
+            Ok(Sealed::Done)
         }
-        Err(StoreError::Moved(_)) => Ok(false),
+        Err(StoreError::Moved(_)) => Ok(Sealed::Moved),
         Err(e) => Err(e),
     }
 }
@@ -75,10 +84,11 @@ pub(super) fn seal_all(
             .find(|p| &p.id == id)
             .expect("planned from the listing");
         match seal_one(env, id, info)? {
-            true => out.sealed += 1,
-            false => out
+            Sealed::Done => out.sealed += 1,
+            Sealed::Moved => out
                 .lines
                 .push(format!("{id}: changed during the seal, skipped")),
+            Sealed::Unreadable => out.lines.push(format!("{id}: index unreadable, skipped")),
         }
     }
     if plan.left > 0 {
