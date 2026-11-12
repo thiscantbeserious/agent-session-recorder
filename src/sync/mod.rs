@@ -18,6 +18,9 @@ pub use engine::select::{select_remote, SelectError};
 pub use pack::migrate::{
     preview as migrate_preview, run as migrate_run, Env as MigrateEnv, MigrateError,
 };
+pub use pack::prune::{
+    run as prune_run, Env as PruneEnv, PruneError, Report as PruneReport, BUDGET as SEAL_BUDGET,
+};
 pub use store::gist::ProgressSink;
 pub use store::StoreError;
 

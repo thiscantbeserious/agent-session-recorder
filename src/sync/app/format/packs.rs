@@ -21,6 +21,22 @@ pub(super) fn other_key_lines(report: &Report) -> Vec<String> {
     lines
 }
 
+/// Result lines of `agr sync prune`, a dry run prints the plan lines only.
+pub fn prune_lines(report: &crate::sync::pack::prune::Report, dry_run: bool) -> Vec<String> {
+    let mut lines = Vec::new();
+    if !dry_run {
+        lines.push(format!(
+            "Pruned: deleted {} packs, copied {} sessions, sealed {} packs, {} freed.",
+            report.deleted,
+            report.copied,
+            report.sealed,
+            humansize::format_size(report.free_bytes, humansize::BINARY)
+        ));
+    }
+    lines.extend(report.lines.iter().cloned());
+    lines
+}
+
 /// The dead data hint, only when more than 20 percent of the remote bytes are dead.
 pub(super) fn prune_hint(report: &Report) -> Option<String> {
     let dead = u128::from(report.dead_bytes) * 100;
