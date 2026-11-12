@@ -27,7 +27,7 @@ pub(super) fn prune_hint(report: &Report) -> Option<String> {
     let over = dead > u128::from(report.pack_bytes) * u128::from(PRUNE_ABOVE_PERCENT);
     over.then(|| {
         let percent = dead / u128::from(report.pack_bytes.max(1));
-        format!("{percent}% of the remote is dead data.")
+        format!("{percent}% of the remote is dead data, run `agr sync prune --dry-run` to see what it frees.")
     })
 }
 
