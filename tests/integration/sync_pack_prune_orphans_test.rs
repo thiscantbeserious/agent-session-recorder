@@ -232,3 +232,18 @@ fn an_unreadable_index_is_reported_as_unreadable_not_as_a_race() {
     );
     assert!(!text.contains("changed during the seal"), "{text}");
 }
+
+#[test]
+fn an_orphan_larger_than_the_whole_budget_is_skipped_and_named() {
+    let (store, key) = (MemoryStore::new(), Key::generate());
+    let big = heavy(&store, &key, "w2", 3 * MIB);
+    let small = orphan(&store, &key, "w3", 31);
+    let out = run(&store, &key, false, 2 * MIB).lines.join("\n");
+    assert!(!sealed(&store, &key, &big), "{out}");
+    assert!(sealed(&store, &key, &small), "{out}");
+    assert!(
+        out.contains(&format!("{big}: larger than the seal budget, skipped")),
+        "{out}"
+    );
+    assert!(!out.contains("left, run again"), "{out}");
+}
