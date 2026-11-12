@@ -89,7 +89,24 @@ fn keep_first(slot: &mut Option<ReadError>, e: ReadError) {
 impl Repo<'_> {
     /// Opens the session `path` of the merged view into `target`: a hidden temp file in its
     /// directory, renamed only after hash and size match the index, removed on any error.
+    ///
+    /// A place that is gone (a prune deleted the pack) is read once more against a fresh view,
+    /// which holds the copy.
     pub fn read_session(&self, path: &str, target: &Path) -> Result<(), ReadError> {
+        match self.read_places(path, target) {
+            Err(ReadError::Store(StoreError::NotFound))
+            | Err(ReadError::Range(RangeError::Store(StoreError::NotFound))) => {
+                let hint = (self.writer.as_str(), self.target, None);
+                match Repo::open_with(self.store, self.key, hint, false) {
+                    Ok(fresh) => fresh.read_places(path, target),
+                    Err(_) => self.read_places(path, target),
+                }
+            }
+            other => other,
+        }
+    }
+
+    fn read_places(&self, path: &str, target: &Path) -> Result<(), ReadError> {
         let merged = match self.view().get(path) {
             Some(m) if !m.is_deleted() => m,
             _ => return Err(ReadError::Unknown(path.into())),
@@ -106,6 +123,15 @@ impl Repo<'_> {
             }
         }
         Err(last.unwrap_or_else(|| ReadError::Unknown(path.into())))
+    }
+
+    /// The live place of `path` in pack `pack` into `target`, what prune copies.
+    pub fn read_place_of(&self, path: &str, pack: &str, target: &Path) -> Result<(), ReadError> {
+        let unknown = || ReadError::Unknown(path.into());
+        let merged = self.view().get(path).ok_or_else(unknown)?;
+        let place = (merged.places.iter()).find(|p| p.pack == pack && !p.deleted);
+        let entry = place.and_then(|p| self.entry_of(path, merged.gen, p));
+        self.read_place(pack, &entry.ok_or_else(unknown)?, target)
     }
 
     /// One place into its own temp file, a failed place leaves nothing for the next one.

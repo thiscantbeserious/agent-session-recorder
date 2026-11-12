@@ -9,6 +9,7 @@ use std::io;
 use std::path::PathBuf;
 
 mod cap;
+mod copy;
 mod retry;
 mod stage;
 
@@ -251,7 +252,7 @@ impl Repo<'_> {
                 .gen;
             tombs.push((path.clone(), gen + 1));
         }
-        self.append_tombs(tombs, &at, report)?;
+        self.append_tombs(tombs, (&at, false), report)?;
         report.open = self.open_ref();
         report.check_failed = self.reload().is_err();
         Ok(())
@@ -261,7 +262,7 @@ impl Repo<'_> {
     fn append_tombs(
         &mut self,
         mut rest: Vec<(String, u64)>,
-        at: &str,
+        (at, copy): (&str, bool),
         report: &mut PushReport,
     ) -> Result<(), StoreError> {
         while !rest.is_empty() {
@@ -279,6 +280,7 @@ impl Repo<'_> {
                 tombs: rest,
                 seal,
                 at: at.to_string(),
+                copy,
             };
             let next = self.try_append(&pack, &batch)?;
             report.record_tombs(&sent, &next);
