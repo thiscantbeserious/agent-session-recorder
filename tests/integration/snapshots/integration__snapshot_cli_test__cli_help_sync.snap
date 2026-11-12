@@ -1,6 +1,5 @@
 ---
 source: tests/integration/snapshot_cli_test.rs
-assertion_line: 163
 expression: output
 ---
 === agr sync --help ===
@@ -17,6 +16,7 @@ Commands:
   pull     Download new and changed sessions
   delete   Mark sessions deleted on the remote (encrypted bytes stay in the pack, the local file stays)
   migrate  Move the per-session gists of the old layout into packs
+  prune    Free the dead bytes of sealed packs on the remote
   key      Export or import the sync key
   help     Print this message or the help of the given subcommand(s)
 
