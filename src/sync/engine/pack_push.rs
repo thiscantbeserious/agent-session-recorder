@@ -12,7 +12,7 @@ use super::plan::{decide, Command};
 use super::queue::Held;
 use super::run::{Options, Outcome, Report, SyncError};
 use super::scan::Row;
-use crate::sync::pack::repo::{Outcome as Landed, PushError, PushItem, PushReport};
+use crate::sync::pack::repo::{Append, Outcome as Landed, PushError, PushItem, PushReport};
 use crate::sync::pack::StoreError;
 
 /// Report text when somebody else's data was ahead when the append was planned.
@@ -30,13 +30,14 @@ impl Engine<'_> {
         }
     }
 
-    /// One append for the whole batch, the index is saved here, also on a failure, so what landed
+    /// One call for the whole batch, the observer hears every pack append, the index is saved here, also on a failure, so what landed
     /// is never pushed twice.
     pub(super) fn push_batch(
         &self,
         items: &[PushItem],
         rows: &[&Row],
         loaded: &mut Loaded<'_>,
+        observer: &mut dyn FnMut(Step<'_>),
     ) -> Result<Landings, SyncError> {
         if items.is_empty() {
             return Ok(Landings::new());
@@ -45,7 +46,18 @@ impl Engine<'_> {
         let before: BTreeMap<&str, (u64, u64)> = (items.iter())
             .map(|i| (i.path.as_str(), stamp(&dir.join(&i.path))))
             .collect();
-        let (landed, failure) = match loaded.repo.push_batch(items) {
+        let mut pack = 0;
+        let mut announce = |a: Append| {
+            pack += 1;
+            let (sessions, size) = (a.sessions, a.bytes);
+            observer(Step::Append {
+                pack,
+                sessions,
+                size,
+            });
+        };
+        let pushed = loaded.repo.push_batch_with(items, &mut announce);
+        let (landed, failure) = match pushed {
             Ok(report) => (report, None),
             Err(PushError { error, pushed }) => (pushed, Some(error)),
         };

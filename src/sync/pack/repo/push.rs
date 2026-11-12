@@ -23,6 +23,22 @@ pub struct PushItem {
     pub file: PathBuf,
 }
 
+/// What one pack append carries, the number of sessions and their plain bytes.
+#[derive(Debug, Clone, Copy)]
+pub struct Append {
+    pub sessions: usize,
+    pub bytes: u64,
+}
+
+impl Append {
+    fn of(chunk: &[Staged]) -> Self {
+        Self {
+            sessions: chunk.len(),
+            bytes: chunk.iter().map(|s| s.size).sum(),
+        }
+    }
+}
+
 /// What became of one item of a push.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
@@ -122,8 +138,17 @@ impl Repo<'_> {
     }
 
     pub fn push_batch(&mut self, items: &[PushItem]) -> Result<PushReport, PushError> {
+        self.push_batch_with(items, &mut |_| {})
+    }
+
+    /// Like `push_batch`, `announce` runs before every pack append with what that append carries.
+    pub fn push_batch_with(
+        &mut self,
+        items: &[PushItem],
+        announce: &mut dyn FnMut(Append),
+    ) -> Result<PushReport, PushError> {
         let mut report = PushReport::default();
-        match self.push_into(items, &mut report) {
+        match self.push_into(items, &mut report, announce) {
             Ok(()) => Ok(report),
             Err(error) => {
                 report.open = self.open_ref();
@@ -143,7 +168,12 @@ impl Repo<'_> {
         })
     }
 
-    fn push_into(&mut self, items: &[PushItem], report: &mut PushReport) -> Result<(), StoreError> {
+    fn push_into(
+        &mut self,
+        items: &[PushItem],
+        report: &mut PushReport,
+        announce: &mut dyn FnMut(Append),
+    ) -> Result<(), StoreError> {
         let at = now();
         let staged = items.iter().map(stage).collect::<Result<Vec<_>, _>>()?;
         let (big, small): (Vec<_>, Vec<_>) = staged
@@ -152,10 +182,11 @@ impl Repo<'_> {
         for s in &big {
             let pack = self.new_pack()?;
             let one = std::slice::from_ref(s);
+            announce(Append::of(one));
             let next = self.try_append(&pack, &Batch::of(one, !self.keep_open, &at))?;
             report.record(one, &next);
         }
-        self.push_small(&small, &at, report)?;
+        self.push_small(&small, &at, report, announce)?;
         report.open = self.open_ref();
         report.check_failed = self.reload().is_err();
         if !report.check_failed {
@@ -171,6 +202,7 @@ impl Repo<'_> {
         mut rest: &[Staged],
         at: &str,
         report: &mut PushReport,
+        announce: &mut dyn FnMut(Append),
     ) -> Result<(), StoreError> {
         while !rest.is_empty() {
             let len = self.open.as_ref().map_or(0, |o| o.index.len);
@@ -191,6 +223,7 @@ impl Repo<'_> {
             let capped = n == by_cap.max(1) && !tail.is_empty();
             let full = capped || should_seal(self.target, pack.index.len + sum);
             let seal = full && !self.keep_open;
+            announce(Append::of(chunk));
             let next = self.try_append(&pack, &Batch::of(chunk, seal, at))?;
             report.record(chunk, &next);
             self.open = open_of(next);

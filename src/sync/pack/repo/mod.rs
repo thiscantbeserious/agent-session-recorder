@@ -3,7 +3,7 @@
 mod push;
 mod read;
 
-pub use push::{OpenRef, Outcome, PushError, PushItem, PushReport};
+pub use push::{Append, OpenRef, Outcome, PushError, PushItem, PushReport};
 pub use read::{read_pack, ReadError};
 
 use crate::sync::crypto::{open_meta, Key};

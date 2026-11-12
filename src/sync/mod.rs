@@ -46,7 +46,8 @@ pub mod testing {
         PruneError, Report as PruneReport, SealPlan, BUDGET as SEAL_BUDGET,
     };
     pub use crate::sync::pack::repo::{
-        read_pack, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo, RepoError,
+        read_pack, Append, OpenRef, Outcome, PushError, PushItem, PushReport, ReadError, Repo,
+        RepoError,
     };
     pub use crate::sync::pack::rules::{
         pack_size, place, should_seal, should_seal_index, valid_path, PackSizeError, Place,

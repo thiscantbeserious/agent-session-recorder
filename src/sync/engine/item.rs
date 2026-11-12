@@ -104,25 +104,6 @@ pub(super) fn skip_text(reason: SkipReason) -> &'static str {
     }
 }
 
-/// One `Started` for a whole append: the session, or `N sessions` and their summed size.
-pub(super) fn announce_batch(
-    storage: &StorageManager,
-    rows: &[&Row],
-    observer: &mut dyn FnMut(Step<'_>),
-) {
-    let size =
-        |r: &Row| std::fs::metadata(storage.storage_dir().join(&r.path)).map_or(0, |m| m.len());
-    let name = match rows {
-        [one] => one.path.clone(),
-        many => format!("{} sessions", many.len()),
-    };
-    let total = rows.iter().map(|r| size(r)).sum();
-    observer(Step::Started {
-        path: &name,
-        size: total,
-    });
-}
-
 /// Tells the observer which session is about to move and how big it is.
 pub(super) fn announce(
     storage: &StorageManager,

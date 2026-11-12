@@ -12,6 +12,12 @@ pub enum Event<'a> {
         i: usize,
         n: usize,
     },
+    /// Pack append number `pack` (from 1) starts, it carries `sessions` of `size` plain bytes.
+    Append {
+        pack: usize,
+        sessions: usize,
+        size: u64,
+    },
     /// A session is done, skipped or failed.
     Finished { item: &'a Item, i: usize, n: usize },
     /// The remote list is being fetched, first event of every run.
@@ -25,10 +31,21 @@ pub type Observer<'a> = dyn FnMut(&Event<'_>) + 'a;
 
 /// What the engine loop hands over, `counted` adds the index and the total.
 pub(super) enum Step<'a> {
-    Started { path: &'a str, size: u64 },
+    Started {
+        path: &'a str,
+        size: u64,
+    },
+    Append {
+        pack: usize,
+        sessions: usize,
+        size: u64,
+    },
     Finished(&'a Item),
     Listing,
-    Scanning { done: usize, total: usize },
+    Scanning {
+        done: usize,
+        total: usize,
+    },
 }
 
 pub(super) fn no_progress(_: &Event<'_>) {}
@@ -45,6 +62,15 @@ pub(super) fn counted<'o>(
             size,
             i: seen + 1,
             n: total,
+        }),
+        Step::Append {
+            pack,
+            sessions,
+            size,
+        } => observer(&Event::Append {
+            pack,
+            sessions,
+            size,
         }),
         Step::Finished(item) if acted(item) => {
             seen += 1;
