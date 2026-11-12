@@ -94,7 +94,9 @@ fn flush(repo: &mut Repo, batch: &mut Vec<PushItem>, copied: &mut usize) -> Resu
         return Ok(());
     }
     let res = repo.push_copies(batch);
-    *copied += batch.len();
+    if res.is_ok() {
+        *copied += batch.len();
+    }
     batch.drain(..).for_each(|i| {
         let _ = std::fs::remove_file(i.file);
     });
