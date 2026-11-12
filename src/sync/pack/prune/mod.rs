@@ -141,10 +141,10 @@ fn copy_sessions(
     flush(repo, &mut batch, copied)
 }
 
-/// Top gen tombstones whose keeper sits in a repacked pack.
+/// Top gen tombstones with a place in a repacked pack, a fork keeps its tombstone version too.
 fn tombstones(repo: &Repo, ids: &[String]) -> Vec<(String, u64)> {
-    let tomb = |(_, m): &(&String, &Merged)| m.is_deleted() && ids.contains(&m.keeper().pack);
-    let all = repo.view().iter().filter(tomb);
+    let held = |m: &Merged| m.places.iter().any(|p| p.deleted && ids.contains(&p.pack));
+    let all = repo.view().iter().filter(|(_, m)| held(m));
     all.map(|(path, m)| (path.clone(), m.gen)).collect()
 }
 
