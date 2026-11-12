@@ -4,6 +4,7 @@ mod orphans;
 mod plan;
 mod safe;
 
+use orphans::seal_all;
 pub use orphans::{seal_plan, SealPlan, BUDGET};
 pub use plan::{plan, Plan};
 
@@ -57,6 +58,11 @@ fn open<'a>(env: &Env<'a>) -> Result<Repo<'a>, PruneError> {
 
 fn size(bytes: u64) -> String {
     humansize::format_size(bytes, humansize::BINARY)
+}
+
+/// Rounded to whole MiB, `96 MiB`, the dry run line of the seals.
+fn whole_mib(bytes: u64) -> String {
+    format!("{} MiB", (bytes + 512 * 1024) / (1024 * 1024))
 }
 
 /// Counts only, nothing is written.
@@ -163,11 +169,29 @@ fn delete_all(env: &Env, ids: &[String], out: &mut Report) {
 /// failed re-read ends the run before any delete.
 pub fn run(env: &Env) -> Result<Report, PruneError> {
     let mut repo = open(env)?;
+    let mut out = Report::default();
+    if env.seal_orphans {
+        let packs = env.store.list().map_err(store_err)?.packs;
+        let (own, now, budget) = (env.writer, env.now, env.seal_budget);
+        let seals = seal_plan(repo.view(), &packs, own, now, budget);
+        if env.dry_run {
+            let line = format!(
+                "{} packs to seal, {} to download",
+                seals.seal.len(),
+                whole_mib(seals.download)
+            );
+            out.lines.push(line);
+        } else if !seals.seal.is_empty() {
+            seal_all(env, &seals, &packs, &mut out).map_err(store_err)?;
+            repo = open(env)?;
+        }
+    }
     let plan = plan(repo.view());
     if env.dry_run || plan.is_empty() {
-        return Ok(preview(&plan));
+        out.lines.extend(preview(&plan).lines);
+        (out.move_bytes, out.free_bytes) = (plan.move_bytes, plan.free_bytes);
+        return Ok(out);
     }
-    let mut out = Report::default();
     copy_sessions(env, &mut repo, &plan.repack, &mut out.copied)?;
     let tombs = tombstones(&repo, &plan.repack);
     if !tombs.is_empty() {

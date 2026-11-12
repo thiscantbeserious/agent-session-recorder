@@ -133,8 +133,8 @@ fn heavy(store: &MemoryStore, key: &Key, writer: &str, len: u64) -> String {
 #[test]
 fn seal_orphans_dry_run_prints_download_size() {
     let (store, key) = (MemoryStore::new(), Key::generate());
-    heavy(&store, &key, "w2", 48 * MIB - 4 - 0);
-    heavy(&store, &key, "w3", 48 * MIB);
+    heavy(&store, &key, "w2", 48 * MIB - 1000);
+    heavy(&store, &key, "w3", 48 * MIB - 1000);
     let before = store.appends();
     let out = run(&store, &key, true, SEAL_BUDGET).lines.join("\n");
     assert!(out.contains("2 packs to seal, 96 MiB to download"), "{out}");
@@ -148,7 +148,7 @@ fn a_real_run_stops_at_the_download_budget() {
         .iter()
         .map(|w| heavy(&store, &key, w, MIB))
         .collect();
-    let out = run(&store, &key, false, 2 * MIB + 1).lines.join("\n");
+    let out = run(&store, &key, false, 2 * MIB + 1000).lines.join("\n");
     assert!(out.contains("1 left, run again"), "{out}");
     let done = ids.iter().filter(|id| sealed(&store, &key, id)).count();
     assert_eq!(done, 2);

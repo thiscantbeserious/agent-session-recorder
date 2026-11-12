@@ -215,6 +215,20 @@ impl<R: Runner> PackStore for GistStore<R> {
         self.append_pack(id, &req)
     }
 
+    /// The clone of a pack that is not our open one is gone when this returns, success or error.
+    fn append_transient(
+        &self,
+        id: &str,
+        expected_len: u64,
+        expected_index: &str,
+        segments: &[Segment],
+        index: &str,
+    ) -> Result<(), StoreError> {
+        let res = self.append(id, expected_len, expected_index, segments, index);
+        self.forget_clone(id);
+        res
+    }
+
     fn fits(&self, info: &PackInfo, lens: &[u64]) -> bool {
         self.fits_files(info, lens)
     }
