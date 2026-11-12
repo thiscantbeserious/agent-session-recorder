@@ -2,8 +2,8 @@
 
 use crate::helpers::pack_repo::{index_of, item, packs_of, repo, TARGET};
 use agr::sync::testing::{
-    prune_run, seal_index, seal_plan, MemoryStore, PackStore, PruneEnv, PruneReport, Repo, Segment,
-    SEAL_BUDGET,
+    prune_run, seal_index, seal_plan, Listing, MemoryStore, PackStore, PruneEnv, PruneReport, Repo,
+    Segment, StoreError, SEAL_BUDGET,
 };
 use agr::sync::Key;
 
@@ -169,4 +169,66 @@ fn seal_orphans_never_touches_a_duplicated_pack() {
         !plan.seal.contains(&a) && !plan.seal.contains(&copy),
         "{plan:?}"
     );
+}
+
+/// Reads fine until the second listing of a run, then every index text is garbage, so the index
+/// opens for the plan and fails at the seal.
+struct Rots<'a>(&'a MemoryStore, std::sync::atomic::AtomicUsize);
+
+impl PackStore for Rots<'_> {
+    fn name(&self) -> &'static str {
+        "rots"
+    }
+    fn check(&self) -> Result<(), StoreError> {
+        self.0.check()
+    }
+    fn list(&self) -> Result<Listing, StoreError> {
+        self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.0.list()
+    }
+    fn read_index(&self, id: &str) -> Result<String, StoreError> {
+        match self.1.load(std::sync::atomic::Ordering::SeqCst) {
+            0..=1 => self.0.read_index(id),
+            _ => Ok("not an index".to_string()),
+        }
+    }
+    fn create(&self, tag: &str, index: &str) -> Result<String, StoreError> {
+        self.0.create(tag, index)
+    }
+    fn append(&self, id: &str, n: u64, e: &str, s: &[Segment], i: &str) -> Result<(), StoreError> {
+        self.0.append(id, n, e, s, i)
+    }
+    fn read(&self, id: &str, offset: u64, len: u64) -> Result<Box<dyn std::io::Read>, StoreError> {
+        self.0.read(id, offset, len)
+    }
+    fn delete(&self, id: &str) -> Result<(), StoreError> {
+        self.0.delete(id)
+    }
+}
+
+#[test]
+fn an_unreadable_index_is_reported_as_unreadable_not_as_a_race() {
+    let (store, key) = (MemoryStore::new(), Key::generate());
+    let id = orphan(&store, &key, "w2", 31);
+    let rots = Rots(&store, Default::default());
+    let scratch = tempfile::tempdir().unwrap();
+    let env = PruneEnv {
+        store: &rots,
+        key: &key,
+        writer: "w9",
+        target: TARGET,
+        hint: None,
+        scratch: scratch.path(),
+        dry_run: false,
+        seal_orphans: true,
+        now: NOW,
+        seal_budget: SEAL_BUDGET,
+        pace: &|| {},
+    };
+    let text = prune_run(&env).unwrap().lines.join("\n");
+    assert!(
+        text.contains(&format!("{id}: index unreadable, skipped")),
+        "{text}"
+    );
+    assert!(!text.contains("changed during the seal"), "{text}");
 }
