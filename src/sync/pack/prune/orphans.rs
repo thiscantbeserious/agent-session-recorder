@@ -15,6 +15,8 @@ pub struct SealPlan {
     pub seal: Vec<String>,
     pub download: u64,
     pub left: usize,
+    /// Larger than the whole budget, another run never changes that.
+    pub oversized: Vec<String>,
 }
 
 /// Our key, not sealed, not ours, not a copy, idle over 30 days, in id order within `budget`.
@@ -33,7 +35,9 @@ pub fn seal_plan(view: &View, packs: &[PackInfo], own: &str, now: i64, budget: u
     all.sort_by(|a, b| a.id.cmp(&b.id));
     let mut plan = SealPlan::default();
     for p in all {
-        if plan.download + p.len > budget && !plan.seal.is_empty() {
+        if p.len > budget {
+            plan.oversized.push(p.id.clone());
+        } else if plan.download + p.len > budget {
             plan.left += 1;
         } else {
             plan.download += p.len;
@@ -91,8 +95,15 @@ pub(super) fn seal_all(
             Sealed::Unreadable => out.lines.push(format!("{id}: index unreadable, skipped")),
         }
     }
+    out.lines.extend(oversized_lines(plan));
     if plan.left > 0 {
         out.lines.push(format!("{} left, run again", plan.left));
     }
     Ok(())
+}
+
+/// One line per pack that alone exceeds the budget, it needs an explicit action.
+pub(super) fn oversized_lines(plan: &SealPlan) -> impl Iterator<Item = String> + '_ {
+    let line = |id: &String| format!("{id}: larger than the seal budget, skipped");
+    plan.oversized.iter().map(line)
 }

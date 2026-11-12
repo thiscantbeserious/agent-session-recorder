@@ -4,7 +4,7 @@ mod orphans;
 mod plan;
 mod safe;
 
-use orphans::seal_all;
+use orphans::{oversized_lines, seal_all};
 pub use orphans::{seal_plan, SealPlan, BUDGET};
 pub use plan::{plan, Plan};
 
@@ -183,9 +183,12 @@ pub fn run(env: &Env) -> Result<Report, PruneError> {
                 whole_mib(seals.download)
             );
             out.lines.push(line);
+            out.lines.extend(oversized_lines(&seals));
         } else if !seals.seal.is_empty() {
             seal_all(env, &seals, &packs, &mut out).map_err(PruneError::Store)?;
             repo = open(env)?;
+        } else {
+            out.lines.extend(oversized_lines(&seals));
         }
     }
     let plan = plan(repo.view());
