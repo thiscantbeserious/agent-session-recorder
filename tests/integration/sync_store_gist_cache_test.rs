@@ -147,3 +147,15 @@ fn open_sweeps_clones_of_packs_that_are_not_the_open_one() {
     assert!(foreign.exists());
     assert!(no_git.exists());
 }
+
+#[test]
+fn orphan_seal_clone_is_not_kept() {
+    let rig = Rig::new();
+    let id = rig.remote.seed("i0", &[]);
+    let store = rig.store();
+    store.append_transient(&id, 0, "i0", &[], "i1").unwrap();
+    assert!(!rig.clone_dir(&id).exists());
+    let res = store.append_transient(&id, 0, "stale", &[], "i2");
+    assert!(matches!(res, Err(StoreError::Moved(_))), "{res:?}");
+    assert!(!rig.clone_dir(&id).exists());
+}
