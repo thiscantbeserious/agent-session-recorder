@@ -1,7 +1,7 @@
 //! Pure prune plan over a merged view, no store and no IO.
 
 use crate::sync::pack::merge::{Top, View};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 /// Dead share of a pack, in percent, from which it is repacked.
 const REPACK_AT_PERCENT: u64 = 20;
@@ -12,8 +12,6 @@ pub struct Plan {
     pub delete: Vec<String>,
     /// Sealed packs whose live sessions are copied, then the pack is deleted.
     pub repack: Vec<String>,
-    /// Top gen tombstones the repacked packs carry over.
-    pub copy_tombstones: usize,
     /// Live bytes of the repacked packs, what a run downloads and uploads again.
     pub move_bytes: u64,
     /// Dead bytes of every planned pack.
@@ -23,10 +21,6 @@ pub struct Plan {
 impl Plan {
     pub fn is_empty(&self) -> bool {
         self.delete.is_empty() && self.repack.is_empty()
-    }
-
-    pub fn touches(&self, id: &str) -> bool {
-        self.delete.iter().chain(&self.repack).any(|p| p == id)
     }
 }
 
@@ -47,7 +41,6 @@ fn live_counts(view: &View) -> BTreeMap<&str, usize> {
 pub fn plan(view: &View) -> Plan {
     let live = live_counts(view);
     let mut out = Plan::default();
-    let mut repacked = BTreeSet::new();
     for (id, &dead) in view.dead_bytes() {
         let Some(meta) = view.pack(id) else { continue };
         if !meta.sealed || view.is_frozen(id) {
@@ -57,15 +50,11 @@ pub fn plan(view: &View) -> Plan {
             out.delete.push(id.clone());
         } else if dead * 100 >= meta.len * REPACK_AT_PERCENT && dead > 0 {
             out.repack.push(id.clone());
-            repacked.insert(id.as_str());
             out.move_bytes += meta.len.saturating_sub(dead);
         } else {
             continue;
         }
         out.free_bytes += dead;
     }
-    out.copy_tombstones = (view.iter())
-        .filter(|(_, m)| m.is_deleted() && repacked.contains(m.keeper().pack.as_str()))
-        .count();
     out
 }

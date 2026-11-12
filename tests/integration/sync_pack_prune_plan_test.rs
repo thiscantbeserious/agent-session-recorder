@@ -104,19 +104,6 @@ fn open_packs_are_never_planned() {
 }
 
 #[test]
-fn tombstones_are_copied() {
-    // a: x at gen 1 (dead) and the tombstone of x at gen 2 (live)
-    let a = pack(
-        "a",
-        60,
-        true,
-        vec![entry("x", 1, "s1", 60, false), entry("x", 2, "", 0, true)],
-    );
-    let plan = prune_plan(&merge(&[a]));
-    assert_eq!(plan.copy_tombstones, 1);
-}
-
-#[test]
 fn live_tombstone_pack_is_not_fully_dead() {
     let a = pack(
         "a",
@@ -154,7 +141,8 @@ fn prune_never_touches_unreadable_packs() {
         index: Err(agr::sync::testing::IndexError::UnknownVersion(9)),
     };
     let plan = prune_plan(&merge(&[other_key, unknown]));
-    assert!(!plan.touches("k") && !plan.touches("u"));
+    let all: Vec<&String> = plan.delete.iter().chain(&plan.repack).collect();
+    assert!(!all.iter().any(|p| *p == "k" || *p == "u"));
 }
 
 #[test]
