@@ -1,7 +1,7 @@
 //! Prune execution on the memory store (tests live here, not under src).
 
 use crate::helpers::pack_engine::{node, opts, CAST};
-use crate::helpers::pack_repo::{index_of, item, packs_of, repo, TARGET};
+use crate::helpers::pack_repo::{index_of, item, packs_of, repo, FILL, TARGET};
 use agr::sync::testing::{
     copy_key, prune_run, sha256_hex, MemoryStore, PruneEnv, PruneError, PruneReport, Repo,
     RepoError, SEAL_BUDGET,
@@ -158,4 +158,57 @@ fn partial_index_view_aborts_push_delete_and_prune() {
         (store.appends() - appends, store.deletes() - deletes),
         (0, 0)
     );
+}
+
+const BIG_LIVE: usize = FILL;
+
+/// The prune writers each own an open pack with a lower id than the old pack: `z` and `y` are
+/// pushed first (mem-1, mem-2), then the old pack (mem-3) holds `a` (20000, replaced later) and
+/// `b` (FILL live, enough to fill a copy pack). A prune reuses its own open pack for the copy.
+fn low_copy_ids(store: &MemoryStore, key: &Key, dir: &Path) {
+    for (writer, name) in [("w9", "z"), ("w8", "y")] {
+        repo(store, key, writer)
+            .push_batch(&[item(dir, name, 1, b"x")])
+            .unwrap();
+    }
+    let mut w1 = repo(store, key, "w1");
+    let items = [
+        item(dir, "a", 1, &vec![1u8; 20_000]),
+        item(dir, "b", 1, &vec![7u8; BIG_LIVE]),
+    ];
+    w1.push_batch(&items).unwrap();
+    w1.push_batch(&[item(dir, "a", 2, b"tiny")]).unwrap();
+}
+
+#[test]
+fn a_full_copy_pack_is_not_sealed_by_prune() {
+    let (store, key, dir) = fixture();
+    low_copy_ids(&store, &key, dir.path());
+    prune(&store, &key, "w9", false);
+    let copy = packs_of(&store).into_iter().find(|p| {
+        index_of(&store, &key, p)
+            .entries
+            .iter()
+            .any(|e| e.path == "b")
+            && p.id != "mem-3"
+    });
+    let idx = index_of(&store, &key, &copy.expect("a copy pack"));
+    assert!(!idx.sealed);
+}
+
+#[test]
+fn two_prunes_with_full_low_id_copy_packs_keep_every_place() {
+    let (store, key, dir) = fixture();
+    low_copy_ids(&store, &key, dir.path());
+    let k = copy_key(&key);
+    store.after_append(move |s, _| {
+        prune(s, &k, "w8", false);
+    });
+    prune(&store, &key, "w9", false);
+    store.after_append(|_, _| {});
+    prune(&store, &key, "w9", false);
+    prune(&store, &key, "w8", false);
+    for path in ["a", "b", "z", "y"] {
+        assert!(places(&store, &key, path) >= 1, "{path}");
+    }
 }
