@@ -85,10 +85,6 @@ fn preview(plan: &Plan) -> Report {
 /// Bytes of plain sessions that wait in the scratch dir before they are pushed.
 const BATCH_BYTES: u64 = 32 * 1024 * 1024;
 
-fn store_err(e: StoreError) -> PruneError {
-    PruneError::Store(e)
-}
-
 fn flush(repo: &mut Repo, batch: &mut Vec<PushItem>, copied: &mut usize) -> Result<(), PruneError> {
     if batch.is_empty() {
         return Ok(());
@@ -100,7 +96,7 @@ fn flush(repo: &mut Repo, batch: &mut Vec<PushItem>, copied: &mut usize) -> Resu
     batch.drain(..).for_each(|i| {
         let _ = std::fs::remove_file(i.file);
     });
-    res.map(drop).map_err(|e| store_err(e.error))
+    res.map(drop).map_err(|e| PruneError::Store(e.error))
 }
 
 /// Decrypts every live session of the repacked packs and seals it again at the same gen, a
@@ -173,7 +169,7 @@ pub fn run(env: &Env) -> Result<Report, PruneError> {
     let mut repo = open(env)?;
     let mut out = Report::default();
     if env.seal_orphans {
-        let packs = env.store.list().map_err(store_err)?.packs;
+        let packs = env.store.list().map_err(PruneError::Store)?.packs;
         let (own, now, budget) = (env.writer, env.now, env.seal_budget);
         let seals = seal_plan(repo.view(), &packs, own, now, budget);
         if env.dry_run {
@@ -184,7 +180,7 @@ pub fn run(env: &Env) -> Result<Report, PruneError> {
             );
             out.lines.push(line);
         } else if !seals.seal.is_empty() {
-            seal_all(env, &seals, &packs, &mut out).map_err(store_err)?;
+            seal_all(env, &seals, &packs, &mut out).map_err(PruneError::Store)?;
             repo = open(env)?;
         }
     }
@@ -198,7 +194,7 @@ pub fn run(env: &Env) -> Result<Report, PruneError> {
     let tombs = tombstones(&repo, &plan.repack);
     if !tombs.is_empty() {
         repo.copy_tombstones(&tombs)
-            .map_err(|e| store_err(e.error))?;
+            .map_err(|e| PruneError::Store(e.error))?;
     }
     let after = open(env)?;
     let planned: Vec<String> = plan.delete.iter().chain(&plan.repack).cloned().collect();
