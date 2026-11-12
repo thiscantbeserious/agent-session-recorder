@@ -1555,7 +1555,7 @@ flowchart TD
     each -- no dead bytes --> keep[keep]
     each -- all dead --> gone[delete after next step]
     each -- dead share at least 20 percent --> copy[read live sessions and tombstones]
-    copy --> append[append them with the same gen to own open pack, sealing as usual]
+    copy --> append[append them with the same gen to own open pack, the copy pack stays open]
     append --> check[re-read indexes, copies visible]
     check --> del[delete old pack gists]
     gone --> check
@@ -1566,7 +1566,9 @@ Legend: only sealed packs are repacked, the copies are pushed and visible before
 - **Same gen**: copies keep path, gen and sha256, so the merge treats original and copy as one session with two places, and the rollback floors of other machines stay valid.
 - **Tombstones** of a repacked pack are copied too, they are never dropped. A tombstone that is the top gen of its path counts as live in the dead share, as such a pack holding a live tombstone is never fully dead and never deleted outright.
 - **Two places, one keeper**: when one session has several places at its top gen (prune or migrate copies), the place in the pack with the highest pack id is the keeper and every other place counts as dead, "lowest pack id loses". Every machine computes the same keeper from the same view, as such two prunes never keep different places and delete the rest.
-- **Last place rule**: a pack is deleted only when, in a fresh view read after the copies, every live entry in it has another place in a pack that this run does not delete. Copies sit in open packs, which no prune deletes (a prune copy never seals its pack, a later normal push or `--seal-orphans` does), as such two concurrent prunes can never delete the last place of a session.
+- **Last place rule**: a pack is deleted only when, in a fresh view read after the copies, every live entry in it has another place in a pack that this run does not delete. Copies sit in open packs, which no prune deletes (a prune copy never seals its pack, a later normal push seals it, or `--seal-orphans` of another machine), as such two concurrent prunes can never delete the last place of a session.
+
+- **Several open own packs**: prune may leave several open packs of our own writer id, a normal push seals them one at a time when it has no hint, as such "exactly one open pack per machine" holds for normal pushes only.
 - **Unreadable packs**: a pack that is `OtherKey`, `UnknownVersion` or not readable is never planned, never repacked and never deleted. A failed index read aborts the whole prune (see "Partial views abort").
 - **Orphaned open packs** (`--seal-orphans`): a machine that lost `state.toml` leaves its open pack open forever, and open packs are never pruned. `agr sync prune --seal-orphans` seals every open pack of another writer id whose `updated_at` is older than 30 days with a zero-byte append (`sealed: true`, no data). This is safe even when the owner is only offline: its next append sees another index, gets `Moved`, re-reads a sealed pack and starts a fresh one. After that the normal prune rules apply.
   - **Exception to "our writer"**: this is the one append to a pack of another writer. The pack layer checks our key, not sealed and idle over 30 days instead of our writer id, and passes the orphan's index as `expected_index`, the store guard is unchanged.
