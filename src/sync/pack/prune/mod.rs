@@ -12,6 +12,7 @@ use crate::sync::crypto::Key;
 use crate::sync::pack::merge::{Merged, Top};
 use crate::sync::pack::repo::{PushItem, Repo, RepoError};
 use crate::sync::store::{PackStore, StoreError};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 pub struct Env<'a> {
@@ -144,11 +145,14 @@ fn tombstones(repo: &Repo, ids: &[String]) -> Vec<(String, u64)> {
     all.map(|(path, m)| (path.clone(), m.gen)).collect()
 }
 
-fn delete_all(env: &Env, ids: &[String], out: &mut Report) {
+fn delete_all(env: &Env, ids: &[String], dead: &BTreeMap<String, u64>, out: &mut Report) {
     for (i, id) in ids.iter().enumerate() {
         (env.pace)();
         match env.store.delete(id) {
-            Ok(()) => out.deleted += 1,
+            Ok(()) => {
+                out.deleted += 1;
+                out.free_bytes += dead.get(id).copied().unwrap_or(0);
+            }
             Err(StoreError::NotFound) => out.lines.push(format!("{id} already gone")),
             Err(StoreError::RateLimited) => {
                 let left = ids.len() - i;
@@ -205,8 +209,7 @@ pub fn run(env: &Env) -> Result<Report, PruneError> {
             "{kept} packs kept, a copy is not visible yet, run again"
         ));
     }
-    delete_all(env, &ids, &mut out);
+    delete_all(env, &ids, &plan.dead, &mut out);
     out.move_bytes = plan.move_bytes;
-    out.free_bytes = plan.free_bytes;
     Ok(out)
 }

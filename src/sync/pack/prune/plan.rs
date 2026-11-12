@@ -16,6 +16,8 @@ pub struct Plan {
     pub move_bytes: u64,
     /// Dead bytes of every planned pack.
     pub free_bytes: u64,
+    /// Dead bytes per planned pack, what a delete of that pack frees.
+    pub dead: BTreeMap<String, u64>,
 }
 
 impl Plan {
@@ -55,6 +57,7 @@ pub fn plan(view: &View) -> Plan {
             continue;
         }
         out.free_bytes += dead;
+        out.dead.insert(id.clone(), dead);
     }
     out
 }
