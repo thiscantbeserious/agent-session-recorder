@@ -3,6 +3,7 @@
 
 use crate::helpers::gist_rig::Rig;
 use crate::helpers::pack_engine::{node, opts, raw_push, three, Node, CAST, TARGET};
+use crate::helpers::pack_repo::tamper;
 use agr::sync::format::{compact_status_lines, status_lines};
 use agr::sync::testing::{MemoryStore, PackStore, Repo};
 use agr::sync::{Key, Report};
@@ -88,22 +89,36 @@ fn status_shows_deleted_on_remote_with_restore_hint() {
     assert!(short.contains("agr sync push --overwrite"), "{short}");
 }
 
-/// One session replaced at gen 2 leaves `dead` bytes behind, `kept` bytes stay live.
-fn dead_share(dead: usize, kept: usize) -> String {
+/// One session replaced at gen 2 leaves `dead` bytes behind, `kept` bytes stay live. The pack
+/// of w1 is sealed when `seal` is set, an open pack is not something prune can act on.
+fn dead_share(dead: usize, kept: usize, seal: bool) -> String {
     let (n, store, key) = (node(), MemoryStore::new(), Key::generate());
     let text = |len: usize, c: char| c.to_string().repeat(len);
     raw_push(&store, &key, "w1", ("a/old.cast.gz", 1), &text(dead, 'd'));
     raw_push(&store, &key, "w1", ("a/old.cast.gz", 2), &text(10, 'n'));
     raw_push(&store, &key, "w1", ("a/keep.cast.gz", 1), &text(kept, 'k'));
+    if seal {
+        let info = store.list().unwrap().packs.remove(0);
+        tamper(&store, &key, &info, |i| i.sealed = true);
+    }
     compact(&status(&n, &store, &key))
 }
 
 #[test]
 fn prune_hint_at_21_percent_dead_not_at_19() {
-    let (out21, out19) = (dead_share(4200, 15_800), dead_share(3800, 16_200));
+    let (out21, out19) = (
+        dead_share(4200, 15_800, true),
+        dead_share(3800, 16_200, true),
+    );
     assert!(out21.contains("dead data"), "{out21}");
-    assert!(!out21.contains("agr sync prune"), "{out21}");
+    assert!(out21.contains("agr sync prune"), "{out21}");
     assert!(!out19.contains("dead data"), "{out19}");
+}
+
+#[test]
+fn prune_hint_ignores_open_packs() {
+    let out = dead_share(4200, 15_800, false);
+    assert!(!out.contains("dead data"), "{out}");
 }
 
 #[test]
