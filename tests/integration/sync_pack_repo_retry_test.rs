@@ -369,3 +369,28 @@ fn replanned_append_respects_the_file_cap() {
         .len();
     assert!(in_old <= 2, "{in_old} sessions in a pack of 2 slots");
 }
+
+#[test]
+fn replanned_prune_copies_keep_their_pack_open() {
+    let (mem, key, dir) = (
+        MemoryStore::new(),
+        Key::generate(),
+        tempfile::tempdir().unwrap(),
+    );
+    let mut first = repo(&mem, &key, "w1");
+    first.push_batch(&[item(dir.path(), "x", 1, b"x")]).unwrap();
+    let (once, same) = (AtomicBool::new(true), copy_key(&key));
+    mem.before_append(move |m, id| {
+        if once.swap(false, Ordering::SeqCst) {
+            let info = packs_of(m).into_iter().find(|p| p.id == id).unwrap();
+            crate::helpers::pack_repo::tamper(m, &same, &info, |_| {});
+        }
+    });
+    let big = vec![3u8; TARGET as usize + 10];
+    first
+        .push_copies(&[item(dir.path(), "y", 1, &big)])
+        .unwrap();
+    for info in packs_of(&mem) {
+        assert!(!crate::helpers::pack_repo::index_of(&mem, &key, &info).sealed);
+    }
+}
