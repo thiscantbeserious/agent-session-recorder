@@ -707,7 +707,7 @@ Mark sessions deleted on the remote (encrypted bytes stay in the pack, the local
 
 ```
 Mark a session deleted on the remote and drop its index entry. The encrypted bytes stay in the remote pack
-gist until a prune, which is not part of sync yet.
+gist until `agr sync prune` frees them.
 
 The local file is never touched. The delete applies to the newest version of the session at the
 time it runs, a version another machine pushed since the preview is deleted too. Patterns use * (any run) and ? (one character) against
@@ -737,6 +737,30 @@ to run until it has finished.
 EXAMPLE:
     agr sync migrate
     agr sync migrate --yes
+```
+
+#### agr sync prune
+
+Free the dead bytes of sealed packs on the remote
+
+- `--dry-run`: Show what would happen, change nothing
+- `--seal-orphans`: Seal idle open packs of other writers first, within a download budget
+
+```
+Free the dead bytes of sealed packs on the remote.
+
+Sessions you deleted or replaced leave dead bytes in sealed packs. Prune copies the
+sessions that are still live out of such a pack into new ones, checks the copies are
+visible, and only then deletes the old pack. Local session files are never touched.
+
+--seal-orphans first seals the idle open packs of other writers, so their dead bytes can
+be freed too. It downloads at most a fixed budget per run and prints how many packs are
+left, run it again for those.
+
+EXAMPLE:
+    agr sync prune --dry-run
+    agr sync prune
+    agr sync prune --seal-orphans
 ```
 
 #### agr sync key
