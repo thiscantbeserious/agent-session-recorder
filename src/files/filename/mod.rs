@@ -6,7 +6,7 @@
 mod rename;
 mod sanitize;
 
-pub use rename::{rename_file, RenameError};
+pub use rename::{apply_rename, current_stem, rename_file, target_path, RenameError};
 pub use sanitize::{is_valid_filename_char, sanitize, sanitize_branch, sanitize_directory};
 
 // Re-export template types so existing consumers (tests, recording.rs) keep working.

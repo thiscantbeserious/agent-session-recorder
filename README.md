@@ -241,6 +241,10 @@ Use `gzip -dc` and not `zcat`, on macOS `zcat` is the legacy `.Z` tool.
 
 Set `NO_COLOR=1` to disable colored output.
 
+## Syncing Sessions
+
+`agr sync` copies your compressed sessions, encrypted, to secret GitHub gists so another machine can pull them, see [docs/sync.md](docs/sync.md) and [docs/wiki/Command-sync.md](docs/wiki/Command-sync.md).
+
 ## Documentation
 
 | Resource | Description |

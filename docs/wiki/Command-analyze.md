@@ -26,7 +26,6 @@ agr analyze [OPTIONS] <FILE>
 | `--debug` | Enable debug mode (required for --output) |
 | `-o, --output` | Save cleaned content and exit (optionally specify filename) |
 | `--fast` | Skip JSON schema enforcement (faster but less reliable) |
-| `--wait` | Wait for keypress before exiting (used by TUI) |
 
 ## Description
 

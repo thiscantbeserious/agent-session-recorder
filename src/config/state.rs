@@ -1,6 +1,6 @@
 //! Machine-local state (~/.config/agr/state.toml), never synced
 
-use crate::files::codec;
+use crate::files::{codec, lock};
 use anyhow::{Context, Result};
 
 use serde::{Deserialize, Serialize};
@@ -16,6 +16,15 @@ pub struct State {
     /// Version of agr that last showed the compression offer
     #[serde(default)]
     pub compress_offer_version: Option<String>,
+    /// Set once the user confirmed the sync privacy notice
+    #[serde(default)]
+    pub sync_privacy_ack: bool,
+    /// Last failed automatic push, shown by `agr sync status`
+    #[serde(default)]
+    pub last_auto_push_error: Option<String>,
+    /// Random id of this machine for sync packs, created once
+    #[serde(default)]
+    pub writer_id: Option<String>,
 }
 
 impl State {
@@ -27,6 +36,65 @@ impl State {
     /// Save to `~/.config/agr/state.toml`
     pub fn save(&self) -> Result<()> {
         self.save_to(&Config::config_dir()?.join(FILE))
+    }
+
+    /// Re-reads the file at `path` under the lock, applies `f` and saves, so a field another
+    /// writer stored meanwhile (the writer id) is never overwritten by a stale copy.
+    pub fn update_at<T>(path: &Path, f: impl FnOnce(&mut State) -> T) -> Result<T> {
+        let _guard = lock::exclusive(path)?;
+        let mut state = Self::load_from(path);
+        let out = f(&mut state);
+        state.save_to(path)?;
+        Ok(out)
+    }
+
+    /// `update_at` for `~/.config/agr/state.toml`.
+    pub fn update<T>(f: impl FnOnce(&mut State) -> T) -> Result<T> {
+        Self::update_at(&Config::config_dir()?.join(FILE), f)
+    }
+
+    /// Store the last auto push error in the file at `path`.
+    pub fn store_auto_error(path: &Path, line: String) -> Result<()> {
+        Self::update_at(path, |s| s.last_auto_push_error = Some(line))
+    }
+
+    /// Like `store_auto_error` for `~/.config/agr/state.toml`, re-reads the file so a writer
+    /// that ran meanwhile is not overwritten.
+    pub fn store_auto_error_default(line: String) -> Result<()> {
+        Self::store_auto_error(&Config::config_dir()?.join(FILE), line)
+    }
+
+    /// The writer id stored in the file at `path`, created and saved on first use.
+    pub fn writer_id(path: &Path) -> Result<String> {
+        let mut state = Self::load_from(path);
+        if let Some(id) = &state.writer_id {
+            return Ok(id.clone());
+        }
+        let id = crate::sync::new_writer_id();
+        state.writer_id = Some(id.clone());
+        state.save_to(path)?;
+        Ok(id)
+    }
+
+    /// The stored writer id, `None` before the first push of this machine.
+    pub fn stored_writer_id() -> Option<String> {
+        Self::load().writer_id
+    }
+
+    /// Stores `id` as the writer id of this machine unless one is stored already, returns the id
+    /// that is stored. Two first runs at once both end up using the same one.
+    pub fn keep_writer_id(id: &str) -> Result<String> {
+        Self::keep_writer_id_at(&Config::config_dir()?.join(FILE), id)
+    }
+
+    pub fn keep_writer_id_at(path: &Path, id: &str) -> Result<String> {
+        let _guard = lock::exclusive(path)?;
+        let mut state = Self::load_from(path);
+        if state.writer_id.is_none() {
+            state.writer_id = Some(id.to_string());
+            state.save_to(path)?;
+        }
+        Ok(state.writer_id.unwrap_or_else(|| id.to_string()))
     }
 
     /// Load from a path, default when the file is missing or malformed (warns on stderr).
@@ -60,5 +128,53 @@ impl State {
                 .with_context(|| format!("Failed to create state directory: {:?}", parent))?;
         }
         codec::atomic_write(path, |w| Ok(w.write_all(contents.as_bytes())?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn store_auto_error_keeps_fields_written_by_others() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(super::FILE);
+        let other = State {
+            sync_privacy_ack: true,
+            compress_offer_version: Some("9".into()),
+            ..State::default()
+        };
+        other.save_to(&path).unwrap();
+        State::store_auto_error(&path, "offline".into()).unwrap();
+        let got = State::load_from(&path);
+        assert_eq!(got.compress_offer_version.as_deref(), Some("9"));
+        assert!(got.sync_privacy_ack);
+        assert_eq!(got.last_auto_push_error.as_deref(), Some("offline"));
+    }
+
+    use super::*;
+
+    #[test]
+    fn sync_fields_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        let state = State {
+            compress_offer_version: None,
+            sync_privacy_ack: true,
+            last_auto_push_error: Some("offline".into()),
+            writer_id: None,
+        };
+        state.save_to(&path).unwrap();
+        assert_eq!(State::load_checked(&path), (state, None));
+    }
+
+    #[test]
+    fn old_state_without_sync_fields_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        std::fs::write(&path, "compress_offer_version = \"0.9.0\"\n").unwrap();
+        let (state, warning) = State::load_checked(&path);
+        assert_eq!(warning, None);
+        assert_eq!(state.compress_offer_version.as_deref(), Some("0.9.0"));
+        assert!(!state.sync_privacy_ack);
+        assert_eq!(state.last_auto_push_error, None);
     }
 }

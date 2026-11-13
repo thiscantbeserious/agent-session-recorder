@@ -1,0 +1,13 @@
+//! Pack layer: pack index, seal rules and merge (more follows in later stages).
+
+pub(in crate::sync) mod index;
+pub(in crate::sync) mod merge;
+pub(in crate::sync) mod migrate;
+pub(in crate::sync) mod prune;
+pub(in crate::sync) mod repo;
+pub(in crate::sync) mod rules;
+pub(in crate::sync) mod stream;
+
+/// What the engine may name of the layers below, it never reaches `crypto` or `store` itself.
+pub(in crate::sync) use crate::sync::crypto::{sha256_reader, Key, Meta};
+pub(in crate::sync) use crate::sync::store::{PackStore, StoreError};

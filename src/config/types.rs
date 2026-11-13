@@ -23,6 +23,8 @@ pub struct Config {
     pub analysis: AnalysisConfig,
     #[serde(default)]
     pub agents: AgentsConfig,
+    #[serde(default)]
+    pub sync: SyncConfig,
 }
 
 fn default_config_version() -> u32 {
@@ -38,6 +40,62 @@ impl Default for Config {
             recording: RecordingConfig::default(),
             analysis: AnalysisConfig::default(),
             agents: AgentsConfig::default(),
+            sync: SyncConfig::default(),
+        }
+    }
+}
+
+/// Session sync configuration. Sync uses `gist` unless `backend = "off"`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyncConfig {
+    #[serde(default = "default_backend")]
+    pub backend: SyncBackendKind,
+    /// Push new sessions automatically after recording (unless the backend is `off`).
+    #[serde(default = "default_auto_push")]
+    pub auto_push: bool,
+    /// Target size of one pack in MiB, 16 to 512.
+    #[serde(default = "default_pack_size_mib")]
+    pub pack_size_mib: u64,
+}
+
+/// Remote backend for session sync.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SyncBackendKind {
+    Gist,
+    Off,
+}
+
+pub fn default_backend() -> SyncBackendKind {
+    SyncBackendKind::Gist
+}
+
+pub fn default_auto_push() -> bool {
+    false
+}
+
+pub fn default_pack_size_mib() -> u64 {
+    64
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
+        Self {
+            backend: default_backend(),
+            auto_push: default_auto_push(),
+            pack_size_mib: default_pack_size_mib(),
+        }
+    }
+}
+
+impl SyncConfig {
+    /// `pack_size_mib` has to stay in 16..=512, the same range as the pack seal rules.
+    pub fn validate(&self) -> Result<(), String> {
+        match self.pack_size_mib {
+            16..=512 => Ok(()),
+            got => Err(format!(
+                "pack_size_mib must be between 16 and 512, got {got}"
+            )),
         }
     }
 }
@@ -204,5 +262,30 @@ impl AgentsConfig {
         map.insert("codex".to_string(), &self.codex);
         map.insert("gemini".to_string(), &self.gemini);
         map
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Config, SyncBackendKind, SyncConfig};
+
+    #[test]
+    fn sync_backend_defaults_to_gist() {
+        assert_eq!(SyncConfig::default().backend, SyncBackendKind::Gist);
+        let parsed: Config = toml::from_str("[sync]\nauto_push = false\n").unwrap();
+        assert_eq!(parsed.sync.backend, SyncBackendKind::Gist);
+    }
+
+    #[test]
+    fn auto_push_is_off_by_default() {
+        assert!(!SyncConfig::default().auto_push);
+        let parsed: Config = toml::from_str("[sync]\n").unwrap();
+        assert!(!parsed.sync.auto_push);
+    }
+
+    #[test]
+    fn backend_off_disables_sync() {
+        let parsed: Config = toml::from_str("[sync]\nbackend = \"off\"\n").unwrap();
+        assert_eq!(parsed.sync.backend, SyncBackendKind::Off);
     }
 }

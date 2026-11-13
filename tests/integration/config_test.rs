@@ -300,6 +300,7 @@ mod state {
         let path = dir.path().join("sub").join("state.toml");
         let state = State {
             compress_offer_version: Some("0.3.0".into()),
+            ..Default::default()
         };
         state.save_to(&path).unwrap();
         assert_eq!(State::load_from(&path), state);
@@ -309,4 +310,143 @@ mod state {
             .collect();
         assert_eq!(names, vec![std::ffi::OsString::from("state.toml")]);
     }
+}
+
+mod sync_defaults {
+    use agr::config::SyncBackendKind;
+    use agr::Config;
+
+    #[test]
+    fn sync_defaults_are_gist_and_auto_push_off() {
+        let sync = Config::default().sync;
+        assert_eq!(
+            (sync.backend, sync.auto_push),
+            (SyncBackendKind::Gist, false)
+        );
+        let parsed: Config = toml::from_str("[sync]\n").unwrap();
+        assert_eq!(
+            (parsed.sync.backend, parsed.sync.auto_push),
+            (SyncBackendKind::Gist, false)
+        );
+    }
+}
+
+mod pack_size {
+    use agr::Config;
+
+    #[test]
+    fn pack_size_mib_defaults_to_64() {
+        assert_eq!(Config::default().sync.pack_size_mib, 64);
+        let parsed: Config = toml::from_str("[sync]\n").unwrap();
+        assert_eq!(parsed.sync.pack_size_mib, 64);
+    }
+
+    fn load_with(mib: u64) -> anyhow::Result<Config> {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, format!("[sync]\npack_size_mib = {mib}\n")).unwrap();
+        Config::load_from(&path)
+    }
+
+    #[test]
+    fn pack_size_mib_out_of_range_is_a_clear_error() {
+        for mib in [8, 1024] {
+            let err = load_with(mib).unwrap_err();
+            let text = format!("{err:#}");
+            assert!(
+                text.contains("pack_size_mib must be between 16 and 512"),
+                "{mib}: {text}"
+            );
+        }
+        assert_eq!(load_with(16).unwrap().sync.pack_size_mib, 16);
+        assert_eq!(load_with(512).unwrap().sync.pack_size_mib, 512);
+    }
+}
+
+mod writer_id {
+    use agr::config::state::State;
+
+    #[test]
+    fn writer_id_created_once_in_state_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        let first = State::writer_id(&path).unwrap();
+        let second = State::writer_id(&path).unwrap();
+        assert_eq!(first, second);
+        assert_eq!(State::load_from(&path).writer_id, Some(first));
+    }
+
+    #[test]
+    fn keep_writer_id_returns_the_id_that_was_stored_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        assert_eq!(
+            State::keep_writer_id_at(&path, "w-first").unwrap(),
+            "w-first"
+        );
+        let second = State::keep_writer_id_at(&path, "w-second").unwrap();
+        assert_eq!(second, "w-first");
+        assert_eq!(
+            State::load_from(&path).writer_id.as_deref(),
+            Some("w-first")
+        );
+    }
+}
+
+mod writer_id_race {
+    use agr::config::state::State;
+
+    #[test]
+    fn first_runs_at_once_all_get_the_id_that_ends_up_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.toml");
+        let got: Vec<String> = std::thread::scope(|s| {
+            let runs: Vec<_> = (0..8)
+                .map(|n| {
+                    let path = &path;
+                    s.spawn(move || State::keep_writer_id_at(path, &format!("w-{n}")).unwrap())
+                })
+                .collect();
+            runs.into_iter().map(|r| r.join().unwrap()).collect()
+        });
+        let stored = State::load_from(&path).writer_id.unwrap();
+        assert!(got.iter().all(|id| *id == stored), "{got:?} vs {stored}");
+    }
+}
+
+mod auto_error_race {
+    use agr::config::state::State;
+
+    #[test]
+    fn storing_the_auto_error_never_drops_a_writer_id_kept_meanwhile() {
+        for round in 0..40 {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("state.toml");
+            let id = std::thread::scope(|s| {
+                let err = s.spawn(|| State::store_auto_error(&path, "boom".into()).unwrap());
+                let keep = s.spawn(|| State::keep_writer_id_at(&path, "w-first").unwrap());
+                err.join().unwrap();
+                keep.join().unwrap()
+            });
+            let stored = State::load_from(&path);
+            assert_eq!(
+                stored.writer_id.as_deref(),
+                Some(id.as_str()),
+                "round {round}"
+            );
+            assert_eq!(
+                stored.last_auto_push_error.as_deref(),
+                Some("boom"),
+                "round {round}"
+            );
+        }
+    }
+}
+
+#[test]
+fn sync_backend_docs_describe_pack_gists() {
+    let md = agr::config::docs::generate_config_markdown();
+    let line = md.lines().find(|l| l.contains("`backend`")).unwrap();
+    assert!(!line.contains("One gist per session"), "{line}");
+    assert!(line.contains("pack"), "{line}");
 }

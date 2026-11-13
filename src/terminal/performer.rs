@@ -157,9 +157,7 @@ impl<'a> TerminalPerformer<'a> {
         }
         if *self.cursor_row < self.height {
             let end_col = (*self.cursor_col).min(self.width - 1);
-            for col in 0..=end_col {
-                self.buffer[*self.cursor_row][col] = Cell::default();
-            }
+            self.buffer[*self.cursor_row][..=end_col].fill(Cell::default());
         }
     }
 

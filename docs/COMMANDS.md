@@ -16,6 +16,7 @@ This document is auto-generated from the CLI definitions.
 - [agents](#agr-agents)
 - [config](#agr-config)
 - [shell](#agr-shell)
+- [sync](#agr-sync)
 - [optimize](#agr-optimize)
 
 ---
@@ -214,7 +215,6 @@ Analyze a recording with AI
 - `--debug`: Enable debug mode (required for --output)
 - `-o, --output`: Save cleaned content and exit (optionally specify filename)
 - `--fast`: Skip JSON schema enforcement (faster but less reliable)
-- `--wait`: Wait for keypress before exiting (used by TUI)
 
 ### Description
 
@@ -615,6 +615,164 @@ the shell script. Restart your shell after uninstalling.
 
 EXAMPLE:
     agr shell uninstall
+```
+
+---
+
+## agr sync
+
+Sync encrypted sessions to a remote (secret gists)
+
+### Subcommands
+
+#### agr sync status
+
+Show what push and pull would do, per session
+
+- `-v, --verbose`: List every session, not only the summary
+
+```
+Show what `agr sync push` and `agr sync pull` would do.
+
+Read only, never prompts. Needs the network to list the remote sessions.
+Prints one summary line per category, conflicts, failures and sessions
+sealed with another key are always listed. Use -v for every session.
+
+EXAMPLES:
+    agr sync status       Summary per category
+    agr sync status -v    One line per session
+```
+
+#### agr sync push
+
+Upload new and changed sessions (encrypted)
+
+- `<SESSIONS>`: Sessions to push (default: all)
+
+- `--dry-run`: Show what would happen, change nothing
+- `-y, --yes`: Skip the confirmation prompt
+- `--overwrite`: Resolve conflicts with the local session
+- `-v, --verbose`: List every session, not only the summary
+
+```
+Upload new and changed sessions, encrypted with your sync key.
+
+Every push with planned changes asks for confirmation. Without a terminal
+it needs --yes, otherwise nothing changes. The first push that creates gists
+also shows a privacy notice.
+Conflicts are skipped unless --overwrite is given (local wins).
+
+EXAMPLES:
+    agr sync push                    Push everything that changed
+    agr sync push claude/a.cast.gz   Push one session
+    agr sync push --dry-run          Show what would be pushed
+    agr sync push -v                 Preview every session, not a summary
+```
+
+#### agr sync pull
+
+Download new and changed sessions
+
+- `<SESSIONS>`: Sessions to pull (default: all)
+
+- `--dry-run`: Show what would happen, change nothing
+- `-y, --yes`: Skip the confirmation prompt
+- `--overwrite`: Resolve conflicts with the remote session
+- `-v, --verbose`: List every session, not only the summary
+
+```
+Download remote sessions, decrypt and verify them before writing.
+
+Needs your sync key (`agr sync key import` on a second machine).
+Conflicts are skipped unless --overwrite is given (remote wins, the
+replaced file is kept as a hidden .bak).
+
+EXAMPLES:
+    agr sync pull                    Pull everything that is new or changed
+    agr sync pull --dry-run          Show what would be pulled
+    agr sync pull -v                 Preview every session, not a summary
+```
+
+#### agr sync delete
+
+Mark sessions deleted on the remote (encrypted bytes stay in the pack, the local file stays)
+
+- `<SESSIONS>`: Patterns with * and ?, e.g. claude/*
+
+- `--all`: Delete every remote session
+- `--force`: Allow more than 10 deletes without a terminal, a terminal still asks the count
+- `--dry-run`: Show what would happen, change nothing
+- `-y, --yes`: Skip the confirmation prompt
+- `-v, --verbose`: List every session, not only the summary
+
+```
+Mark a session deleted on the remote and drop its index entry. The encrypted bytes stay in the remote pack
+gist until `agr sync prune` frees them.
+
+The local file is never touched. The delete applies to the newest version of the session at the
+time it runs, a version another machine pushed since the preview is deleted too. Patterns use * (any run) and ? (one character) against
+<agent>/<name> of the remote sessions. More than 10 matches ask to type the count.
+A pattern that matches no remote session aborts with exit 1 and deletes nothing, also when another
+pattern matches. With --all on an empty remote it prints Nothing to delete. and exits 0.
+
+EXAMPLE:
+    agr sync delete claude/a.cast.gz
+    agr sync delete 'claude/2024-*'
+    agr sync delete --all --dry-run
+```
+
+#### agr sync migrate
+
+Move the per-session gists of the old layout into packs
+
+- `-y, --yes`: Skip the confirmation prompt
+
+```
+Move the per-session gists of the old layout into packs.
+
+Shows what would move first and asks. Old gists are deleted only after the pack index
+shows their session. Local session files are never touched. Run it by hand, sync refuses
+to run until it has finished.
+
+EXAMPLE:
+    agr sync migrate
+    agr sync migrate --yes
+```
+
+#### agr sync prune
+
+Free the dead bytes of sealed packs on the remote
+
+- `--dry-run`: Show what would happen, change nothing
+- `--seal-orphans`: Seal idle open packs of other writers first, within a download budget
+
+```
+Free the dead bytes of sealed packs on the remote.
+
+Sessions you deleted or replaced leave dead bytes in sealed packs. Prune copies the
+sessions that are still live out of such a pack into new ones, checks the copies are
+visible, and only then deletes the old pack. Local session files are never touched.
+
+--seal-orphans first seals the idle open packs of other writers, so their dead bytes can
+be freed too. It downloads at most a fixed budget per run and prints how many packs are
+left, run it again for those.
+
+EXAMPLE:
+    agr sync prune --dry-run
+    agr sync prune
+    agr sync prune --seal-orphans
+```
+
+#### agr sync key
+
+Export or import the sync key
+
+```
+Export or import the sync key.
+
+SUBCOMMANDS:
+    agr sync key export              Print the recovery phrase
+    agr sync key import [PHRASE]     Install a recovery phrase (stdin when omitted)
 ```
 
 ---

@@ -1,0 +1,87 @@
+//! Range reads of a pack: only the parts that cover the range, through `gh api` on `raw_url` plus `Range`.
+//! The one read path, there is no clone fallback.
+
+use std::io::Read;
+use std::path::Path;
+
+use super::api::FileRef;
+use super::layout::check_parts;
+use super::parse::map_failure;
+use super::parts::PartReader;
+use super::runner::Runner;
+use super::{io_result, strings};
+use super::{GistStore, StoreError};
+
+/// `(part, first byte, last byte)` of every part the range `offset..offset + len` touches.
+/// A range past the end is `NotFound`, the same answer memory and dir give.
+/// The numbers come from the remote listing and the caller, so every sum is checked.
+pub(super) fn covering(
+    parts: &[FileRef],
+    offset: u64,
+    len: u64,
+) -> Result<Vec<(&FileRef, u64, u64)>, StoreError> {
+    let bad = || StoreError::NotFound;
+    let end = offset.checked_add(len).ok_or_else(bad)?;
+    let (mut start, mut out) = (0u64, Vec::new());
+    for part in parts {
+        let stop = start.checked_add(part.size).ok_or_else(bad)?;
+        if len > 0 && start < end && stop > offset && stop > start {
+            let last = end.min(stop) - 1 - start;
+            out.push((part, offset.max(start) - start, last));
+        }
+        start = stop;
+    }
+    if start < end {
+        return Err(StoreError::NotFound);
+    }
+    Ok(out)
+}
+
+impl<R: Runner> GistStore<R> {
+    /// Downloads one range of one part into `file`, `gh api` streams the raw bytes there.
+    fn fetch_range(
+        &self,
+        url: &str,
+        (from, to): (u64, u64),
+        file: &Path,
+    ) -> Result<(), StoreError> {
+        let range = format!("Range: bytes={from}-{to}");
+        let args = strings(&["api", "-H", &range, url]);
+        let out = io_result("gh", self.runner.run_to_file("gh", &args, &[], file))?;
+        if !out.success() {
+            return Err(map_failure("gh", &out.stderr, out.code));
+        }
+        let got = std::fs::metadata(file).map_err(|e| StoreError::Other(e.to_string()))?;
+        match got.len() == to - from + 1 {
+            true => Ok(()),
+            false => Err(StoreError::Other(format!(
+                "range {from}-{to} came back with {} bytes, the server ignored the range",
+                got.len()
+            ))),
+        }
+    }
+
+    pub(super) fn read_range(
+        &self,
+        id: &str,
+        offset: u64,
+        len: u64,
+    ) -> Result<Box<dyn Read>, StoreError> {
+        let files = self.files_of(id)?;
+        let parts: Vec<FileRef> = files
+            .into_iter()
+            .filter(|f| f.name.starts_with("data."))
+            .collect();
+        let names: Vec<&str> = parts.iter().map(|p| p.name.as_str()).collect();
+        check_parts(&names).map_err(|e| StoreError::Other(format!("pack {id} {e}")))?;
+        let wanted = covering(&parts, offset, len)?;
+        let scratch = crate::sync::store::scratch(&self.temp_base)?;
+        let mut paths = Vec::new();
+        for (n, (part, from, to)) in wanted.into_iter().enumerate() {
+            let path = scratch.join(&format!("range.{n}"));
+            self.fetch_range(&part.raw_url, (from, to), &path)?;
+            paths.push(path);
+        }
+        Ok(Box::new(PartReader::new(paths, Box::new(scratch))))
+    }
+}

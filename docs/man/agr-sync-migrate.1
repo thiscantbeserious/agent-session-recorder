@@ -1,0 +1,24 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH migrate 1  "migrate " 
+.SH NAME
+migrate \- Move the per\-session gists of the old layout into packs
+.SH SYNOPSIS
+\fBmigrate\fR [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-h\fR|\fB\-\-help\fR] 
+.SH DESCRIPTION
+Move the per\-session gists of the old layout into packs.
+.PP
+Shows what would move first and asks. Old gists are deleted only after the pack index
+shows their session. Local session files are never touched. Run it by hand, sync refuses
+to run until it has finished.
+.PP
+EXAMPLE:
+    agr sync migrate
+    agr sync migrate \-\-yes
+.SH OPTIONS
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Skip the confirmation prompt
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)

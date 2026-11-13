@@ -12,6 +12,8 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use tempfile::TempDir;
 
+use crate::helpers::parse_max_rss;
+
 const TARGET_BYTES: usize = 100 * 1024 * 1024;
 /// Allowed extra memory for decoder buffers on top of the 10% margin.
 const SLACK_BYTES: u64 = 8 * 1024 * 1024;
@@ -59,21 +61,6 @@ fn peak_rss(input: &Path, output: &Path) -> u64 {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(out.status.success(), "agr failed: {stderr}");
     parse_max_rss(&stderr).expect("max RSS line missing") * unit
-}
-
-/// macOS: `<n>  maximum resident set size` (bytes), Linux: `Maximum resident set size (kbytes): <n>`.
-fn parse_max_rss(stderr: &str) -> Option<u64> {
-    stderr.lines().find_map(|l| {
-        let l = l.trim();
-        if l.ends_with("maximum resident set size") {
-            l.split_whitespace().next()?.parse().ok()
-        } else {
-            l.strip_prefix("Maximum resident set size (kbytes):")?
-                .trim()
-                .parse()
-                .ok()
-        }
-    })
 }
 
 #[test]

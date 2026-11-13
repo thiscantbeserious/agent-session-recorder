@@ -65,6 +65,7 @@ pub fn offer_flow(
     print_lines(&preview_lines(&plan));
     let remembered = State {
         compress_offer_version: Some(version.to_string()),
+        ..state
     };
     if let Err(e) = save(&remembered) {
         eprintln!("Warning: could not remember the offer: {e:#}");
@@ -155,6 +156,7 @@ mod tests {
     fn second_call_with_saved_version_does_not_offer() {
         let state = State {
             compress_offer_version: Some(V.into()),
+            ..Default::default()
         };
         let (saved, asked) = flow(&plan_of(1), state, true);
         assert!(saved.is_empty());
@@ -196,6 +198,7 @@ mod tests {
         let path = t.path().join("state.toml");
         State {
             compress_offer_version: Some("0.2.0".into()),
+            ..Default::default()
         }
         .save_to(&path)
         .unwrap();
@@ -227,6 +230,7 @@ mod tests {
     fn plan_is_not_computed_when_version_already_offered() {
         let state = State {
             compress_offer_version: Some(V.into()),
+            ..Default::default()
         };
         assert_eq!(flow_counting_plans(Compression::Gzip, state), 0);
         assert_eq!(flow_counting_plans(Compression::Gzip, State::default()), 1);

@@ -65,6 +65,16 @@ Agent configuration
 | `enabled` | `["claude", "codex", "gemini"]` | List of agents to auto-wrap |
 | `no_wrap` | `[]` | Agents to exclude from auto-wrapping |
 
+### [sync]
+
+Session sync settings (gist by default, `backend = "off"` disables sync)
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `backend` | `"gist"` | Sync backend: "gist" (secret GitHub Gists via gh, link holders can read them but sessions are encrypted locally, losing the key makes them unrecoverable). "off" disables sync. Sessions are appended into pack gists of about pack_size_mib each, sessions over 1 GiB are skipped |
+| `auto_push` | `false` | Push new sessions automatically after recording, off by default, set true to push each new recording (needs one manual push first to confirm the privacy notice) |
+| `pack_size_mib` | `64` | Target size of one pack gist in MiB, 16 to 512 |
+
 ### [agents.\<name\>]
 
 Per-agent analysis configuration. Applies to `[agents.claude]`, `[agents.codex]`, `[agents.gemini]`.

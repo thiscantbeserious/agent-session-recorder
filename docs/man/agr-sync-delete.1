@@ -1,0 +1,43 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH delete 1  "delete " 
+.SH NAME
+delete \- Mark sessions deleted on the remote (encrypted bytes stay in the pack, the local file stays)
+.SH SYNOPSIS
+\fBdelete\fR [\fB\-\-all\fR] [\fB\-\-force\fR] [\fB\-\-dry\-run\fR] [\fB\-y\fR|\fB\-\-yes\fR] [\fB\-v\fR|\fB\-\-verbose\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fISESSIONS\fR] 
+.SH DESCRIPTION
+Mark a session deleted on the remote and drop its index entry. The encrypted bytes stay in the remote pack
+gist until `agr sync prune` frees them.
+.PP
+The local file is never touched. The delete applies to the newest version of the session at the
+time it runs, a version another machine pushed since the preview is deleted too. Patterns use * (any run) and ? (one character) against
+<agent>/<name> of the remote sessions. More than 10 matches ask to type the count.
+A pattern that matches no remote session aborts with exit 1 and deletes nothing, also when another
+pattern matches. With \-\-all on an empty remote it prints Nothing to delete. and exits 0.
+.PP
+EXAMPLE:
+    agr sync delete claude/a.cast.gz
+    agr sync delete \*(Aqclaude/2024\-*\*(Aq
+    agr sync delete \-\-all \-\-dry\-run
+.SH OPTIONS
+.TP
+\fB\-\-all\fR
+Delete every remote session
+.TP
+\fB\-\-force\fR
+Allow more than 10 deletes without a terminal, a terminal still asks the count
+.TP
+\fB\-\-dry\-run\fR
+Show what would happen, change nothing
+.TP
+\fB\-y\fR, \fB\-\-yes\fR
+Skip the confirmation prompt
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+List every session, not only the summary
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print help (see a summary with \*(Aq\-h\*(Aq)
+.TP
+[\fISESSIONS\fR]
+Patterns with * and ?, e.g. claude/*

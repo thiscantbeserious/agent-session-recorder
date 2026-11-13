@@ -199,6 +199,11 @@ fn generate_man_pages(output: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Arguments of a command as documented, hidden ones are left out.
+fn visible_args(cmd: &clap::Command) -> Vec<&clap::Arg> {
+    cmd.get_arguments().filter(|a| !a.is_hide_set()).collect()
+}
+
 /// Generate COMMANDS.md markdown documentation
 fn generate_markdown(output: &Path) -> Result<()> {
     fs::create_dir_all(output).context("Failed to create output directory")?;
@@ -246,7 +251,7 @@ fn generate_markdown(output: &Path) -> Result<()> {
         }
 
         // Arguments
-        let args: Vec<_> = subcommand.get_arguments().collect();
+        let args: Vec<_> = visible_args(subcommand);
         if !args.is_empty() {
             let positional: Vec<_> = args.iter().filter(|a| a.is_positional()).collect();
             let options: Vec<_> = args.iter().filter(|a| !a.is_positional()).collect();
@@ -322,7 +327,7 @@ fn generate_markdown(output: &Path) -> Result<()> {
                 }
 
                 // Nested arguments
-                let nested_args: Vec<_> = nested_cmd.get_arguments().collect();
+                let nested_args: Vec<_> = visible_args(nested_cmd);
                 let nested_positional: Vec<_> =
                     nested_args.iter().filter(|a| a.is_positional()).collect();
                 let nested_options: Vec<_> =
@@ -393,6 +398,19 @@ fn generate_markdown(output: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The hand-written intro of a command page, `None` only when the file does not exist.
+/// It lives in the repo, not in the output dir, so `-o other` still finds it.
+fn wiki_intro(name: &str) -> Result<Option<String>> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../docs/wiki-intro")
+        .join(format!("{name}.md"));
+    match fs::read_to_string(&path) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e).with_context(|| format!("Failed to read {}", path.display())),
+    }
+}
+
 /// Generate GitHub Wiki pages
 fn generate_wiki(output: &Path) -> Result<()> {
     let wiki_dir = output.join("wiki");
@@ -442,11 +460,17 @@ fn generate_wiki(output: &Path) -> Result<()> {
             page.push_str(&format!("{}\n\n", about));
         }
 
+        // A hand-written intro in docs/wiki-intro/<name>.md survives regeneration.
+        if let Some(intro) = wiki_intro(name)? {
+            page.push_str(intro.trim_end());
+            page.push_str("\n\n");
+        }
+
         page.push_str("## Usage\n\n");
         page.push_str(&format!("```\nagr {} [OPTIONS]", name));
 
         // Add positional args to usage
-        for arg in subcommand.get_arguments() {
+        for arg in visible_args(subcommand) {
             if arg.is_positional() {
                 let arg_name = arg.get_id().as_str();
                 if arg_name != "help" && arg_name != "version" {
@@ -461,7 +485,7 @@ fn generate_wiki(output: &Path) -> Result<()> {
         page.push_str("\n```\n\n");
 
         // Arguments
-        let args: Vec<_> = subcommand.get_arguments().collect();
+        let args: Vec<_> = visible_args(subcommand);
         let positional: Vec<_> = args.iter().filter(|a| a.is_positional()).collect();
         let options: Vec<_> = args.iter().filter(|a| !a.is_positional()).collect();
 
@@ -695,4 +719,21 @@ fn update_wiki(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn visible_args_skips_hidden_flags() {
+        let cmd = clap::Command::new("x")
+            .arg(clap::Arg::new("shown").long("shown"))
+            .arg(clap::Arg::new("secret").long("secret").hide(true));
+        let ids: Vec<_> = visible_args(&cmd)
+            .iter()
+            .map(|a| a.get_id().as_str())
+            .collect();
+        assert_eq!(ids, ["shown"]);
+    }
 }

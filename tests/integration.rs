@@ -1,5 +1,6 @@
 //! Integration tests for AGR library modules
 
+#[macro_use]
 #[path = "integration/helpers/mod.rs"]
 pub mod helpers;
 
@@ -27,6 +28,9 @@ mod codec_test;
 mod config_migrate_edge_test;
 #[path = "integration/config_migrate_test.rs"]
 mod config_migrate_test;
+
+#[path = "integration/dependency_features_test.rs"]
+mod dependency_features_test;
 
 #[path = "integration/config_test.rs"]
 mod config_test;
@@ -197,3 +201,180 @@ mod cli_offer_test;
 // CLI colour decision
 #[path = "integration/cli_color_test.rs"]
 mod cli_color_test;
+
+#[path = "integration/sync_engine_pack_test.rs"]
+mod sync_engine_pack_test;
+
+#[path = "integration/sync_engine_multi_test.rs"]
+mod sync_engine_multi_test;
+
+#[path = "integration/sync_status_format_test.rs"]
+mod sync_status_format_test;
+
+#[path = "integration/sync_output_test.rs"]
+mod sync_output_test;
+
+#[path = "integration/sync_setup_test.rs"]
+mod sync_setup_test;
+
+#[path = "integration/state_update_test.rs"]
+mod state_update_test;
+
+#[path = "integration/sync_auto_child_test.rs"]
+mod sync_auto_child_test;
+
+#[path = "integration/sync_plan_test.rs"]
+mod sync_plan_test;
+
+#[path = "integration/cli_sync_parse_test.rs"]
+mod cli_sync_parse_test;
+
+#[path = "integration/cli_sync_delete_test.rs"]
+mod cli_sync_delete_test;
+
+#[path = "integration/cli_sync_push_pull_test.rs"]
+mod cli_sync_push_pull_test;
+
+#[path = "integration/cli_sync_status_test.rs"]
+mod cli_sync_status_test;
+
+#[path = "integration/cli_sync_test.rs"]
+mod cli_sync_test;
+
+#[path = "integration/sync_queue_test.rs"]
+mod sync_queue_test;
+
+#[path = "integration/sync_pack_merge_test.rs"]
+mod sync_pack_merge_test;
+
+#[path = "integration/sync_pack_stream_test.rs"]
+mod sync_pack_stream_test;
+
+#[path = "integration/sync_runner_test.rs"]
+mod sync_runner_test;
+
+#[path = "integration/sync_pack_repo_test.rs"]
+mod sync_pack_repo_test;
+
+#[path = "integration/sync_pack_repo_cap_test.rs"]
+mod sync_pack_repo_cap_test;
+
+#[path = "integration/sync_pack_repo_dir_test.rs"]
+mod sync_pack_repo_dir_test;
+
+#[path = "integration/sync_pack_repo_fits_test.rs"]
+mod sync_pack_repo_fits_test;
+
+#[path = "integration/sync_pack_migrate_test.rs"]
+mod sync_pack_migrate_test;
+
+#[path = "integration/sync_pack_migrate_moving_test.rs"]
+mod sync_pack_migrate_moving_test;
+
+#[path = "integration/sync_pack_migrate_report_test.rs"]
+mod sync_pack_migrate_report_test;
+
+#[path = "integration/sync_pack_repo_legacy_test.rs"]
+mod sync_pack_repo_legacy_test;
+
+#[path = "integration/sync_pack_repo_read_test.rs"]
+mod sync_pack_repo_read_test;
+
+#[path = "integration/sync_pack_repo_report_test.rs"]
+mod sync_pack_repo_report_test;
+
+#[path = "integration/sync_pack_repo_retry_test.rs"]
+mod sync_pack_repo_retry_test;
+
+#[path = "integration/sync_pack_repo_session_test.rs"]
+mod sync_pack_repo_session_test;
+
+#[path = "integration/sync_store_contract_test.rs"]
+mod sync_store_contract_test;
+
+#[path = "integration/sync_store_error_test.rs"]
+mod sync_store_error_test;
+
+#[path = "integration/sync_store_gist_test.rs"]
+mod sync_store_gist_test;
+
+#[path = "integration/sync_store_gist_append_test.rs"]
+mod sync_store_gist_append_test;
+
+#[path = "integration/sync_store_gist_cache_test.rs"]
+mod sync_store_gist_cache_test;
+
+#[path = "integration/analyze_options_test.rs"]
+mod analyze_options_test;
+
+#[path = "integration/analyze_rename_test.rs"]
+mod analyze_rename_test;
+
+#[path = "integration/config_migrate_sections_test.rs"]
+mod config_migrate_sections_test;
+
+#[path = "integration/sync_blob_kat_test.rs"]
+mod sync_blob_kat_test;
+
+#[path = "integration/sync_blob_stream_test.rs"]
+mod sync_blob_stream_test;
+
+#[path = "integration/sync_blob_test.rs"]
+mod sync_blob_test;
+
+#[path = "integration/sync_layer_test.rs"]
+mod sync_layer_test;
+
+#[path = "integration/sync_gist_legacy_test.rs"]
+mod sync_gist_legacy_test;
+
+#[path = "integration/sync_scan_path_test.rs"]
+mod sync_scan_path_test;
+
+#[path = "integration/tui_cleanup_app_test.rs"]
+mod tui_cleanup_app_test;
+
+#[path = "integration/tui_list_app_render_test.rs"]
+mod tui_list_app_render_test;
+
+#[path = "integration/tui_list_app_test.rs"]
+mod tui_list_app_test;
+
+#[path = "integration/sync_confirm_test.rs"]
+mod sync_confirm_test;
+
+#[path = "integration/sync_select_test.rs"]
+mod sync_select_test;
+
+#[path = "integration/sync_pack_rules_test.rs"]
+mod sync_pack_rules_test;
+
+#[path = "integration/sync_decide_test.rs"]
+mod sync_decide_test;
+
+#[path = "integration/sync_store_memory_test.rs"]
+mod sync_store_memory_test;
+
+#[path = "integration/sync_pack_index_test.rs"]
+mod sync_pack_index_test;
+
+#[path = "integration/sync_format_status_test.rs"]
+mod sync_format_status_test;
+
+#[path = "integration/sync_format_summary_test.rs"]
+mod sync_format_summary_test;
+
+#[path = "integration/sync_store_dir_test.rs"]
+mod sync_store_dir_test;
+
+#[path = "integration/sync_engine_index_test.rs"]
+mod sync_engine_index_test;
+
+#[path = "integration/sync_pack_prune_plan_test.rs"]
+mod sync_pack_prune_plan_test;
+
+#[path = "integration/sync_pack_prune_run_test.rs"]
+mod sync_pack_prune_run_test;
+
+#[path = "integration/sync_pack_prune_orphans_test.rs"]
+mod sync_pack_prune_orphans_test;

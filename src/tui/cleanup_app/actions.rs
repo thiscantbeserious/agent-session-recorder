@@ -10,7 +10,7 @@ use crate::files::remove_auxiliary_files;
 /// Delete session files with their auxiliary lock/backup files.
 ///
 /// Returns the number of removed sessions and the on-disk bytes freed.
-pub(super) fn delete_paths(paths: &[String]) -> (usize, u64) {
+pub fn delete_paths(paths: &[String]) -> (usize, u64) {
     let mut deleted = 0;
     let mut freed = 0;
     for path in paths {
@@ -100,7 +100,7 @@ impl CleanupApp {
 }
 
 /// Status line after a delete run, the freed size is the on-disk size.
-pub(super) fn deletion_status(deleted: usize, count: usize, freed: u64) -> String {
+pub fn deletion_status(deleted: usize, count: usize, freed: u64) -> String {
     if deleted == count {
         return format!(
             "Deleted {} sessions (freed {})",

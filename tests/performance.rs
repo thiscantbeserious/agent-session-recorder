@@ -17,3 +17,6 @@ mod transform_cli_test;
 
 #[path = "performance/gzip_memory_test.rs"]
 mod gzip_memory_test;
+
+#[path = "performance/sync_memory_test.rs"]
+mod sync_memory_test;

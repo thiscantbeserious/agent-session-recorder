@@ -11,8 +11,8 @@ use super::app::{App, SharedMode, SharedState};
 use super::widgets::FileItem;
 use crate::config::Config;
 
-mod actions;
-mod glob;
+pub(in crate::tui) mod actions;
+pub(in crate::tui) mod glob;
 mod keys;
 mod render;
 mod status;
@@ -97,6 +97,3 @@ impl CleanupApp {
         self.files_deleted
     }
 }
-
-#[cfg(test)]
-mod tests;

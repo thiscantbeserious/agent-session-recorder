@@ -18,7 +18,7 @@ use crate::tui::widgets::FileExplorer;
 /// Build the display label for a context menu item.
 ///
 /// Appends shortcut hint and, for Restore when no backup exists, a "no backup" warning.
-pub(super) fn build_menu_item_label(item: &ContextMenuItem, backup_exists: bool) -> String {
+pub fn build_menu_item_label(item: &ContextMenuItem, backup_exists: bool) -> String {
     let is_restore = matches!(item, ContextMenuItem::Restore);
     if is_restore && !backup_exists {
         if item.has_shortcut() {
@@ -34,11 +34,7 @@ pub(super) fn build_menu_item_label(item: &ContextMenuItem, backup_exists: bool)
 }
 
 /// Return the style for a context menu item based on selection and disabled state.
-pub(super) fn menu_item_style(
-    is_selected: bool,
-    is_disabled: bool,
-    theme: &crate::theme::Theme,
-) -> Style {
+pub fn menu_item_style(is_selected: bool, is_disabled: bool, theme: &crate::theme::Theme) -> Style {
     if is_selected {
         theme.highlight_style()
     } else if is_disabled {
@@ -49,7 +45,7 @@ pub(super) fn menu_item_style(
 }
 
 /// Return the confirm-dialog prompt prefix for a mode, or None if the mode is not a confirm mode.
-pub(super) fn confirm_prompt_for_mode(mode: Mode) -> Option<&'static str> {
+pub fn confirm_prompt_for_mode(mode: Mode) -> Option<&'static str> {
     match mode {
         Mode::ConfirmDelete => Some("🗑  Delete? "),
         Mode::ConfirmUnlock => Some("🔓 Force unlock? "),
@@ -169,7 +165,7 @@ pub(super) fn render_status_line_for_mode(
 /// Build the rename cursor spans for the status line.
 ///
 /// Populates `spans` with the styled before/cursor/after segments.
-pub(super) fn build_rename_status_spans<'a>(
+pub fn build_rename_status_spans<'a>(
     spans: &mut Vec<Span<'a>>,
     rename_input: &'a str,
     rename_cursor: usize,
@@ -197,7 +193,7 @@ pub(super) fn build_rename_status_spans<'a>(
 /// Return the footer hint text for the current mode.
 ///
 /// Free function — does not need `self`; import_state is only needed for `Mode::Import`.
-pub(super) fn footer_text_for_mode(mode: Mode, import_state: &Option<import::ImportState>) -> &str {
+pub fn footer_text_for_mode(mode: Mode, import_state: &Option<import::ImportState>) -> &str {
     match mode {
         Mode::Search => "Esc: cancel | Enter: apply search | Backspace: delete char",
         Mode::AgentFilter => "←/→: change agent | Enter: apply | Esc: cancel",
@@ -289,7 +285,7 @@ pub(super) fn render_modal_overlays(
 /// - 65.5 -> "1m 5s"
 /// - 3661.0 -> "1h 1m 1s"
 /// - 30.0 -> "30s"
-pub(super) fn format_duration(seconds: f64) -> String {
+pub fn format_duration(seconds: f64) -> String {
     let total_secs = seconds.max(0.0).round() as u64;
     let hours = total_secs / 3600;
     let minutes = (total_secs % 3600) / 60;
