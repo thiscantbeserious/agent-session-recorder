@@ -47,7 +47,7 @@ pub fn managed_install(
     path: &Path,
     home: Option<&Path>,
     cargo_home: Option<&Path>,
-    brew_prefix: Option<&Path>,
+    _brew_prefix: Option<&Path>,
 ) -> Option<Managed> {
     let cargo_bin = cargo_home
         .map(Path::to_path_buf)
@@ -57,8 +57,9 @@ pub fn managed_install(
     if cargo_bin.is_some_and(|b| path.starts_with(b)) {
         return Some(Managed::Cargo);
     }
+    // Homebrew owns only what resolves into its Cellar, a prefix like /usr/local is shared.
     let cellar = path.components().any(|c| c.as_os_str() == "Cellar");
-    if cellar || brew_prefix.is_some_and(|b| path.starts_with(b)) {
+    if cellar {
         return Some(Managed::Homebrew);
     }
     None
