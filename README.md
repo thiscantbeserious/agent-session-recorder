@@ -245,6 +245,25 @@ Set `NO_COLOR=1` to disable colored output.
 
 `agr sync` copies your compressed sessions, encrypted, to secret GitHub gists so another machine can pull them, see [docs/sync.md](docs/sync.md) and [docs/wiki/Command-sync.md](docs/wiki/Command-sync.md).
 
+## Updating
+
+`agr update` replaces the running binary with the latest GitHub release, `agr update --check` only reports and downloads nothing.
+
+```bash
+agr update --check    # Report current and latest version
+agr update            # Download, verify and install the latest release
+```
+
+**Exit codes**: 0 when up to date, running a newer dev build, or updated. 10 when an update is available (`--check` only). 1 on any failure.
+
+**Requirements**:
+- `curl` must be installed, `agr update` uses it for all downloads.
+- Linux and macOS on x86_64 and aarch64 (the platforms with release binaries). Windows is not supported, install releases manually there.
+- Only releases from 0.4.0 on can be applied, as older ones publish no checksums.
+- Installs managed by cargo or Homebrew are refused, update those with their own tool.
+
+Manual fallback: [GitHub releases](https://github.com/thiscantbeserious/agent-session-recorder/releases).
+
 ## Documentation
 
 | Resource | Description |
@@ -312,6 +331,8 @@ cargo test               # Run tests
 ./tests/e2e_test.sh      # E2E tests (requires asciinema)
 cargo xtask gen-docs     # Regenerate documentation
 ```
+
+Releases publish a `SHA256SUMS` file from `release.yml`. The checksum catches corruption, not a compromised release.
 
 ### Project Structure
 
