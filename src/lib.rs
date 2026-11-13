@@ -16,6 +16,7 @@ pub mod storage;
 pub mod sync;
 pub mod terminal;
 pub mod tui;
+pub mod update;
 pub mod utils;
 
 pub use asciicast::{AsciicastFile, Event, EventType, Header, MarkerInfo, MarkerManager};
