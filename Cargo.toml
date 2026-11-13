@@ -9,7 +9,7 @@ rust-version = "1.88"
 description = "Agent Session Recorder - CLI tool for recording AI agent sessions with asciinema"
 authors = ["Simon Sanladerer"]
 license = "MIT"
-repository = "https://github.com/simon/agent-session-recorder"
+repository = "https://github.com/thiscantbeserious/agent-session-recorder"
 keywords = ["cli", "asciinema", "recording", "ai", "agent"]
 categories = ["command-line-utilities"]
 
