@@ -135,11 +135,7 @@ impl NoiseClassifier {
         }
 
         // Tool summary counter: "Done" + duration/count pattern
-        if s.contains("Done") && (s.contains("tool use") || s.contains("tool call")) {
-            return true;
-        }
-
-        false
+        s.contains("Done") && (s.contains("tool use") || s.contains("tool call"))
     }
 }
 
