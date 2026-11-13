@@ -98,6 +98,12 @@ fn curl_args_are_bounded() {
 }
 
 #[test]
+fn curl_args_ignore_user_config() {
+    let args = curl_args("https://github.com/a", Kind::Api, None);
+    assert_eq!(args.first().map(String::as_str), Some("--disable"));
+}
+
+#[test]
 fn override_rejects_http() {
     assert!(Source::from_override("http://x").is_err());
     assert!(Source::from_override("https://x").is_ok());
