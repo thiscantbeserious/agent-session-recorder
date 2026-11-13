@@ -267,7 +267,18 @@ fn old_inode_keeps_running() {
         f = flag.display()
     );
     fs::write(&t, script).unwrap();
-    let child = Command::new(&t).stdout(Stdio::piped()).spawn().unwrap();
+    // A parallel test can leak the write fd of the script, retry only ETXTBSY.
+    let mut tries = 0;
+    let child = loop {
+        match Command::new(&t).stdout(Stdio::piped()).spawn() {
+            Ok(c) => break c,
+            Err(e) if e.raw_os_error() == Some(26) && tries < 50 => {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(e) => panic!("spawn failed: {e}"),
+        }
+    };
     while !started.exists() {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
