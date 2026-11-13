@@ -236,7 +236,13 @@ pub fn run_hooked(
     let staged = stage(target.parent().unwrap_or(Path::new(".")))?;
     source.fetch_file(&asset.url, &staged.0)?;
     verify_file(&staged.0, asset.size, &want)?;
-    let mode = fs::metadata(target)?.permissions().mode() & 0o7777;
+    let meta = fs::metadata(target)?;
+    let mode = meta.permissions().mode() & 0o7777;
+    // The staged file gets our effective group, give it the group of the target.
+    if fs::metadata(&staged.0)?.gid() != meta.gid() {
+        std::os::unix::fs::chown(&staged.0, None, Some(meta.gid()))
+            .context("cannot keep the group of the installed binary, it is unchanged")?;
+    }
     fs::set_permissions(&staged.0, fs::Permissions::from_mode(mode))?;
     smoke_run(&staged.0, release.version)?;
     File::open(&staged.0)?.sync_all()?;
