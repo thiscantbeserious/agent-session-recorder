@@ -1,0 +1,14 @@
+# cargo audit, run by the `Dependency audit` CI job next to cargo deny (deny.toml).
+# A new advisory fails CI. Every ignore names the issue that removes it, delete the
+# line together with the fix.
+
+[advisories]
+ignore = [
+    "RUSTSEC-2026-0204", # crossbeam-epoch via rayon, #175
+    "RUSTSEC-2026-0009", # time via vergen-gitcl, build only, #169
+    "RUSTSEC-2026-0190", # anyhow downcast_mut, #181
+    "RUSTSEC-2024-0436", # paste unmaintained via ratatui 0.29, #173
+    "RUSTSEC-2026-0253", # lru via ratatui 0.29, #173
+    "RUSTSEC-2026-0002", # lru via ratatui 0.29, #173
+]
+informational_warnings = ["unmaintained", "unsound", "notice"]
