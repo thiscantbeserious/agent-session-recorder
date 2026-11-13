@@ -81,6 +81,30 @@ fn managed_brew() {
 }
 
 #[test]
+fn shared_prefix_standalone_binary_is_not_managed() {
+    let p = Path::new("/usr/local/bin/agr");
+    assert_eq!(
+        managed_install(p, None, None, Some(Path::new("/usr/local"))),
+        None
+    );
+}
+
+#[test]
+fn brew_symlink_into_cellar_is_managed() {
+    let tmp = TempDir::new().unwrap();
+    let bin = tmp.path().join("Cellar/agr/0.4.0/bin");
+    fs::create_dir_all(&bin).unwrap();
+    fs::write(bin.join("agr"), OLD).unwrap();
+    fs::create_dir_all(tmp.path().join("bin")).unwrap();
+    let link = tmp.path().join("bin/agr");
+    symlink(bin.join("agr"), &link).unwrap();
+    let err = check_managed(&link, None, None, Some(tmp.path()))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("brew upgrade"), "{err}");
+}
+
+#[test]
 fn managed_through_symlink() {
     let tmp = TempDir::new().unwrap();
     let real_dir = tmp.path().join(".cargo/bin");
