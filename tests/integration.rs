@@ -378,3 +378,6 @@ mod sync_pack_prune_run_test;
 
 #[path = "integration/sync_pack_prune_orphans_test.rs"]
 mod sync_pack_prune_orphans_test;
+
+#[path = "integration/release_workflow_test.rs"]
+mod release_workflow_test;
