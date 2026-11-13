@@ -55,3 +55,47 @@ fn override_not_documented() {
         }
     }
 }
+
+const OLD_SOURCE: &str = "github.com/simon/agent-session-recorder";
+
+#[test]
+fn cargo_repository_points_at_release_source() {
+    let text = fs::read_to_string(root().join("Cargo.toml")).unwrap();
+    assert!(text
+        .contains("repository = \"https://github.com/thiscantbeserious/agent-session-recorder\""));
+}
+
+#[test]
+fn no_old_release_source_left() {
+    let out = std::process::Command::new("git")
+        .args([
+            "ls-files",
+            "Cargo.toml",
+            "README.md",
+            "docs",
+            "src",
+            ".github",
+            "xtask",
+        ])
+        .current_dir(root())
+        .output()
+        .unwrap();
+    for rel in String::from_utf8_lossy(&out.stdout).lines() {
+        if let Ok(text) = fs::read_to_string(root().join(rel)) {
+            assert!(!text.contains(OLD_SOURCE), "old source in {rel}");
+        }
+    }
+}
+
+#[test]
+fn old_path_in_no_tracked_cargo_toml() {
+    let out = std::process::Command::new("git")
+        .args(["ls-files", "*Cargo.toml"])
+        .current_dir(root())
+        .output()
+        .unwrap();
+    for rel in String::from_utf8_lossy(&out.stdout).lines() {
+        let text = fs::read_to_string(root().join(rel)).unwrap();
+        assert!(!text.contains(OLD_SOURCE), "old source in {rel}");
+    }
+}
