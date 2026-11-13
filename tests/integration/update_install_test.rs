@@ -311,16 +311,18 @@ fn old_inode_keeps_running() {
     let t = target(dir.path(), 0o755);
     let flag = dir.path().join("go");
     let started = dir.path().join("started");
-    let script = format!(
-        "#!/bin/sh\ntouch {s}\nwhile [ ! -f {f} ]; do sleep 0.05; done\necho finished\n",
-        s = started.display(),
-        f = flag.display()
-    );
+    let script =
+        "#!/bin/sh\ntouch \"$1\"\nwhile [ ! -f \"$2\" ]; do sleep 0.05; done\necho finished\n";
     fs::write(&t, script).unwrap();
     // A parallel test can leak the write fd of the script, retry only ETXTBSY.
     let mut tries = 0;
     let child = loop {
-        match Command::new(&t).stdout(Stdio::piped()).spawn() {
+        match Command::new(&t)
+            .arg(&started)
+            .arg(&flag)
+            .stdout(Stdio::piped())
+            .spawn()
+        {
             Ok(c) => break c,
             Err(e) if e.raw_os_error() == Some(26) && tries < 50 => {
                 tries += 1;
@@ -329,7 +331,10 @@ fn old_inode_keeps_running() {
             Err(e) => panic!("spawn failed: {e}"),
         }
     };
+    let mut waits = 0;
     while !started.exists() {
+        waits += 1;
+        assert!(waits < 200, "the script never created the started file");
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     let (_fake, source) = src(&Spec::default());
