@@ -35,9 +35,3 @@ fn release_upload_covers_sha256sums() {
         "step text: {step}"
     );
 }
-
-#[test]
-#[ignore = "needs agr::update::platform from Stage 2"]
-fn release_matrix_matches_update_assets() {
-    unimplemented!("filled in Stage 2");
-}
