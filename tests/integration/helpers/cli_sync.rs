@@ -85,12 +85,11 @@ impl Machine {
         .stderr(Stdio::piped());
         let mut child = cmd.spawn().unwrap();
         if let Some(text) = input {
-            child
-                .stdin
-                .take()
-                .unwrap()
-                .write_all(text.as_bytes())
-                .unwrap();
+            let written = child.stdin.take().unwrap().write_all(text.as_bytes());
+            // a child that exits before reading all of its input closes the pipe, that is not a failure
+            if let Err(e) = written {
+                assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe, "{e}");
+            }
         }
         let out = child.wait_with_output().unwrap();
         Out {
