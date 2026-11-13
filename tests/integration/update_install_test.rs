@@ -61,7 +61,9 @@ fn managed_cargo() {
     );
     let msg = Managed::Cargo.message(&bin);
     assert!(
-        msg.contains("cargo install agr") && msg.contains("/home/u/.cargo/bin/agr"),
+        msg.contains(
+            "cargo install --git https://github.com/thiscantbeserious/agent-session-recorder"
+        ) && msg.contains("/home/u/.cargo/bin/agr"),
         "{msg}"
     );
     assert_eq!(
@@ -119,7 +121,9 @@ fn managed_through_symlink() {
         .to_string();
     let real = fs::canonicalize(&real).unwrap();
     assert!(
-        err.contains("cargo install agr") && err.contains(real.to_str().unwrap()),
+        err.contains(
+            "cargo install --git https://github.com/thiscantbeserious/agent-session-recorder"
+        ) && err.contains(real.to_str().unwrap()),
         "{err}"
     );
 }
