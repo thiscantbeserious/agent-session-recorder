@@ -129,6 +129,7 @@ pub fn curl_args(url: &str, kind: Kind, out: Option<&Path>) -> Vec<String> {
         ("30", "1M")
     };
     let mut a: Vec<String> = [
+        "--disable",
         "--silent",
         "--show-error",
         "--proto",
