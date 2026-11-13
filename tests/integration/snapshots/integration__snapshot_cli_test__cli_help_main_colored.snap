@@ -48,6 +48,7 @@ Commands:
   agents    ESC[37mManage configured agentsESC[0m
   config    ESC[37mConfiguration managementESC[0m
   shell     ESC[37mManage shell integrationESC[0m
+  update    ESC[37mUpdate agr to the latest GitHub releaseESC[0m
   sync      ESC[37mSync encrypted sessions to a remote (secret gists)ESC[0m
   optimize  ESC[37mOptimize asciicast recordings (removes silence)ESC[0m
   help      ESC[37mPrint this message or the help of the given subcommand(s)ESC[0m

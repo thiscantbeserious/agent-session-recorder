@@ -20,6 +20,7 @@ pub mod shell;
 pub mod status;
 pub mod sync;
 pub mod transform;
+pub mod update;
 
 /// Resolve `file` (absolute, short or fuzzy), fail if missing, warn if not `.cast` or `.cast.gz`.
 pub fn resolve_existing_session(
