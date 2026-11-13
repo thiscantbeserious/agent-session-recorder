@@ -51,8 +51,10 @@ pub fn managed_install(
 ) -> Option<Managed> {
     let cargo_bin = cargo_home
         .map(Path::to_path_buf)
-        .or_else(|| home.map(|h| h.join(".cargo")));
-    if cargo_bin.is_some_and(|c| path.starts_with(c.join("bin"))) {
+        .or_else(|| home.map(|h| h.join(".cargo")))
+        .map(|c| c.join("bin"))
+        .map(|b| fs::canonicalize(&b).unwrap_or(b));
+    if cargo_bin.is_some_and(|b| path.starts_with(b)) {
         return Some(Managed::Cargo);
     }
     let cellar = path.components().any(|c| c.as_os_str() == "Cellar");
