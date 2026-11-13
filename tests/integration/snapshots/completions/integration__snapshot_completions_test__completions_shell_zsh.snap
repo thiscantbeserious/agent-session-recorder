@@ -1,6 +1,5 @@
 ---
 source: tests/integration/snapshot_completions_test.rs
-assertion_line: 36
 expression: output
 ---
 === agr completions --shell zsh ===
@@ -512,6 +511,13 @@ esac
     ;;
 esac
 ;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+'--check[Only report whether an update is available, exit 10 if so]' \
+'-h[Print help (see more with '\''--help'\'')]' \
+'--help[Print help (see more with '\''--help'\'')]' \
+&& ret=0
+;;
 (sync)
 _arguments "${_arguments_options[@]}" : \
 '-h[Print help]' \
@@ -933,6 +939,10 @@ _arguments "${_arguments_options[@]}" : \
     ;;
 esac
 ;;
+(update)
+_arguments "${_arguments_options[@]}" : \
+&& ret=0
+;;
 (sync)
 _arguments "${_arguments_options[@]}" : \
 ":: :_agr__help__sync_commands" \
@@ -1034,6 +1044,7 @@ _agr_commands() {
 'agents:Manage configured agents' \
 'config:Configuration management' \
 'shell:Manage shell integration' \
+'update:Update agr to the latest GitHub release' \
 'sync:Sync encrypted sessions to a remote (secret gists)' \
 'optimize:Optimize asciicast recordings (removes silence)' \
 'completions:Generate shell completions (internal use)' \
@@ -1296,6 +1307,7 @@ _agr__help_commands() {
 'agents:Manage configured agents' \
 'config:Configuration management' \
 'shell:Manage shell integration' \
+'update:Update agr to the latest GitHub release' \
 'sync:Sync encrypted sessions to a remote (secret gists)' \
 'optimize:Optimize asciicast recordings (removes silence)' \
 'completions:Generate shell completions (internal use)' \
@@ -1545,6 +1557,11 @@ _agr__help__sync__push_commands() {
 _agr__help__sync__status_commands() {
     local commands; commands=()
     _describe -t commands 'agr help sync status commands' commands "$@"
+}
+(( $+functions[_agr__help__update_commands] )) ||
+_agr__help__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'agr help update commands' commands "$@"
 }
 (( $+functions[_agr__list_commands] )) ||
 _agr__list_commands() {
@@ -1822,6 +1839,11 @@ _agr__sync__push_commands() {
 _agr__sync__status_commands() {
     local commands; commands=()
     _describe -t commands 'agr sync status commands' commands "$@"
+}
+(( $+functions[_agr__update_commands] )) ||
+_agr__update_commands() {
+    local commands; commands=()
+    _describe -t commands 'agr update commands' commands "$@"
 }
 
 if [ "$funcstack[1]" = "_agr" ]; then
