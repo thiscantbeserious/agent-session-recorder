@@ -88,6 +88,7 @@ pub fn dispatch(cli: Cli) -> Result<()> {
             ShellCommands::Install => commands::shell::handle_install(),
             ShellCommands::Uninstall => commands::shell::handle_uninstall(),
         },
+        Commands::Update { check } => commands::update::handle(check),
         Commands::Sync(cmd) => commands::sync::handle(cmd),
         Commands::Optimize {
             remove_silence,

@@ -378,3 +378,27 @@ mod sync_pack_prune_run_test;
 
 #[path = "integration/sync_pack_prune_orphans_test.rs"]
 mod sync_pack_prune_orphans_test;
+
+#[path = "integration/release_workflow_test.rs"]
+mod release_workflow_test;
+
+#[path = "integration/update_version_test.rs"]
+mod update_version_test;
+
+#[path = "integration/update_platform_test.rs"]
+mod update_platform_test;
+
+#[path = "integration/update_release_test.rs"]
+mod update_release_test;
+
+#[path = "integration/update_fetch_test.rs"]
+mod update_fetch_test;
+
+#[path = "integration/update_install_test.rs"]
+mod update_install_test;
+
+#[path = "integration/update_cli_test.rs"]
+mod update_cli_test;
+
+#[path = "integration/update_boundary_test.rs"]
+mod update_boundary_test;

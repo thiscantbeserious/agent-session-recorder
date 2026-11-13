@@ -12,6 +12,7 @@ pub mod legacy_fake;
 pub mod pack_engine;
 pub mod pack_repo;
 pub mod storage;
+pub mod update_fake;
 #[macro_use]
 pub mod store_contract;
 pub mod tui_snapshot;
