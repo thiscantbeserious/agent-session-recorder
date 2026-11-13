@@ -226,6 +226,32 @@ fn success_replaces_and_keeps_mode() {
     assert!(leftovers(dir.path()).is_empty());
 }
 
+/// A supplementary group that differs from the effective one, if the user has any.
+fn other_group() -> Option<u32> {
+    let mut gids = [0 as libc::gid_t; 256];
+    let n = unsafe { libc::getgroups(256, gids.as_mut_ptr()) };
+    let egid = unsafe { libc::getegid() };
+    gids[..n.max(0) as usize]
+        .iter()
+        .copied()
+        .find(|g| *g != egid)
+}
+
+#[test]
+fn success_keeps_group() {
+    use std::os::unix::fs::MetadataExt;
+    let Some(gid) = other_group() else {
+        eprintln!("skipped, no supplementary group in this environment");
+        return;
+    };
+    let dir = TempDir::new().unwrap();
+    let t = target(dir.path(), 0o750);
+    std::os::unix::fs::chown(&t, None, Some(gid)).unwrap();
+    let (_fake, source) = src(&Spec::default());
+    run_at(&source, &t, Version(0, 4, 0)).unwrap();
+    assert_eq!(fs::metadata(&t).unwrap().gid(), gid);
+}
+
 #[test]
 fn rename_failure_leaves_original() {
     let dir = TempDir::new().unwrap();
