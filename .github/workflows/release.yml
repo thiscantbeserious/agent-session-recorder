@@ -128,6 +128,7 @@ jobs:
             chmod +x "$dir/agr"
             mv "$dir/agr" "release-assets/$artifact_name"
           done
+          (cd release-assets && sha256sum agr-* > SHA256SUMS && cat SHA256SUMS)
           ls -la release-assets/
 
       - name: Get version from tag
