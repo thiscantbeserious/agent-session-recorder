@@ -240,6 +240,22 @@ fn second_update_fails_while_locked() {
 }
 
 #[test]
+fn cargo_dir_behind_symlink_is_managed() {
+    let tmp = TempDir::new().unwrap();
+    let real = tmp.path().join("real");
+    fs::create_dir_all(real.join("bin")).unwrap();
+    let home = tmp.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+    symlink(&real, home.join(".cargo")).unwrap();
+    let bin = real.join("bin/agr");
+    fs::write(&bin, OLD).unwrap();
+    let err = check_managed(&bin, Some(&home), None, None)
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("Cargo"), "{err}");
+}
+
+#[test]
 fn old_inode_keeps_running() {
     let dir = TempDir::new().unwrap();
     let t = target(dir.path(), 0o755);
