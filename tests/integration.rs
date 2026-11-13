@@ -396,3 +396,9 @@ mod update_fetch_test;
 
 #[path = "integration/update_install_test.rs"]
 mod update_install_test;
+
+#[path = "integration/update_cli_test.rs"]
+mod update_cli_test;
+
+#[path = "integration/update_boundary_test.rs"]
+mod update_boundary_test;
