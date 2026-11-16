@@ -25,7 +25,9 @@ pub enum Managed {
 impl Managed {
     pub fn message(self, path: &Path) -> String {
         let how = match self {
-            Managed::Cargo => "cargo install agr",
+            Managed::Cargo => {
+                "cargo install --git https://github.com/thiscantbeserious/agent-session-recorder"
+            }
             Managed::Homebrew => "brew upgrade",
         };
         format!(
